@@ -5,9 +5,28 @@ import { EnergyBar } from '@/components/EnergyBar';
 import { PositionBadge } from '@/components/PositionBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Zap, DollarSign, Star, Bell } from 'lucide-react';
+import { Zap, DollarSign, Star, Bell, Swords, CalendarClock, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import type { Tables } from '@/integrations/supabase/types';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+const STATUS_INFO: Record<string, { label: string; className: string }> = {
+  scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
+  waiting: { label: 'Aguardando', className: 'bg-warning/20 text-warning border-warning/30' },
+  live: { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
+  finished: { label: 'Encerrada', className: 'bg-muted text-muted-foreground' },
+};
+
+interface NextMatch {
+  id: string;
+  status: string;
+  scheduled_at: string;
+  home_club: { name: string; short_name: string; primary_color: string; secondary_color: string };
+  away_club: { name: string; short_name: string; primary_color: string; secondary_color: string };
+}
 
 export default function PlayerDashboard() {
   const { user, playerProfile } = useAuth();
@@ -15,6 +34,7 @@ export default function PlayerDashboard() {
   const [notifications, setNotifications] = useState<Tables<'notifications'>[]>([]);
   const [attributes, setAttributes] = useState<Tables<'player_attributes'> | null>(null);
   const [clubName, setClubName] = useState<string | null>(null);
+  const [nextMatch, setNextMatch] = useState<NextMatch | null>(null);
 
   useEffect(() => {
     if (!playerProfile) return;
@@ -36,10 +56,49 @@ export default function PlayerDashboard() {
       } else {
         setClubName(null);
       }
-      setAttributes(attrRes.data);
+    };
+
+    const fetchNextMatch = async () => {
+      if (!user) return;
+      // Get match_participants for this user
+      const { data: parts } = await supabase
+        .from('match_participants')
+        .select('match_id')
+        .eq('connected_user_id', user.id)
+        .eq('role_type', 'player');
+
+      if (!parts || parts.length === 0) return;
+
+      const matchIds = parts.map(p => p.match_id);
+      const { data: matchData } = await supabase
+        .from('matches')
+        .select('id, status, scheduled_at, home_club_id, away_club_id')
+        .in('id', matchIds)
+        .in('status', ['scheduled', 'waiting', 'live'])
+        .order('scheduled_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (!matchData) return;
+
+      const [homeRes, awayRes] = await Promise.all([
+        supabase.from('clubs').select('name, short_name, primary_color, secondary_color').eq('id', matchData.home_club_id).single(),
+        supabase.from('clubs').select('name, short_name, primary_color, secondary_color').eq('id', matchData.away_club_id).single(),
+      ]);
+
+      if (homeRes.data && awayRes.data) {
+        setNextMatch({
+          id: matchData.id,
+          status: matchData.status,
+          scheduled_at: matchData.scheduled_at,
+          home_club: homeRes.data,
+          away_club: awayRes.data,
+        });
+      }
     };
 
     fetchData();
+    fetchNextMatch();
   }, [playerProfile, user]);
 
   if (!playerProfile) return null;
@@ -88,6 +147,65 @@ export default function PlayerDashboard() {
             {p.energy_current >= 80 ? 'Pronto para jogar' : p.energy_current >= 50 ? 'Considere descansar' : 'Necessita recuperação'}
           </p>
         </div>
+
+        {/* Next match */}
+        {nextMatch ? (
+          <div className="stat-card">
+            <div className="flex items-center gap-2 mb-3">
+              <Swords className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Próxima Partida</span>
+              <Badge variant="outline" className={`text-xs ml-auto ${STATUS_INFO[nextMatch.status]?.className || ''}`}>
+                {STATUS_INFO[nextMatch.status]?.label || nextMatch.status}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
+                  style={{ backgroundColor: nextMatch.home_club.primary_color, color: nextMatch.home_club.secondary_color }}
+                >
+                  {nextMatch.home_club.short_name}
+                </div>
+                <span className="font-display font-bold text-sm hidden sm:block truncate">{nextMatch.home_club.name}</span>
+              </div>
+              <span className="font-display font-bold text-muted-foreground shrink-0">vs</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <div
+                  className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
+                  style={{ backgroundColor: nextMatch.away_club.primary_color, color: nextMatch.away_club.secondary_color }}
+                >
+                  {nextMatch.away_club.short_name}
+                </div>
+                <span className="font-display font-bold text-sm hidden sm:block truncate">{nextMatch.away_club.name}</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarClock className="h-3 w-3" />
+                {format(new Date(nextMatch.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </div>
+              <Link to={`/match/${nextMatch.id}`}>
+                <Button size="sm" className="text-xs font-display bg-pitch text-pitch-foreground hover:bg-pitch/90">
+                  <Play className="h-3 w-3 mr-1" />
+                  {nextMatch.status === 'live' || nextMatch.status === 'waiting' ? 'Entrar na Partida' : 'Ver Partida'}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="stat-card">
+            <div className="flex items-center gap-2 mb-3">
+              <Swords className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Próxima Partida</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">Nenhuma partida agendada.</p>
+              <Link to="/player/matches" className="text-xs text-tactical hover:underline">
+                Ver todas →
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Notifications */}
         {notifications.length > 0 && (
