@@ -14,7 +14,304 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      contracts: {
+        Row: {
+          club_id: string | null
+          created_at: string
+          end_date: string | null
+          id: string
+          player_profile_id: string
+          release_clause: number
+          start_date: string
+          status: string
+          updated_at: string
+          weekly_salary: number
+        }
+        Insert: {
+          club_id?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          player_profile_id: string
+          release_clause?: number
+          start_date?: string
+          status?: string
+          updated_at?: string
+          weekly_salary?: number
+        }
+        Update: {
+          club_id?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          player_profile_id?: string
+          release_clause?: number
+          start_date?: string
+          status?: string
+          updated_at?: string
+          weekly_salary?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          read: boolean
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          read?: boolean
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          read?: boolean
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      player_attributes: {
+        Row: {
+          aceleracao: number
+          acuracia_chute: number
+          agilidade: number
+          antecipacao: number
+          cabeceio: number
+          comando_area: number
+          controle_bola: number
+          coragem: number
+          created_at: string
+          curva: number
+          defesa_aerea: number
+          desarme: number
+          distribuicao_curta: number
+          distribuicao_longa: number
+          drible: number
+          equilibrio: number
+          forca: number
+          forca_chute: number
+          id: string
+          marcacao: number
+          passe_alto: number
+          passe_baixo: number
+          pegada: number
+          player_profile_id: string
+          posicionamento_defensivo: number
+          posicionamento_gol: number
+          posicionamento_ofensivo: number
+          pulo: number
+          reflexo: number
+          resistencia: number
+          saida_gol: number
+          stamina: number
+          tempo_reacao: number
+          tomada_decisao: number
+          trabalho_equipe: number
+          um_contra_um: number
+          um_toque: number
+          updated_at: string
+          velocidade: number
+          visao_jogo: number
+        }
+        Insert: {
+          aceleracao?: number
+          acuracia_chute?: number
+          agilidade?: number
+          antecipacao?: number
+          cabeceio?: number
+          comando_area?: number
+          controle_bola?: number
+          coragem?: number
+          created_at?: string
+          curva?: number
+          defesa_aerea?: number
+          desarme?: number
+          distribuicao_curta?: number
+          distribuicao_longa?: number
+          drible?: number
+          equilibrio?: number
+          forca?: number
+          forca_chute?: number
+          id?: string
+          marcacao?: number
+          passe_alto?: number
+          passe_baixo?: number
+          pegada?: number
+          player_profile_id: string
+          posicionamento_defensivo?: number
+          posicionamento_gol?: number
+          posicionamento_ofensivo?: number
+          pulo?: number
+          reflexo?: number
+          resistencia?: number
+          saida_gol?: number
+          stamina?: number
+          tempo_reacao?: number
+          tomada_decisao?: number
+          trabalho_equipe?: number
+          um_contra_um?: number
+          um_toque?: number
+          updated_at?: string
+          velocidade?: number
+          visao_jogo?: number
+        }
+        Update: {
+          aceleracao?: number
+          acuracia_chute?: number
+          agilidade?: number
+          antecipacao?: number
+          cabeceio?: number
+          comando_area?: number
+          controle_bola?: number
+          coragem?: number
+          created_at?: string
+          curva?: number
+          defesa_aerea?: number
+          desarme?: number
+          distribuicao_curta?: number
+          distribuicao_longa?: number
+          drible?: number
+          equilibrio?: number
+          forca?: number
+          forca_chute?: number
+          id?: string
+          marcacao?: number
+          passe_alto?: number
+          passe_baixo?: number
+          pegada?: number
+          player_profile_id?: string
+          posicionamento_defensivo?: number
+          posicionamento_gol?: number
+          posicionamento_ofensivo?: number
+          pulo?: number
+          reflexo?: number
+          resistencia?: number
+          saida_gol?: number
+          stamina?: number
+          tempo_reacao?: number
+          tomada_decisao?: number
+          trabalho_equipe?: number
+          um_contra_um?: number
+          um_toque?: number
+          updated_at?: string
+          velocidade?: number
+          visao_jogo?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_attributes_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: true
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_profiles: {
+        Row: {
+          age: number
+          archetype: string
+          club_id: string | null
+          created_at: string
+          dominant_foot: string
+          energy_current: number
+          energy_max: number
+          full_name: string
+          id: string
+          money: number
+          overall: number
+          primary_position: string
+          reputation: number
+          secondary_position: string | null
+          updated_at: string
+          user_id: string
+          weekly_salary: number
+        }
+        Insert: {
+          age: number
+          archetype: string
+          club_id?: string | null
+          created_at?: string
+          dominant_foot: string
+          energy_current?: number
+          energy_max?: number
+          full_name: string
+          id?: string
+          money?: number
+          overall?: number
+          primary_position: string
+          reputation?: number
+          secondary_position?: string | null
+          updated_at?: string
+          user_id: string
+          weekly_salary?: number
+        }
+        Update: {
+          age?: number
+          archetype?: string
+          club_id?: string | null
+          created_at?: string
+          dominant_foot?: string
+          energy_current?: number
+          energy_max?: number
+          full_name?: string
+          id?: string
+          money?: number
+          overall?: number
+          primary_position?: string
+          reputation?: number
+          secondary_position?: string | null
+          updated_at?: string
+          user_id?: string
+          weekly_salary?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          role_selected: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          role_selected?: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role_selected?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
