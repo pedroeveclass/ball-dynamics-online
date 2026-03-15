@@ -4,17 +4,21 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
-import { ProtectedRoute, PlayerRoute } from "@/components/ProtectedRoute";
+import { ProtectedRoute, PlayerRoute, ManagerRoute } from "@/components/ProtectedRoute";
 
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import OnboardingPlayerPage from "./pages/OnboardingPlayerPage";
+import OnboardingManagerPage from "./pages/OnboardingManagerPage";
 import PlayerDashboard from "./pages/PlayerDashboard";
 import PlayerAttributesPage from "./pages/PlayerAttributesPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
 import PlayerContractPage from "./pages/PlayerContractPage";
 import ManagerDashboard from "./pages/ManagerDashboard";
+import ManagerClubPage from "./pages/ManagerClubPage";
+import ManagerFinancePage from "./pages/ManagerFinancePage";
+import ManagerStadiumPage from "./pages/ManagerStadiumPage";
 import LeaguePage from "./pages/LeaguePage";
 import MatchPage from "./pages/MatchPage";
 import NotFound from "./pages/NotFound";
@@ -33,11 +37,15 @@ const App = () => (
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/onboarding/player" element={<ProtectedRoute><OnboardingPlayerPage /></ProtectedRoute>} />
+            <Route path="/onboarding/manager" element={<ProtectedRoute><OnboardingManagerPage /></ProtectedRoute>} />
             <Route path="/player" element={<PlayerRoute><PlayerDashboard /></PlayerRoute>} />
             <Route path="/player/attributes" element={<PlayerRoute><PlayerAttributesPage /></PlayerRoute>} />
             <Route path="/player/profile" element={<PlayerRoute><PlayerProfilePage /></PlayerRoute>} />
             <Route path="/player/contract" element={<PlayerRoute><PlayerContractPage /></PlayerRoute>} />
-            <Route path="/manager" element={<ManagerDashboard />} />
+            <Route path="/manager" element={<ManagerRoute><ManagerDashboard /></ManagerRoute>} />
+            <Route path="/manager/club" element={<ManagerRoute><ManagerClubPage /></ManagerRoute>} />
+            <Route path="/manager/finance" element={<ManagerRoute><ManagerFinancePage /></ManagerRoute>} />
+            <Route path="/manager/stadium" element={<ManagerRoute><ManagerStadiumPage /></ManagerRoute>} />
             <Route path="/league" element={<LeaguePage />} />
             <Route path="/match" element={<MatchPage />} />
             <Route path="*" element={<NotFound />} />

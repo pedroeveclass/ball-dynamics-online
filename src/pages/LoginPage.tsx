@@ -1,23 +1,30 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
-import { Navigate } from 'react-router-dom';
 
 export default function LoginPage() {
-  const { user, playerProfile, loading } = useAuth();
-  const navigate = useNavigate();
+  const { user, profile, playerProfile, managerProfile, club, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) return null;
-  if (user && playerProfile) return <Navigate to="/player" replace />;
-  if (user && !playerProfile) return <Navigate to="/onboarding/player" replace />;
+
+  // Smart redirect based on role
+  if (user && profile) {
+    if (profile.role_selected === 'manager') {
+      if (managerProfile && club) return <Navigate to="/manager" replace />;
+      return <Navigate to="/onboarding/manager" replace />;
+    } else {
+      if (playerProfile) return <Navigate to="/player" replace />;
+      return <Navigate to="/onboarding/player" replace />;
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +38,6 @@ export default function LoginPage() {
       return;
     }
 
-    // Auth state change will handle redirect
     toast.success('Login realizado!');
   };
 

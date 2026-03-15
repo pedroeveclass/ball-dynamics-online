@@ -26,7 +26,7 @@ export default function OnboardingPlayerPage() {
 
   // Attribute distribution
   const [extraPoints, setExtraPoints] = useState<Record<string, number>>({});
-  const TOTAL_DISTRIBUTE = 20;
+  const TOTAL_DISTRIBUTE = 40;
 
   const baseAttrs = useMemo(() => {
     if (!primaryPosition || !bodyType) return null;
