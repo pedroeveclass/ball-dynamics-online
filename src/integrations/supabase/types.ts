@@ -14,6 +14,129 @@ export type Database = {
   }
   public: {
     Tables: {
+      club_finances: {
+        Row: {
+          balance: number
+          club_id: string
+          created_at: string
+          id: string
+          projected_expense: number
+          projected_income: number
+          updated_at: string
+          weekly_wage_bill: number
+        }
+        Insert: {
+          balance?: number
+          club_id: string
+          created_at?: string
+          id?: string
+          projected_expense?: number
+          projected_income?: number
+          updated_at?: string
+          weekly_wage_bill?: number
+        }
+        Update: {
+          balance?: number
+          club_id?: string
+          created_at?: string
+          id?: string
+          projected_expense?: number
+          projected_income?: number
+          updated_at?: string
+          weekly_wage_bill?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_finances_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_settings: {
+        Row: {
+          club_id: string
+          created_at: string
+          default_formation: string | null
+          id: string
+          play_style: string | null
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          default_formation?: string | null
+          id?: string
+          play_style?: string | null
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          default_formation?: string | null
+          id?: string
+          play_style?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clubs: {
+        Row: {
+          city: string | null
+          created_at: string
+          id: string
+          manager_profile_id: string
+          name: string
+          primary_color: string
+          reputation: number
+          secondary_color: string
+          short_name: string
+          status: string
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          id?: string
+          manager_profile_id: string
+          name: string
+          primary_color?: string
+          reputation?: number
+          secondary_color?: string
+          short_name: string
+          status?: string
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          id?: string
+          manager_profile_id?: string
+          name?: string
+          primary_color?: string
+          reputation?: number
+          secondary_color?: string
+          short_name?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clubs_manager_profile_id_fkey"
+            columns: ["manager_profile_id"]
+            isOneToOne: true
+            referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contracts: {
         Row: {
           club_id: string | null
@@ -60,6 +183,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      manager_profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          money: number
+          reputation: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id?: string
+          money?: number
+          reputation?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          money?: number
+          reputation?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       notifications: {
         Row: {
@@ -314,6 +467,120 @@ export type Database = {
           username?: string
         }
         Relationships: []
+      }
+      stadium_sectors: {
+        Row: {
+          capacity: number
+          created_at: string
+          id: string
+          sector_type: string
+          stadium_id: string
+          ticket_price: number
+        }
+        Insert: {
+          capacity?: number
+          created_at?: string
+          id?: string
+          sector_type: string
+          stadium_id: string
+          ticket_price?: number
+        }
+        Update: {
+          capacity?: number
+          created_at?: string
+          id?: string
+          sector_type?: string
+          stadium_id?: string
+          ticket_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stadium_sectors_stadium_id_fkey"
+            columns: ["stadium_id"]
+            isOneToOne: false
+            referencedRelation: "stadiums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stadiums: {
+        Row: {
+          capacity: number
+          club_id: string
+          created_at: string
+          id: string
+          maintenance_cost: number
+          name: string
+          prestige: number
+          quality: number
+        }
+        Insert: {
+          capacity?: number
+          club_id: string
+          created_at?: string
+          id?: string
+          maintenance_cost?: number
+          name: string
+          prestige?: number
+          quality?: number
+        }
+        Update: {
+          capacity?: number
+          club_id?: string
+          created_at?: string
+          id?: string
+          maintenance_cost?: number
+          name?: string
+          prestige?: number
+          quality?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stadiums_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_history: {
+        Row: {
+          attribute_key: string
+          growth: number
+          id: string
+          new_value: number
+          old_value: number
+          player_profile_id: string
+          trained_at: string
+        }
+        Insert: {
+          attribute_key: string
+          growth: number
+          id?: string
+          new_value: number
+          old_value: number
+          player_profile_id: string
+          trained_at?: string
+        }
+        Update: {
+          attribute_key?: string
+          growth?: number
+          id?: string
+          new_value?: number
+          old_value?: number
+          player_profile_id?: string
+          trained_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_history_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
