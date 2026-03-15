@@ -25,6 +25,8 @@ import ManagerMarketPage from "./pages/ManagerMarketPage";
 import ManagerSquadPage from "./pages/ManagerSquadPage";
 import ManagerLineupPage from "./pages/ManagerLineupPage";
 import ManagerMatchCreatePage from "./pages/ManagerMatchCreatePage";
+import ManagerChallengesPage from "./pages/ManagerChallengesPage";
+import PlayerMatchesPage from "./pages/PlayerMatchesPage";
 import MatchRoomPage from "./pages/MatchRoomPage";
 import LeaguePage from "./pages/LeaguePage";
 import NotFound from "./pages/NotFound";
@@ -50,6 +52,7 @@ const App = () => (
             <Route path="/player/contract" element={<PlayerRoute><PlayerContractPage /></PlayerRoute>} />
             <Route path="/player/offers" element={<PlayerRoute><PlayerOffersPage /></PlayerRoute>} />
             <Route path="/player/club" element={<PlayerRoute><PlayerClubPage /></PlayerRoute>} />
+            <Route path="/player/matches" element={<PlayerRoute><PlayerMatchesPage /></PlayerRoute>} />
             <Route path="/manager" element={<ManagerRoute><ManagerDashboard /></ManagerRoute>} />
             <Route path="/manager/club" element={<ManagerRoute><ManagerClubPage /></ManagerRoute>} />
             <Route path="/manager/finance" element={<ManagerRoute><ManagerFinancePage /></ManagerRoute>} />
@@ -58,6 +61,7 @@ const App = () => (
             <Route path="/manager/squad" element={<ManagerRoute><ManagerSquadPage /></ManagerRoute>} />
             <Route path="/manager/lineup" element={<ManagerRoute><ManagerLineupPage /></ManagerRoute>} />
             <Route path="/manager/match/create" element={<ManagerRoute><ManagerMatchCreatePage /></ManagerRoute>} />
+            <Route path="/manager/challenges" element={<ManagerRoute><ManagerChallengesPage /></ManagerRoute>} />
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
             <Route path="/league" element={<LeaguePage />} />
             <Route path="*" element={<NotFound />} />

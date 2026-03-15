@@ -4,7 +4,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Swords, AlertCircle } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Swords, AlertCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -18,11 +21,13 @@ interface ClubOption {
 }
 
 export default function ManagerMatchCreatePage() {
-  const { club } = useAuth();
+  const { club, managerProfile } = useAuth();
   const navigate = useNavigate();
   const [clubs, setClubs] = useState<ClubOption[]>([]);
   const [awayClubId, setAwayClubId] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
   const [hasLineup, setHasLineup] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -38,94 +43,70 @@ export default function ManagerMatchCreatePage() {
       setLoading(false);
     };
     load();
+    // Default to tomorrow at 20:00
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(20, 0, 0, 0);
+    setScheduledAt(tomorrow.toISOString().slice(0, 16));
   }, [club]);
 
-  const handleCreate = async () => {
-    if (!club || !awayClubId) return;
-    setCreating(true);
+  const handleSendChallenge = async () => {
+    if (!club || !awayClubId || !scheduledAt || !managerProfile) return;
+    setSending(true);
 
     try {
-      // Get active lineups for both clubs
-      const [homeLineup, awayLineup] = await Promise.all([
-        supabase.from('lineups').select('id').eq('club_id', club.id).eq('is_active', true).single(),
-        supabase.from('lineups').select('id').eq('club_id', awayClubId).eq('is_active', true).single(),
-      ]);
+      // Get manager profile of the challenged club
+      const { data: awayClubData } = await supabase
+        .from('clubs')
+        .select('manager_profile_id')
+        .eq('id', awayClubId)
+        .single();
 
-      if (!homeLineup.data) {
-        toast.error('Seu clube não tem escalação ativa. Vá em Escalação primeiro.');
-        setCreating(false);
+      if (!awayClubData?.manager_profile_id) {
+        toast.error('Clube adversário não tem manager registrado.');
+        setSending(false);
         return;
       }
 
-      // Create match
-      const { data: match, error: matchError } = await supabase.from('matches').insert({
-        home_club_id: club.id,
-        away_club_id: awayClubId,
-        home_lineup_id: homeLineup.data.id,
-        away_lineup_id: awayLineup.data?.id || null,
-        status: 'scheduled',
-        current_phase: 'pre_match',
-      }).select('id').single();
+      // Get away manager's user_id for notification
+      const { data: awayMgrData } = await supabase
+        .from('manager_profiles')
+        .select('user_id, full_name')
+        .eq('id', awayClubData.manager_profile_id)
+        .single();
 
-      if (matchError) throw matchError;
+      // Create the challenge
+      const { data: challenge, error } = await supabase
+        .from('match_challenges')
+        .insert({
+          challenger_club_id: club.id,
+          challenged_club_id: awayClubId,
+          challenger_manager_profile_id: managerProfile.id,
+          challenged_manager_profile_id: awayClubData.manager_profile_id,
+          scheduled_at: new Date(scheduledAt).toISOString(),
+          message: message.trim() || null,
+          status: 'proposed',
+        })
+        .select('id')
+        .single();
 
-      // Get lineup slots for both teams
-      const lineupIds = [homeLineup.data.id, ...(awayLineup.data ? [awayLineup.data.id] : [])];
-      const { data: slots } = await supabase.from('lineup_slots').select('id, lineup_id, player_profile_id, slot_position, role_type').in('lineup_id', lineupIds);
+      if (error) throw error;
 
-      // Get player user_ids for connecting
-      const playerIds = (slots || []).filter(s => s.player_profile_id).map(s => s.player_profile_id);
-      const { data: players } = await supabase.from('player_profiles').select('id, user_id').in('id', playerIds);
-      const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
-
-      // Create participants
-      const participants = (slots || []).map(slot => {
-        const clubId = slot.lineup_id === homeLineup.data!.id ? club.id : awayClubId;
-        const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
-        return {
-          match_id: match!.id,
-          player_profile_id: slot.player_profile_id,
-          club_id: clubId,
-          lineup_slot_id: slot.id,
-          role_type: 'player' as const,
-          is_bot: !userId,
-          is_ready: false,
-          connected_user_id: userId || null,
-        };
-      });
-
-      if (participants.length > 0) {
-        const { error: partError } = await supabase.from('match_participants').insert(participants);
-        if (partError) throw partError;
+      // Send notification to the challenged manager
+      if (awayMgrData?.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: awayMgrData.user_id,
+          title: '⚔️ Convite de Amistoso',
+          body: `${club.name} quer jogar um amistoso contra você em ${new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`,
+          type: 'match_challenge',
+        });
       }
 
-      // Add manager participants
-      const { data: awayManager } = await supabase.from('clubs').select('manager_profile_id').eq('id', awayClubId).single();
-      const { data: awayMgrProfile } = awayManager?.manager_profile_id
-        ? await supabase.from('manager_profiles').select('user_id').eq('id', awayManager.manager_profile_id).single()
-        : { data: null };
-
-      const managerParticipants = [
-        { match_id: match!.id, club_id: club.id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: (await supabase.auth.getUser()).data.user?.id || null },
-      ];
-      if (awayMgrProfile) {
-        managerParticipants.push({ match_id: match!.id, club_id: awayClubId, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: awayMgrProfile.user_id });
-      }
-      await supabase.from('match_participants').insert(managerParticipants);
-
-      // Log creation event
-      await supabase.from('match_event_logs').insert({
-        match_id: match!.id,
-        event_type: 'system',
-        title: 'Partida criada',
-        body: `Partida agendada entre os dois clubes.`,
-      });
-
-      toast.success('Partida criada!');
-      navigate(`/match/${match!.id}`);
+      toast.success('Convite enviado! Aguarde o adversário aceitar.');
+      navigate('/manager/challenges');
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar partida');
-      setCreating(false);
+      toast.error(err.message || 'Erro ao enviar convite');
+      setSending(false);
     }
   };
 
@@ -135,7 +116,7 @@ export default function ManagerMatchCreatePage() {
     <ManagerLayout>
       <div className="space-y-6 max-w-lg">
         <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          <Swords className="h-6 w-6 text-tactical" /> Criar Partida
+          <Swords className="h-6 w-6 text-tactical" /> Convidar para Amistoso
         </h1>
 
         {!hasLineup && (
@@ -143,47 +124,79 @@ export default function ManagerMatchCreatePage() {
             <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
             <div>
               <p className="font-display font-bold text-sm">Escalação necessária</p>
-              <p className="text-xs text-muted-foreground">Defina uma escalação ativa antes de criar uma partida.</p>
+              <p className="text-xs text-muted-foreground">Defina uma escalação ativa antes de enviar convite.</p>
             </div>
           </div>
         )}
 
-        <div className="stat-card space-y-4">
+        <div className="stat-card space-y-5">
+          {/* Your club */}
           <div>
             <p className="text-xs text-muted-foreground mb-1">Seu Clube (Casa)</p>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded flex items-center justify-center text-xs font-display font-bold"
-                style={{ backgroundColor: club?.primary_color, color: club?.secondary_color }}>
+              <div
+                className="w-8 h-8 rounded flex items-center justify-center text-xs font-display font-bold"
+                style={{ backgroundColor: club?.primary_color, color: club?.secondary_color }}
+              >
                 {club?.short_name}
               </div>
               <span className="font-display font-bold">{club?.name}</span>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Adversário</p>
+          {/* Opponent */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Adversário</Label>
             <Select value={awayClubId} onValueChange={setAwayClubId}>
               <SelectTrigger>
-                <SelectValue placeholder="Escolha o adversário" />
+                <SelectValue placeholder="Escolha o clube adversário" />
               </SelectTrigger>
               <SelectContent>
                 {clubs.map(c => (
                   <SelectItem key={c.id} value={c.id}>
                     <span className="flex items-center gap-2">
                       <span className="w-4 h-4 rounded-sm inline-block" style={{ backgroundColor: c.primary_color }} />
-                      {c.name} (Rep: {c.reputation})
+                      {c.name} <span className="text-muted-foreground text-xs">Rep: {c.reputation}</span>
                     </span>
                   </SelectItem>
                 ))}
                 {clubs.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum clube adversário encontrado.</div>
+                  <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum clube encontrado.</div>
                 )}
               </SelectContent>
             </Select>
           </div>
 
-          <Button onClick={handleCreate} disabled={creating || !awayClubId || !hasLineup} className="w-full bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
-            {creating ? 'Criando...' : 'CRIAR PARTIDA'}
+          {/* Date & time */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Data e Hora</Label>
+            <Input
+              type="datetime-local"
+              value={scheduledAt}
+              min={new Date().toISOString().slice(0, 16)}
+              onChange={e => setScheduledAt(e.target.value)}
+            />
+          </div>
+
+          {/* Optional message */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Mensagem (opcional)</Label>
+            <Textarea
+              placeholder="Escreva uma mensagem para o adversário..."
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              rows={2}
+              className="resize-none"
+            />
+          </div>
+
+          <Button
+            onClick={handleSendChallenge}
+            disabled={sending || !awayClubId || !scheduledAt || !hasLineup}
+            className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
+          >
+            <Send className="h-4 w-4 mr-2" />
+            {sending ? 'Enviando...' : 'ENVIAR CONVITE'}
           </Button>
         </div>
       </div>
