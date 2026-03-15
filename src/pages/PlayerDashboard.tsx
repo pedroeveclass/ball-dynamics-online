@@ -14,6 +14,7 @@ export default function PlayerDashboard() {
   const [contract, setContract] = useState<Tables<'contracts'> | null>(null);
   const [notifications, setNotifications] = useState<Tables<'notifications'>[]>([]);
   const [attributes, setAttributes] = useState<Tables<'player_attributes'> | null>(null);
+  const [clubName, setClubName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!playerProfile) return;
@@ -27,6 +28,14 @@ export default function PlayerDashboard() {
 
       setContract(contractRes.data);
       setNotifications(notifRes.data || []);
+      setAttributes(attrRes.data);
+
+      if (playerProfile.club_id) {
+        const { data: clubData } = await supabase.from('clubs').select('name').eq('id', playerProfile.club_id).single();
+        setClubName(clubData?.name || null);
+      } else {
+        setClubName(null);
+      }
       setAttributes(attrRes.data);
     };
 
@@ -65,7 +74,7 @@ export default function PlayerDashboard() {
           <StatCard label="Reputação" value={p.reputation} icon={<Star className="h-5 w-5" />} />
           <StatCard label="Dinheiro" value={`$${p.money.toLocaleString()}`} icon={<DollarSign className="h-5 w-5" />} />
           <StatCard label="Salário/Sem" value={contract?.status === 'active' ? `$${contract.weekly_salary.toLocaleString()}` : 'Sem contrato'} />
-          <StatCard label="Clube" value={p.club_id || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
+          <StatCard label="Clube" value={clubName || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
         </div>
 
         {/* Energy */}

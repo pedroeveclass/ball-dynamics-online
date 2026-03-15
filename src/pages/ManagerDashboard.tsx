@@ -114,14 +114,24 @@ export default function ManagerDashboard() {
           </Link>
         </div>
 
-        {/* Empty squad state */}
-        {playerCount === 0 && (
-          <div className="stat-card text-center py-8">
-            <Users className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="font-display font-semibold text-foreground">Nenhum jogador no elenco</p>
-            <p className="text-xs text-muted-foreground mt-1">O mercado de transferências será liberado em breve.</p>
-          </div>
-        )}
+        {/* Squad / Market links */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Link to="/manager/squad" className="stat-card block hover:border-tactical/40 transition-colors">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Elenco</span>
+            </div>
+            <p className="font-display text-2xl font-bold">{playerCount}</p>
+            <p className="text-xs text-muted-foreground">jogadores no elenco</p>
+          </Link>
+          <Link to="/manager/market" className="stat-card block hover:border-tactical/40 transition-colors">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Mercado</span>
+            </div>
+            <p className="text-sm text-muted-foreground">Encontre agentes livres e envie propostas de contrato.</p>
+          </Link>
+        </div>
       </div>
     </ManagerLayout>
   );

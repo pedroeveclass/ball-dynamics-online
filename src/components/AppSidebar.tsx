@@ -1,6 +1,5 @@
 import {
-  LayoutDashboard, User, TrendingUp, DollarSign,
-  Trophy, Calendar, Swords, Table2,
+  LayoutDashboard, User, TrendingUp, FileText, Inbox,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -13,13 +12,8 @@ const playerNav = [
   { title: 'Dashboard', url: '/player', icon: LayoutDashboard },
   { title: 'Perfil', url: '/player/profile', icon: User },
   { title: 'Atributos & Treino', url: '/player/attributes', icon: TrendingUp },
-  { title: 'Contrato', url: '/player/contract', icon: DollarSign },
-];
-
-const leagueNav = [
-  { title: 'Classificação', url: '/league', icon: Table2 },
-  { title: 'Calendário', url: '/league/calendar', icon: Calendar },
-  { title: 'Partida', url: '/match', icon: Swords },
+  { title: 'Contrato', url: '/player/contract', icon: FileText },
+  { title: 'Propostas', url: '/player/offers', icon: Inbox },
 ];
 
 export function AppSidebar() {
@@ -36,24 +30,6 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {playerNav.map(item => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-primary font-medium">
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Liga & Partidas</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {leagueNav.map(item => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-primary font-medium">

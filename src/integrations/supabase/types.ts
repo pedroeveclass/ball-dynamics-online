@@ -137,6 +137,73 @@ export type Database = {
           },
         ]
       }
+      contract_offers: {
+        Row: {
+          club_id: string
+          contract_length: number
+          created_at: string
+          id: string
+          manager_profile_id: string
+          message: string | null
+          player_profile_id: string
+          release_clause: number
+          squad_role: string
+          status: string
+          updated_at: string
+          weekly_salary: number
+        }
+        Insert: {
+          club_id: string
+          contract_length?: number
+          created_at?: string
+          id?: string
+          manager_profile_id: string
+          message?: string | null
+          player_profile_id: string
+          release_clause?: number
+          squad_role?: string
+          status?: string
+          updated_at?: string
+          weekly_salary?: number
+        }
+        Update: {
+          club_id?: string
+          contract_length?: number
+          created_at?: string
+          id?: string
+          manager_profile_id?: string
+          message?: string | null
+          player_profile_id?: string
+          release_clause?: number
+          squad_role?: string
+          status?: string
+          updated_at?: string
+          weekly_salary?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_offers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_offers_manager_profile_id_fkey"
+            columns: ["manager_profile_id"]
+            isOneToOne: false
+            referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_offers_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contracts: {
         Row: {
           club_id: string | null
