@@ -18,7 +18,7 @@ export default function ManagerDashboard() {
       const [finRes, stadRes, playersRes] = await Promise.all([
         supabase.from('club_finances').select('*').eq('club_id', club.id).single(),
         supabase.from('stadiums').select('*').eq('club_id', club.id).single(),
-        supabase.from('player_profiles').select('id', { count: 'exact', head: true }).eq('club_id', club.id),
+        supabase.from('contracts').select('id', { count: 'exact', head: true }).eq('club_id', club.id).eq('status', 'active'),
       ]);
       setFinance(finRes.data);
       setStadium(stadRes.data);
