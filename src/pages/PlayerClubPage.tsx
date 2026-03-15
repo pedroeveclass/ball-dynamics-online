@@ -61,13 +61,25 @@ export default function PlayerClubPage() {
 
       if (!club) { setLoading(false); return; }
 
-      // Fetch manager name, stadium, contract, teammates in parallel
-      const [mgrRes, stadRes, contractRes, teammatesRes] = await Promise.all([
+      // Fetch manager name, stadium, contract in parallel
+      const [mgrRes, stadRes, contractRes, contractsRes] = await Promise.all([
         supabase.from('manager_profiles').select('full_name').eq('id', club.manager_profile_id).single(),
         supabase.from('stadiums').select('name, capacity').eq('club_id', club.id).single(),
         supabase.from('contracts').select('weekly_salary, release_clause, start_date, end_date').eq('player_profile_id', playerProfile.id).eq('status', 'active').single(),
-        supabase.from('player_profiles').select('id, full_name, primary_position, overall, archetype').eq('club_id', playerProfile.club_id!).order('overall', { ascending: false }),
+        supabase.from('contracts').select('player_profile_id').eq('club_id', playerProfile.club_id!).eq('status', 'active'),
       ]);
+
+      // Fetch teammate profiles from contract player IDs
+      const playerIds = (contractsRes.data || []).map(c => c.player_profile_id);
+      let teammatesData: Teammate[] = [];
+      if (playerIds.length > 0) {
+        const { data } = await supabase
+          .from('player_profiles')
+          .select('id, full_name, primary_position, overall, archetype')
+          .in('id', playerIds)
+          .order('overall', { ascending: false });
+        teammatesData = data || [];
+      }
 
       setClubInfo({
         ...club,
@@ -76,7 +88,7 @@ export default function PlayerClubPage() {
         stadium_capacity: stadRes.data?.capacity || null,
       });
       setContract(contractRes.data);
-      setTeammates(teammatesRes.data || []);
+      setTeammates(teammatesData);
       setLoading(false);
     };
 

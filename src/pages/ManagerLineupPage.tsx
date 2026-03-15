@@ -98,12 +98,23 @@ export default function ManagerLineupPage() {
     if (!club) return;
     setLoading(true);
 
-    // Load squad
-    const { data: players } = await supabase
-      .from('player_profiles')
-      .select('id, full_name, primary_position, secondary_position, archetype, overall')
+    // Load squad via active contracts (source of truth)
+    const { data: contracts } = await supabase
+      .from('contracts')
+      .select('player_profile_id')
       .eq('club_id', club.id)
-      .order('overall', { ascending: false });
+      .eq('status', 'active');
+
+    const playerIds = (contracts || []).map(c => c.player_profile_id);
+    let players: SquadPlayer[] = [];
+    if (playerIds.length > 0) {
+      const { data } = await supabase
+        .from('player_profiles')
+        .select('id, full_name, primary_position, secondary_position, archetype, overall')
+        .in('id', playerIds)
+        .order('overall', { ascending: false });
+      players = data || [];
+    }
 
     setSquad(players || []);
 
