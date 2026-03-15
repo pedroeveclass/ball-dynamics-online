@@ -25,6 +25,8 @@ import ManagerMarketPage from "./pages/ManagerMarketPage";
 import ManagerSquadPage from "./pages/ManagerSquadPage";
 import ManagerLineupPage from "./pages/ManagerLineupPage";
 import ManagerMatchCreatePage from "./pages/ManagerMatchCreatePage";
+import ManagerChallengesPage from "./pages/ManagerChallengesPage";
+import PlayerMatchesPage from "./pages/PlayerMatchesPage";
 import MatchRoomPage from "./pages/MatchRoomPage";
 import LeaguePage from "./pages/LeaguePage";
 import NotFound from "./pages/NotFound";
