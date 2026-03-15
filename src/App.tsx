@@ -24,8 +24,9 @@ import ManagerStadiumPage from "./pages/ManagerStadiumPage";
 import ManagerMarketPage from "./pages/ManagerMarketPage";
 import ManagerSquadPage from "./pages/ManagerSquadPage";
 import ManagerLineupPage from "./pages/ManagerLineupPage";
+import ManagerMatchCreatePage from "./pages/ManagerMatchCreatePage";
+import MatchRoomPage from "./pages/MatchRoomPage";
 import LeaguePage from "./pages/LeaguePage";
-import MatchPage from "./pages/MatchPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
