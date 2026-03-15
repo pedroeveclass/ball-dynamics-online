@@ -8,9 +8,12 @@ interface AuthContextType {
   user: User | null;
   profile: Tables<'profiles'> | null;
   playerProfile: Tables<'player_profiles'> | null;
+  managerProfile: any | null;
+  club: any | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshPlayerProfile: () => Promise<void>;
+  refreshManagerProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -18,9 +21,12 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   playerProfile: null,
+  managerProfile: null,
+  club: null,
   loading: true,
   signOut: async () => {},
   refreshPlayerProfile: async () => {},
+  refreshManagerProfile: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -28,6 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Tables<'profiles'> | null>(null);
   const [playerProfile, setPlayerProfile] = useState<Tables<'player_profiles'> | null>(null);
+  const [managerProfile, setManagerProfile] = useState<any | null>(null);
+  const [club, setClub] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
@@ -42,8 +50,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data;
   };
 
+  const fetchManagerProfile = async (userId: string) => {
+    const { data } = await supabase.from('manager_profiles').select('*').eq('user_id', userId).single();
+    setManagerProfile(data);
+    if (data) {
+      const { data: clubData } = await supabase.from('clubs').select('*').eq('manager_profile_id', data.id).single();
+      setClub(clubData);
+    } else {
+      setClub(null);
+    }
+    return data;
+  };
+
   const refreshPlayerProfile = async () => {
     if (user) await fetchPlayerProfile(user.id);
+  };
+
+  const refreshManagerProfile = async () => {
+    if (user) await fetchManagerProfile(user.id);
+  };
+
+  const loadUserData = async (userId: string) => {
+    const prof = await fetchProfile(userId);
+    if (prof?.role_selected === 'manager') {
+      await fetchManagerProfile(userId);
+    } else {
+      await fetchPlayerProfile(userId);
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -52,15 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        // Use setTimeout to avoid Supabase auth deadlock
-        setTimeout(async () => {
-          await fetchProfile(session.user.id);
-          await fetchPlayerProfile(session.user.id);
-          setLoading(false);
-        }, 0);
+        setTimeout(() => loadUserData(session.user.id), 0);
       } else {
         setProfile(null);
         setPlayerProfile(null);
+        setManagerProfile(null);
+        setClub(null);
         setLoading(false);
       }
     });
@@ -69,9 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id).then(() =>
-          fetchPlayerProfile(session.user.id).then(() => setLoading(false))
-        );
+        loadUserData(session.user.id);
       } else {
         setLoading(false);
       }
@@ -86,10 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setPlayerProfile(null);
+    setManagerProfile(null);
+    setClub(null);
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, playerProfile, loading, signOut, refreshPlayerProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, loading, signOut, refreshPlayerProfile, refreshManagerProfile }}>
       {children}
     </AuthContext.Provider>
   );

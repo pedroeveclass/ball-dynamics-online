@@ -8,16 +8,19 @@ import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function RegisterPage() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'player' | ''>('');
+  const [role, setRole] = useState<'player' | 'manager' | ''>('');
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) return null;
-  if (user) return <Navigate to="/player" replace />;
+  if (user && profile) {
+    if (profile.role_selected === 'manager') return <Navigate to="/onboarding/manager" replace />;
+    return <Navigate to="/onboarding/player" replace />;
+  }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +44,8 @@ export default function RegisterPage() {
     }
 
     toast.success('Conta criada com sucesso!');
-    navigate('/onboarding/player', { replace: true });
+    const redirectPath = role === 'manager' ? '/onboarding/manager' : '/onboarding/player';
+    navigate(redirectPath, { replace: true });
   };
 
   return (
@@ -79,11 +83,13 @@ export default function RegisterPage() {
               </button>
               <button
                 type="button"
-                disabled
-                className="w-full h-20 flex flex-col items-center justify-center gap-1 rounded-md border border-border text-muted-foreground/40 cursor-not-allowed"
+                onClick={() => setRole('manager')}
+                className={`w-full h-20 flex flex-col items-center justify-center gap-1 rounded-md border transition-colors ${
+                  role === 'manager' ? 'border-tactical bg-tactical/10 text-tactical' : 'border-border text-muted-foreground hover:border-tactical/40'
+                }`}
               >
                 <span className="font-display text-lg font-bold">📋 Manager</span>
-                <span className="text-[10px]">Em breve</span>
+                <span className="text-[10px]">Gerencie seu clube</span>
               </button>
             </div>
           </div>
