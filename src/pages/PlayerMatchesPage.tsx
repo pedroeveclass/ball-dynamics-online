@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Swords, CalendarClock, Bot, User, Play } from 'lucide-react';
+import { Swords, CalendarClock, Bot, User, Play, Radio } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -12,7 +12,6 @@ import { ptBR } from 'date-fns/locale';
 interface MatchEntry {
   match_id: string;
   is_bot: boolean;
-  is_ready: boolean;
   match: {
     id: string;
     status: string;
@@ -23,30 +22,36 @@ interface MatchEntry {
     home_club_id: string;
     away_club_id: string;
     current_phase: string | null;
+    current_turn_number: number;
   };
   home_club?: { name: string; short_name: string; primary_color: string; secondary_color: string };
   away_club?: { name: string; short_name: string; primary_color: string; secondary_color: string };
 }
 
 const STATUS_INFO: Record<string, { label: string; className: string }> = {
-  scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
-  waiting: { label: 'Aguardando', className: 'bg-warning/20 text-warning border-warning/30' },
-  live: { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
-  finished: { label: 'Encerrada', className: 'bg-muted text-muted-foreground border-border' },
+  scheduled: { label: 'Agendada',   className: 'bg-secondary text-secondary-foreground' },
+  live:      { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
+  finished:  { label: 'Encerrada',  className: 'bg-muted text-muted-foreground border-border' },
+};
+
+const PHASE_LABELS: Record<string, string> = {
+  ball_holder: 'Portador',
+  attacking_support: 'Apoio',
+  defending_response: 'Defesa',
+  resolution: 'Resolução',
 };
 
 export default function PlayerMatchesPage() {
-  const { user, playerProfile } = useAuth();
+  const { user } = useAuth();
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadMatches = useCallback(async () => {
     if (!user) return;
 
-    // Get all match_participants for this user
     const { data: parts } = await supabase
       .from('match_participants')
-      .select('match_id, is_bot, is_ready')
+      .select('match_id, is_bot')
       .eq('connected_user_id', user.id)
       .eq('role_type', 'player');
 
@@ -54,29 +59,25 @@ export default function PlayerMatchesPage() {
 
     const matchIds = [...new Set(parts.map(p => p.match_id))];
 
-    // Fetch matches
     const { data: matchData } = await supabase
       .from('matches')
-      .select('id, status, home_score, away_score, scheduled_at, started_at, home_club_id, away_club_id, current_phase')
+      .select('id, status, home_score, away_score, scheduled_at, started_at, home_club_id, away_club_id, current_phase, current_turn_number')
       .in('id', matchIds)
       .order('scheduled_at', { ascending: false });
 
     if (!matchData) { setLoading(false); return; }
 
-    // Fetch club info
     const clubIds = [...new Set(matchData.flatMap(m => [m.home_club_id, m.away_club_id]))];
     const { data: clubData } = await supabase
       .from('clubs')
       .select('id, name, short_name, primary_color, secondary_color')
       .in('id', clubIds);
     const clubMap = new Map((clubData || []).map(c => [c.id, c]));
-
     const partMap = new Map(parts.map(p => [p.match_id, p]));
 
     const enriched: MatchEntry[] = matchData.map(m => ({
       match_id: m.id,
       is_bot: partMap.get(m.id)?.is_bot ?? true,
-      is_ready: partMap.get(m.id)?.is_ready ?? false,
       match: m,
       home_club: clubMap.get(m.home_club_id),
       away_club: clubMap.get(m.away_club_id),
@@ -88,9 +89,9 @@ export default function PlayerMatchesPage() {
 
   useEffect(() => { loadMatches(); }, [loadMatches]);
 
-  const liveMatches = matches.filter(m => m.match.status === 'live' || m.match.status === 'waiting');
+  const liveMatches     = matches.filter(m => m.match.status === 'live');
   const upcomingMatches = matches.filter(m => m.match.status === 'scheduled');
-  const pastMatches = matches.filter(m => m.match.status === 'finished');
+  const pastMatches     = matches.filter(m => m.match.status === 'finished');
 
   if (loading) {
     return (
@@ -120,7 +121,7 @@ export default function PlayerMatchesPage() {
         )}
 
         {liveMatches.length > 0 && (
-          <MatchSection title="Ao Vivo / Aguardando" matches={liveMatches} />
+          <MatchSection title="🔴 Ao Vivo" matches={liveMatches} />
         )}
         {upcomingMatches.length > 0 && (
           <MatchSection title="Próximas Partidas" matches={upcomingMatches} />
@@ -149,23 +150,25 @@ function MatchSection({ title, matches }: { title: string; matches: MatchEntry[]
 }
 
 function MatchCard({ entry }: { entry: MatchEntry }) {
-  const { match: m, home_club, away_club, is_bot, is_ready } = entry;
+  const { match: m, home_club, away_club, is_bot } = entry;
   const statusInfo = STATUS_INFO[m.status] || { label: m.status, className: 'bg-muted text-muted-foreground' };
-  const isLiveOrWaiting = m.status === 'live' || m.status === 'waiting';
+  const isLive = m.status === 'live';
 
   return (
-    <div className="stat-card space-y-3">
+    <div className={`stat-card space-y-3 ${isLive ? 'border-pitch/30' : ''}`}>
       <div className="flex items-center justify-between gap-3">
-        {/* Clubs & Score */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <ClubMini club={home_club} />
           <div className="text-center shrink-0">
             <div className="font-display text-lg font-extrabold">
-              {m.status === 'finished' || m.status === 'live'
+              {m.status === 'finished' || isLive
                 ? `${m.home_score} – ${m.away_score}`
                 : <span className="text-muted-foreground text-sm">vs</span>
               }
             </div>
+            {isLive && m.current_phase && (
+              <p className="text-[10px] text-pitch font-display">{PHASE_LABELS[m.current_phase] || m.current_phase}</p>
+            )}
           </div>
           <ClubMini club={away_club} />
         </div>
@@ -175,37 +178,43 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CalendarClock className="h-3 w-3" />
-          {format(new Date(m.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-        </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <CalendarClock className="h-3 w-3" />
+            {format(new Date(m.scheduled_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
+          </div>
+          {isLive && m.current_turn_number > 0 && (
+            <span className="text-xs text-pitch font-display">Turno {m.current_turn_number}</span>
+          )}
           {is_bot ? (
             <span className="flex items-center gap-1 text-xs text-amber-500">
               <Bot className="h-3 w-3" /> Bot
             </span>
           ) : (
             <span className="flex items-center gap-1 text-xs text-pitch">
-              <User className="h-3 w-3" /> {is_ready ? 'Pronto' : 'Aguardando'}
+              <User className="h-3 w-3" /> Você
             </span>
           )}
-          <Link to={`/match/${m.id}`}>
-            <Button size="sm" className={`text-xs font-display ${isLiveOrWaiting ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}
-              variant={isLiveOrWaiting ? 'default' : 'outline'}>
-              <Play className="h-3 w-3 mr-1" />
-              {isLiveOrWaiting ? 'Entrar' : 'Ver'}
-            </Button>
-          </Link>
         </div>
+        <Link to={`/match/${m.id}`}>
+          <Button
+            size="sm"
+            variant={isLive ? 'default' : 'outline'}
+            className={`text-xs font-display ${isLive ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}
+          >
+            {isLive ? <Radio className="h-3 w-3 mr-1 animate-pulse" /> : <Play className="h-3 w-3 mr-1" />}
+            {isLive ? 'Entrar' : m.status === 'finished' ? 'Ver' : 'Acompanhar'}
+          </Button>
+        </Link>
       </div>
     </div>
   );
 }
 
 function ClubMini({ club }: { club?: { name: string; short_name: string; primary_color: string; secondary_color: string } }) {
-  if (!club) return <div className="w-8 h-8 rounded bg-muted animate-pulse" />;
+  if (!club) return <div className="w-8 h-8 rounded bg-muted animate-pulse shrink-0" />;
   return (
-    <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-center gap-1.5 min-w-0">
       <div
         className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
         style={{ backgroundColor: club.primary_color, color: club.secondary_color }}
