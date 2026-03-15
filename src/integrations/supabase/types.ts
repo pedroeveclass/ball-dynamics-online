@@ -239,6 +239,7 @@ export type Database = {
           energy_max: number
           full_name: string
           id: string
+          last_trained_at: string | null
           money: number
           overall: number
           primary_position: string
@@ -258,6 +259,7 @@ export type Database = {
           energy_max?: number
           full_name: string
           id?: string
+          last_trained_at?: string | null
           money?: number
           overall?: number
           primary_position: string
@@ -277,6 +279,7 @@ export type Database = {
           energy_max?: number
           full_name?: string
           id?: string
+          last_trained_at?: string | null
           money?: number
           overall?: number
           primary_position?: string

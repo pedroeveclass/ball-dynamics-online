@@ -10,8 +10,7 @@ import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
 import { Dumbbell } from 'lucide-react';
 
-const ENERGY_COST = 10;
-const BASE_GROWTH = 1;
+const ENERGY_COST = 25;
 
 export default function PlayerAttributesPage() {
   const { playerProfile, refreshPlayerProfile } = useAuth();
@@ -39,10 +38,36 @@ export default function PlayerAttributesPage() {
       return;
     }
 
+    // Check daily training limit warning
+    if (playerProfile.last_trained_at) {
+      const lastTrain = new Date(playerProfile.last_trained_at);
+      const now = new Date();
+      const hoursSince = (now.getTime() - lastTrain.getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 24) {
+        // Allow but warn - energy will be very low
+      }
+    }
+
     setTraining(attrKey);
-    const currentVal = (attrs as any)[attrKey] as number;
-    const growth = Math.max(1, Math.round(BASE_GROWTH * growthRate));
-    const newVal = Math.min(99, currentVal + growth);
+    const currentVal = Number((attrs as any)[attrKey]) || 0;
+
+    // Random growth: base from growthRate, with weighted distribution
+    // e.g. 1.5 rate → base range 1.50-2.49, 80% chance of 1.80-2.29
+    const baseGrowth = growthRate;
+    const roll = Math.random();
+    let growth: number;
+    if (roll < 0.10) {
+      // Bottom 10%: baseGrowth to baseGrowth + 0.30
+      growth = baseGrowth + Math.random() * 0.30;
+    } else if (roll < 0.90) {
+      // Middle 80%: baseGrowth + 0.30 to baseGrowth + 0.79
+      growth = baseGrowth + 0.30 + Math.random() * 0.49;
+    } else {
+      // Top 10%: baseGrowth + 0.79 to baseGrowth + 0.99
+      growth = baseGrowth + 0.79 + Math.random() * 0.20;
+    }
+    growth = Math.round(growth * 100) / 100; // 2 decimal places
+    const newVal = Math.min(99, Math.round((currentVal + growth) * 100) / 100);
 
     // Update attribute
     const { error: attrError } = await supabase
@@ -56,25 +81,25 @@ export default function PlayerAttributesPage() {
       return;
     }
 
-    // Deduct energy
+    // Deduct energy and update last_trained_at
     const newEnergy = playerProfile.energy_current - ENERGY_COST;
     await supabase
       .from('player_profiles')
-      .update({ energy_current: newEnergy })
+      .update({ energy_current: newEnergy, last_trained_at: new Date().toISOString() })
       .eq('id', playerProfile.id);
 
     // Recalculate overall
     const updatedAttrs = { ...attrs, [attrKey]: newVal } as any;
     const attrRecord: Record<string, number> = {};
     for (const k of [...FIELD_ATTRS, ...GK_ATTRS]) {
-      attrRecord[k] = updatedAttrs[k];
+      attrRecord[k] = Number(updatedAttrs[k]) || 0;
     }
     const newOverall = calculateOverall(attrRecord, playerProfile.primary_position);
     await supabase.from('player_profiles').update({ overall: newOverall }).eq('id', playerProfile.id);
 
     await fetchAttrs();
     await refreshPlayerProfile();
-    toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${growth}!`);
+    toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${growth.toFixed(2)}!`);
     setTraining(null);
   };
 
@@ -83,7 +108,7 @@ export default function PlayerAttributesPage() {
       <h2 className="font-display text-lg font-bold mb-4">{title}</h2>
       <div className="space-y-2">
         {keys.map(key => {
-          const value = (attrs as any)[key] as number;
+          const value = Number((attrs as any)[key]) || 0;
           return (
             <Popover key={key}>
               <PopoverTrigger asChild>
@@ -98,7 +123,7 @@ export default function PlayerAttributesPage() {
                     <span className="font-display font-bold text-sm">Treinar {ATTR_LABELS[key] || key}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Atual: <span className="font-bold text-foreground">{value}</span> → <span className="font-bold text-pitch">{Math.min(99, value + Math.max(1, Math.round(BASE_GROWTH * growthRate)))}</span>
+                    Atual: <span className="font-bold text-foreground">{value.toFixed(2)}</span> → Ganho estimado: <span className="font-bold text-pitch">~{growthRate.toFixed(2)} - {(growthRate + 0.99).toFixed(2)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">Custo: {ENERGY_COST} energia</p>
                   {playerProfile.age >= 30 && (
@@ -140,7 +165,7 @@ export default function PlayerAttributesPage() {
             <p className="font-display font-bold text-tactical">{Math.round(growthRate * 100)}%</p>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia.</p>
+        <p className="text-xs text-muted-foreground">Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia. Treinar mais de 1x por dia reduz sua energia para o jogo.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {isGK ? (
             <>

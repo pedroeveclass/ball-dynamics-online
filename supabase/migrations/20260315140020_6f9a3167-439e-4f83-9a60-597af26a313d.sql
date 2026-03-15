@@ -1,0 +1,42 @@
+
+-- Change all attribute columns from integer to numeric(5,2) for 2 decimal places
+ALTER TABLE public.player_attributes
+  ALTER COLUMN velocidade TYPE numeric(5,2),
+  ALTER COLUMN aceleracao TYPE numeric(5,2),
+  ALTER COLUMN agilidade TYPE numeric(5,2),
+  ALTER COLUMN forca TYPE numeric(5,2),
+  ALTER COLUMN equilibrio TYPE numeric(5,2),
+  ALTER COLUMN resistencia TYPE numeric(5,2),
+  ALTER COLUMN pulo TYPE numeric(5,2),
+  ALTER COLUMN stamina TYPE numeric(5,2),
+  ALTER COLUMN drible TYPE numeric(5,2),
+  ALTER COLUMN controle_bola TYPE numeric(5,2),
+  ALTER COLUMN marcacao TYPE numeric(5,2),
+  ALTER COLUMN desarme TYPE numeric(5,2),
+  ALTER COLUMN um_toque TYPE numeric(5,2),
+  ALTER COLUMN curva TYPE numeric(5,2),
+  ALTER COLUMN passe_baixo TYPE numeric(5,2),
+  ALTER COLUMN passe_alto TYPE numeric(5,2),
+  ALTER COLUMN visao_jogo TYPE numeric(5,2),
+  ALTER COLUMN tomada_decisao TYPE numeric(5,2),
+  ALTER COLUMN antecipacao TYPE numeric(5,2),
+  ALTER COLUMN trabalho_equipe TYPE numeric(5,2),
+  ALTER COLUMN coragem TYPE numeric(5,2),
+  ALTER COLUMN posicionamento_ofensivo TYPE numeric(5,2),
+  ALTER COLUMN posicionamento_defensivo TYPE numeric(5,2),
+  ALTER COLUMN cabeceio TYPE numeric(5,2),
+  ALTER COLUMN acuracia_chute TYPE numeric(5,2),
+  ALTER COLUMN forca_chute TYPE numeric(5,2),
+  ALTER COLUMN reflexo TYPE numeric(5,2),
+  ALTER COLUMN posicionamento_gol TYPE numeric(5,2),
+  ALTER COLUMN defesa_aerea TYPE numeric(5,2),
+  ALTER COLUMN pegada TYPE numeric(5,2),
+  ALTER COLUMN saida_gol TYPE numeric(5,2),
+  ALTER COLUMN um_contra_um TYPE numeric(5,2),
+  ALTER COLUMN distribuicao_curta TYPE numeric(5,2),
+  ALTER COLUMN distribuicao_longa TYPE numeric(5,2),
+  ALTER COLUMN tempo_reacao TYPE numeric(5,2),
+  ALTER COLUMN comando_area TYPE numeric(5,2);
+
+-- Add last_trained_at column to player_profiles for daily training limit
+ALTER TABLE public.player_profiles ADD COLUMN IF NOT EXISTS last_trained_at timestamp with time zone DEFAULT NULL;
