@@ -367,6 +367,208 @@ export type Database = {
         }
         Relationships: []
       }
+      match_event_logs: {
+        Row: {
+          body: string
+          created_at: string
+          event_type: string
+          id: string
+          match_id: string
+          payload: Json | null
+          title: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          match_id: string
+          payload?: Json | null
+          title: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          match_id?: string
+          payload?: Json | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_event_logs_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_participants: {
+        Row: {
+          club_id: string
+          connected_user_id: string | null
+          created_at: string
+          id: string
+          is_bot: boolean
+          is_ready: boolean
+          lineup_slot_id: string | null
+          match_id: string
+          player_profile_id: string | null
+          role_type: string
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          connected_user_id?: string | null
+          created_at?: string
+          id?: string
+          is_bot?: boolean
+          is_ready?: boolean
+          lineup_slot_id?: string | null
+          match_id: string
+          player_profile_id?: string | null
+          role_type?: string
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          connected_user_id?: string | null
+          created_at?: string
+          id?: string
+          is_bot?: boolean
+          is_ready?: boolean
+          lineup_slot_id?: string | null
+          match_id?: string
+          player_profile_id?: string | null
+          role_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_participants_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_participants_lineup_slot_id_fkey"
+            columns: ["lineup_slot_id"]
+            isOneToOne: false
+            referencedRelation: "lineup_slots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_participants_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_participants_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matches: {
+        Row: {
+          away_club_id: string
+          away_lineup_id: string | null
+          away_score: number
+          created_at: string
+          current_phase: string | null
+          current_turn_number: number
+          finished_at: string | null
+          home_club_id: string
+          home_lineup_id: string | null
+          home_score: number
+          id: string
+          possession_club_id: string | null
+          scheduled_at: string
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          away_club_id: string
+          away_lineup_id?: string | null
+          away_score?: number
+          created_at?: string
+          current_phase?: string | null
+          current_turn_number?: number
+          finished_at?: string | null
+          home_club_id: string
+          home_lineup_id?: string | null
+          home_score?: number
+          id?: string
+          possession_club_id?: string | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          away_club_id?: string
+          away_lineup_id?: string | null
+          away_score?: number
+          created_at?: string
+          current_phase?: string | null
+          current_turn_number?: number
+          finished_at?: string | null
+          home_club_id?: string
+          home_lineup_id?: string | null
+          home_score?: number
+          id?: string
+          possession_club_id?: string | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matches_away_club_id_fkey"
+            columns: ["away_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_away_lineup_id_fkey"
+            columns: ["away_lineup_id"]
+            isOneToOne: false
+            referencedRelation: "lineups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_home_club_id_fkey"
+            columns: ["home_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_home_lineup_id_fkey"
+            columns: ["home_lineup_id"]
+            isOneToOne: false
+            referencedRelation: "lineups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_possession_club_id_fkey"
+            columns: ["possession_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           body: string
