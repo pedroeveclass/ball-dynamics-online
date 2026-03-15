@@ -165,7 +165,7 @@ export default function PlayerAttributesPage() {
             <p className="font-display font-bold text-tactical">{Math.round(growthRate * 100)}%</p>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia.</p>
+        <p className="text-xs text-muted-foreground">Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia. Treinar mais de 1x por dia reduz sua energia para o jogo.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {isGK ? (
             <>
