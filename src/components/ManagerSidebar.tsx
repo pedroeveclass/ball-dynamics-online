@@ -16,6 +16,7 @@ const managerNav = [
   { title: 'Mercado', url: '/manager/market', icon: ShoppingCart },
   { title: 'Finanças', url: '/manager/finance', icon: DollarSign },
   { title: 'Estádio', url: '/manager/stadium', icon: Building2 },
+  { title: 'Partida', url: '/manager/match/create', icon: Swords },
 ];
 
 export function ManagerSidebar() {
