@@ -66,7 +66,7 @@ export default function PlayerClubPage() {
         supabase.from('manager_profiles').select('full_name').eq('id', club.manager_profile_id).single(),
         supabase.from('stadiums').select('name, capacity').eq('club_id', club.id).single(),
         supabase.from('contracts').select('weekly_salary, release_clause, start_date, end_date').eq('player_profile_id', playerProfile.id).eq('status', 'active').single(),
-        supabase.from('player_profiles').select('id, full_name, primary_position, overall, archetype').eq('club_id', playerProfile.club_id!).order('overall', { ascending: false }),
+        supabase.from('contracts').select('player_profile_id').eq('club_id', playerProfile.club_id!).eq('status', 'active'),
       ]);
 
       setClubInfo({
