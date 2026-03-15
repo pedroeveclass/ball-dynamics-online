@@ -29,6 +29,14 @@ export default function PlayerDashboard() {
       setContract(contractRes.data);
       setNotifications(notifRes.data || []);
       setAttributes(attrRes.data);
+
+      if (playerProfile.club_id) {
+        const { data: clubData } = await supabase.from('clubs').select('name').eq('id', playerProfile.club_id).single();
+        setClubName(clubData?.name || null);
+      } else {
+        setClubName(null);
+      }
+      setAttributes(attrRes.data);
     };
 
     fetchData();
