@@ -61,6 +61,7 @@ const App = () => (
             <Route path="/manager/squad" element={<ManagerRoute><ManagerSquadPage /></ManagerRoute>} />
             <Route path="/manager/lineup" element={<ManagerRoute><ManagerLineupPage /></ManagerRoute>} />
             <Route path="/manager/match/create" element={<ManagerRoute><ManagerMatchCreatePage /></ManagerRoute>} />
+            <Route path="/manager/challenges" element={<ManagerRoute><ManagerChallengesPage /></ManagerRoute>} />
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
             <Route path="/league" element={<LeaguePage />} />
             <Route path="*" element={<NotFound />} />
