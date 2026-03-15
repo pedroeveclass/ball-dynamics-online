@@ -17,6 +17,11 @@ interface ContractData {
   club_name?: string;
 }
 
+function formatDate(d: string | null) {
+  if (!d) return 'Indeterminado';
+  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+}
+
 export default function PlayerContractPage() {
   const { playerProfile } = useAuth();
   const [contract, setContract] = useState<ContractData | null>(null);
@@ -79,11 +84,11 @@ export default function PlayerContractPage() {
               </div>
               <div>
                 <span className="text-xs text-muted-foreground">Início</span>
-                <p className="font-display font-bold">{contract.start_date}</p>
+                <p className="font-display font-bold">{formatDate(contract.start_date)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Fim</span>
-                <p className="font-display font-bold">{contract.end_date || 'Indeterminado'}</p>
+                <span className="text-xs text-muted-foreground">Término</span>
+                <p className="font-display font-bold">{formatDate(contract.end_date)}</p>
               </div>
             </div>
           ) : (

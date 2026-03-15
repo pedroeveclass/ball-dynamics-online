@@ -43,7 +43,6 @@ export default function ManagerMarketPage() {
   const [offerOpen, setOfferOpen] = useState(false);
   const [sending, setSending] = useState(false);
 
-  // Offer form
   const [salary, setSalary] = useState(500);
   const [clause, setClause] = useState(5000);
   const [length, setLength] = useState(12);
@@ -56,6 +55,8 @@ export default function ManagerMarketPage() {
 
   const fetchFreeAgents = async () => {
     setLoading(true);
+
+    // Get players with no active contract and no club_id
     const { data, error } = await supabase
       .from('player_profiles')
       .select('id, full_name, age, primary_position, secondary_position, archetype, overall, reputation')
@@ -102,7 +103,6 @@ export default function ManagerMarketPage() {
     if (error) {
       toast({ title: 'Erro', description: 'Não foi possível enviar a proposta.', variant: 'destructive' });
     } else {
-      // Create notification for the player
       const { data: playerData } = await supabase
         .from('player_profiles')
         .select('user_id')
@@ -134,7 +134,6 @@ export default function ManagerMarketPage() {
           <p className="text-sm text-muted-foreground">Encontre jogadores sem clube e envie propostas de contrato.</p>
         </div>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -156,7 +155,6 @@ export default function ManagerMarketPage() {
           </Select>
         </div>
 
-        {/* Player list */}
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">Carregando jogadores...</div>
         ) : filtered.length === 0 ? (
@@ -195,7 +193,6 @@ export default function ManagerMarketPage() {
         )}
       </div>
 
-      {/* Offer Dialog */}
       <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -210,7 +207,6 @@ export default function ManagerMarketPage() {
                   <p className="text-xs text-muted-foreground">{selected.primary_position} • {selected.archetype} • {selected.age} anos</p>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Salário Semanal ($)</Label>
@@ -234,7 +230,6 @@ export default function ManagerMarketPage() {
                   </Select>
                 </div>
               </div>
-
               <div>
                 <Label className="text-xs">Mensagem (opcional)</Label>
                 <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Ex: Queremos você como peça-chave do time..." rows={2} />
