@@ -15,7 +15,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-primary">
       {/* Nav */}
       <nav className="flex items-center justify-between px-8 py-4">
-        <span className="font-display text-2xl font-bold text-primary-foreground tracking-tight">PITCHTACTICS</span>
+        <span className="font-display text-2xl font-bold text-primary-foreground tracking-tight">FOOTBALL IDENTITY</span>
         <div className="flex gap-3">
           <Link to="/login">
             <Button variant="ghost" className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10">Entrar</Button>
@@ -79,7 +79,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-primary-foreground/10 px-8 py-6">
-        <p className="text-center text-xs text-primary-foreground/40">© 2025 PitchTactics. Todos os direitos reservados.</p>
+        <p className="text-center text-xs text-primary-foreground/40">© 2025 Football Identity. Todos os direitos reservados.</p>
       </footer>
     </div>
   );

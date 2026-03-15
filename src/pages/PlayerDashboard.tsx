@@ -49,6 +49,8 @@ export default function PlayerDashboard() {
               {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
               <span className="text-sm text-muted-foreground">{p.archetype}</span>
               <span className="text-sm text-muted-foreground">•</span>
+              <span className="text-sm text-muted-foreground">{p.dominant_foot === 'right' ? 'Pé Direito' : 'Pé Esquerdo'}</span>
+              <span className="text-sm text-muted-foreground">•</span>
               <span className="text-sm text-muted-foreground">{p.age} anos</span>
             </div>
           </div>

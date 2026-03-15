@@ -27,7 +27,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <header className="h-14 flex items-center justify-between border-b bg-card px-4 shrink-0">
             <div className="flex items-center gap-2">
               <SidebarTrigger />
-              <span className="font-display text-lg font-bold tracking-tight text-foreground">PITCHTACTICS</span>
+              <span className="font-display text-lg font-bold tracking-tight text-foreground">FOOTBALL IDENTITY</span>
             </div>
             <div className="flex items-center gap-4">
               <Link to="/player" className="relative p-2 rounded-md hover:bg-muted transition-colors">

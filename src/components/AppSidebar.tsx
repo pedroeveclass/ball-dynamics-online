@@ -12,7 +12,7 @@ import {
 const playerNav = [
   { title: 'Dashboard', url: '/player', icon: LayoutDashboard },
   { title: 'Perfil', url: '/player/profile', icon: User },
-  { title: 'Atributos', url: '/player/attributes', icon: TrendingUp },
+  { title: 'Atributos & Treino', url: '/player/attributes', icon: TrendingUp },
   { title: 'Contrato', url: '/player/contract', icon: DollarSign },
 ];
 

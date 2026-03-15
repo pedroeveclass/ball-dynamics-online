@@ -48,7 +48,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-primary p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="font-display text-3xl font-bold text-primary-foreground">PITCHTACTICS</h1>
+          <h1 className="font-display text-3xl font-bold text-primary-foreground">FOOTBALL IDENTITY</h1>
           <p className="mt-2 text-sm text-primary-foreground/60">Crie sua conta</p>
         </div>
         <form onSubmit={handleRegister} className="rounded-lg bg-card p-6 space-y-4">
