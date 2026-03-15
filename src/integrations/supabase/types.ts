@@ -367,6 +367,84 @@ export type Database = {
         }
         Relationships: []
       }
+      match_challenges: {
+        Row: {
+          challenged_club_id: string
+          challenged_manager_profile_id: string | null
+          challenger_club_id: string
+          challenger_manager_profile_id: string
+          created_at: string
+          id: string
+          match_id: string | null
+          message: string | null
+          scheduled_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          challenged_club_id: string
+          challenged_manager_profile_id?: string | null
+          challenger_club_id: string
+          challenger_manager_profile_id: string
+          created_at?: string
+          id?: string
+          match_id?: string | null
+          message?: string | null
+          scheduled_at: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          challenged_club_id?: string
+          challenged_manager_profile_id?: string | null
+          challenger_club_id?: string
+          challenger_manager_profile_id?: string
+          created_at?: string
+          id?: string
+          match_id?: string | null
+          message?: string | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_challenges_challenged_club_id_fkey"
+            columns: ["challenged_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_challenges_challenged_manager_profile_id_fkey"
+            columns: ["challenged_manager_profile_id"]
+            isOneToOne: false
+            referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_challenges_challenger_club_id_fkey"
+            columns: ["challenger_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_challenges_challenger_manager_profile_id_fkey"
+            columns: ["challenger_manager_profile_id"]
+            isOneToOne: false
+            referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_challenges_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_event_logs: {
         Row: {
           body: string
