@@ -79,7 +79,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-primary-foreground/10 px-8 py-6">
-        <p className="text-center text-xs text-primary-foreground/40">© 2025 PitchTactics. Todos os direitos reservados.</p>
+        <p className="text-center text-xs text-primary-foreground/40">© 2025 Football Identity. Todos os direitos reservados.</p>
       </footer>
     </div>
   );

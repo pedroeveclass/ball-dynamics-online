@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { generateAttributes, calculateOverall, POSITIONS, getArchetypesForPosition } from '@/lib/attributes';
+import { generateBaseAttributes, calculateOverall, POSITIONS, BODY_TYPES, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS } from '@/lib/attributes';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell } from 'lucide-react';
+import { AttributeBar } from '@/components/AttributeBar';
 
-const STEPS = ['Identidade', 'Posição', 'Arquétipo', 'Revisão'];
-const STEP_ICONS = [User, MapPin, Shield, Eye];
+const STEPS = ['Identidade', 'Posição', 'Tipo Físico', 'Atributos', 'Revisão'];
+const STEP_ICONS = [User, MapPin, Shield, Dumbbell, Eye];
 
 export default function OnboardingPlayerPage() {
   const { user, refreshPlayerProfile } = useAuth();
@@ -19,40 +20,66 @@ export default function OnboardingPlayerPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const [fullName, setFullName] = useState('');
-  const [age, setAge] = useState(20);
-  const [dominantFoot, setDominantFoot] = useState<'right' | 'left' | 'both'>('right');
+  const [dominantFoot, setDominantFoot] = useState<'right' | 'left'>('right');
   const [primaryPosition, setPrimaryPosition] = useState('');
-  const [secondaryPosition, setSecondaryPosition] = useState('');
-  const [archetype, setArchetype] = useState('');
+  const [bodyType, setBodyType] = useState('');
 
-  const archetypeOptions = primaryPosition ? getArchetypesForPosition(primaryPosition) : [];
+  // Attribute distribution
+  const [extraPoints, setExtraPoints] = useState<Record<string, number>>({});
+  const TOTAL_DISTRIBUTE = 20;
+
+  const baseAttrs = useMemo(() => {
+    if (!primaryPosition || !bodyType) return null;
+    return generateBaseAttributes(primaryPosition, bodyType, 18);
+  }, [primaryPosition, bodyType]);
+
+  const spentPoints = Object.values(extraPoints).reduce((a, b) => a + b, 0);
+  const remainingPoints = TOTAL_DISTRIBUTE - spentPoints;
+
+  const finalAttrs = useMemo(() => {
+    if (!baseAttrs) return null;
+    const result = { ...baseAttrs };
+    for (const [key, val] of Object.entries(extraPoints)) {
+      result[key] = Math.min(75, (result[key] || 30) + val);
+    }
+    return result;
+  }, [baseAttrs, extraPoints]);
+
+  const addPoint = (key: string) => {
+    if (remainingPoints <= 0) return;
+    setExtraPoints(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+  };
+
+  const removePoint = (key: string) => {
+    if (!extraPoints[key] || extraPoints[key] <= 0) return;
+    setExtraPoints(prev => ({ ...prev, [key]: prev[key] - 1 }));
+  };
 
   const canNext = () => {
-    if (step === 0) return fullName.trim().length >= 2 && age >= 16 && age <= 45;
+    if (step === 0) return fullName.trim().length >= 2;
     if (step === 1) return !!primaryPosition;
-    if (step === 2) return !!archetype;
+    if (step === 2) return !!bodyType;
+    if (step === 3) return remainingPoints === 0;
     return true;
   };
 
   const handleSubmit = async () => {
-    if (!user) return;
+    if (!user || !finalAttrs) return;
     setSubmitting(true);
 
     try {
-      const attrs = generateAttributes(primaryPosition, archetype);
-      const overall = calculateOverall(attrs as unknown as Record<string, number>, primaryPosition);
+      const overall = calculateOverall(finalAttrs, primaryPosition);
 
-      // Create player profile
       const { data: playerData, error: playerError } = await supabase
         .from('player_profiles')
         .insert({
           user_id: user.id,
           full_name: fullName.trim(),
-          age,
+          age: 18,
           dominant_foot: dominantFoot,
           primary_position: primaryPosition,
-          secondary_position: secondaryPosition || null,
-          archetype,
+          secondary_position: null,
+          archetype: bodyType,
           overall,
           reputation: 50,
           money: 5000,
@@ -65,14 +92,11 @@ export default function OnboardingPlayerPage() {
 
       if (playerError) throw playerError;
 
-      // Create attributes
       const { error: attrError } = await supabase
         .from('player_attributes')
-        .insert({ player_profile_id: playerData.id, ...attrs });
-
+        .insert({ player_profile_id: playerData.id, ...finalAttrs });
       if (attrError) throw attrError;
 
-      // Create free agent contract
       const { error: contractError } = await supabase
         .from('contracts')
         .insert({
@@ -81,18 +105,12 @@ export default function OnboardingPlayerPage() {
           weekly_salary: 0,
           release_clause: 0,
         });
-
       if (contractError) throw contractError;
 
-      // Create welcome notifications
-      const { error: notifError } = await supabase
-        .from('notifications')
-        .insert([
-          { user_id: user.id, type: 'system', title: 'Bem-vindo ao PitchTactics!', body: 'Seu atleta foi criado com sucesso. Explore o dashboard e prepare-se para sua carreira.' },
-          { user_id: user.id, type: 'training', title: 'Treino Disponível', body: 'Sessões de treino estão liberadas. Evolua seus atributos para melhorar seu overall.' },
-        ]);
-
-      if (notifError) console.error('Notification error:', notifError);
+      await supabase.from('notifications').insert([
+        { user_id: user.id, type: 'system', title: 'Bem-vindo ao Football Identity!', body: 'Seu atleta foi criado com sucesso. Explore o dashboard e prepare-se para sua carreira.' },
+        { user_id: user.id, type: 'training', title: 'Treino Disponível', body: 'Clique nos atributos na tela de Atributos para treinar e evoluir.' },
+      ]);
 
       await refreshPlayerProfile();
       toast.success('Atleta criado com sucesso!');
@@ -106,7 +124,10 @@ export default function OnboardingPlayerPage() {
   };
 
   const posLabel = POSITIONS.find(p => p.value === primaryPosition)?.label || '';
-  const archLabel = archetypeOptions.find(a => a.value === archetype)?.label || '';
+  const bodyLabel = BODY_TYPES.find(b => b.value === bodyType)?.label || '';
+
+  const isGK = primaryPosition === 'GK';
+  const distributableAttrs = isGK ? [...GK_ATTRS, ...FIELD_ATTRS] : [...FIELD_ATTRS, ...GK_ATTRS];
 
   return (
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
@@ -118,26 +139,26 @@ export default function OnboardingPlayerPage() {
         </div>
 
         {/* Step indicators */}
-        <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="flex items-center justify-center gap-1 mb-8">
           {STEPS.map((s, i) => {
             const Icon = STEP_ICONS[i];
             return (
-              <div key={s} className="flex items-center gap-2">
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-display font-semibold transition-colors ${
+              <div key={s} className="flex items-center gap-1">
+                <div className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-display font-semibold transition-colors ${
                   i === step ? 'bg-tactical text-tactical-foreground' :
                   i < step ? 'bg-pitch/20 text-pitch' : 'bg-primary-foreground/10 text-primary-foreground/40'
                 }`}>
                   <Icon className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">{s}</span>
                 </div>
-                {i < STEPS.length - 1 && <div className={`w-6 h-0.5 ${i < step ? 'bg-pitch/40' : 'bg-primary-foreground/10'}`} />}
+                {i < STEPS.length - 1 && <div className={`w-4 h-0.5 ${i < step ? 'bg-pitch/40' : 'bg-primary-foreground/10'}`} />}
               </div>
             );
           })}
         </div>
 
         {/* Card */}
-        <div className="rounded-lg bg-card p-6 space-y-6">
+        <div className="rounded-lg bg-card p-6 space-y-6 max-h-[70vh] overflow-y-auto">
           {/* Step 0: Identity */}
           {step === 0 && (
             <div className="space-y-4">
@@ -146,13 +167,14 @@ export default function OnboardingPlayerPage() {
                 <Input id="name" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Ex: Carlos Mendes" maxLength={50} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="age">Idade</Label>
-                <Input id="age" type="number" min={16} max={45} value={age} onChange={e => setAge(Number(e.target.value))} />
+                <Label>Idade</Label>
+                <p className="text-sm text-muted-foreground">Seu atleta começa com <span className="font-bold text-foreground">18 anos</span>.</p>
+                <p className="text-xs text-muted-foreground">Idades maiores estarão disponíveis com créditos do jogo.</p>
               </div>
               <div className="space-y-2">
                 <Label>Pé Dominante</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {([['right', 'Direito'], ['left', 'Esquerdo'], ['both', 'Ambos']] as const).map(([val, label]) => (
+                <div className="grid grid-cols-2 gap-2">
+                  {([['right', 'Direito'], ['left', 'Esquerdo']] as const).map(([val, label]) => (
                     <button
                       key={val}
                       onClick={() => setDominantFoot(val)}
@@ -173,11 +195,12 @@ export default function OnboardingPlayerPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Posição Principal</Label>
+                <p className="text-xs text-muted-foreground">Posição secundária pode ser desbloqueada com créditos do jogo.</p>
                 <div className="grid grid-cols-2 gap-2">
                   {POSITIONS.map(pos => (
                     <button
                       key={pos.value}
-                      onClick={() => { setPrimaryPosition(pos.value); setArchetype(''); }}
+                      onClick={() => { setPrimaryPosition(pos.value); setBodyType(''); setExtraPoints({}); }}
                       className={`px-3 py-3 rounded-md text-sm font-display font-semibold border transition-colors text-left ${
                         primaryPosition === pos.value
                           ? 'border-tactical bg-tactical/10 text-tactical'
@@ -191,63 +214,92 @@ export default function OnboardingPlayerPage() {
                   ))}
                 </div>
               </div>
-              {primaryPosition && (
-                <div className="space-y-2">
-                  <Label>Posição Secundária (opcional)</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {POSITIONS.filter(p => p.value !== primaryPosition).map(pos => (
-                      <button
-                        key={pos.value}
-                        onClick={() => setSecondaryPosition(secondaryPosition === pos.value ? '' : pos.value)}
-                        className={`px-3 py-2 rounded-md text-xs font-display font-semibold border transition-colors ${
-                          secondaryPosition === pos.value
-                            ? 'border-pitch bg-pitch/10 text-pitch'
-                            : 'border-border text-muted-foreground hover:border-pitch/40'
-                        }`}
-                      >{pos.value} — {pos.label}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {/* Step 2: Archetype */}
+          {/* Step 2: Body Type */}
           {step === 2 && (
             <div className="space-y-4">
-              <Label>Arquétipo — {posLabel}</Label>
+              <Label>Tipo Físico</Label>
               <div className="space-y-2">
-                {archetypeOptions.map(arch => (
+                {BODY_TYPES.map(bt => (
                   <button
-                    key={arch.value}
-                    onClick={() => setArchetype(arch.value)}
+                    key={bt.value}
+                    onClick={() => { setBodyType(bt.value); setExtraPoints({}); }}
                     className={`w-full px-4 py-4 rounded-md border text-left transition-colors ${
-                      archetype === arch.value
+                      bodyType === bt.value
                         ? 'border-tactical bg-tactical/10'
                         : 'border-border hover:border-tactical/40'
                     }`}
                   >
-                    <span className={`font-display text-lg font-bold ${archetype === arch.value ? 'text-tactical' : 'text-foreground'}`}>
-                      {arch.label}
+                    <span className={`font-display text-lg font-bold ${bodyType === bt.value ? 'text-tactical' : 'text-foreground'}`}>
+                      {bt.label}
                     </span>
+                    <p className="text-xs text-muted-foreground mt-1">{bt.description}</p>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Step 3: Review */}
-          {step === 3 && (
+          {/* Step 3: Distribute Points */}
+          {step === 3 && baseAttrs && finalAttrs && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Distribua seus pontos</Label>
+                <span className={`font-display text-lg font-bold ${remainingPoints === 0 ? 'text-pitch' : 'text-tactical'}`}>
+                  {remainingPoints} pts restantes
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">Clique em + para adicionar pontos ou - para remover.</p>
+              <div className="space-y-2">
+                {distributableAttrs.map(key => {
+                  const base = baseAttrs[key] || 10;
+                  const extra = extraPoints[key] || 0;
+                  const total = finalAttrs[key] || base;
+                  return (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-28 truncate">{ATTR_LABELS[key] || key}</span>
+                      <div className="flex-1">
+                        <AttributeBar label="" value={total} />
+                      </div>
+                      <span className="font-display text-sm font-bold w-8 text-right">{total}</span>
+                      {extra > 0 && <span className="text-xs text-pitch">+{extra}</span>}
+                      <button
+                        onClick={() => removePoint(key)}
+                        disabled={extra <= 0}
+                        className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive disabled:opacity-30 text-xs font-bold"
+                      >−</button>
+                      <button
+                        onClick={() => addPoint(key)}
+                        disabled={remainingPoints <= 0}
+                        className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-pitch/20 hover:text-pitch disabled:opacity-30 text-xs font-bold"
+                      >+</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Review */}
+          {step === 4 && (
             <div className="space-y-4">
               <h2 className="font-display text-xl font-bold text-foreground">Confirmar Criação</h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="stat-card"><span className="text-muted-foreground text-xs">Nome</span><p className="font-display font-bold">{fullName}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Idade</span><p className="font-display font-bold">{age} anos</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Pé</span><p className="font-display font-bold">{dominantFoot === 'right' ? 'Direito' : dominantFoot === 'left' ? 'Esquerdo' : 'Ambos'}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Posição</span><p className="font-display font-bold">{primaryPosition}{secondaryPosition ? ` / ${secondaryPosition}` : ''}</p></div>
-                <div className="stat-card col-span-2"><span className="text-muted-foreground text-xs">Arquétipo</span><p className="font-display font-bold">{archLabel}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">Idade</span><p className="font-display font-bold">18 anos</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">Pé</span><p className="font-display font-bold">{dominantFoot === 'right' ? 'Direito' : 'Esquerdo'}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">Posição</span><p className="font-display font-bold">{posLabel}</p></div>
+                <div className="stat-card col-span-2"><span className="text-muted-foreground text-xs">Tipo Físico</span><p className="font-display font-bold">{bodyLabel}</p></div>
               </div>
-              <p className="text-xs text-muted-foreground">Os atributos iniciais serão gerados com base na posição e arquétipo escolhidos. Você começa como agente livre.</p>
+              {finalAttrs && (
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">Overall estimado</span>
+                  <p className="font-display text-3xl font-extrabold text-tactical">{calculateOverall(finalAttrs, primaryPosition)}</p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">Você começa como agente livre com 18 anos.</p>
             </div>
           )}
 
@@ -259,7 +311,7 @@ export default function OnboardingPlayerPage() {
               </Button>
             ) : <div />}
 
-            {step < 3 ? (
+            {step < 4 ? (
               <Button onClick={() => setStep(s => s + 1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
                 Próximo <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
