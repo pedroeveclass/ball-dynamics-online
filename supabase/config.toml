@@ -1,1 +1,4 @@
 project_id = "wfkmojrwgerfzjcrpqnl"
+
+[functions.match-engine]
+verify_jwt = false
