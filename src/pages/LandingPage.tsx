@@ -15,7 +15,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-primary">
       {/* Nav */}
       <nav className="flex items-center justify-between px-8 py-4">
-        <span className="font-display text-2xl font-bold text-primary-foreground tracking-tight">PITCHTACTICS</span>
+        <span className="font-display text-2xl font-bold text-primary-foreground tracking-tight">FOOTBALL IDENTITY</span>
         <div className="flex gap-3">
           <Link to="/login">
             <Button variant="ghost" className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10">Entrar</Button>
