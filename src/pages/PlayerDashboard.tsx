@@ -65,7 +65,7 @@ export default function PlayerDashboard() {
           <StatCard label="Reputação" value={p.reputation} icon={<Star className="h-5 w-5" />} />
           <StatCard label="Dinheiro" value={`$${p.money.toLocaleString()}`} icon={<DollarSign className="h-5 w-5" />} />
           <StatCard label="Salário/Sem" value={contract?.status === 'active' ? `$${contract.weekly_salary.toLocaleString()}` : 'Sem contrato'} />
-          <StatCard label="Clube" value={p.club_id || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
+          <StatCard label="Clube" value={clubName || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
         </div>
 
         {/* Energy */}
