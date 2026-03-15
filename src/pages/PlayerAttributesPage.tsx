@@ -10,8 +10,7 @@ import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
 import { Dumbbell } from 'lucide-react';
 
-const ENERGY_COST = 10;
-const BASE_GROWTH = 1;
+const ENERGY_COST = 25;
 
 export default function PlayerAttributesPage() {
   const { playerProfile, refreshPlayerProfile } = useAuth();

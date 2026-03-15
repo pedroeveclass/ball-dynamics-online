@@ -243,44 +243,65 @@ export default function OnboardingPlayerPage() {
           )}
 
           {/* Step 3: Distribute Points */}
-          {step === 3 && baseAttrs && finalAttrs && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Distribua seus pontos</Label>
-                <span className={`font-display text-lg font-bold ${remainingPoints === 0 ? 'text-pitch' : 'text-tactical'}`}>
-                  {remainingPoints} pts restantes
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">Clique em + para adicionar pontos ou - para remover.</p>
-              <div className="space-y-2">
-                {distributableAttrs.map(key => {
-                  const base = baseAttrs[key] || 10;
-                  const extra = extraPoints[key] || 0;
-                  const total = finalAttrs[key] || base;
-                  return (
-                    <div key={key} className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-28 truncate">{ATTR_LABELS[key] || key}</span>
-                      <div className="flex-1">
-                        <AttributeBar label="" value={total} />
+          {step === 3 && baseAttrs && finalAttrs && (() => {
+            const physicalKeys = ['velocidade','aceleracao','agilidade','forca','equilibrio','resistencia','pulo','stamina'] as const;
+            const technicalKeys = ['drible','controle_bola','marcacao','desarme','um_toque','curva','passe_baixo','passe_alto'] as const;
+            const mentalKeys = ['visao_jogo','tomada_decisao','antecipacao','trabalho_equipe','coragem','posicionamento_ofensivo','posicionamento_defensivo'] as const;
+            const shootingKeys = ['cabeceio','acuracia_chute','forca_chute'] as const;
+            const gkKeys = ['reflexo','posicionamento_gol','defesa_aerea','pegada','saida_gol','um_contra_um','distribuicao_curta','distribuicao_longa','tempo_reacao','comando_area'] as const;
+
+            const sections = isGK
+              ? [{ title: 'Goleiro', keys: gkKeys }, { title: 'Físico', keys: physicalKeys }, { title: 'Técnico', keys: technicalKeys }, { title: 'Mental', keys: mentalKeys }, { title: 'Chute', keys: shootingKeys }]
+              : [{ title: 'Físico', keys: physicalKeys }, { title: 'Técnico', keys: technicalKeys }, { title: 'Mental', keys: mentalKeys }, { title: 'Chute', keys: shootingKeys }, { title: 'Goleiro', keys: gkKeys }];
+
+            const renderAttrRow = (key: string) => {
+              const base = baseAttrs[key] || 10;
+              const extra = extraPoints[key] || 0;
+              const total = finalAttrs[key] || base;
+              return (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-28 truncate">{ATTR_LABELS[key] || key}</span>
+                  <div className="flex-1">
+                    <AttributeBar label="" value={total} />
+                  </div>
+                  <span className="font-display text-sm font-bold w-8 text-right">{total.toFixed(2)}</span>
+                  {extra > 0 && <span className="text-xs text-pitch">+{extra}</span>}
+                  <button
+                    onClick={() => removePoint(key)}
+                    disabled={extra <= 0}
+                    className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive disabled:opacity-30 text-xs font-bold"
+                  >−</button>
+                  <button
+                    onClick={() => addPoint(key)}
+                    disabled={remainingPoints <= 0}
+                    className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-pitch/20 hover:text-pitch disabled:opacity-30 text-xs font-bold"
+                  >+</button>
+                </div>
+              );
+            };
+
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Distribua seus pontos</Label>
+                  <span className={`font-display text-lg font-bold ${remainingPoints === 0 ? 'text-pitch' : 'text-tactical'}`}>
+                    {remainingPoints} pts restantes
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Clique em + para adicionar pontos ou - para remover.</p>
+                <div className="space-y-5">
+                  {sections.map(section => (
+                    <div key={section.title}>
+                      <h3 className="font-display text-sm font-bold text-foreground mb-2 border-b border-border pb-1">{section.title}</h3>
+                      <div className="space-y-1.5">
+                        {section.keys.map(k => renderAttrRow(k))}
                       </div>
-                      <span className="font-display text-sm font-bold w-8 text-right">{total}</span>
-                      {extra > 0 && <span className="text-xs text-pitch">+{extra}</span>}
-                      <button
-                        onClick={() => removePoint(key)}
-                        disabled={extra <= 0}
-                        className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive disabled:opacity-30 text-xs font-bold"
-                      >−</button>
-                      <button
-                        onClick={() => addPoint(key)}
-                        disabled={remainingPoints <= 0}
-                        className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-pitch/20 hover:text-pitch disabled:opacity-30 text-xs font-bold"
-                      >+</button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Step 4: Review */}
           {step === 4 && (

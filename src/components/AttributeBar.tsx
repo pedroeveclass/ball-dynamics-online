@@ -16,7 +16,7 @@ export function AttributeBar({ label, value, max = 99 }: AttributeBarProps) {
       <div className="flex-1 h-2 rounded-full bg-muted">
         <div className={cn('h-2 rounded-full transition-all', color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="font-display text-sm font-bold w-8 text-right">{value}</span>
+      <span className="font-display text-sm font-bold w-10 text-right">{typeof value === 'number' ? value.toFixed(2) : value}</span>
     </div>
   );
 }
