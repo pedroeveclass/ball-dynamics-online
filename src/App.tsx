@@ -15,10 +15,13 @@ import PlayerDashboard from "./pages/PlayerDashboard";
 import PlayerAttributesPage from "./pages/PlayerAttributesPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
 import PlayerContractPage from "./pages/PlayerContractPage";
+import PlayerOffersPage from "./pages/PlayerOffersPage";
 import ManagerDashboard from "./pages/ManagerDashboard";
 import ManagerClubPage from "./pages/ManagerClubPage";
 import ManagerFinancePage from "./pages/ManagerFinancePage";
 import ManagerStadiumPage from "./pages/ManagerStadiumPage";
+import ManagerMarketPage from "./pages/ManagerMarketPage";
+import ManagerSquadPage from "./pages/ManagerSquadPage";
 import LeaguePage from "./pages/LeaguePage";
 import MatchPage from "./pages/MatchPage";
 import NotFound from "./pages/NotFound";
@@ -42,10 +45,13 @@ const App = () => (
             <Route path="/player/attributes" element={<PlayerRoute><PlayerAttributesPage /></PlayerRoute>} />
             <Route path="/player/profile" element={<PlayerRoute><PlayerProfilePage /></PlayerRoute>} />
             <Route path="/player/contract" element={<PlayerRoute><PlayerContractPage /></PlayerRoute>} />
+            <Route path="/player/offers" element={<PlayerRoute><PlayerOffersPage /></PlayerRoute>} />
             <Route path="/manager" element={<ManagerRoute><ManagerDashboard /></ManagerRoute>} />
             <Route path="/manager/club" element={<ManagerRoute><ManagerClubPage /></ManagerRoute>} />
             <Route path="/manager/finance" element={<ManagerRoute><ManagerFinancePage /></ManagerRoute>} />
             <Route path="/manager/stadium" element={<ManagerRoute><ManagerStadiumPage /></ManagerRoute>} />
+            <Route path="/manager/market" element={<ManagerRoute><ManagerMarketPage /></ManagerRoute>} />
+            <Route path="/manager/squad" element={<ManagerRoute><ManagerSquadPage /></ManagerRoute>} />
             <Route path="/league" element={<LeaguePage />} />
             <Route path="/match" element={<MatchPage />} />
             <Route path="*" element={<NotFound />} />
