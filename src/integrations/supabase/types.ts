@@ -740,7 +740,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_user_active_club_id_uuid: { Args: never; Returns: string }
+      current_user_managed_club_id: { Args: never; Returns: string }
+      current_user_manager_profile_id: { Args: never; Returns: string }
+      current_user_player_profile_id: { Args: never; Returns: string }
+      is_same_active_club_as_current_user: {
+        Args: { _player_profile_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
