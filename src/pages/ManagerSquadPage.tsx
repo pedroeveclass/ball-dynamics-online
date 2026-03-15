@@ -23,15 +23,38 @@ export default function ManagerSquadPage() {
 
   useEffect(() => {
     if (!club) return;
-    supabase
-      .from('player_profiles')
-      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary')
-      .eq('club_id', club.id)
-      .order('overall', { ascending: false })
-      .then(({ data }) => {
-        setPlayers(data || []);
+
+    const fetchSquad = async () => {
+      // Query via contracts (source of truth) to get players with active contracts
+      const { data: contracts } = await supabase
+        .from('contracts')
+        .select('player_profile_id, weekly_salary')
+        .eq('club_id', club.id)
+        .eq('status', 'active');
+
+      if (!contracts || contracts.length === 0) {
+        setPlayers([]);
         setLoading(false);
-      });
+        return;
+      }
+
+      const playerIds = contracts.map(c => c.player_profile_id);
+      const salaryMap = new Map(contracts.map(c => [c.player_profile_id, c.weekly_salary]));
+
+      const { data: playerData } = await supabase
+        .from('player_profiles')
+        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary')
+        .in('id', playerIds)
+        .order('overall', { ascending: false });
+
+      setPlayers((playerData || []).map(p => ({
+        ...p,
+        weekly_salary: salaryMap.get(p.id) ?? p.weekly_salary,
+      })));
+      setLoading(false);
+    };
+
+    fetchSquad();
   }, [club]);
 
   if (!club) return null;

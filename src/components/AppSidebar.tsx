@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, User, TrendingUp, FileText, Inbox,
+  LayoutDashboard, User, TrendingUp, FileText, Inbox, Shield,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -12,6 +12,7 @@ const playerNav = [
   { title: 'Dashboard', url: '/player', icon: LayoutDashboard },
   { title: 'Perfil', url: '/player/profile', icon: User },
   { title: 'Atributos & Treino', url: '/player/attributes', icon: TrendingUp },
+  { title: 'Meu Clube', url: '/player/club', icon: Shield },
   { title: 'Contrato', url: '/player/contract', icon: FileText },
   { title: 'Propostas', url: '/player/offers', icon: Inbox },
 ];

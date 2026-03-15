@@ -42,6 +42,11 @@ const ROLE_LABELS: Record<string, string> = {
   youth: 'Jovem Promessa',
 };
 
+function formatDate(d: string | null) {
+  if (!d) return 'Indeterminado';
+  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+}
+
 export default function PlayerOffersPage() {
   const { user, playerProfile, refreshPlayerProfile } = useAuth();
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -60,7 +65,6 @@ export default function PlayerOffersPage() {
     if (!playerProfile) return;
     setLoading(true);
 
-    // Fetch pending offers
     const { data: offersData } = await supabase
       .from('contract_offers')
       .select('*')
@@ -68,7 +72,6 @@ export default function PlayerOffersPage() {
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
-    // Enrich with club names
     if (offersData && offersData.length > 0) {
       const clubIds = [...new Set(offersData.map(o => o.club_id))];
       const { data: clubs } = await supabase.from('clubs').select('id, name, short_name, primary_color').in('id', clubIds);
@@ -84,7 +87,6 @@ export default function PlayerOffersPage() {
       setOffers([]);
     }
 
-    // Fetch active contract
     const { data: contractData } = await supabase
       .from('contracts')
       .select('*')
@@ -113,38 +115,38 @@ export default function PlayerOffersPage() {
     setProcessing(true);
 
     if (actionType === 'accept') {
-      // Update offer to accepted
       await supabase.from('contract_offers').update({ status: 'accepted', updated_at: new Date().toISOString() }).eq('id', actionOffer.id);
 
-      // Reject all other pending offers
       await supabase.from('contract_offers')
         .update({ status: 'rejected', updated_at: new Date().toISOString() })
         .eq('player_profile_id', playerProfile.id)
         .eq('status', 'pending')
         .neq('id', actionOffer.id);
 
-      // End any existing active contracts
       await supabase.from('contracts')
         .update({ status: 'ended', end_date: new Date().toISOString().split('T')[0], updated_at: new Date().toISOString() })
         .eq('player_profile_id', playerProfile.id)
         .eq('status', 'active');
 
-      // Create new active contract
+      // Calculate end_date from contract_length (months)
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + actionOffer.contract_length);
+
       await supabase.from('contracts').insert({
         player_profile_id: playerProfile.id,
         club_id: actionOffer.club_id,
         weekly_salary: actionOffer.weekly_salary,
         release_clause: actionOffer.release_clause,
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
         status: 'active',
       });
 
-      // Update player profile with club
       await supabase.from('player_profiles')
         .update({ club_id: actionOffer.club_id, weekly_salary: actionOffer.weekly_salary, updated_at: new Date().toISOString() })
         .eq('id', playerProfile.id);
 
-      // Update club wage bill
       const { data: financeData } = await supabase
         .from('club_finances')
         .select('weekly_wage_bill')
@@ -157,7 +159,6 @@ export default function PlayerOffersPage() {
           .eq('club_id', actionOffer.club_id);
       }
 
-      // Notification to manager
       const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', actionOffer.manager_profile_id).single();
       if (mgr) {
         await supabase.from('notifications').insert({
@@ -171,10 +172,8 @@ export default function PlayerOffersPage() {
       toast({ title: 'Contrato assinado!', description: `Você agora faz parte do ${actionOffer.club_name}.` });
       await refreshPlayerProfile();
     } else {
-      // Reject
       await supabase.from('contract_offers').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('id', actionOffer.id);
 
-      // Notification to manager
       const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', actionOffer.manager_profile_id).single();
       if (mgr) {
         await supabase.from('notifications').insert({
@@ -227,11 +226,11 @@ export default function PlayerOffersPage() {
               </div>
               <div>
                 <span className="text-xs text-muted-foreground">Início</span>
-                <p className="font-display font-bold">{contract.start_date}</p>
+                <p className="font-display font-bold">{formatDate(contract.start_date)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Fim</span>
-                <p className="font-display font-bold">{contract.end_date || 'Indeterminado'}</p>
+                <span className="text-xs text-muted-foreground">Término</span>
+                <p className="font-display font-bold">{formatDate(contract.end_date)}</p>
               </div>
             </div>
           ) : (
@@ -326,7 +325,7 @@ export default function PlayerOffersPage() {
             </DialogTitle>
             <DialogDescription>
               {actionType === 'accept'
-                ? `Você assinará contrato com ${actionOffer?.club_name} com salário de $${actionOffer?.weekly_salary.toLocaleString()}/semana. Todas as outras propostas serão automaticamente recusadas.`
+                ? `Você assinará contrato com ${actionOffer?.club_name} com salário de $${actionOffer?.weekly_salary.toLocaleString()}/semana por ${actionOffer?.contract_length} meses. Todas as outras propostas serão automaticamente recusadas.`
                 : `Tem certeza que deseja recusar a proposta de ${actionOffer?.club_name}?`}
             </DialogDescription>
           </DialogHeader>

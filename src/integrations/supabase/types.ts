@@ -251,6 +251,92 @@ export type Database = {
           },
         ]
       }
+      lineup_slots: {
+        Row: {
+          created_at: string
+          id: string
+          lineup_id: string
+          player_profile_id: string
+          role_type: string
+          slot_position: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lineup_id: string
+          player_profile_id: string
+          role_type?: string
+          slot_position: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lineup_id?: string
+          player_profile_id?: string
+          role_type?: string
+          slot_position?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lineup_slots_lineup_id_fkey"
+            columns: ["lineup_id"]
+            isOneToOne: false
+            referencedRelation: "lineups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineup_slots_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lineups: {
+        Row: {
+          club_id: string
+          created_at: string
+          formation: string
+          id: string
+          is_active: boolean
+          name: string | null
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          formation?: string
+          id?: string
+          is_active?: boolean
+          name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          formation?: string
+          id?: string
+          is_active?: boolean
+          name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lineups_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manager_profiles: {
         Row: {
           created_at: string

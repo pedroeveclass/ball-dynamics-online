@@ -81,12 +81,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        setTimeout(() => loadUserData(session.user.id), 0);
+        setLoading(true);
+        setTimeout(() => {
+          if (mounted) loadUserData(session.user.id);
+        }, 0);
       } else {
         setProfile(null);
         setPlayerProfile(null);
@@ -97,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -106,7 +113,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
