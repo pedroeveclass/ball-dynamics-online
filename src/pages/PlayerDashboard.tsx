@@ -14,6 +14,7 @@ export default function PlayerDashboard() {
   const [contract, setContract] = useState<Tables<'contracts'> | null>(null);
   const [notifications, setNotifications] = useState<Tables<'notifications'>[]>([]);
   const [attributes, setAttributes] = useState<Tables<'player_attributes'> | null>(null);
+  const [clubName, setClubName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!playerProfile) return;
