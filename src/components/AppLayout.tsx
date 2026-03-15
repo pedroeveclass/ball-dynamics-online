@@ -1,16 +1,23 @@
 import { ReactNode } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { Bell } from 'lucide-react';
-import { notifications, currentUser } from '@/data/mock';
-import { Link } from 'react-router-dom';
+import { Bell, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Link, useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const unread = notifications.filter(n => !n.read && n.userId === currentUser.id).length;
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   return (
     <SidebarProvider>
@@ -23,20 +30,20 @@ export function AppLayout({ children }: AppLayoutProps) {
               <span className="font-display text-lg font-bold tracking-tight text-foreground">PITCHTACTICS</span>
             </div>
             <div className="flex items-center gap-4">
-              <Link to="/notifications" className="relative p-2 rounded-md hover:bg-muted transition-colors">
+              <Link to="/player" className="relative p-2 rounded-md hover:bg-muted transition-colors">
                 <Bell className="h-5 w-5 text-muted-foreground" />
-                {unread > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
-                    {unread}
-                  </span>
-                )}
               </Link>
               <div className="flex items-center gap-2">
                 <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-                  <span className="text-primary-foreground font-display text-sm font-bold">{currentUser.username[0]}</span>
+                  <span className="text-primary-foreground font-display text-sm font-bold">
+                    {profile?.username?.[0]?.toUpperCase() || '?'}
+                  </span>
                 </div>
-                <span className="text-sm font-medium hidden sm:inline">{currentUser.username}</span>
+                <span className="text-sm font-medium hidden sm:inline">{profile?.username || 'Jogador'}</span>
               </div>
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive">
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
           </header>
           <main className="flex-1 overflow-auto p-6">

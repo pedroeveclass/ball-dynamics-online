@@ -1,57 +1,89 @@
+import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
-import { players } from '@/data/mock';
-
-const player = players[0];
-const { physical, technical, mental, shooting } = player.attributes;
-
-const sections = [
-  { title: 'Físico', attrs: [
-    { label: 'Velocidade', value: physical.speed },
-    { label: 'Aceleração', value: physical.acceleration },
-    { label: 'Agilidade', value: physical.agility },
-    { label: 'Força', value: physical.strength },
-    { label: 'Equilíbrio', value: physical.balance },
-    { label: 'Resistência', value: physical.stamina },
-    { label: 'Pulo', value: physical.jumping },
-    { label: 'Fôlego', value: physical.endurance },
-  ]},
-  { title: 'Técnico', attrs: [
-    { label: 'Drible', value: technical.dribbling },
-    { label: 'Controle de Bola', value: technical.ballControl },
-    { label: 'Marcação', value: technical.marking },
-    { label: 'Desarme', value: technical.tackling },
-    { label: 'Um Toque', value: technical.oneTouch },
-    { label: 'Curva', value: technical.curve },
-    { label: 'Passe Curto', value: technical.shortPassing },
-    { label: 'Passe Longo', value: technical.longPassing },
-  ]},
-  { title: 'Mental', attrs: [
-    { label: 'Visão de Jogo', value: mental.vision },
-    { label: 'Tomada de Decisão', value: mental.decisionMaking },
-    { label: 'Antecipação', value: mental.anticipation },
-    { label: 'Trabalho em Equipe', value: mental.teamwork },
-    { label: 'Coragem', value: mental.courage },
-    { label: 'Posicionamento Ofensivo', value: mental.offensivePositioning },
-    { label: 'Posicionamento Defensivo', value: mental.defensivePositioning },
-  ]},
-  { title: 'Chute', attrs: [
-    { label: 'Cabeceio', value: shooting.heading },
-    { label: 'Acurácia do Chute', value: shooting.shotAccuracy },
-    { label: 'Força do Chute', value: shooting.shotPower },
-  ]},
-];
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 
 export default function PlayerAttributesPage() {
+  const { playerProfile } = useAuth();
+  const [attrs, setAttrs] = useState<Tables<'player_attributes'> | null>(null);
+
+  useEffect(() => {
+    if (!playerProfile) return;
+    supabase.from('player_attributes').select('*').eq('player_profile_id', playerProfile.id).single()
+      .then(({ data }) => setAttrs(data));
+  }, [playerProfile]);
+
+  if (!playerProfile || !attrs) {
+    return <AppLayout><p className="text-muted-foreground">Carregando atributos...</p></AppLayout>;
+  }
+
+  const isGK = playerProfile.primary_position === 'GK';
+
+  const sections = [
+    { title: 'Físico', attrs: [
+      { label: 'Velocidade', value: attrs.velocidade },
+      { label: 'Aceleração', value: attrs.aceleracao },
+      { label: 'Agilidade', value: attrs.agilidade },
+      { label: 'Força', value: attrs.forca },
+      { label: 'Equilíbrio', value: attrs.equilibrio },
+      { label: 'Resistência', value: attrs.resistencia },
+      { label: 'Pulo', value: attrs.pulo },
+      { label: 'Stamina', value: attrs.stamina },
+    ]},
+    { title: 'Técnico', attrs: [
+      { label: 'Drible', value: attrs.drible },
+      { label: 'Controle de Bola', value: attrs.controle_bola },
+      { label: 'Marcação', value: attrs.marcacao },
+      { label: 'Desarme', value: attrs.desarme },
+      { label: 'Um Toque', value: attrs.um_toque },
+      { label: 'Curva', value: attrs.curva },
+      { label: 'Passe Baixo', value: attrs.passe_baixo },
+      { label: 'Passe Alto', value: attrs.passe_alto },
+    ]},
+    { title: 'Mental', attrs: [
+      { label: 'Visão de Jogo', value: attrs.visao_jogo },
+      { label: 'Tomada de Decisão', value: attrs.tomada_decisao },
+      { label: 'Antecipação', value: attrs.antecipacao },
+      { label: 'Trabalho em Equipe', value: attrs.trabalho_equipe },
+      { label: 'Coragem', value: attrs.coragem },
+      { label: 'Posicionamento Ofensivo', value: attrs.posicionamento_ofensivo },
+      { label: 'Posicionamento Defensivo', value: attrs.posicionamento_defensivo },
+    ]},
+    { title: 'Chute', attrs: [
+      { label: 'Cabeceio', value: attrs.cabeceio },
+      { label: 'Acurácia do Chute', value: attrs.acuracia_chute },
+      { label: 'Força do Chute', value: attrs.forca_chute },
+    ]},
+  ];
+
+  const gkSection = {
+    title: 'Goleiro', attrs: [
+      { label: 'Reflexo', value: attrs.reflexo },
+      { label: 'Posicionamento', value: attrs.posicionamento_gol },
+      { label: 'Defesa Aérea', value: attrs.defesa_aerea },
+      { label: 'Pegada', value: attrs.pegada },
+      { label: 'Saída do Gol', value: attrs.saida_gol },
+      { label: 'Um Contra Um', value: attrs.um_contra_um },
+      { label: 'Distribuição Curta', value: attrs.distribuicao_curta },
+      { label: 'Distribuição Longa', value: attrs.distribuicao_longa },
+      { label: 'Tempo de Reação', value: attrs.tempo_reacao },
+      { label: 'Comando de Área', value: attrs.comando_area },
+    ],
+  };
+
+  const displaySections = isGK ? [gkSection, ...sections] : [...sections, gkSection];
+
   return (
     <AppLayout>
       <div className="space-y-6">
         <div>
           <h1 className="font-display text-2xl font-bold">Atributos</h1>
-          <p className="text-sm text-muted-foreground">{player.name} • OVR {player.overallRating}</p>
+          <p className="text-sm text-muted-foreground">{playerProfile.full_name} • OVR {playerProfile.overall}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {sections.map(section => (
+          {displaySections.map(section => (
             <div key={section.title} className="stat-card">
               <h2 className="font-display text-lg font-bold mb-4">{section.title}</h2>
               <div className="space-y-3">
