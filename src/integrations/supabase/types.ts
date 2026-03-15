@@ -367,6 +367,83 @@ export type Database = {
         }
         Relationships: []
       }
+      match_actions: {
+        Row: {
+          action_type: string
+          controlled_by_type: string
+          controlled_by_user_id: string | null
+          created_at: string
+          id: string
+          match_id: string
+          match_turn_id: string
+          participant_id: string
+          payload: Json | null
+          status: string
+          target_participant_id: string | null
+          target_x: number | null
+          target_y: number | null
+        }
+        Insert: {
+          action_type: string
+          controlled_by_type?: string
+          controlled_by_user_id?: string | null
+          created_at?: string
+          id?: string
+          match_id: string
+          match_turn_id: string
+          participant_id: string
+          payload?: Json | null
+          status?: string
+          target_participant_id?: string | null
+          target_x?: number | null
+          target_y?: number | null
+        }
+        Update: {
+          action_type?: string
+          controlled_by_type?: string
+          controlled_by_user_id?: string | null
+          created_at?: string
+          id?: string
+          match_id?: string
+          match_turn_id?: string
+          participant_id?: string
+          payload?: Json | null
+          status?: string
+          target_participant_id?: string | null
+          target_x?: number | null
+          target_y?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_actions_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_actions_match_turn_id_fkey"
+            columns: ["match_turn_id"]
+            isOneToOne: false
+            referencedRelation: "match_turns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_actions_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "match_participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_actions_target_participant_id_fkey"
+            columns: ["target_participant_id"]
+            isOneToOne: false
+            referencedRelation: "match_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_challenges: {
         Row: {
           challenged_club_id: string
@@ -494,6 +571,8 @@ export type Database = {
           lineup_slot_id: string | null
           match_id: string
           player_profile_id: string | null
+          pos_x: number | null
+          pos_y: number | null
           role_type: string
           updated_at: string
         }
@@ -507,6 +586,8 @@ export type Database = {
           lineup_slot_id?: string | null
           match_id: string
           player_profile_id?: string | null
+          pos_x?: number | null
+          pos_y?: number | null
           role_type?: string
           updated_at?: string
         }
@@ -520,6 +601,8 @@ export type Database = {
           lineup_slot_id?: string | null
           match_id?: string
           player_profile_id?: string | null
+          pos_x?: number | null
+          pos_y?: number | null
           role_type?: string
           updated_at?: string
         }
@@ -550,6 +633,70 @@ export type Database = {
             columns: ["player_profile_id"]
             isOneToOne: false
             referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_turns: {
+        Row: {
+          ball_holder_participant_id: string | null
+          created_at: string
+          ends_at: string
+          id: string
+          match_id: string
+          phase: string
+          possession_club_id: string | null
+          resolved_at: string | null
+          started_at: string
+          status: string
+          turn_number: number
+        }
+        Insert: {
+          ball_holder_participant_id?: string | null
+          created_at?: string
+          ends_at?: string
+          id?: string
+          match_id: string
+          phase?: string
+          possession_club_id?: string | null
+          resolved_at?: string | null
+          started_at?: string
+          status?: string
+          turn_number?: number
+        }
+        Update: {
+          ball_holder_participant_id?: string | null
+          created_at?: string
+          ends_at?: string
+          id?: string
+          match_id?: string
+          phase?: string
+          possession_club_id?: string | null
+          resolved_at?: string | null
+          started_at?: string
+          status?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_turns_ball_holder_participant_id_fkey"
+            columns: ["ball_holder_participant_id"]
+            isOneToOne: false
+            referencedRelation: "match_participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_turns_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_turns_possession_club_id_fkey"
+            columns: ["possession_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
             referencedColumns: ["id"]
           },
         ]
