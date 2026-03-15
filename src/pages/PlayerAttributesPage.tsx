@@ -108,7 +108,7 @@ export default function PlayerAttributesPage() {
       <h2 className="font-display text-lg font-bold mb-4">{title}</h2>
       <div className="space-y-2">
         {keys.map(key => {
-          const value = (attrs as any)[key] as number;
+          const value = Number((attrs as any)[key]) || 0;
           return (
             <Popover key={key}>
               <PopoverTrigger asChild>
@@ -123,7 +123,7 @@ export default function PlayerAttributesPage() {
                     <span className="font-display font-bold text-sm">Treinar {ATTR_LABELS[key] || key}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Atual: <span className="font-bold text-foreground">{value}</span> → <span className="font-bold text-pitch">{Math.min(99, value + Math.max(1, Math.round(BASE_GROWTH * growthRate)))}</span>
+                    Atual: <span className="font-bold text-foreground">{value.toFixed(2)}</span> → Ganho estimado: <span className="font-bold text-pitch">~{growthRate.toFixed(2)} - {(growthRate + 0.99).toFixed(2)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">Custo: {ENERGY_COST} energia</p>
                   {playerProfile.age >= 30 && (
