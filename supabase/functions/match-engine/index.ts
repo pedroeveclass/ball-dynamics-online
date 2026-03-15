@@ -79,7 +79,7 @@ function resolveAction(action: string, attacker: any, defender: any): {
     return {
       success: true,
       event: action,
-      description: `🔄 ${action === 'move' ? 'Movimentação' : action === 'press' : 'Pressão' : action === 'intercept' ? 'Interceptação' : 'Bloqueio de linha'}`,
+      description: `🔄 ${action === 'move' ? 'Movimentação' : action === 'press' ? 'Pressão' : action === 'intercept' ? 'Interceptação' : 'Bloqueio de linha'}`,
       possession_change: action === 'intercept' && rand < 0.3,
       goal: false,
     };
