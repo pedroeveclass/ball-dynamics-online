@@ -148,6 +148,7 @@ export default function MatchRoomPage() {
   // Animation state for phase 4
   const [animating, setAnimating] = useState(false);
   const [animProgress, setAnimProgress] = useState(0);
+  const [resolutionStartPositions, setResolutionStartPositions] = useState<Record<string, { x: number; y: number }>>({});
 
   // Accordion states
   const [homeAccOpen, setHomeAccOpen] = useState(false);
@@ -159,6 +160,7 @@ export default function MatchRoomPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
+  const animatedResolutionIdRef = useRef<string | null>(null);
 
   // ── Load match data ──────────────────────────────────────────
   const loadMatch = useCallback(async () => {
