@@ -1086,6 +1086,24 @@ export default function MatchRoomPage() {
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
+  // Find if anyone intercepted the ball this turn (has a 'receive' action)
+  const interceptorAction = useMemo(() => {
+    return turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
+  }, [turnActions]);
+
+  // Loose ball position: last known ball target or finalBallPos
+  const looseBallPos = useMemo((): { x: number; y: number } | null => {
+    if (!isLooseBall) return null;
+    if (finalBallPos) return finalBallPos;
+    // Check previous turn's pass/shoot target as loose ball origin
+    const lastBallAction = turnActions.find(a =>
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
+      a.target_x != null && a.target_y != null
+    );
+    if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
+    return null;
+  }, [isLooseBall, finalBallPos, turnActions]);
+
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
     // Use locked final ball position if available (post-animation)
     if (finalBallPos && !animating) {
@@ -1093,7 +1111,8 @@ export default function MatchRoomPage() {
     }
 
     if (!ballHolder) {
-      // Loose ball: show at last known position or center
+      // Loose ball: show at last known position
+      if (looseBallPos) return looseBallPos;
       if (finalBallPos) return finalBallPos;
       return null;
     }
@@ -1128,6 +1147,38 @@ export default function MatchRoomPage() {
     }
 
     if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
+      // Check if someone intercepted — ball stops at interceptor's target position
+      if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
+        // Calculate how far along the path the interceptor is
+        const dx = ballAction.target_x - startPos.x;
+        const dy = ballAction.target_y - startPos.y;
+        const len2 = dx * dx + dy * dy;
+        let interceptT = 1;
+        if (len2 > 0) {
+          interceptT = clamp(
+            ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+            0, 1
+          );
+        }
+        // Ball travels to intercept point, then stops
+        const effectiveT = Math.min(t, interceptT);
+        return {
+          x: startPos.x + dx * effectiveT + 1.2,
+          y: startPos.y + dy * effectiveT - 1.2,
+        };
+      }
+
+      // Shot with no interception: ball goes to goal
+      if (ballAction.action_type === 'shoot') {
+        const isHome = ballHolder.club_id === match.home_club_id;
+        const goalX = isHome ? 100 : 0;
+        const goalY = ballAction.target_y;
+        return {
+          x: startPos.x + (goalX - startPos.x) * t + 1.2,
+          y: startPos.y + (goalY - startPos.y) * t - 1.2,
+        };
+      }
+
       return {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
         y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
