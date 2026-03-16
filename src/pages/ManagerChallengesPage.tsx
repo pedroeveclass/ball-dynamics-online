@@ -39,6 +39,7 @@ export default function ManagerChallengesPage() {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [creatingTest, setCreatingTest] = useState(false);
 
   const loadChallenges = useCallback(async () => {
     if (!club) return;
