@@ -168,6 +168,7 @@ export default function MatchRoomPage() {
   const [myClubId, setMyClubId] = useState<string | null>(null);
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [phaseTimeLeft, setPhaseTimeLeft] = useState(PHASE_DURATION);
+  const [preMatchCountdownLeft, setPreMatchCountdownLeft] = useState(PRE_MATCH_COUNTDOWN_SECONDS);
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('Processando todos os movimentos...');
@@ -189,6 +190,7 @@ export default function MatchRoomPage() {
   // Final positions after animation (locked until next turn)
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
+  const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);

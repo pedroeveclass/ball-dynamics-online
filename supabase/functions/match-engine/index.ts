@@ -30,6 +30,10 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   }
   if (action === 'move') {
+    const interceptor = findInterceptor(allActions, _attacker, participants);
+    if (interceptor && interceptor.club_id !== possClubId) {
+      return { success: false, event: 'intercepted', description: '🤲 Roubo de bola!', possession_change: true, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
+    }
     return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   }
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
