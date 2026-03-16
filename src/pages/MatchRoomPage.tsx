@@ -886,6 +886,9 @@ export default function MatchRoomPage() {
   const turnActionsRef = useRef(turnActions);
   turnActionsRef.current = turnActions;
 
+  const matchRef = useRef(match);
+  matchRef.current = match;
+
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
