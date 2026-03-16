@@ -10,53 +10,73 @@ const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
 
-function botDecideAction(participant: any, phase: string, isBallHolder: boolean): { action: string; target_x?: number; target_y?: number } {
-  const px = participant.pos_x ?? 50;
-  const py = participant.pos_y ?? 50;
+// No bot actions - humans only
 
-  if (isBallHolder) {
-    const rand = Math.random();
-    if (rand < 0.5) {
-      // Move with ball - small random displacement
-      const dx = (Math.random() - 0.3) * 10;
-      const dy = (Math.random() - 0.5) * 10;
-      return { action: 'move', target_x: Math.max(2, Math.min(98, px + dx)), target_y: Math.max(2, Math.min(98, py + dy)) };
-    }
-    if (rand < 0.8) return { action: 'pass_low', target_x: px + (Math.random() - 0.3) * 15, target_y: py + (Math.random() - 0.5) * 20 };
-    return { action: 'shoot', target_x: 98, target_y: 40 + Math.random() * 20 };
-  }
-
-  // Off-ball: move or stay
-  if (Math.random() < 0.6) {
-    const dx = (Math.random() - 0.5) * 8;
-    const dy = (Math.random() - 0.5) * 8;
-    return { action: 'move', target_x: Math.max(2, Math.min(98, px + dx)), target_y: Math.max(2, Math.min(98, py + dy)) };
-  }
-  // No action = stay in place
-  return { action: 'move', target_x: px, target_y: py };
-}
-
-function resolveAction(action: string, _attacker: any, _defender: any): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
+  newBallHolderId?: string; newPossessionClubId?: string;
 } {
-  const rand = Math.random();
   if (action === 'shoot') {
-    const success = rand < 0.25;
-    return { success, event: success ? 'goal' : 'save', description: success ? '⚽ GOL!' : '🧤 Defesa do goleiro', possession_change: !success, goal: success };
+    // Check if any player has a "receive" (dominar bola) action that intercepts the shot path
+    const interceptor = findInterceptor(allActions, _attacker, participants);
+    if (interceptor) {
+      return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
+    }
+    // No interceptor → goal
+    return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
   }
-  if (action === 'pass_low') {
-    const success = rand < 0.75;
-    return { success, event: success ? 'pass_complete' : 'pass_intercepted', description: success ? '✅ Passe baixo completo' : '❌ Passe interceptado', possession_change: !success, goal: false };
+  if (action === 'pass_low' || action === 'pass_high') {
+    // Check for interceptor along the pass path
+    const interceptor = findInterceptor(allActions, _attacker, participants);
+    if (interceptor) {
+      return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
+    }
+    // Pass succeeds - find nearest player to target
+    return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   }
-  if (action === 'pass_high') {
-    const success = rand < 0.55;
-    return { success, event: success ? 'pass_complete' : 'pass_intercepted', description: success ? '✅ Passe longo completo' : '❌ Passe longo interceptado', possession_change: !success, goal: false };
+  if (action === 'move') {
+    return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   }
-  if (action === 'move' || action === 'press' || action === 'intercept' || action === 'block_lane') {
-    return { success: true, event: action, description: `🔄 ${action === 'move' ? 'Movimentação' : action === 'press' ? 'Pressão' : action === 'intercept' ? 'Interceptação' : 'Bloqueio de linha'}`, possession_change: action === 'intercept' && rand < 0.3, goal: false };
+  return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
+}
+
+// Find the closest interceptor (player who moved onto the ball path and chose "dominar bola" or just moved there)
+function findInterceptor(allActions: any[], ballHolderAction: any, participants: any[]): any | null {
+  if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return null;
+  const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
+  if (!bh) return null;
+
+  const startX = bh.pos_x ?? 50;
+  const startY = bh.pos_y ?? 50;
+  const endX = ballHolderAction.target_x;
+  const endY = ballHolderAction.target_y;
+
+  // Find players who moved onto the ball path
+  const interceptors: Array<{ participant: any; progress: number }> = [];
+  for (const a of allActions) {
+    if (a.participant_id === ballHolderAction.participant_id) continue;
+    if (a.action_type !== 'move' || a.target_x == null || a.target_y == null) continue;
+
+    // Check if their move target is close to the ball path
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) continue;
+    const t = Math.max(0, Math.min(1, ((a.target_x - startX) * dx + (a.target_y - startY) * dy) / len2));
+    const cx = startX + dx * t;
+    const cy = startY + dy * t;
+    const dist = Math.sqrt((a.target_x - cx) ** 2 + (a.target_y - cy) ** 2);
+
+    if (dist <= 4) { // Close enough to intercept
+      interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t });
+    }
   }
-  return { success: true, event: 'move', description: '🔄 Movimentação', possession_change: false, goal: false };
+
+  if (interceptors.length === 0) return null;
+  // Closest to the start of the ball path gets priority
+  interceptors.sort((a, b) => a.progress - b.progress);
+  return interceptors[0].participant;
 }
 
 Deno.serve(async (req) => {
@@ -243,8 +263,7 @@ Deno.serve(async (req) => {
           .find(a => a.participant_id === ballHolder?.id);
 
         if (ballHolderAction) {
-          const defender = defPlayers[0];
-          const result = resolveAction(ballHolderAction.action_type, ballHolder, defender);
+          const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '');
 
           if (result.goal) {
             if (possClubId === match.home_club_id) homeScore++;
@@ -255,22 +274,56 @@ Deno.serve(async (req) => {
               title: `⚽ GOL! ${homeScore} – ${awayScore}`,
               body: `Turno ${match.current_turn_number}`,
             });
-          } else if (result.possession_change) {
-            newPossessionClubId = defPlayers[0]?.club_id || possClubId;
-            nextBallHolderParticipantId = defPlayers[0]?.id || null;
+
+            // After goal, possession goes to the other team
+            newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+            const otherTeamPlayers = (participants || []).filter(p => p.club_id === newPossessionClubId);
+            nextBallHolderParticipantId = otherTeamPlayers[0]?.id || null;
+          } else if (result.newBallHolderId) {
+            // Intercepted - ball goes to the interceptor
+            nextBallHolderParticipantId = result.newBallHolderId;
+            newPossessionClubId = result.newPossessionClubId || possClubId;
 
             await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'possession_change',
-              title: '🔄 Troca de posse',
+              match_id, event_type: result.possession_change ? 'possession_change' : 'pass_complete',
+              title: result.possession_change ? '🔄 Troca de posse - Bola dominada!' : '🤲 Bola dominada!',
               body: result.description,
             });
-          } else {
-            const samePlayers = possPlayers.filter(p => p.id !== ballHolder?.id);
+          } else if (ballHolderAction.action_type === 'pass_low' || ballHolderAction.action_type === 'pass_high') {
+            // Pass succeeded without interception - find nearest player to target
             if (ballHolderAction.target_participant_id) {
               nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-            } else if (samePlayers.length > 0) {
-              nextBallHolderParticipantId = samePlayers[Math.floor(Math.random() * samePlayers.length)].id;
+            } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
+              // Find closest player to pass target
+              let closestDist = Infinity;
+              let closestId: string | null = null;
+              for (const p of (participants || [])) {
+                if (p.id === ballHolder?.id) continue;
+                const moveAction = allActions.find(a => a.participant_id === p.id && a.action_type === 'move');
+                const px = moveAction?.target_x ?? p.pos_x ?? 50;
+                const py = moveAction?.target_y ?? p.pos_y ?? 50;
+                const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
+                if (dist < closestDist) {
+                  closestDist = dist;
+                  closestId = p.id;
+                }
+              }
+              if (closestId) {
+                nextBallHolderParticipantId = closestId;
+                const closestPlayer = (participants || []).find(p => p.id === closestId);
+                if (closestPlayer && closestPlayer.club_id !== possClubId) {
+                  newPossessionClubId = closestPlayer.club_id;
+                  await supabase.from('match_event_logs').insert({
+                    match_id, event_type: 'possession_change',
+                    title: '🔄 Troca de posse',
+                    body: 'Passe interceptado pelo adversário mais próximo.',
+                  });
+                }
+              }
             }
+          } else if (ballHolderAction.action_type === 'move') {
+            // Ball holder moved with ball - they keep it
+            nextBallHolderParticipantId = ballHolder?.id || null;
           }
         }
 

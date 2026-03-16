@@ -427,8 +427,11 @@ export default function MatchRoomPage() {
     setDrawingAction(null);
     setShowActionMenu(null);
     setPendingInterceptChoice(null);
-    setAnimating(false);
-    setAnimProgress(0);
+    // Don't reset animation state when entering resolution - the animation effect handles it
+    if (activeTurn?.phase !== 'resolution') {
+      setAnimating(false);
+      setAnimProgress(0);
+    }
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Auto-show action menu for ball holder in phase 1
@@ -779,7 +782,7 @@ export default function MatchRoomPage() {
       if (match?.status === 'live' && activeTurn) {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
-        const isAttacking = p.club_id === (activeTurn.possession_club_id || match.possession_club_id);
+        const isAttacking = p.club_id === activeTurn.possession_club_id;
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking && !isBH) ||
@@ -802,51 +805,63 @@ export default function MatchRoomPage() {
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
+  // Store turnActions in ref so animation closure always has latest
+  const turnActionsRef = useRef(turnActions);
+  turnActionsRef.current = turnActions;
+
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    // Snapshot current positions before animation starts
-    const currentParticipants = participantsRef.current;
-    const snapshot = Object.fromEntries(
-      currentParticipants
-        .filter(p => p.field_x != null && p.field_y != null)
-        .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
-    );
+    // Small delay to ensure turnActions are loaded before snapshotting
+    const startDelay = setTimeout(() => {
+      if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    setResolutionStartPositions(snapshot);
-    animatedResolutionIdRef.current = activeTurn.id;
-    setAnimating(true);
-    setAnimProgress(0);
+      // Snapshot current positions before animation starts
+      const currentParticipants = participantsRef.current;
+      const snapshot = Object.fromEntries(
+        currentParticipants
+          .filter(p => p.field_x != null && p.field_y != null)
+          .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
+      );
 
-    const duration = 2500;
-    let startTime: number | null = null;
+      setResolutionStartPositions(snapshot);
+      animatedResolutionIdRef.current = activeTurn.id;
+      setAnimating(true);
+      setAnimProgress(0);
 
-    const animate = (now: number) => {
-      if (startTime === null) startTime = now;
-      const progress = Math.min(1, (now - startTime) / duration);
-      setAnimProgress(progress);
+      const duration = 2500;
+      let startTime: number | null = null;
 
-      if (progress < 1) {
-        animFrameRef.current = requestAnimationFrame(animate);
-      } else {
-        setAnimating(false);
-        // Update positions to final animated positions
-        setParticipants(prev => prev.map(p => {
-          const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
-          if (action && action.target_x != null && action.target_y != null) {
-            return { ...p, field_x: action.target_x, field_y: action.target_y };
-          }
-          return p;
-        }));
-      }
-    };
+      const animate = (now: number) => {
+        if (startTime === null) startTime = now;
+        const progress = Math.min(1, (now - startTime) / duration);
+        setAnimProgress(progress);
 
-    animFrameRef.current = requestAnimationFrame(animate);
+        if (progress < 1) {
+          animFrameRef.current = requestAnimationFrame(animate);
+        } else {
+          setAnimating(false);
+          // Update positions to final animated positions using ref for latest actions
+          const latestActions = turnActionsRef.current;
+          setParticipants(prev => prev.map(p => {
+            const action = latestActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
+            if (action && action.target_x != null && action.target_y != null) {
+              return { ...p, field_x: action.target_x, field_y: action.target_y, pos_x: action.target_x, pos_y: action.target_y };
+            }
+            return p;
+          }));
+        }
+      };
+
+      animFrameRef.current = requestAnimationFrame(animate);
+    }, 200); // Wait 200ms for turnActions to be populated
+
     return () => {
+      clearTimeout(startDelay);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [activeTurn?.phase, activeTurn?.id, turnActions]);
+  }, [activeTurn?.phase, activeTurn?.id]);
 
   // ── Compute animated positions ─────────────────────────────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
@@ -899,7 +914,9 @@ export default function MatchRoomPage() {
     if (!p) return [];
     const phase = activeTurn.phase;
     const isBH = activeTurn.ball_holder_participant_id === participantId;
-    const isAttacking = p.club_id === (activeTurn.possession_club_id || match.possession_club_id);
+    // Always use activeTurn.possession_club_id for consistency
+    const currentPossClubId = activeTurn.possession_club_id;
+    const isAttacking = p.club_id === currentPossClubId;
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'shoot'];
@@ -955,8 +972,10 @@ export default function MatchRoomPage() {
 
     const holderRenderPos = getAnimatedPos(ballHolder);
     const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
+
+    // Find the ball holder's action (pass, shoot, or move)
     const ballAction = turnActions
-      .filter(action => action.participant_id === ballHolder.id && (action.turn_phase === 'ball_holder' || action.turn_phase == null))
+      .filter(action => action.participant_id === ballHolder.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
 
     if (!animating || activeTurn?.phase !== 'resolution' || !ballAction) {
@@ -970,6 +989,7 @@ export default function MatchRoomPage() {
     const t = 1 - Math.pow(1 - animProgress, 3);
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+      // Ball follows the player during a move (dribble)
       const currentX = startPos.x + (ballAction.target_x - startPos.x) * t;
       const currentY = startPos.y + (ballAction.target_y - startPos.y) * t;
       const dx = ballAction.target_x - startPos.x;
@@ -981,10 +1001,11 @@ export default function MatchRoomPage() {
       };
     }
 
-    if (ballAction.target_x != null && ballAction.target_y != null) {
+    if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
+      // Ball travels from holder's start position to the target (player stays put)
       return {
-        x: startPos.x + (ballAction.target_x - startPos.x) * t,
-        y: startPos.y + (ballAction.target_y - startPos.y) * t,
+        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
+        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
       };
     }
 
