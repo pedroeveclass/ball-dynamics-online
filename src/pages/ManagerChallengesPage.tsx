@@ -250,6 +250,69 @@ export default function ManagerChallengesPage() {
     }
   };
 
+  const handleCreateTestMatch = async () => {
+    if (!club || !managerProfile) return;
+    setCreatingTest(true);
+    try {
+      // Find any other club
+      const { data: otherClubs } = await supabase
+        .from('clubs').select('id').neq('id', club.id).limit(1);
+
+      if (!otherClubs?.length) {
+        toast.error('Nenhum clube adversário encontrado para teste.');
+        setCreatingTest(false);
+        return;
+      }
+
+      const opponentId = otherClubs[0].id;
+      const now = new Date().toISOString();
+
+      // Create match scheduled for now (auto-starts)
+      const { data: match, error: matchError } = await supabase
+        .from('matches')
+        .insert({
+          home_club_id: club.id,
+          away_club_id: opponentId,
+          status: 'scheduled',
+          scheduled_at: now,
+          current_phase: 'pre_match',
+        })
+        .select('id')
+        .single();
+
+      if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
+
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+
+      // Create 4 participants: Home GK + CB, Away ST + ST
+      const testParticipants = [
+        { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 5, pos_y: 50 },
+        { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 25, pos_y: 50 },
+        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 70, pos_y: 35 },
+        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 70, pos_y: 65 },
+        // Manager participant
+        { match_id: match.id, club_id: club.id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: userId },
+      ];
+
+      await supabase.from('match_participants').insert(testParticipants);
+
+      // Log event
+      await supabase.from('match_event_logs').insert({
+        match_id: match.id,
+        event_type: 'system',
+        title: '🧪 Partida de teste criada',
+        body: '2v2 — GK + CB vs ST + ST',
+      });
+
+      toast.success('Partida de teste criada!');
+      navigate(`/match/${match.id}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao criar partida de teste');
+    } finally {
+      setCreatingTest(false);
+    }
+  };
+
   const isMyChallengeReceived = (c: Challenge) => c.challenged_club_id === club?.id;
   const isMyChallengeOut = (c: Challenge) => c.challenger_club_id === club?.id;
 
@@ -265,11 +328,18 @@ export default function ManagerChallengesPage() {
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
             <Swords className="h-6 w-6 text-tactical" /> Amistosos
           </h1>
-          <Link to="/manager/match/create">
-            <Button size="sm" className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-              <Plus className="h-4 w-4 mr-1" /> Enviar Convite
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleCreateTestMatch} disabled={creatingTest}
+              className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
+              <FlaskConical className="h-4 w-4 mr-1" />
+              {creatingTest ? 'Criando...' : 'Partida Teste 2v2'}
             </Button>
-          </Link>
+            <Link to="/manager/match/create">
+              <Button size="sm" className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+                <Plus className="h-4 w-4 mr-1" /> Enviar Convite
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Received */}
