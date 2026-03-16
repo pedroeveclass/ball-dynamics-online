@@ -1122,22 +1122,19 @@ export default function MatchRoomPage() {
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
   // Find if anyone intercepted the ball this turn (has a 'receive' action)
-  const interceptorAction = useMemo(() => {
-    return turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
-  }, [turnActions]);
+  const interceptorAction = turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
 
   // Loose ball position: last known ball target or finalBallPos
-  const looseBallPos = useMemo((): { x: number; y: number } | null => {
+  const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
-    // Check previous turn's pass/shoot target as loose ball origin
     const lastBallAction = turnActions.find(a =>
       (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
       a.target_x != null && a.target_y != null
     );
     if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
     return null;
-  }, [isLooseBall, finalBallPos, turnActions]);
+  })();
 
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
     // Use locked final ball position if available (post-animation)
