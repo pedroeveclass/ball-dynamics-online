@@ -701,7 +701,7 @@ export default function MatchRoomPage() {
     setAnimating(true);
     setAnimProgress(0);
 
-    const duration = 2000;
+    const duration = 2500;
     let startTime: number | null = null;
 
     const animate = (now: number) => {
