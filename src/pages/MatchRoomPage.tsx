@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Bot, User, Eye, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, User, Eye, ChevronDown, ChevronRight, Square } from 'lucide-react';
 
 // ─── Formation layouts ─────────────────────────────────────────
 const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
@@ -80,6 +80,19 @@ interface EventLog {
   id: string; event_type: string; title: string; body: string; created_at: string;
 }
 
+interface MatchAction {
+  id: string;
+  match_id: string;
+  match_turn_id: string;
+  participant_id: string;
+  controlled_by_type: string;
+  action_type: string;
+  target_x: number | null;
+  target_y: number | null;
+  target_participant_id: string | null;
+  status: string;
+}
+
 // ─── Constants ────────────────────────────────────────────────
 const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
@@ -93,6 +106,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+const PHASE_DURATION = 6;
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
@@ -116,14 +130,21 @@ export default function MatchRoomPage() {
   const [myParticipant, setMyParticipant] = useState<Participant | null>(null);
   const [myClubId, setMyClubId] = useState<string | null>(null);
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
-  const [phaseTimeLeft, setPhaseTimeLeft] = useState(6);
+  const [phaseTimeLeft, setPhaseTimeLeft] = useState(PHASE_DURATION);
   const [submittingAction, setSubmittingAction] = useState(false);
 
   // Interactive drawing
   const [drawingAction, setDrawingAction] = useState<DrawingState | null>(null);
   const [mouseFieldPct, setMouseFieldPct] = useState<{ x: number; y: number } | null>(null);
-  const [showActionMenu, setShowActionMenu] = useState<string | null>(null); // participant id
+  const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
   const [submittedActions, setSubmittedActions] = useState<Set<string>>(new Set());
+
+  // Persisted actions for current turn (loaded from DB)
+  const [turnActions, setTurnActions] = useState<MatchAction[]>([]);
+
+  // Animation state for phase 4
+  const [animating, setAnimating] = useState(false);
+  const [animProgress, setAnimProgress] = useState(0);
 
   // Accordion states
   const [homeAccOpen, setHomeAccOpen] = useState(false);
@@ -134,6 +155,7 @@ export default function MatchRoomPage() {
   const engineRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   // ── Load match data ──────────────────────────────────────────
   const loadMatch = useCallback(async () => {
@@ -244,6 +266,18 @@ export default function MatchRoomPage() {
     setLoading(false);
   }, [matchId]);
 
+  // ── Load actions for current turn ──────────────────────────
+  const loadTurnActions = useCallback(async () => {
+    if (!activeTurn) { setTurnActions([]); return; }
+    const { data } = await supabase
+      .from('match_actions')
+      .select('*')
+      .eq('match_turn_id', activeTurn.id);
+    setTurnActions((data || []) as MatchAction[]);
+  }, [activeTurn?.id]);
+
+  useEffect(() => { loadTurnActions(); }, [loadTurnActions]);
+
   // ── Determine user role ─────────────────────────────────────
   useEffect(() => {
     if (!user || !match) return;
@@ -285,6 +319,8 @@ export default function MatchRoomPage() {
     setSubmittedActions(new Set());
     setDrawingAction(null);
     setShowActionMenu(null);
+    setAnimating(false);
+    setAnimProgress(0);
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Auto-show action menu for ball holder in phase 1
@@ -315,10 +351,85 @@ export default function MatchRoomPage() {
       ]);
       if (matchRes.data) setMatch(matchRes.data as MatchData);
       if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
+      // Reload actions after tick
+      loadTurnActions();
+      // Reload participants to get updated positions
+      const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
+      if (parts) {
+        // Re-enrich participants with updated pos_x/pos_y
+        reEnrichParticipants(parts, matchRes.data as MatchData);
+      }
     };
     engineRef.current = setInterval(tick, 2500);
     return () => { if (engineRef.current) clearInterval(engineRef.current); };
   }, [match?.status, matchId]);
+
+  // Helper to re-enrich participants after position updates
+  const reEnrichParticipants = useCallback(async (parts: any[], matchData: MatchData) => {
+    if (!matchId || !matchData) return;
+    const playerIds = parts.filter(p => p.player_profile_id).map(p => p.player_profile_id!);
+    const slotIds = parts.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id!);
+
+    const [playersRes, slotsRes] = await Promise.all([
+      playerIds.length > 0 ? supabase.from('player_profiles').select('id, full_name, primary_position, overall').in('id', playerIds) : { data: [] },
+      slotIds.length > 0 ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds) : { data: [] },
+    ]);
+
+    const playerMap = new Map((playersRes.data || []).map(p => [p.id, p]));
+    const slotMap = new Map((slotsRes.data || []).map(s => [s.id, s]));
+
+    const enriched: Participant[] = parts.map(p => ({
+      ...p,
+      player_name: p.player_profile_id ? playerMap.get(p.player_profile_id)?.full_name : undefined,
+      overall: p.player_profile_id ? playerMap.get(p.player_profile_id)?.overall : undefined,
+      slot_position: p.lineup_slot_id ? slotMap.get(p.lineup_slot_id)?.slot_position : undefined,
+    }));
+
+    const homeParts = enriched.filter(p => p.club_id === matchData.home_club_id && p.role_type === 'player');
+    const awayParts = enriched.filter(p => p.club_id === matchData.away_club_id && p.role_type === 'player');
+    const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+
+    const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
+      const positions = getFormationPositions(formation, isHome);
+      return list.map((p, i) => ({
+        ...p,
+        field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
+        field_y: p.pos_y ?? positions[i]?.y ?? 50,
+        field_pos: p.slot_position || positions[i]?.pos || '?',
+        jersey_number: i + 1,
+      }));
+    };
+
+    const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
+      const positioned = assignPositions(list, formation, isHome);
+      if (isTestMatch) return positioned;
+      const positions = getFormationPositions(formation, isHome);
+      for (let i = positioned.length; i < 11; i++) {
+        positioned.push({
+          id: `virtual-${isHome ? 'home' : 'away'}-${i}`,
+          match_id: matchId!,
+          player_profile_id: null, club_id: clubId,
+          lineup_slot_id: null, role_type: 'player',
+          is_bot: true, connected_user_id: null,
+          pos_x: null, pos_y: null,
+          field_x: positions[i]?.x ?? (isHome ? 30 : 70),
+          field_y: positions[i]?.y ?? 50,
+          field_pos: positions[i]?.pos ?? '?',
+          jersey_number: i + 1,
+        });
+      }
+      return positioned;
+    };
+
+    const homeFmt = homeClub?.formation || DEFAULT_FORMATION;
+    const awayFmt = awayClub?.formation || DEFAULT_FORMATION;
+
+    const homeWithPos = ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFmt, true, matchData.home_club_id);
+    const awayWithPos = ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFmt, false, matchData.away_club_id);
+    const managersAndSpecs = enriched.filter(p => p.role_type !== 'player');
+
+    setParticipants([...homeWithPos, ...awayWithPos, ...managersAndSpecs]);
+  }, [matchId, homeClub, awayClub]);
 
   // ── Realtime ─────────────────────────────────────────────────
   useEffect(() => {
@@ -335,9 +446,18 @@ export default function MatchRoomPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_event_logs', filter: `match_id=eq.${matchId}` }, (p) => {
         setEvents(prev => [...prev, p.new as EventLog]);
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_actions', filter: `match_id=eq.${matchId}` }, () => {
+        loadTurnActions();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${matchId}` }, () => {
+        // Reload participants when positions update
+        supabase.from('match_participants').select('*').eq('match_id', matchId).then(({ data }) => {
+          if (data && match) reEnrichParticipants(data, match);
+        });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [matchId]);
+  }, [matchId, match, reEnrichParticipants, loadTurnActions]);
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
@@ -380,19 +500,40 @@ export default function MatchRoomPage() {
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
+        // Reload actions immediately
+        loadTurnActions();
       }
     } catch { toast.error('Erro ao enviar ação'); }
     finally { setSubmittingAction(false); }
   };
 
+  const finishMatch = async () => {
+    if (!matchId) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch(
+        `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: session ? `Bearer ${session.access_token}` : '' },
+          body: JSON.stringify({ action: 'finish_match', match_id: matchId }),
+        }
+      );
+      toast.success('Partida finalizada!');
+      loadMatch();
+    } catch { toast.error('Erro ao finalizar'); }
+  };
+
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
-      submitAction('move', participantId);
+      // No action = stay in place, submit move to current pos
+      const p = participants.find(x => x.id === participantId);
+      submitAction('move', participantId, p?.field_x, p?.field_y);
       setShowActionMenu(null);
       return;
     }
     if (actionType === 'receive') {
-      submitAction('move', participantId); // receive = move to ball path
+      submitAction('move', participantId);
       setShowActionMenu(null);
       return;
     }
@@ -402,7 +543,6 @@ export default function MatchRoomPage() {
 
   const handleFieldClick = (pctX: number, pctY: number) => {
     if (!drawingAction) return;
-    // Find if clicking near a teammate for pass target
     const allPlayers = [...homePlayers, ...awayPlayers];
     const nearPlayer = allPlayers.find(p => {
       if (!p.field_x || !p.field_y) return false;
@@ -424,7 +564,6 @@ export default function MatchRoomPage() {
 
   const handlePlayerClick = (participantId: string) => {
     if (drawingAction) {
-      // Clicking on a player while drawing = set as target
       const p = participants.find(x => x.id === participantId);
       if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high')) {
         submitAction(drawingAction.type, drawingAction.fromParticipantId, p.field_x, p.field_y, participantId);
@@ -460,6 +599,93 @@ export default function MatchRoomPage() {
     }
   };
 
+  // ─── Determine which actions are visible in current phase ───
+  const visibleActions = useMemo(() => {
+    if (!activeTurn || !match) return [];
+    const phase = activeTurn.phase;
+    const possClub = match.possession_club_id;
+
+    return turnActions.filter(a => {
+      const p = participants.find(x => x.id === a.participant_id);
+      if (!p) return false;
+      const isAttacking = p.club_id === possClub;
+      const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
+
+      // Phase 1 (ball_holder): only show ball holder's own action if already submitted
+      if (phase === 'ball_holder') {
+        return isBH; // show ball holder action as it's submitted
+      }
+      // Phase 2 (attacking_support): show ball holder + attacking actions
+      if (phase === 'attacking_support') {
+        return isBH || (isAttacking && !isBH);
+      }
+      // Phase 3 (defending_response): show all actions (ball holder + attacking + defending)
+      if (phase === 'defending_response') {
+        return true; // defending team can see everything
+      }
+      // Phase 4 (resolution): show everything
+      if (phase === 'resolution') {
+        return true;
+      }
+      return false;
+    });
+  }, [turnActions, activeTurn, match, participants]);
+
+  // ─── Animation for phase 4 ─────────────────────────────────
+  useEffect(() => {
+    if (!activeTurn || activeTurn.phase !== 'resolution') return;
+    if (turnActions.length === 0) return;
+
+    // Start animation
+    setAnimating(true);
+    const startTime = Date.now();
+    const duration = 2000; // 2 seconds animation
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      setAnimProgress(progress);
+
+      if (progress < 1) {
+        animFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        setAnimating(false);
+        // After animation, update participant positions locally from their actions
+        setParticipants(prev => prev.map(p => {
+          const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null);
+          if (action && action.target_x != null && action.target_y != null) {
+            return { ...p, field_x: action.target_x, field_y: action.target_y };
+          }
+          return p;
+        }));
+      }
+    };
+
+    animFrameRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [activeTurn?.phase, activeTurn?.id, turnActions]);
+
+  // ── Compute animated positions ─────────────────────────────
+  const getAnimatedPos = (p: Participant): { x: number; y: number } => {
+    if (!animating || activeTurn?.phase !== 'resolution') {
+      return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
+    }
+    const action = turnActions.find(a => a.participant_id === p.id && a.target_x != null);
+    if (!action || action.target_x == null || action.target_y == null) {
+      return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
+    }
+    const startX = p.field_x ?? 50;
+    const startY = p.field_y ?? 50;
+    // Ease out cubic
+    const t = 1 - Math.pow(1 - animProgress, 3);
+    return {
+      x: startX + (action.target_x - startX) * t,
+      y: startY + (action.target_y - startY) * t,
+    };
+  };
+
   // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
     return (
@@ -478,6 +704,7 @@ export default function MatchRoomPage() {
   const awayPlayers = participants.filter(p => p.club_id === match.away_club_id && p.role_type === 'player');
 
   const possClubId = match.possession_club_id;
+  const isTestMatch = homePlayers.length <= 4 && awayPlayers.length <= 4;
 
   // Get actions for current phase
   const getActionsForParticipant = (participantId: string): string[] => {
@@ -535,7 +762,6 @@ export default function MatchRoomPage() {
 
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
-  const ballPos = ballHolder && ballHolder.field_x != null ? toSVG(ballHolder.field_x!, ballHolder.field_y!) : null;
 
   // Arrow from drawing action
   const drawingFrom = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
@@ -543,7 +769,6 @@ export default function MatchRoomPage() {
   // Shot target: for shoot, arrow goes toward the goal
   const getShootTarget = (fromPart: Participant): { x: number; y: number } => {
     const isHome = fromPart.club_id === match.home_club_id;
-    // Shoot toward opponent's goal
     return isHome ? { x: 98, y: 50 } : { x: 2, y: 50 };
   };
 
@@ -575,7 +800,27 @@ export default function MatchRoomPage() {
     };
   };
 
-  const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / 6 : 0;
+  const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / PHASE_DURATION : 0;
+
+  // Get arrow color for action type
+  const getActionArrowColor = (action: MatchAction, fromPart: Participant): { color: string; markerId: string; strokeW: number } => {
+    if (action.action_type === 'move') {
+      return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
+    }
+    if (action.action_type === 'shoot') {
+      const color = action.target_x != null && fromPart.field_x != null
+        ? getArrowQuality(fromPart.field_x, fromPart.field_y!, action.target_x, action.target_y!, 'shoot')
+        : '#f59e0b';
+      const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
+      return { color, markerId, strokeW: 3.5 };
+    }
+    // pass
+    const color = action.target_x != null && fromPart.field_x != null
+      ? getArrowQuality(fromPart.field_x, fromPart.field_y!, action.target_x, action.target_y!, 'pass')
+      : '#06b6d4';
+    const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
+    return { color, markerId, strokeW: 3 };
+  };
 
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
@@ -586,6 +831,7 @@ export default function MatchRoomPage() {
             {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
             {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
           </Badge>
+          {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">TESTE 2v2</Badge>}
         </div>
 
         {/* Score */}
@@ -600,6 +846,14 @@ export default function MatchRoomPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isManager && isTestMatch && isLive && (
+            <button
+              onClick={finishMatch}
+              className="flex items-center gap-1 text-[10px] font-display bg-destructive/20 text-destructive border border-destructive/40 px-2 py-1 rounded hover:bg-destructive/30 transition-colors"
+            >
+              <Square className="h-3 w-3" /> Finalizar
+            </button>
+          )}
           {myRole === 'spectator' && <Badge variant="secondary" className="text-[10px] font-display"><Eye className="h-3 w-3 mr-1" />Espectador</Badge>}
           {isPlayer && <Badge className="bg-pitch/20 text-pitch text-[10px] border border-pitch/40 font-display"><User className="h-3 w-3 mr-1" />Jogador</Badge>}
           {isManager && (
@@ -649,20 +903,14 @@ export default function MatchRoomPage() {
               {/* Field lines */}
               <g stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" fill="none">
                 <rect x={PAD + 2} y={PAD + 2} width={INNER_W - 4} height={INNER_H - 4} />
-                {/* Halfway */}
                 <line x1={PAD + INNER_W / 2} y1={PAD + 2} x2={PAD + INNER_W / 2} y2={PAD + INNER_H - 2} />
-                {/* Center circle */}
                 <circle cx={PAD + INNER_W / 2} cy={PAD + INNER_H / 2} r={INNER_H * 0.15} />
                 <circle cx={PAD + INNER_W / 2} cy={PAD + INNER_H / 2} r={3} fill="rgba(255,255,255,0.6)" />
-                {/* Home penalty area */}
                 <rect x={PAD + 2} y={PAD + INNER_H * 0.22} width={INNER_W * 0.16} height={INNER_H * 0.56} />
                 <rect x={PAD + 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
-                {/* Home penalty arc */}
                 <path d={`M ${PAD + 2 + INNER_W * 0.16} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 1 ${PAD + 2 + INNER_W * 0.16} ${PAD + INNER_H * 0.62}`} />
-                {/* Away penalty area */}
                 <rect x={PAD + INNER_W - INNER_W * 0.16 - 2} y={PAD + INNER_H * 0.22} width={INNER_W * 0.16} height={INNER_H * 0.56} />
                 <rect x={PAD + INNER_W - INNER_W * 0.06 - 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
-                {/* Away penalty arc */}
                 <path d={`M ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 0 ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.62}`} />
               </g>
 
@@ -672,7 +920,7 @@ export default function MatchRoomPage() {
                 <rect x={PAD + INNER_W - 2} y={PAD + INNER_H * 0.38} width={10} height={INNER_H * 0.24} rx="1" />
               </g>
 
-              {/* Goal nets (hatching) */}
+              {/* Goal nets */}
               <g stroke="rgba(255,255,255,0.15)" strokeWidth="0.5">
                 {[0, 1, 2, 3].map(i => (
                   <g key={`net-${i}`}>
@@ -682,13 +930,46 @@ export default function MatchRoomPage() {
                 ))}
               </g>
 
+              {/* ── Persisted action arrows (visible based on phase) ── */}
+              {!animating && visibleActions.map(action => {
+                if (action.target_x == null || action.target_y == null) return null;
+                const fromPart = participants.find(p => p.id === action.participant_id);
+                if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
+
+                const from = toSVG(fromPart.field_x, fromPart.field_y);
+                const to = toSVG(action.target_x, action.target_y);
+                const { color, markerId, strokeW } = getActionArrowColor(action, fromPart);
+
+                // Show controller badge
+                const controlLabel = action.controlled_by_type === 'bot' ? '🤖' : action.controlled_by_type === 'manager' ? '📋' : '👤';
+
+                return (
+                  <g key={action.id}>
+                    <line
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke={color} strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={0.7}
+                      markerEnd={`url(#${markerId})`}
+                      strokeDasharray={action.controlled_by_type === 'bot' ? '4,3' : 'none'}
+                    />
+                    {/* Small label at midpoint */}
+                    <text
+                      x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
+                      textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.6)"
+                      fontFamily="'Barlow Condensed', sans-serif"
+                    >
+                      {controlLabel} {ACTION_LABELS[action.action_type] || action.action_type}
+                    </text>
+                  </g>
+                );
+              })}
+
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const from = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 let to: { x: number; y: number };
                 if (drawingAction.type === 'shoot') {
                   const goalTarget = getShootTarget(drawingFrom);
-                  // Use mouse Y to aim within goal but X stays at goal
                   to = toSVG(goalTarget.x, Math.max(38, Math.min(62, mouseFieldPct.y)));
                 } else {
                   to = toSVG(mouseFieldPct.x, mouseFieldPct.y);
@@ -711,7 +992,8 @@ export default function MatchRoomPage() {
               {/* Players */}
               {[...homePlayers, ...awayPlayers].map((p, idx) => {
                 if (p.field_x == null || p.field_y == null) return null;
-                const { x, y } = toSVG(p.field_x, p.field_y);
+                const animPos = getAnimatedPos(p);
+                const { x, y } = toSVG(animPos.x, animPos.y);
                 const isHome = p.club_id === match.home_club_id;
                 const clubData = isHome ? homeClub : awayClub;
                 const isBH = activeTurn?.ball_holder_participant_id === p.id;
@@ -726,19 +1008,15 @@ export default function MatchRoomPage() {
                     onClick={(e) => { e.stopPropagation(); handlePlayerClick(p.id); }}
                     style={{ cursor: isControllable ? 'pointer' : 'default' }}
                   >
-                    {/* Ball holder glow */}
                     {isBH && (
                       <circle cx={x} cy={y} r={R + 5} fill="none" stroke="#f59e0b" strokeWidth="1.5" opacity={0.6} filter="url(#glow)" />
                     )}
-                    {/* Selection ring */}
                     {isSelected && (
                       <circle cx={x} cy={y} r={R + 3} fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="3,2" opacity={0.8} />
                     )}
-                    {/* Submitted indicator */}
                     {hasSubmitted && (
                       <circle cx={x} cy={y} r={R + 3} fill="none" stroke="#22c55e" strokeWidth="1" opacity={0.6} />
                     )}
-                    {/* Player circle */}
                     <circle
                       cx={x} cy={y} r={R}
                       fill={p.field_pos === 'GK' ? '#111' : (clubData?.primary_color || (isHome ? '#dc2626' : '#16a34a'))}
@@ -746,7 +1024,6 @@ export default function MatchRoomPage() {
                       strokeWidth={isMe ? 1.5 : 0.8}
                       filter="url(#shadow)"
                     />
-                    {/* Jersey number */}
                     <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
                       fontSize="7" fontWeight="800"
                       fontFamily="'Barlow Condensed', sans-serif"
@@ -754,7 +1031,6 @@ export default function MatchRoomPage() {
                     >
                       {p.jersey_number || idx + 1}
                     </text>
-                    {/* Ball emoji on ball holder */}
                     {isBH && (
                       <g>
                         <circle cx={x + R} cy={y - R} r={4.5} fill="white" stroke="#333" strokeWidth="0.5" />
@@ -766,14 +1042,13 @@ export default function MatchRoomPage() {
               })}
             </svg>
 
-            {/* Action menu overlay (HTML positioned over SVG) */}
+            {/* Action menu overlay */}
             {showActionMenu && !drawingAction && (() => {
               const menuPos = getActionMenuScreenPos(showActionMenu);
               if (!menuPos) return null;
               const actions = getActionsForParticipant(showActionMenu);
               if (actions.length === 0) return null;
 
-              // Calculate position relative to the field container
               const containerRect = svgRef.current?.parentElement?.getBoundingClientRect();
               if (!containerRect) return null;
               const left = menuPos.left - containerRect.left + 16;
@@ -823,6 +1098,13 @@ export default function MatchRoomPage() {
                 </div>
               );
             })()}
+
+            {/* Phase 4 animation overlay */}
+            {animating && (
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
+                <span className="text-[11px] font-display font-bold text-tactical animate-pulse">⚡ MOTION — Resolvendo jogada...</span>
+              </div>
+            )}
 
             {/* Status overlay for non-live */}
             {!isLive && !isFinished && (
@@ -983,8 +1265,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
     return polar(mid, r);
   }
 
-  // Timer sweep: shows progress in the active quadrant
-  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / 6) : 0;
+  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / PHASE_DURATION) : 0;
 
   const phaseColors: Record<string, string> = {
     ball_holder: '#22c55e',
@@ -1017,7 +1298,6 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
                 stroke={isActive ? '#fff' : 'hsl(220,10%,15%)'}
                 strokeWidth={isActive ? 1.5 : 0.5}
               />
-              {/* Phase number */}
               {(() => {
                 const lp = labelPos(q.startAngle, q.endAngle, (R_INNER + R_OUTER) / 2);
                 return (
@@ -1033,7 +1313,6 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
           );
         })}
 
-        {/* Timer sweep arc in active quadrant */}
         {currentIdx >= 0 && sweepProgress > 0.01 && (() => {
           const q = quadrants[currentIdx];
           const sweepEnd = q.startAngle + 2 + (q.endAngle - q.startAngle - 4) * sweepProgress;
@@ -1048,14 +1327,10 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
           );
         })()}
 
-        {/* Center dark circle */}
         <circle cx={CX} cy={CY} r={R_INNER - 2} fill="hsl(220,20%,8%)" stroke="hsl(220,10%,15%)" strokeWidth="1" />
-
-        {/* Center crosshair */}
         <line x1={CX - 6} y1={CY} x2={CX + 6} y2={CY} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
         <line x1={CX} y1={CY - 6} x2={CX} y2={CY + 6} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
 
-        {/* Center label */}
         <text x={CX} y={CY - 2} textAnchor="middle" dominantBaseline="central"
           fontSize="12" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
           fill={currentPhase ? '#fff' : 'rgba(255,255,255,0.3)'}
@@ -1072,7 +1347,6 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
         )}
       </svg>
 
-      {/* Timer bar below wheel */}
       {currentPhase && (
         <div className="w-full px-3">
           <div className="flex justify-between text-[9px] font-display text-muted-foreground mb-0.5">
@@ -1083,7 +1357,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
             <div
               className="h-full rounded-full transition-all duration-100"
               style={{
-                width: `${(timeLeft / 6) * 100}%`,
+                width: `${(timeLeft / PHASE_DURATION) * 100}%`,
                 background: timeLeft > 3 ? 'hsl(var(--pitch-green))' : timeLeft > 1 ? 'hsl(var(--warning-amber))' : 'hsl(var(--destructive))',
               }}
             />
@@ -1091,7 +1365,6 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
         </div>
       )}
 
-      {/* Possession indicator */}
       {possessionClub && (
         <div className="flex items-center gap-1.5 mt-1">
           <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
