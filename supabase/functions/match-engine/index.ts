@@ -10,29 +10,23 @@ const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
 
-// No bot actions - humans only
-
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
 } {
   if (action === 'shoot') {
-    // Check if any player has a "receive" (dominar bola) action that intercepts the shot path
     const interceptor = findInterceptor(allActions, _attacker, participants);
     if (interceptor) {
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
     }
-    // No interceptor → goal
     return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
   }
   if (action === 'pass_low' || action === 'pass_high') {
-    // Check for interceptor along the pass path
     const interceptor = findInterceptor(allActions, _attacker, participants);
     if (interceptor) {
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
     }
-    // Pass succeeds - find nearest player to target
     return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   }
   if (action === 'move') {
@@ -41,7 +35,6 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-// Find the closest interceptor (player who moved onto the ball path and chose "dominar bola" or just moved there)
 function findInterceptor(allActions: any[], ballHolderAction: any, participants: any[]): any | null {
   if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return null;
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
@@ -52,13 +45,12 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
   const endX = ballHolderAction.target_x;
   const endY = ballHolderAction.target_y;
 
-  // Find players who moved onto the ball path
   const interceptors: Array<{ participant: any; progress: number }> = [];
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
-    if (a.action_type !== 'move' || a.target_x == null || a.target_y == null) continue;
+    // Accept both 'move' and 'receive' actions as potential intercepts
+    if ((a.action_type !== 'move' && a.action_type !== 'receive') || a.target_x == null || a.target_y == null) continue;
 
-    // Check if their move target is close to the ball path
     const dx = endX - startX;
     const dy = endY - startY;
     const len2 = dx * dx + dy * dy;
@@ -68,13 +60,14 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
     const cy = startY + dy * t;
     const dist = Math.sqrt((a.target_x - cx) ** 2 + (a.target_y - cy) ** 2);
 
-    if (dist <= 4) { // Close enough to intercept
+    // 'receive' action has guaranteed interception if close enough
+    const threshold = a.action_type === 'receive' ? 6 : 4;
+    if (dist <= threshold) {
       interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t });
     }
   }
 
   if (interceptors.length === 0) return null;
-  // Closest to the start of the ball path gets priority
   interceptors.sort((a, b) => a.progress - b.progress);
   return interceptors[0].participant;
 }
@@ -100,7 +93,6 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Match not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // Resolve any active turns
       await supabase.from('match_turns').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('match_id', match_id).eq('status', 'active');
 
       await supabase.from('matches').update({
@@ -203,21 +195,15 @@ Deno.serve(async (req) => {
       const { data: participants } = await supabase
         .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
 
-      const { data: humanActions } = await supabase
-        .from('match_actions').select('*').eq('match_turn_id', activeTurn.id)
-        .neq('controlled_by_type', 'bot').eq('status', 'pending');
-
-      const humanActionMap = new Map((humanActions || []).map(a => [a.participant_id, a]));
-
       const possClubId = activeTurn.possession_club_id;
       const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
       const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
 
       const ballHolder = activeTurn.ball_holder_participant_id
         ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
-        : possPlayers[0];
+        : null;
 
-      // No bot actions - humans only. If no action submitted, player stays in place (no-op).
+      const isLooseBall = !activeTurn.ball_holder_participant_id;
 
       // ── RESOLUTION ──
       let newPossessionClubId = possClubId;
@@ -235,12 +221,11 @@ Deno.serve(async (req) => {
 
         const allTurnIds = (turnRows || []).map(t => t.id);
 
-        // Get all pending actions across ALL phases of this turn
         const { data: rawActions } = await supabase
           .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
           .order('created_at', { ascending: false });
 
-        // Deduplicate: keep only the LATEST action per participant (allows re-submission)
+        // Deduplicate: keep only the LATEST action per participant
         const seenParticipants = new Set<string>();
         const allActions = (rawActions || []).filter(a => {
           if (seenParticipants.has(a.participant_id)) return false;
@@ -248,9 +233,9 @@ Deno.serve(async (req) => {
           return true;
         });
 
-        // Update positions for all move actions
+        // Update positions for all move/receive actions
         for (const a of allActions) {
-          if (a.action_type === 'move' && a.target_x != null && a.target_y != null) {
+          if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
             await supabase.from('match_participants').update({
               pos_x: a.target_x,
               pos_y: a.target_y,
@@ -258,73 +243,88 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Resolve ball holder action
-        const ballHolderAction = allActions
-          .find(a => a.participant_id === ballHolder?.id);
+        if (ballHolder) {
+          // Resolve ball holder action
+          const ballHolderAction = allActions
+            .find(a => a.participant_id === ballHolder.id);
 
-        if (ballHolderAction) {
-          const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '');
+          if (ballHolderAction) {
+            const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '');
 
-          if (result.goal) {
-            if (possClubId === match.home_club_id) homeScore++;
-            else awayScore++;
+            if (result.goal) {
+              if (possClubId === match.home_club_id) homeScore++;
+              else awayScore++;
 
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'goal',
-              title: `⚽ GOL! ${homeScore} – ${awayScore}`,
-              body: `Turno ${match.current_turn_number}`,
-            });
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'goal',
+                title: `⚽ GOL! ${homeScore} – ${awayScore}`,
+                body: `Turno ${match.current_turn_number}`,
+              });
 
-            // After goal, possession goes to the other team
-            newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-            const otherTeamPlayers = (participants || []).filter(p => p.club_id === newPossessionClubId);
-            nextBallHolderParticipantId = otherTeamPlayers[0]?.id || null;
-          } else if (result.newBallHolderId) {
-            // Intercepted - ball goes to the interceptor
-            nextBallHolderParticipantId = result.newBallHolderId;
-            newPossessionClubId = result.newPossessionClubId || possClubId;
+              // After goal, possession goes to the other team
+              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+              const otherTeamPlayers = (participants || []).filter(p => p.club_id === newPossessionClubId);
+              nextBallHolderParticipantId = otherTeamPlayers[0]?.id || null;
+            } else if (result.newBallHolderId) {
+              nextBallHolderParticipantId = result.newBallHolderId;
+              newPossessionClubId = result.newPossessionClubId || possClubId;
 
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: result.possession_change ? 'possession_change' : 'pass_complete',
-              title: result.possession_change ? '🔄 Troca de posse - Bola dominada!' : '🤲 Bola dominada!',
-              body: result.description,
-            });
-          } else if (ballHolderAction.action_type === 'pass_low' || ballHolderAction.action_type === 'pass_high') {
-            // Pass succeeded without interception - find nearest player to target
-            if (ballHolderAction.target_participant_id) {
-              nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-            } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
-              // Find closest player to pass target
-              let closestDist = Infinity;
-              let closestId: string | null = null;
-              for (const p of (participants || [])) {
-                if (p.id === ballHolder?.id) continue;
-                const moveAction = allActions.find(a => a.participant_id === p.id && a.action_type === 'move');
-                const px = moveAction?.target_x ?? p.pos_x ?? 50;
-                const py = moveAction?.target_y ?? p.pos_y ?? 50;
-                const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
-                if (dist < closestDist) {
-                  closestDist = dist;
-                  closestId = p.id;
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: result.possession_change ? 'possession_change' : 'pass_complete',
+                title: result.possession_change ? '🔄 Troca de posse - Bola dominada!' : '🤲 Bola dominada!',
+                body: result.description,
+              });
+            } else if (ballHolderAction.action_type === 'pass_low' || ballHolderAction.action_type === 'pass_high') {
+              // Pass succeeded without interception
+              if (ballHolderAction.target_participant_id) {
+                nextBallHolderParticipantId = ballHolderAction.target_participant_id;
+              } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
+                // Find closest player to pass target (use final positions after move)
+                let closestDist = Infinity;
+                let closestId: string | null = null;
+                for (const p of (participants || [])) {
+                  if (p.id === ballHolder.id) continue;
+                  const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive'));
+                  const px = moveAction?.target_x ?? p.pos_x ?? 50;
+                  const py = moveAction?.target_y ?? p.pos_y ?? 50;
+                  const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
+                  if (dist < closestDist) {
+                    closestDist = dist;
+                    closestId = p.id;
+                  }
                 }
-              }
-              if (closestId) {
-                nextBallHolderParticipantId = closestId;
-                const closestPlayer = (participants || []).find(p => p.id === closestId);
-                if (closestPlayer && closestPlayer.club_id !== possClubId) {
-                  newPossessionClubId = closestPlayer.club_id;
+                if (closestId && closestDist <= 8) {
+                  // Someone is close enough to receive
+                  nextBallHolderParticipantId = closestId;
+                  const closestPlayer = (participants || []).find(p => p.id === closestId);
+                  if (closestPlayer && closestPlayer.club_id !== possClubId) {
+                    newPossessionClubId = closestPlayer.club_id;
+                    await supabase.from('match_event_logs').insert({
+                      match_id, event_type: 'possession_change',
+                      title: '🔄 Troca de posse',
+                      body: 'Passe interceptado pelo adversário mais próximo.',
+                    });
+                  }
+                } else {
+                  // LOOSE BALL: pass went to empty area, nobody close enough
+                  nextBallHolderParticipantId = null;
+                  // Keep possession with same team but no ball holder
                   await supabase.from('match_event_logs').insert({
-                    match_id, event_type: 'possession_change',
-                    title: '🔄 Troca de posse',
-                    body: 'Passe interceptado pelo adversário mais próximo.',
+                    match_id, event_type: 'loose_ball',
+                    title: '⚽ Bola solta!',
+                    body: 'Passe para área vazia. Ninguém está com a bola.',
                   });
                 }
               }
+            } else if (ballHolderAction.action_type === 'move') {
+              nextBallHolderParticipantId = ballHolder.id;
             }
-          } else if (ballHolderAction.action_type === 'move') {
-            // Ball holder moved with ball - they keep it
-            nextBallHolderParticipantId = ballHolder?.id || null;
           }
+        } else {
+          // Loose ball resolution: check if anyone moved close to the ball
+          // The ball is at the last known target position. Since nobody has it,
+          // we keep it as loose for next turn.
+          nextBallHolderParticipantId = null;
         }
 
         // Mark ALL raw actions for this turn as used/overridden
@@ -357,24 +357,55 @@ Deno.serve(async (req) => {
           });
         } else {
           const nextPhaseStart = new Date().toISOString();
+
+          // If loose ball, skip phase 1 and go directly to attacking_support
+          const isNextLooseBall = nextBallHolderParticipantId === null;
+          const nextPhase = isNextLooseBall ? 'attacking_support' : 'ball_holder';
           const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
 
           await supabase.from('matches').update({
             current_turn_number: newTurnNumber,
-            current_phase: 'ball_holder',
+            current_phase: nextPhase,
             possession_club_id: newPossessionClubId,
             home_score: homeScore, away_score: awayScore,
           }).eq('id', match_id);
 
           await supabase.from('match_turns').insert({
             match_id, turn_number: newTurnNumber,
-            phase: 'ball_holder',
+            phase: nextPhase,
             possession_club_id: newPossessionClubId,
             ball_holder_participant_id: nextBallHolderParticipantId,
             started_at: nextPhaseStart, ends_at: nextPhaseEnd,
             status: 'active',
           });
+
+          if (isNextLooseBall) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'loose_ball_phase',
+              title: '⚽ Bola solta — Fase 1 pulada',
+              body: 'Todos os jogadores se movimentam para disputar a bola.',
+            });
+          }
         }
+      } else if (activeTurn.phase === 'ball_holder' && isLooseBall) {
+        // Loose ball: skip ball_holder phase immediately, go to attacking_support
+        await supabase.from('match_turns')
+          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+          .eq('id', activeTurn.id);
+
+        const nextPhaseStart = new Date().toISOString();
+        const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+
+        await supabase.from('matches').update({ current_phase: 'attacking_support' }).eq('id', match_id);
+
+        await supabase.from('match_turns').insert({
+          match_id, turn_number: activeTurn.turn_number,
+          phase: 'attacking_support',
+          possession_club_id: possClubId,
+          ball_holder_participant_id: null,
+          started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+          status: 'active',
+        });
       } else {
         // Advance to next phase within same turn
         const currentPhaseIndex = PHASES.indexOf(activeTurn.phase as Phase);
@@ -442,12 +473,10 @@ Deno.serve(async (req) => {
 
       const isManagerOfClub = managerClub?.id === participant?.club_id;
 
-      // Check if this is a test match (<=4 players total) - manager who created it can control all players
       const { data: allParts } = await supabase
         .from('match_participants').select('id').eq('match_id', match_id).eq('role_type', 'player');
       const isTestMatch = (allParts || []).length <= 4;
 
-      // In test matches, the manager of either club can control ALL participants (both teams)
       const isManagerOfMatch = isTestMatch && (
         managerClub?.id === (participant as any)?.matches?.home_club_id ||
         managerClub?.id === (participant as any)?.matches?.away_club_id
