@@ -914,7 +914,9 @@ export default function MatchRoomPage() {
     if (!p) return [];
     const phase = activeTurn.phase;
     const isBH = activeTurn.ball_holder_participant_id === participantId;
-    const isAttacking = p.club_id === (activeTurn.possession_club_id || match.possession_club_id);
+    // Always use activeTurn.possession_club_id for consistency
+    const currentPossClubId = activeTurn.possession_club_id;
+    const isAttacking = p.club_id === currentPossClubId;
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'shoot'];
