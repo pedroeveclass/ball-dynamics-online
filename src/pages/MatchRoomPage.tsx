@@ -407,41 +407,49 @@ export default function MatchRoomPage() {
     if (!activeTurn || match?.status !== 'live') return;
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
-      if (bh && !allSubmittedIds.has(bh.id) && (
+      const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+      const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+      const isTest = hCount <= 4 && aCount <= 4;
+      const canControlBH = bh && (
         (myRole === 'player' && myParticipant?.id === bh.id) ||
-        (myRole === 'manager' && bh.club_id === myClubId)
-      )) {
+        (myRole === 'manager' && (bh.club_id === myClubId || isTest))
+      );
+      if (canControlBH) {
         setShowActionMenu(bh.id);
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, allSubmittedIds]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId]);
 
-  // ── Engine tick ─────────────────────────────────────────────
+  // ── Engine tick — fires when phase timer expires ─────────────
+  const tickInFlightRef = useRef(false);
   useEffect(() => {
     if (engineRef.current) clearInterval(engineRef.current);
     if (match?.status !== 'live' || !matchId) return;
-    const tick = async () => {
-      await callEngine({ action: 'tick', match_id: matchId });
-      const [matchRes, turnRes] = await Promise.all([
-        supabase.from('matches').select('*').eq('id', matchId).single(),
-        supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
-          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
-      ]);
-      if (matchRes.data) setMatch(matchRes.data as MatchData);
-      if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
-      // Reload actions after tick
-      loadTurnActions();
-      // Reload participants to get updated positions
-      const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
-      if (parts) {
-        // Re-enrich participants with updated pos_x/pos_y
-        reEnrichParticipants(parts, matchRes.data as MatchData);
-      }
+    const checkAndAdvance = async () => {
+      if (tickInFlightRef.current) return;
+      if (!activeTurn) return;
+      const remaining = new Date(activeTurn.ends_at).getTime() - Date.now();
+      if (remaining > 300) return; // Phase hasn't expired yet
+      tickInFlightRef.current = true;
+      try {
+        await callEngine({ action: 'tick', match_id: matchId });
+        const [matchRes, turnRes] = await Promise.all([
+          supabase.from('matches').select('*').eq('id', matchId).single(),
+          supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
+            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        ]);
+        if (matchRes.data) setMatch(matchRes.data as MatchData);
+        if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
+        loadTurnActions();
+        const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
+        if (parts && matchRes.data) reEnrichParticipants(parts, matchRes.data as MatchData);
+      } catch (e) { console.error('Tick failed:', e); }
+      finally { tickInFlightRef.current = false; }
     };
-    engineRef.current = setInterval(tick, 2500);
+    engineRef.current = setInterval(checkAndAdvance, 800);
     return () => { if (engineRef.current) clearInterval(engineRef.current); };
-  }, [match?.status, matchId]);
+  }, [match?.status, matchId, activeTurn?.ends_at]);
 
   // Helper to re-enrich participants after position updates
   const reEnrichParticipants = useCallback(async (parts: any[], matchData: MatchData) => {
@@ -665,10 +673,11 @@ export default function MatchRoomPage() {
 
     if ((canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player') {
       setSelectedParticipantId(participantId);
-      if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
+      if (match?.status === 'live' && activeTurn) {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
         const isAttacking = p.club_id === match.possession_club_id;
+        // Allow action (or re-action) during the appropriate phase - no blocking by allSubmittedIds
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking && !isBH) ||
@@ -688,13 +697,17 @@ export default function MatchRoomPage() {
   }, [turnActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
+  const participantsRef = useRef(participants);
+  participantsRef.current = participants;
+
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
-    if (turnActions.length === 0) return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
+    // Snapshot current positions before animation starts
+    const currentParticipants = participantsRef.current;
     const snapshot = Object.fromEntries(
-      participants
+      currentParticipants
         .filter(p => p.field_x != null && p.field_y != null)
         .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
     );
@@ -716,6 +729,7 @@ export default function MatchRoomPage() {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
         setAnimating(false);
+        // Update positions to final animated positions
         setParticipants(prev => prev.map(p => {
           const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
           if (action && action.target_x != null && action.target_y != null) {
@@ -730,7 +744,7 @@ export default function MatchRoomPage() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [activeTurn?.phase, activeTurn?.id, turnActions, participants]);
+  }, [activeTurn?.phase, activeTurn?.id, turnActions]);
 
   // ── Compute animated positions ─────────────────────────────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
