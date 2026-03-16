@@ -970,8 +970,10 @@ export default function MatchRoomPage() {
 
     const holderRenderPos = getAnimatedPos(ballHolder);
     const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
+
+    // Find the ball holder's action (pass, shoot, or move)
     const ballAction = turnActions
-      .filter(action => action.participant_id === ballHolder.id && (action.turn_phase === 'ball_holder' || action.turn_phase == null))
+      .filter(action => action.participant_id === ballHolder.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
 
     if (!animating || activeTurn?.phase !== 'resolution' || !ballAction) {
@@ -985,6 +987,7 @@ export default function MatchRoomPage() {
     const t = 1 - Math.pow(1 - animProgress, 3);
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+      // Ball follows the player during a move (dribble)
       const currentX = startPos.x + (ballAction.target_x - startPos.x) * t;
       const currentY = startPos.y + (ballAction.target_y - startPos.y) * t;
       const dx = ballAction.target_x - startPos.x;
@@ -996,10 +999,11 @@ export default function MatchRoomPage() {
       };
     }
 
-    if (ballAction.target_x != null && ballAction.target_y != null) {
+    if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
+      // Ball travels from holder's start position to the target (player stays put)
       return {
-        x: startPos.x + (ballAction.target_x - startPos.x) * t,
-        y: startPos.y + (ballAction.target_y - startPos.y) * t,
+        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
+        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
       };
     }
 
