@@ -979,8 +979,9 @@ export default function MatchRoomPage() {
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
 
+    // Both 'move' and 'receive' actions cause the player to move to target
     const moveAction = turnActions.find(
-      a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null
+      a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null
     );
     const startPos = resolutionStartPositions[p.id];
     const startX = startPos?.x ?? p.field_x ?? 50;
