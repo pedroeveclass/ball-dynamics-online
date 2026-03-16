@@ -384,7 +384,18 @@ Deno.serve(async (req) => {
 
       const isManagerOfClub = managerClub?.id === participant?.club_id;
 
-      if (!isOwnParticipant && !isManagerOfClub) {
+      // Check if this is a test match (<=4 players total) - manager who created it can control all players
+      const { data: allParts } = await supabase
+        .from('match_participants').select('id').eq('match_id', match_id).eq('role_type', 'player');
+      const isTestMatch = (allParts || []).length <= 4;
+
+      // In test matches, the manager of either club can control ALL participants (both teams)
+      const isManagerOfMatch = isTestMatch && (
+        managerClub?.id === (participant as any)?.matches?.home_club_id ||
+        managerClub?.id === (participant as any)?.matches?.away_club_id
+      );
+
+      if (!isOwnParticipant && !isManagerOfClub && !isManagerOfMatch) {
         return new Response(JSON.stringify({ error: 'Not authorized to control this participant' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
