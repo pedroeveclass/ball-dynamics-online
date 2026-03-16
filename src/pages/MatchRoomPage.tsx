@@ -677,37 +677,12 @@ export default function MatchRoomPage() {
     }
   };
 
-  // ─── Determine which actions are visible in current phase ───
+  // ─── All submitted actions are always visible ───────────────
   const visibleActions = useMemo(() => {
-    if (!activeTurn || !match) return [];
-    const phase = activeTurn.phase;
-    const possClub = match.possession_club_id;
-
-    return turnActions.filter(a => {
-      const p = participants.find(x => x.id === a.participant_id);
-      if (!p) return false;
-      const isAttacking = p.club_id === possClub;
-      const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
-
-      // Phase 1 (ball_holder): only show ball holder's own action if already submitted
-      if (phase === 'ball_holder') {
-        return isBH; // show ball holder action as it's submitted
-      }
-      // Phase 2 (attacking_support): show ball holder + attacking actions
-      if (phase === 'attacking_support') {
-        return isBH || (isAttacking && !isBH);
-      }
-      // Phase 3 (defending_response): show all actions (ball holder + attacking + defending)
-      if (phase === 'defending_response') {
-        return true; // defending team can see everything
-      }
-      // Phase 4 (resolution): show everything
-      if (phase === 'resolution') {
-        return true;
-      }
-      return false;
-    });
-  }, [turnActions, activeTurn, match, participants]);
+    // Show ALL submitted actions for the current turn, regardless of phase
+    // This keeps arrows fixed on screen until the turn ends
+    return turnActions;
+  }, [turnActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
   useEffect(() => {
