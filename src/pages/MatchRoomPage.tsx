@@ -1389,7 +1389,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
     return polar(mid, r);
   }
 
-  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / PHASE_DURATION) : 0;
+  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / phaseDuration) : 0;
 
   const phaseColors: Record<string, string> = {
     ball_holder: '#22c55e',
