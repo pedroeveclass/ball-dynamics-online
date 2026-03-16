@@ -782,7 +782,7 @@ export default function MatchRoomPage() {
       if (match?.status === 'live' && activeTurn) {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
-        const isAttacking = p.club_id === (activeTurn.possession_club_id || match.possession_club_id);
+        const isAttacking = p.club_id === activeTurn.possession_club_id;
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking && !isBH) ||
