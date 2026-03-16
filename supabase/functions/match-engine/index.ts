@@ -75,6 +75,58 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
   return interceptors[0].participant;
 }
 
+const KICKOFF_X = 50;
+const KICKOFF_Y = 50;
+
+async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: string, seededParticipants?: any[]): Promise<string | null> {
+  let candidates = (seededParticipants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player');
+
+  if (candidates.length === 0) {
+    const { data } = await supabase
+      .from('match_participants')
+      .select('id, club_id, role_type, pos_x, pos_y, created_at')
+      .eq('match_id', matchId)
+      .eq('club_id', clubId)
+      .eq('role_type', 'player');
+    candidates = data || [];
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a: any, b: any) => {
+    const distA = ((a.pos_x ?? KICKOFF_X) - KICKOFF_X) ** 2 + ((a.pos_y ?? KICKOFF_Y) - KICKOFF_Y) ** 2;
+    const distB = ((b.pos_x ?? KICKOFF_X) - KICKOFF_X) ** 2 + ((b.pos_y ?? KICKOFF_Y) - KICKOFF_Y) ** 2;
+    if (distA !== distB) return distA - distB;
+    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+  });
+
+  const chosen = candidates[0];
+  await supabase.from('match_participants').update({ pos_x: KICKOFF_X, pos_y: KICKOFF_Y }).eq('id', chosen.id);
+  return chosen.id;
+}
+
+function findLooseBallClaimer(allActions: any[], participants: any[]): any | null {
+  const receiveActions = allActions.filter((a) => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
+  const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
+
+  for (const action of receiveActions) {
+    const participant = participants.find((p: any) => p.id === action.participant_id);
+    if (!participant) continue;
+
+    const startX = participant.pos_x ?? 50;
+    const startY = participant.pos_y ?? 50;
+    ranked.push({
+      participant,
+      distance: Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2),
+      createdAt: new Date(action.created_at || 0).getTime(),
+    });
+  }
+
+  if (ranked.length === 0) return null;
+  ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
+  return ranked[0].participant;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -125,16 +177,8 @@ Deno.serve(async (req) => {
       const started: string[] = [];
 
       for (const m of (dueMatches || [])) {
-        const possessionClubId = Math.random() < 0.5 ? m.home_club_id : m.away_club_id;
-
-        const { data: ballHolderPart } = await supabase
-          .from('match_participants')
-          .select('id')
-          .eq('match_id', m.id)
-          .eq('club_id', possessionClubId)
-          .eq('role_type', 'player')
-          .limit(1)
-          .single();
+        const possessionClubId = m.home_club_id;
+        const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
         await supabase.from('matches').update({
           status: 'live',
@@ -150,7 +194,7 @@ Deno.serve(async (req) => {
           turn_number: 1,
           phase: 'ball_holder',
           possession_club_id: possessionClubId,
-          ball_holder_participant_id: ballHolderPart?.id || null,
+          ball_holder_participant_id: ballHolderParticipantId,
           started_at: now,
           ends_at: phaseEnd,
           status: 'active',
@@ -160,7 +204,7 @@ Deno.serve(async (req) => {
           match_id: m.id,
           event_type: 'kickoff',
           title: '⚽ Partida iniciada!',
-          body: 'A bola está rolando.',
+          body: 'Time da casa começa com a bola no meio-campo.',
         });
 
         started.push(m.id);
@@ -264,10 +308,9 @@ Deno.serve(async (req) => {
                 body: `Turno ${match.current_turn_number}`,
               });
 
-              // After goal, possession goes to the other team
+              // After goal, restart from midfield with the team that conceded
               newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-              const otherTeamPlayers = (participants || []).filter(p => p.club_id === newPossessionClubId);
-              nextBallHolderParticipantId = otherTeamPlayers[0]?.id || null;
+              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
             } else if (result.newBallHolderId) {
               nextBallHolderParticipantId = result.newBallHolderId;
               newPossessionClubId = result.newPossessionClubId || possClubId;
@@ -324,10 +367,21 @@ Deno.serve(async (req) => {
             }
           }
         } else {
-          // Loose ball resolution: check if anyone moved close to the ball
-          // The ball is at the last known target position. Since nobody has it,
-          // we keep it as loose for next turn.
-          nextBallHolderParticipantId = null;
+          const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
+
+          if (looseBallClaimer) {
+            nextBallHolderParticipantId = looseBallClaimer.id;
+            newPossessionClubId = looseBallClaimer.club_id;
+
+            await supabase.from('match_event_logs').insert({
+              match_id,
+              event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
+              title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
+              body: 'Quem chegou primeiro na bola solta ficou com a posse.',
+            });
+          } else {
+            nextBallHolderParticipantId = null;
+          }
         }
 
         // Mark ALL raw actions for this turn as used/overridden

@@ -122,6 +122,7 @@ const RESOLUTION_PHASE_DURATION = 3;
 const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
 const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
+const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
@@ -1022,7 +1023,6 @@ export default function MatchRoomPage() {
             if (ballAction) {
               if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high') && ballAction.target_x != null && ballAction.target_y != null) {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                  // Ball stops at interceptor position
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
                   setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
@@ -1031,13 +1031,16 @@ export default function MatchRoomPage() {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
-                  // Shot with no interception: ball ends in the goal
                   const shooter = participantsRef.current.find(p => p.id === bhId);
                   const isHome = shooter?.club_id === matchRef.current?.home_club_id;
-                  setFinalBallPos({ x: isHome ? 100 : 0, y: ballAction.target_y });
+                  setFinalBallPos({ x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y });
                 }
               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-                setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
+                } else {
+                  setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+                }
               }
             }
           }
@@ -1227,11 +1230,28 @@ export default function MatchRoomPage() {
     const t = 1 - Math.pow(1 - animProgress, 3);
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-      const currentX = startPos.x + (ballAction.target_x - startPos.x) * t;
-      const currentY = startPos.y + (ballAction.target_y - startPos.y) * t;
       const dx = ballAction.target_x - startPos.x;
       const dy = ballAction.target_y - startPos.y;
       const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+
+      if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
+        const len2 = dx * dx + dy * dy;
+        const interceptT = len2 > 0
+          ? clamp(
+              ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+              0,
+              1
+            )
+          : 1;
+        const effectiveT = Math.min(t, interceptT);
+        return {
+          x: startPos.x + dx * effectiveT + 1.2,
+          y: startPos.y + dy * effectiveT - 1.2,
+        };
+      }
+
+      const currentX = startPos.x + dx * t;
+      const currentY = startPos.y + dy * t;
       return {
         x: currentX + (dx / len) * 1.8,
         y: currentY + (dy / len) * 1.8,
@@ -1263,7 +1283,7 @@ export default function MatchRoomPage() {
       // Shot with no interception: ball goes to goal
       if (ballAction.action_type === 'shoot') {
         const isHome = ballHolder.club_id === match.home_club_id;
-        const goalX = isHome ? 100 : 0;
+        const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
         const goalY = ballAction.target_y;
         return {
           x: startPos.x + (goalX - startPos.x) * t + 1.2,
@@ -1285,10 +1305,10 @@ export default function MatchRoomPage() {
   // Arrow from drawing action
   const drawingFrom = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
 
-  // Shot target: for shoot, arrow goes toward the goal
+  // Shot target: for shoot, arrow goes slightly inside the goal
   const getShootTarget = (fromPart: Participant): { x: number; y: number } => {
     const isHome = fromPart.club_id === match.home_club_id;
-    return isHome ? { x: 98, y: 50 } : { x: 2, y: 50 };
+    return isHome ? { x: 100 + GOAL_LINE_OVERFLOW_PCT, y: 50 } : { x: 0 - GOAL_LINE_OVERFLOW_PCT, y: 50 };
   };
 
   // Arrow quality based on distance
