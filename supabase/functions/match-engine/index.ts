@@ -216,12 +216,21 @@ Deno.serve(async (req) => {
         const allTurnIds = (turnRows || []).map(t => t.id);
 
         // Get all pending actions across ALL phases of this turn
-        const { data: allActions } = await supabase
-          .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending');
+        const { data: rawActions } = await supabase
+          .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
+          .order('created_at', { ascending: false });
+
+        // Deduplicate: keep only the LATEST action per participant (allows re-submission)
+        const seenParticipants = new Set<string>();
+        const allActions = (rawActions || []).filter(a => {
+          if (seenParticipants.has(a.participant_id)) return false;
+          seenParticipants.add(a.participant_id);
+          return true;
+        });
 
         // Update positions for all move actions
-        for (const a of (allActions || [])) {
-          if (a.target_x != null && a.target_y != null) {
+        for (const a of allActions) {
+          if (a.action_type === 'move' && a.target_x != null && a.target_y != null) {
             await supabase.from('match_participants').update({
               pos_x: a.target_x,
               pos_y: a.target_y,
