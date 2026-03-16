@@ -177,16 +177,8 @@ Deno.serve(async (req) => {
       const started: string[] = [];
 
       for (const m of (dueMatches || [])) {
-        const possessionClubId = Math.random() < 0.5 ? m.home_club_id : m.away_club_id;
-
-        const { data: ballHolderPart } = await supabase
-          .from('match_participants')
-          .select('id')
-          .eq('match_id', m.id)
-          .eq('club_id', possessionClubId)
-          .eq('role_type', 'player')
-          .limit(1)
-          .single();
+        const possessionClubId = m.home_club_id;
+        const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
         await supabase.from('matches').update({
           status: 'live',
@@ -202,7 +194,7 @@ Deno.serve(async (req) => {
           turn_number: 1,
           phase: 'ball_holder',
           possession_club_id: possessionClubId,
-          ball_holder_participant_id: ballHolderPart?.id || null,
+          ball_holder_participant_id: ballHolderParticipantId,
           started_at: now,
           ends_at: phaseEnd,
           status: 'active',
