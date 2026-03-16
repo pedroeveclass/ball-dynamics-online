@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
           match_id: m.id,
           event_type: 'kickoff',
           title: '⚽ Partida iniciada!',
-          body: 'A bola está rolando.',
+          body: 'Time da casa começa com a bola no meio-campo.',
         });
 
         started.push(m.id);
