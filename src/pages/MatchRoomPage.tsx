@@ -119,7 +119,9 @@ const ACTION_LABELS: Record<string, string> = {
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
 const RESOLUTION_PHASE_DURATION = 3;
-const INTERCEPT_RADIUS = 2.5; // % of field for interception zone (smaller = harder to intercept)
+const PRE_MATCH_COUNTDOWN_SECONDS = 10;
+const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
+const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
@@ -166,6 +168,7 @@ export default function MatchRoomPage() {
   const [myClubId, setMyClubId] = useState<string | null>(null);
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [phaseTimeLeft, setPhaseTimeLeft] = useState(PHASE_DURATION);
+  const [preMatchCountdownLeft, setPreMatchCountdownLeft] = useState(PRE_MATCH_COUNTDOWN_SECONDS);
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('Processando todos os movimentos...');
@@ -187,6 +190,7 @@ export default function MatchRoomPage() {
   // Final positions after animation (locked until next turn)
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
+  const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -213,8 +217,9 @@ export default function MatchRoomPage() {
     // Safely check scheduled_at
     const scheduledDate = new Date(m.scheduled_at);
     const isValidDate = !isNaN(scheduledDate.getTime());
+    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= Date.now();
 
-    if (m.status === 'scheduled' && isValidDate && scheduledDate <= new Date()) {
+    if (m.status === 'scheduled' && shouldAutoStart) {
       await callEngine({ action: 'auto_start' });
       const { data: updated } = await supabase.from('matches').select('*').eq('id', matchId).single();
       if (updated) setMatch(updated as MatchData);
@@ -434,6 +439,41 @@ export default function MatchRoomPage() {
 
   useEffect(() => { loadMatch(); }, [loadMatch]);
 
+  // ── Pre-match countdown / auto-start ────────────────────────
+  useEffect(() => {
+    if (!match || match.status !== 'scheduled') return;
+
+    const scheduledDate = new Date(match.scheduled_at);
+    if (isNaN(scheduledDate.getTime())) {
+      setPreMatchCountdownLeft(PRE_MATCH_COUNTDOWN_SECONDS);
+      return;
+    }
+
+    const countdownStart = scheduledDate.getTime();
+    const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
+    let triggered = false;
+
+    const update = () => {
+      const now = Date.now();
+      if (now < countdownStart) {
+        setPreMatchCountdownLeft(PRE_MATCH_COUNTDOWN_SECONDS);
+        return;
+      }
+
+      const remainingMs = Math.max(0, countdownEnd - now);
+      setPreMatchCountdownLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+
+      if (!triggered && now >= countdownEnd) {
+        triggered = true;
+        loadMatch();
+      }
+    };
+
+    update();
+    const interval = setInterval(update, 200);
+    return () => clearInterval(interval);
+  }, [match?.status, match?.scheduled_at, loadMatch]);
+
   // ── Phase countdown timer ────────────────────────────────────
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -458,6 +498,13 @@ export default function MatchRoomPage() {
     setSubmittedActions(new Set());
     setResolutionStartPositions({});
     setFinalPositions({});
+
+    if (activeTurn?.ball_holder_participant_id == null) {
+      if (finalBallPos) setCarriedLooseBallPos(finalBallPos);
+    } else {
+      setCarriedLooseBallPos(null);
+    }
+
     setFinalBallPos(null);
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
@@ -806,21 +853,26 @@ export default function MatchRoomPage() {
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high') {
       submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
     } else {
-      // Move action - check if clicking near a ball trajectory for interception
+      // Move action - check if clicking near a ball trajectory for domination / steal
+      const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
       const ballPathAction = turnActions.find(action => {
         if (!activeTurn?.ball_holder_participant_id) return false;
         if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot';
+        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot' || action.action_type === 'move';
       });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      const canContestCarrierMove = ballPathAction?.action_type === 'move' && drawingParticipant?.club_id !== ballHolderNow?.club_id;
+      const canContestBallPath = ballPathAction?.action_type !== 'move';
       
-      // Check interception of ball trajectory
+      // Check interception / domination of ball trajectory
       if (
+        drawingParticipant &&
         ballPathAction &&
         ballHolderNow?.field_x != null &&
         ballHolderNow.field_y != null &&
         ballPathAction.target_x != null &&
         ballPathAction.target_y != null &&
+        (canContestBallPath || canContestCarrierMove) &&
         pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= INTERCEPT_RADIUS
       ) {
         setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
@@ -833,7 +885,7 @@ export default function MatchRoomPage() {
       // Check if clicking near a loose ball position
       if (isLooseBall && looseBallPos) {
         const distToBall = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
-        if (distToBall <= INTERCEPT_RADIUS * 2.5) {
+        if (distToBall <= INTERCEPT_RADIUS * 1.2) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
@@ -1124,12 +1176,13 @@ export default function MatchRoomPage() {
   // Find if anyone intercepted the ball this turn (has a 'receive' action)
   const interceptorAction = turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
 
-  // Loose ball position: last known ball target or finalBallPos
+  // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
+    if (carriedLooseBallPos) return carriedLooseBallPos;
     const lastBallAction = turnActions.find(a =>
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     );
     if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
@@ -1297,7 +1350,7 @@ export default function MatchRoomPage() {
     if (!activeTurn?.ball_holder_participant_id) return null;
     return turnActions.find(a => 
       a.participant_id === activeTurn.ball_holder_participant_id &&
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     ) || null;
   };
@@ -1457,7 +1510,7 @@ export default function MatchRoomPage() {
               {isLooseBall && looseBallPos && !animating &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                 const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
-                const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 2.5;
+                const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 1.15;
                 return (
                   <circle
                     cx={ballSvg.x} cy={ballSvg.y} r={zoneR}
@@ -1674,9 +1727,14 @@ export default function MatchRoomPage() {
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
                 <p className="font-display text-lg text-white/80">
                   {(() => {
-                    const d = new Date(match.scheduled_at);
-                    if (isNaN(d.getTime())) return 'Aguardando início...';
-                    return d <= new Date() ? 'Iniciando engine...' : `Começa: ${formatScheduledDate(match.scheduled_at)}`;
+                    const scheduledDate = new Date(match.scheduled_at);
+                    if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
+                    const now = Date.now();
+                    const countdownStart = scheduledDate.getTime();
+                    const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
+                    if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
+                    if (now < countdownEnd) return `Preparar... ${preMatchCountdownLeft}s`;
+                    return 'Iniciando partida...';
                   })()}
                 </p>
               </div>

@@ -30,6 +30,10 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   }
   if (action === 'move') {
+    const interceptor = findInterceptor(allActions, _attacker, participants);
+    if (interceptor && interceptor.club_id !== possClubId) {
+      return { success: false, event: 'intercepted', description: '🤲 Roubo de bola!', possession_change: true, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
+    }
     return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   }
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
@@ -48,8 +52,8 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
   const interceptors: Array<{ participant: any; progress: number }> = [];
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
-    // Accept both 'move' and 'receive' actions as potential intercepts
-    if ((a.action_type !== 'move' && a.action_type !== 'receive') || a.target_x == null || a.target_y == null) continue;
+    // Only explicit 'receive' actions should dominate/intercept the ball path
+    if (a.action_type !== 'receive' || a.target_x == null || a.target_y == null) continue;
 
     const dx = endX - startX;
     const dy = endY - startY;
@@ -60,8 +64,7 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
     const cy = startY + dy * t;
     const dist = Math.sqrt((a.target_x - cx) ** 2 + (a.target_y - cy) ** 2);
 
-    // 'receive' action has guaranteed interception if close enough
-    const threshold = a.action_type === 'receive' ? 6 : 4;
+    const threshold = 2;
     if (dist <= threshold) {
       interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t });
     }
