@@ -813,6 +813,8 @@ export default function MatchRoomPage() {
         return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot';
       });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      
+      // Check interception of ball trajectory
       if (
         ballPathAction &&
         ballHolderNow?.field_x != null &&
@@ -827,6 +829,19 @@ export default function MatchRoomPage() {
         setMouseFieldPct(null);
         return;
       }
+      
+      // Check if clicking near a loose ball position
+      if (isLooseBall && looseBallPos) {
+        const distToBall = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
+        if (distToBall <= INTERCEPT_RADIUS * 2.5) {
+          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+          setShowActionMenu(drawingAction.fromParticipantId);
+          setDrawingAction(null);
+          setMouseFieldPct(null);
+          return;
+        }
+      }
+      
       submitAction('move', drawingAction.fromParticipantId, pctX, pctY);
     }
     setDrawingAction(null);
