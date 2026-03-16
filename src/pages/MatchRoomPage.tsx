@@ -652,11 +652,15 @@ export default function MatchRoomPage() {
       }
     }
 
-    const isManager = myRole === 'manager';
     const p = participants.find(x => x.id === participantId);
     if (!p) return;
 
-    if (isManager && p.club_id === myClubId && p.role_type === 'player') {
+    // In test match, manager can control ALL players (both teams)
+    const canControlInTest = isTestMatch && myRole === 'manager';
+    const canControlOwn = myRole === 'manager' && p.club_id === myClubId;
+    const canControlSelf = myRole === 'player' && myParticipant?.id === participantId;
+
+    if ((canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player') {
       setSelectedParticipantId(participantId);
       if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
         const phase = activeTurn.phase;
@@ -669,11 +673,6 @@ export default function MatchRoomPage() {
         ) {
           setShowActionMenu(participantId);
         }
-      }
-    } else if (myRole === 'player' && myParticipant?.id === participantId) {
-      setSelectedParticipantId(participantId);
-      if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
-        setShowActionMenu(participantId);
       }
     }
   };
