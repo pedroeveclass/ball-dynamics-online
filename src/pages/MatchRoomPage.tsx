@@ -272,16 +272,84 @@ export default function MatchRoomPage() {
   }, [matchId]);
 
   // ── Load actions for current turn ──────────────────────────
+  const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
+
   const loadTurnActions = useCallback(async () => {
-    if (!activeTurn) { setTurnActions([]); return; }
-    const { data } = await supabase
+    if (!matchId || !currentTurnNumber) {
+      setTurnActions([]);
+      return;
+    }
+
+    const { data: phaseTurns } = await supabase
+      .from('match_turns')
+      .select('id, phase, turn_number, created_at')
+      .eq('match_id', matchId)
+      .eq('turn_number', currentTurnNumber)
+      .order('created_at', { ascending: true });
+
+    const turnIds = (phaseTurns || []).map(turn => turn.id);
+    if (turnIds.length === 0) {
+      setTurnActions([]);
+      return;
+    }
+
+    const phaseByTurnId = new Map((phaseTurns || []).map(turn => [turn.id, turn.phase]));
+    const { data: actions } = await supabase
       .from('match_actions')
       .select('*')
-      .eq('match_turn_id', activeTurn.id);
-    setTurnActions((data || []) as MatchAction[]);
-  }, [activeTurn?.id]);
+      .in('match_turn_id', turnIds)
+      .order('created_at', { ascending: true });
+
+    const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+    const dedupedByParticipantAndPhase = new Map<string, MatchAction>();
+
+    for (const action of ((actions || []) as MatchAction[])) {
+      const enriched: MatchAction = {
+        ...action,
+        turn_phase: phaseByTurnId.get(action.match_turn_id) ?? null,
+        turn_number: currentTurnNumber,
+      };
+      const key = `${enriched.turn_phase ?? 'unknown'}:${enriched.participant_id}`;
+      const existing = dedupedByParticipantAndPhase.get(key);
+
+      if (!existing) {
+        dedupedByParticipantAndPhase.set(key, enriched);
+        continue;
+      }
+
+      const existingPriority = priorityByController[existing.controlled_by_type] ?? 0;
+      const nextPriority = priorityByController[enriched.controlled_by_type] ?? 0;
+      const existingCreatedAt = new Date(existing.created_at || 0).getTime();
+      const nextCreatedAt = new Date(enriched.created_at || 0).getTime();
+
+      if (nextPriority > existingPriority || (nextPriority === existingPriority && nextCreatedAt >= existingCreatedAt)) {
+        dedupedByParticipantAndPhase.set(key, enriched);
+      }
+    }
+
+    const phaseOrder: Record<string, number> = {
+      ball_holder: 0,
+      attacking_support: 1,
+      defending_response: 2,
+      resolution: 3,
+    };
+
+    setTurnActions(
+      Array.from(dedupedByParticipantAndPhase.values()).sort((a, b) => {
+        const phaseDiff = (phaseOrder[a.turn_phase || 'resolution'] ?? 99) - (phaseOrder[b.turn_phase || 'resolution'] ?? 99);
+        if (phaseDiff !== 0) return phaseDiff;
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      })
+    );
+  }, [matchId, currentTurnNumber, activeTurn?.id]);
 
   useEffect(() => { loadTurnActions(); }, [loadTurnActions]);
+
+  const persistedSubmittedIds = useMemo(() => new Set(turnActions.map(action => action.participant_id)), [turnActions]);
+  const allSubmittedIds = useMemo(
+    () => new Set([...Array.from(persistedSubmittedIds), ...Array.from(submittedActions)]),
+    [persistedSubmittedIds, submittedActions]
+  );
 
   // ── Determine user role ─────────────────────────────────────
   useEffect(() => {
