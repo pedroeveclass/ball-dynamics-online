@@ -1262,6 +1262,10 @@ export default function MatchRoomPage() {
     if (action.action_type === 'move') {
       return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
     }
+    if (action.action_type === 'receive') {
+      // Receive = move arrow with cyan tip (indicates intercept at end of move)
+      return { color: '#1a1a2e', markerId: 'ah-cyan', strokeW: 2 };
+    }
     if (action.action_type === 'shoot') {
       const color = action.target_x != null && action.target_y != null
         ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot')
