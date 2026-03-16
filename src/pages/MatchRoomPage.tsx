@@ -498,6 +498,13 @@ export default function MatchRoomPage() {
     setSubmittedActions(new Set());
     setResolutionStartPositions({});
     setFinalPositions({});
+
+    if (activeTurn?.ball_holder_participant_id == null) {
+      if (finalBallPos) setCarriedLooseBallPos(finalBallPos);
+    } else {
+      setCarriedLooseBallPos(null);
+    }
+
     setFinalBallPos(null);
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
