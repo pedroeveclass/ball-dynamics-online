@@ -853,21 +853,26 @@ export default function MatchRoomPage() {
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high') {
       submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
     } else {
-      // Move action - check if clicking near a ball trajectory for interception
+      // Move action - check if clicking near a ball trajectory for domination / steal
+      const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
       const ballPathAction = turnActions.find(action => {
         if (!activeTurn?.ball_holder_participant_id) return false;
         if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot';
+        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot' || action.action_type === 'move';
       });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      const canContestCarrierMove = ballPathAction?.action_type === 'move' && drawingParticipant?.club_id !== ballHolderNow?.club_id;
+      const canContestBallPath = ballPathAction?.action_type !== 'move';
       
-      // Check interception of ball trajectory
+      // Check interception / domination of ball trajectory
       if (
+        drawingParticipant &&
         ballPathAction &&
         ballHolderNow?.field_x != null &&
         ballHolderNow.field_y != null &&
         ballPathAction.target_x != null &&
         ballPathAction.target_y != null &&
+        (canContestBallPath || canContestCarrierMove) &&
         pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= INTERCEPT_RADIUS
       ) {
         setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
@@ -880,7 +885,7 @@ export default function MatchRoomPage() {
       // Check if clicking near a loose ball position
       if (isLooseBall && looseBallPos) {
         const distToBall = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
-        if (distToBall <= INTERCEPT_RADIUS * 2.5) {
+        if (distToBall <= INTERCEPT_RADIUS * 1.2) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
