@@ -713,24 +713,33 @@ export default function MatchRoomPage() {
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (turnActions.length === 0) return;
+    if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    // Start animation
+    const snapshot = Object.fromEntries(
+      participants
+        .filter(p => p.field_x != null && p.field_y != null)
+        .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
+    );
+
+    setResolutionStartPositions(snapshot);
+    animatedResolutionIdRef.current = activeTurn.id;
     setAnimating(true);
-    const startTime = Date.now();
-    const duration = 2000; // 2 seconds animation
+    setAnimProgress(0);
 
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(1, elapsed / duration);
+    const duration = 2000;
+    let startTime: number | null = null;
+
+    const animate = (now: number) => {
+      if (startTime === null) startTime = now;
+      const progress = Math.min(1, (now - startTime) / duration);
       setAnimProgress(progress);
 
       if (progress < 1) {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
         setAnimating(false);
-        // After animation, update participant positions locally from their actions
         setParticipants(prev => prev.map(p => {
-          const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null);
+          const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
           if (action && action.target_x != null && action.target_y != null) {
             return { ...p, field_x: action.target_x, field_y: action.target_y };
           }
@@ -743,24 +752,29 @@ export default function MatchRoomPage() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [activeTurn?.phase, activeTurn?.id, turnActions]);
+  }, [activeTurn?.phase, activeTurn?.id, turnActions, participants]);
 
   // ── Compute animated positions ─────────────────────────────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
     if (!animating || activeTurn?.phase !== 'resolution') {
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
-    const action = turnActions.find(a => a.participant_id === p.id && a.target_x != null);
-    if (!action || action.target_x == null || action.target_y == null) {
-      return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
+
+    const moveAction = turnActions.find(
+      a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null
+    );
+    const startPos = resolutionStartPositions[p.id];
+    const startX = startPos?.x ?? p.field_x ?? 50;
+    const startY = startPos?.y ?? p.field_y ?? 50;
+
+    if (!moveAction || moveAction.target_x == null || moveAction.target_y == null) {
+      return { x: startX, y: startY };
     }
-    const startX = p.field_x ?? 50;
-    const startY = p.field_y ?? 50;
-    // Ease out cubic
+
     const t = 1 - Math.pow(1 - animProgress, 3);
     return {
-      x: startX + (action.target_x - startX) * t,
-      y: startY + (action.target_y - startY) * t,
+      x: startX + (moveAction.target_x - startX) * t,
+      y: startY + (moveAction.target_y - startY) * t,
     };
   };
 
