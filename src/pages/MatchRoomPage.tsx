@@ -427,8 +427,11 @@ export default function MatchRoomPage() {
     setDrawingAction(null);
     setShowActionMenu(null);
     setPendingInterceptChoice(null);
-    setAnimating(false);
-    setAnimProgress(0);
+    // Don't reset animation state when entering resolution - the animation effect handles it
+    if (activeTurn?.phase !== 'resolution') {
+      setAnimating(false);
+      setAnimProgress(0);
+    }
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Auto-show action menu for ball holder in phase 1
