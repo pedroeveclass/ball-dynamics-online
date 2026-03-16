@@ -657,7 +657,7 @@ export default function MatchRoomPage() {
 
     if (isManager && p.club_id === myClubId && p.role_type === 'player') {
       setSelectedParticipantId(participantId);
-      if (match?.status === 'live' && activeTurn && !submittedActions.has(participantId)) {
+      if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
         const isAttacking = p.club_id === match.possession_club_id;
@@ -671,7 +671,7 @@ export default function MatchRoomPage() {
       }
     } else if (myRole === 'player' && myParticipant?.id === participantId) {
       setSelectedParticipantId(participantId);
-      if (match?.status === 'live' && activeTurn && !submittedActions.has(participantId)) {
+      if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
         setShowActionMenu(participantId);
       }
     }
