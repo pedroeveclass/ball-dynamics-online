@@ -91,6 +91,9 @@ interface MatchAction {
   target_y: number | null;
   target_participant_id: string | null;
   status: string;
+  created_at?: string;
+  turn_phase?: string | null;
+  turn_number?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────
