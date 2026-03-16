@@ -1306,7 +1306,7 @@ export default function MatchRoomPage() {
               myId={myParticipant?.id ?? null}
               selectedId={selectedParticipantId}
               onSelect={handlePlayerClick}
-              submittedIds={submittedActions}
+              submittedIds={allSubmittedIds}
             />
           </AccordionSection>
 
@@ -1324,7 +1324,7 @@ export default function MatchRoomPage() {
               myId={myParticipant?.id ?? null}
               selectedId={selectedParticipantId}
               onSelect={handlePlayerClick}
-              submittedIds={submittedActions}
+              submittedIds={allSubmittedIds}
             />
           </AccordionSection>
 
