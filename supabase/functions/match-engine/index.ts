@@ -75,6 +75,58 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
   return interceptors[0].participant;
 }
 
+const KICKOFF_X = 50;
+const KICKOFF_Y = 50;
+
+async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: string, seededParticipants?: any[]): Promise<string | null> {
+  let candidates = (seededParticipants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player');
+
+  if (candidates.length === 0) {
+    const { data } = await supabase
+      .from('match_participants')
+      .select('id, club_id, role_type, pos_x, pos_y, created_at')
+      .eq('match_id', matchId)
+      .eq('club_id', clubId)
+      .eq('role_type', 'player');
+    candidates = data || [];
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a: any, b: any) => {
+    const distA = ((a.pos_x ?? KICKOFF_X) - KICKOFF_X) ** 2 + ((a.pos_y ?? KICKOFF_Y) - KICKOFF_Y) ** 2;
+    const distB = ((b.pos_x ?? KICKOFF_X) - KICKOFF_X) ** 2 + ((b.pos_y ?? KICKOFF_Y) - KICKOFF_Y) ** 2;
+    if (distA !== distB) return distA - distB;
+    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+  });
+
+  const chosen = candidates[0];
+  await supabase.from('match_participants').update({ pos_x: KICKOFF_X, pos_y: KICKOFF_Y }).eq('id', chosen.id);
+  return chosen.id;
+}
+
+function findLooseBallClaimer(allActions: any[], participants: any[]): any | null {
+  const receiveActions = allActions.filter((a) => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
+  const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
+
+  for (const action of receiveActions) {
+    const participant = participants.find((p: any) => p.id === action.participant_id);
+    if (!participant) continue;
+
+    const startX = participant.pos_x ?? 50;
+    const startY = participant.pos_y ?? 50;
+    ranked.push({
+      participant,
+      distance: Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2),
+      createdAt: new Date(action.created_at || 0).getTime(),
+    });
+  }
+
+  if (ranked.length === 0) return null;
+  ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
+  return ranked[0].participant;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

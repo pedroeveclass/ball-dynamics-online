@@ -122,6 +122,7 @@ const RESOLUTION_PHASE_DURATION = 3;
 const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
 const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
+const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
