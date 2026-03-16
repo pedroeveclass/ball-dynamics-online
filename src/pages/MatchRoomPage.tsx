@@ -1481,7 +1481,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
             <div
               className="h-full rounded-full transition-all duration-100"
               style={{
-                width: `${(timeLeft / PHASE_DURATION) * 100}%`,
+                width: `${(timeLeft / phaseDuration) * 100}%`,
                 background: timeLeft > 3 ? 'hsl(var(--pitch-green))' : timeLeft > 1 ? 'hsl(var(--warning-amber))' : 'hsl(var(--destructive))',
               }}
             />
