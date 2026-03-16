@@ -323,7 +323,8 @@ Deno.serve(async (req) => {
         const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
 
         const nextPhaseStart = new Date().toISOString();
-        const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+        const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
+        const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
 
         await supabase.from('match_turns')
           .update({ status: 'resolved', resolved_at: new Date().toISOString() })
