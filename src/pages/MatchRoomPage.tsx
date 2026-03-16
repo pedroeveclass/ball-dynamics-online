@@ -119,7 +119,7 @@ const ACTION_LABELS: Record<string, string> = {
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
 const RESOLUTION_PHASE_DURATION = 3;
-const INTERCEPT_RADIUS = 5; // % of field for interception zone
+const INTERCEPT_RADIUS = 2.5; // % of field for interception zone (smaller = harder to intercept)
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
