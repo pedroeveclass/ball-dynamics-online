@@ -921,7 +921,8 @@ export default function MatchRoomPage() {
           const finals: Record<string, { x: number; y: number }> = {};
           
           for (const p of participantsRef.current) {
-            const action = latestActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
+            // Both 'move' and 'receive' actions cause player to end at target
+            const action = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
             if (action && action.target_x != null && action.target_y != null) {
               finals[p.id] = { x: action.target_x, y: action.target_y };
             } else {
@@ -934,14 +935,30 @@ export default function MatchRoomPage() {
           
           // Compute final ball position
           const bhId = activeTurn.ball_holder_participant_id;
+          const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
+          
           if (bhId) {
             const ballAction = latestActions
               .filter(a => a.participant_id === bhId)
               .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
             
             if (ballAction) {
-              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
-                setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high') && ballAction.target_x != null && ballAction.target_y != null) {
+                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  // Ball stops at interceptor position
+                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
+                } else {
+                  setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+                }
+              } else if (ballAction.action_type === 'shoot' && ballAction.target_x != null && ballAction.target_y != null) {
+                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
+                } else {
+                  // Shot with no interception: ball ends in the goal
+                  const shooter = participantsRef.current.find(p => p.id === bhId);
+                  const isHome = shooter?.club_id === matchRef.current?.home_club_id;
+                  setFinalBallPos({ x: isHome ? 100 : 0, y: ballAction.target_y });
+                }
               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
                 setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
               }
