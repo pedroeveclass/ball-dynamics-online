@@ -287,8 +287,7 @@ Deno.serve(async (req) => {
           .find(a => a.participant_id === ballHolder?.id);
 
         if (ballHolderAction) {
-          const defender = defPlayers[0];
-          const result = resolveAction(ballHolderAction.action_type, ballHolder, defender);
+          const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '');
 
           if (result.goal) {
             if (possClubId === match.home_club_id) homeScore++;
@@ -299,22 +298,56 @@ Deno.serve(async (req) => {
               title: `⚽ GOL! ${homeScore} – ${awayScore}`,
               body: `Turno ${match.current_turn_number}`,
             });
-          } else if (result.possession_change) {
-            newPossessionClubId = defPlayers[0]?.club_id || possClubId;
-            nextBallHolderParticipantId = defPlayers[0]?.id || null;
+
+            // After goal, possession goes to the other team
+            newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+            const otherTeamPlayers = (participants || []).filter(p => p.club_id === newPossessionClubId);
+            nextBallHolderParticipantId = otherTeamPlayers[0]?.id || null;
+          } else if (result.newBallHolderId) {
+            // Intercepted - ball goes to the interceptor
+            nextBallHolderParticipantId = result.newBallHolderId;
+            newPossessionClubId = result.newPossessionClubId || possClubId;
 
             await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'possession_change',
-              title: '🔄 Troca de posse',
+              match_id, event_type: result.possession_change ? 'possession_change' : 'pass_complete',
+              title: result.possession_change ? '🔄 Troca de posse - Bola dominada!' : '🤲 Bola dominada!',
               body: result.description,
             });
-          } else {
-            const samePlayers = possPlayers.filter(p => p.id !== ballHolder?.id);
+          } else if (ballHolderAction.action_type === 'pass_low' || ballHolderAction.action_type === 'pass_high') {
+            // Pass succeeded without interception - find nearest player to target
             if (ballHolderAction.target_participant_id) {
               nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-            } else if (samePlayers.length > 0) {
-              nextBallHolderParticipantId = samePlayers[Math.floor(Math.random() * samePlayers.length)].id;
+            } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
+              // Find closest player to pass target
+              let closestDist = Infinity;
+              let closestId: string | null = null;
+              for (const p of (participants || [])) {
+                if (p.id === ballHolder?.id) continue;
+                const moveAction = allActions.find(a => a.participant_id === p.id && a.action_type === 'move');
+                const px = moveAction?.target_x ?? p.pos_x ?? 50;
+                const py = moveAction?.target_y ?? p.pos_y ?? 50;
+                const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
+                if (dist < closestDist) {
+                  closestDist = dist;
+                  closestId = p.id;
+                }
+              }
+              if (closestId) {
+                nextBallHolderParticipantId = closestId;
+                const closestPlayer = (participants || []).find(p => p.id === closestId);
+                if (closestPlayer && closestPlayer.club_id !== possClubId) {
+                  newPossessionClubId = closestPlayer.club_id;
+                  await supabase.from('match_event_logs').insert({
+                    match_id, event_type: 'possession_change',
+                    title: '🔄 Troca de posse',
+                    body: 'Passe interceptado pelo adversário mais próximo.',
+                  });
+                }
+              }
             }
+          } else if (ballHolderAction.action_type === 'move') {
+            // Ball holder moved with ball - they keep it
+            nextBallHolderParticipantId = ballHolder?.id || null;
           }
         }
 
