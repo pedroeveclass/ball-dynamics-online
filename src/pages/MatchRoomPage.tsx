@@ -1305,10 +1305,10 @@ export default function MatchRoomPage() {
   // Arrow from drawing action
   const drawingFrom = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
 
-  // Shot target: for shoot, arrow goes toward the goal
+  // Shot target: for shoot, arrow goes slightly inside the goal
   const getShootTarget = (fromPart: Participant): { x: number; y: number } => {
     const isHome = fromPart.club_id === match.home_club_id;
-    return isHome ? { x: 98, y: 50 } : { x: 2, y: 50 };
+    return isHome ? { x: 100 + GOAL_LINE_OVERFLOW_PCT, y: 50 } : { x: 0 - GOAL_LINE_OVERFLOW_PCT, y: 50 };
   };
 
   // Arrow quality based on distance

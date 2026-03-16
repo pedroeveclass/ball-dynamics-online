@@ -367,10 +367,21 @@ Deno.serve(async (req) => {
             }
           }
         } else {
-          // Loose ball resolution: check if anyone moved close to the ball
-          // The ball is at the last known target position. Since nobody has it,
-          // we keep it as loose for next turn.
-          nextBallHolderParticipantId = null;
+          const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
+
+          if (looseBallClaimer) {
+            nextBallHolderParticipantId = looseBallClaimer.id;
+            newPossessionClubId = looseBallClaimer.club_id;
+
+            await supabase.from('match_event_logs').insert({
+              match_id,
+              event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
+              title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
+              body: 'Quem chegou primeiro na bola solta ficou com a posse.',
+            });
+          } else {
+            nextBallHolderParticipantId = null;
+          }
         }
 
         // Mark ALL raw actions for this turn as used/overridden
