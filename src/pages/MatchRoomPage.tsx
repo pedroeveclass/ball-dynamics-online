@@ -1176,12 +1176,13 @@ export default function MatchRoomPage() {
   // Find if anyone intercepted the ball this turn (has a 'receive' action)
   const interceptorAction = turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
 
-  // Loose ball position: last known ball target or finalBallPos
+  // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
+    if (carriedLooseBallPos) return carriedLooseBallPos;
     const lastBallAction = turnActions.find(a =>
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     );
     if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
