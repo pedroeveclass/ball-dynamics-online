@@ -855,6 +855,49 @@ export default function MatchRoomPage() {
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
+  const getAnimatedBallPos = (): { x: number; y: number } | null => {
+    if (!ballHolder) return null;
+
+    const holderRenderPos = getAnimatedPos(ballHolder);
+    const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
+    const ballAction = turnActions
+      .filter(action => action.participant_id === ballHolder.id && (action.turn_phase === 'ball_holder' || action.turn_phase == null))
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+
+    if (!animating || activeTurn?.phase !== 'resolution' || !ballAction) {
+      return defaultBallPos;
+    }
+
+    const startPos = resolutionStartPositions[ballHolder.id] ?? {
+      x: ballHolder.field_x ?? 50,
+      y: ballHolder.field_y ?? 50,
+    };
+    const t = 1 - Math.pow(1 - animProgress, 3);
+
+    if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+      const currentX = startPos.x + (ballAction.target_x - startPos.x) * t;
+      const currentY = startPos.y + (ballAction.target_y - startPos.y) * t;
+      const dx = ballAction.target_x - startPos.x;
+      const dy = ballAction.target_y - startPos.y;
+      const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      return {
+        x: currentX + (dx / len) * 1.8,
+        y: currentY + (dy / len) * 1.8,
+      };
+    }
+
+    if (ballAction.target_x != null && ballAction.target_y != null) {
+      return {
+        x: startPos.x + (ballAction.target_x - startPos.x) * t,
+        y: startPos.y + (ballAction.target_y - startPos.y) * t,
+      };
+    }
+
+    return defaultBallPos;
+  };
+
+  const ballDisplayPos = getAnimatedBallPos();
+
   // Arrow from drawing action
   const drawingFrom = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
 
@@ -895,20 +938,26 @@ export default function MatchRoomPage() {
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / PHASE_DURATION : 0;
 
   // Get arrow color for action type
-  const getActionArrowColor = (action: MatchAction, fromPart: Participant): { color: string; markerId: string; strokeW: number } => {
+  const getActionArrowColor = (
+    action: MatchAction,
+    fromPart: Participant,
+    origin?: { x: number; y: number }
+  ): { color: string; markerId: string; strokeW: number } => {
+    const fromX = origin?.x ?? fromPart.field_x ?? 50;
+    const fromY = origin?.y ?? fromPart.field_y ?? 50;
+
     if (action.action_type === 'move') {
       return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
     }
     if (action.action_type === 'shoot') {
-      const color = action.target_x != null && fromPart.field_x != null
-        ? getArrowQuality(fromPart.field_x, fromPart.field_y!, action.target_x, action.target_y!, 'shoot')
+      const color = action.target_x != null && action.target_y != null
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot')
         : '#f59e0b';
       const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
       return { color, markerId, strokeW: 3.5 };
     }
-    // pass
-    const color = action.target_x != null && fromPart.field_x != null
-      ? getArrowQuality(fromPart.field_x, fromPart.field_y!, action.target_x, action.target_y!, 'pass')
+    const color = action.target_x != null && action.target_y != null
+      ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass')
       : '#06b6d4';
     const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
     return { color, markerId, strokeW: 3 };
