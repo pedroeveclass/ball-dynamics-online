@@ -110,6 +110,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
+const RESOLUTION_PHASE_DURATION = 3;
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
