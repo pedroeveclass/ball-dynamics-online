@@ -599,6 +599,13 @@ export default function MatchRoomPage() {
           return;
         }
 
+        // "No active turn" is a recoverable race condition — just reload state
+        if (result?.error === 'No active turn' || result?.error === 'Match not found or not live') {
+          console.warn('Tick: no active turn or match not live, reloading state...');
+          await loadMatch();
+          return;
+        }
+
         if (!response.ok || result?.error) {
           throw new Error(result?.error || 'Erro ao processar turno');
         }
