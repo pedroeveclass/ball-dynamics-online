@@ -10,31 +10,7 @@ const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
 
-function botDecideAction(participant: any, phase: string, isBallHolder: boolean): { action: string; target_x?: number; target_y?: number } {
-  const px = participant.pos_x ?? 50;
-  const py = participant.pos_y ?? 50;
-
-  if (isBallHolder) {
-    const rand = Math.random();
-    if (rand < 0.5) {
-      // Move with ball - small random displacement
-      const dx = (Math.random() - 0.3) * 10;
-      const dy = (Math.random() - 0.5) * 10;
-      return { action: 'move', target_x: Math.max(2, Math.min(98, px + dx)), target_y: Math.max(2, Math.min(98, py + dy)) };
-    }
-    if (rand < 0.8) return { action: 'pass_low', target_x: px + (Math.random() - 0.3) * 15, target_y: py + (Math.random() - 0.5) * 20 };
-    return { action: 'shoot', target_x: 98, target_y: 40 + Math.random() * 20 };
-  }
-
-  // Off-ball: move or stay
-  if (Math.random() < 0.6) {
-    const dx = (Math.random() - 0.5) * 8;
-    const dy = (Math.random() - 0.5) * 8;
-    return { action: 'move', target_x: Math.max(2, Math.min(98, px + dx)), target_y: Math.max(2, Math.min(98, py + dy)) };
-  }
-  // No action = stay in place
-  return { action: 'move', target_x: px, target_y: py };
-}
+// No bot actions - humans only
 
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string): {
   success: boolean; event: string; description: string;
