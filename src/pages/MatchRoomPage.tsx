@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Bot, User, Eye, ChevronDown, ChevronRight, Square } from 'lucide-react';
+import { Bot, User, Eye, ChevronDown, ChevronRight, Square, LogOut } from 'lucide-react';
 
 // ─── Formation layouts ─────────────────────────────────────────
 const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
@@ -96,10 +97,17 @@ interface MatchAction {
   turn_number?: number;
 }
 
+interface PendingInterceptChoice {
+  participantId: string;
+  targetX: number;
+  targetY: number;
+}
+
 // ─── Constants ────────────────────────────────────────────────
 const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
   defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
+  processing: 'Pausa',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -111,6 +119,22 @@ const ACTION_LABELS: Record<string, string> = {
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
 const RESOLUTION_PHASE_DURATION = 3;
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+  const dx = bx - ax;
+  const dy = by - ay;
+  if (dx === 0 && dy === 0) return Math.hypot(px - ax, py - ay);
+  const t = clamp((((px - ax) * dx) + ((py - ay) * dy)) / ((dx * dx) + (dy * dy)), 0, 1);
+  const cx = ax + dx * t;
+  const cy = ay + dy * t;
+  return Math.hypot(px - cx, py - cy);
+};
+const pointSegmentProgress = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+  const dx = bx - ax;
+  const dy = by - ay;
+  if (dx === 0 && dy === 0) return 0;
+  return clamp((((px - ax) * dx) + ((py - ay) * dy)) / ((dx * dx) + (dy * dy)), 0, 1);
+};
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
@@ -121,7 +145,8 @@ interface DrawingState {
 // ─── Main Component ───────────────────────────────────────────
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
-  const { user, playerProfile, managerProfile, club } = useAuth();
+  const navigate = useNavigate();
+  const { user, club } = useAuth();
 
   const [match, setMatch] = useState<MatchData | null>(null);
   const [homeClub, setHomeClub] = useState<ClubInfo | null>(null);
@@ -136,12 +161,15 @@ export default function MatchRoomPage() {
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [phaseTimeLeft, setPhaseTimeLeft] = useState(PHASE_DURATION);
   const [submittingAction, setSubmittingAction] = useState(false);
+  const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
+  const [processingLabel, setProcessingLabel] = useState('Processando todos os movimentos...');
 
   // Interactive drawing
   const [drawingAction, setDrawingAction] = useState<DrawingState | null>(null);
   const [mouseFieldPct, setMouseFieldPct] = useState<{ x: number; y: number } | null>(null);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
   const [submittedActions, setSubmittedActions] = useState<Set<string>>(new Set());
+  const [pendingInterceptChoice, setPendingInterceptChoice] = useState<PendingInterceptChoice | null>(null);
 
   // Persisted actions for current turn (loaded from DB)
   const [turnActions, setTurnActions] = useState<MatchAction[]>([]);
@@ -157,11 +185,11 @@ export default function MatchRoomPage() {
   const [logAccOpen, setLogAccOpen] = useState(false);
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const engineRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
   const animatedResolutionIdRef = useRef<string | null>(null);
+  const phaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load match data ──────────────────────────────────────────
   const loadMatch = useCallback(async () => {
@@ -398,13 +426,14 @@ export default function MatchRoomPage() {
   useEffect(() => {
     setDrawingAction(null);
     setShowActionMenu(null);
+    setPendingInterceptChoice(null);
     setAnimating(false);
     setAnimProgress(0);
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Auto-show action menu for ball holder in phase 1
   useEffect(() => {
-    if (!activeTurn || match?.status !== 'live') return;
+    if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
       const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
@@ -419,40 +448,79 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing]);
 
-  // ── Engine tick — fires when phase timer expires ─────────────
+  // ── Engine tick — process once per phase end with explicit pause ─────────────
   const tickInFlightRef = useRef(false);
   useEffect(() => {
-    if (engineRef.current) clearInterval(engineRef.current);
-    if (match?.status !== 'live' || !matchId) return;
-    const checkAndAdvance = async () => {
+    if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
+    if (match?.status !== 'live' || !matchId || !activeTurn || isPhaseProcessing) return;
+
+    const processTurnPhase = async () => {
       if (tickInFlightRef.current) return;
-      if (!activeTurn) return;
-      const remaining = new Date(activeTurn.ends_at).getTime() - Date.now();
-      if (remaining > 300) return; // Phase hasn't expired yet
       tickInFlightRef.current = true;
+      setIsPhaseProcessing(true);
+      setProcessingLabel(
+        activeTurn.phase === 'defending_response'
+          ? 'Processando todos os movimentos...'
+          : activeTurn.phase === 'resolution'
+            ? 'Processando próximo turno...'
+            : 'Processando os movimentos...'
+      );
+
       try {
-        await callEngine({ action: 'tick', match_id: matchId });
-        const [matchRes, turnRes] = await Promise.all([
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch(
+          `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: session ? `Bearer ${session.access_token}` : '' },
+            body: JSON.stringify({ action: 'tick', match_id: matchId }),
+          }
+        );
+        const result = await response.json().catch(() => ({}));
+
+        if (result?.status === 'waiting') {
+          const retryMs = Math.max(150, Number(result.remaining_ms ?? 250));
+          tickInFlightRef.current = false;
+          phaseTimeoutRef.current = setTimeout(processTurnPhase, retryMs);
+          return;
+        }
+
+        if (!response.ok || result?.error) {
+          throw new Error(result?.error || 'Erro ao processar turno');
+        }
+
+        const [matchRes, turnRes, partsRes] = await Promise.all([
           supabase.from('matches').select('*').eq('id', matchId).single(),
           supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
             .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+          supabase.from('match_participants').select('*').eq('match_id', matchId),
         ]);
+
         if (matchRes.data) setMatch(matchRes.data as MatchData);
         if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
-        loadTurnActions();
-        const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
-        if (parts && matchRes.data) reEnrichParticipants(parts, matchRes.data as MatchData);
-      } catch (e) { console.error('Tick failed:', e); }
-      finally { tickInFlightRef.current = false; }
+        if (partsRes.data && matchRes.data) await reEnrichParticipants(partsRes.data, matchRes.data as MatchData);
+        await loadTurnActions();
+      } catch (e) {
+        console.error('Tick failed:', e);
+        toast.error('Erro ao processar a próxima parte do turno');
+      } finally {
+        tickInFlightRef.current = false;
+        setIsPhaseProcessing(false);
+      }
     };
-    engineRef.current = setInterval(checkAndAdvance, 800);
-    return () => { if (engineRef.current) clearInterval(engineRef.current); };
-  }, [match?.status, matchId, activeTurn?.ends_at]);
+
+    const remaining = Math.max(0, new Date(activeTurn.ends_at).getTime() - Date.now());
+    phaseTimeoutRef.current = setTimeout(processTurnPhase, remaining + 50);
+
+    return () => {
+      if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
+    };
+  }, [match?.status, matchId, activeTurn?.id, activeTurn?.ends_at, activeTurn?.phase, isPhaseProcessing, loadTurnActions, reEnrichParticipants]);
 
   // Helper to re-enrich participants after position updates
-  const reEnrichParticipants = useCallback(async (parts: any[], matchData: MatchData) => {
+  async function reEnrichParticipants(parts: any[], matchData: MatchData) {
     if (!matchId || !matchData) return;
     const playerIds = parts.filter(p => p.player_profile_id).map(p => p.player_profile_id!);
     const slotIds = parts.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id!);
@@ -516,7 +584,7 @@ export default function MatchRoomPage() {
     const managersAndSpecs = enriched.filter(p => p.role_type !== 'player');
 
     setParticipants([...homeWithPos, ...awayWithPos, ...managersAndSpecs]);
-  }, [matchId, homeClub, awayClub]);
+  }
 
   // ── Realtime ─────────────────────────────────────────────────
   useEffect(() => {
@@ -611,21 +679,31 @@ export default function MatchRoomPage() {
     } catch { toast.error('Erro ao finalizar'); }
   };
 
+  const exitToDashboard = () => {
+    navigate(myRole === 'manager' ? '/manager' : '/player');
+  };
+
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
-      // No action = stay in place, submit move to current pos
       const p = participants.find(x => x.id === participantId);
       submitAction('move', participantId, p?.field_x, p?.field_y);
       setShowActionMenu(null);
+      setPendingInterceptChoice(null);
       return;
     }
     if (actionType === 'receive') {
-      submitAction('move', participantId);
+      if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
+        submitAction('move', participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
+      } else {
+        submitAction('move', participantId);
+      }
       setShowActionMenu(null);
+      setPendingInterceptChoice(null);
       return;
     }
     setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
     setShowActionMenu(null);
+    setPendingInterceptChoice(null);
   };
 
   const handleFieldClick = (pctX: number, pctY: number) => {
@@ -639,10 +717,33 @@ export default function MatchRoomPage() {
     });
 
     if (drawingAction.type === 'shoot') {
-      submitAction('shoot', drawingAction.fromParticipantId, pctX, pctY);
+      const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
+      if (!shooter) return;
+      const goalTarget = getShootTarget(shooter);
+      submitAction('shoot', drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high') {
       submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
     } else {
+      const ballPathAction = turnActions.find(action => {
+        if (!activeTurn?.ball_holder_participant_id) return false;
+        if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
+        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot';
+      });
+      const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      if (
+        ballPathAction &&
+        ballHolderNow?.field_x != null &&
+        ballHolderNow.field_y != null &&
+        ballPathAction.target_x != null &&
+        ballPathAction.target_y != null &&
+        pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= 4
+      ) {
+        setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+        setShowActionMenu(drawingAction.fromParticipantId);
+        setDrawingAction(null);
+        setMouseFieldPct(null);
+        return;
+      }
       submitAction('move', drawingAction.fromParticipantId, pctX, pctY);
     }
     setDrawingAction(null);
@@ -650,6 +751,8 @@ export default function MatchRoomPage() {
   };
 
   const handlePlayerClick = (participantId: string) => {
+    if (isPhaseProcessing) return;
+
     if (drawingAction) {
       const p = participants.find(x => x.id === participantId);
       if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high')) {
@@ -663,21 +766,20 @@ export default function MatchRoomPage() {
     const p = participants.find(x => x.id === participantId);
     if (!p) return;
 
-    // In test match, manager can control ALL players (both teams)
     const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
     const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
     const isTest = hCount <= 4 && aCount <= 4;
     const canControlInTest = isTest && myRole === 'manager';
     const canControlOwn = myRole === 'manager' && p.club_id === myClubId;
     const canControlSelf = myRole === 'player' && myParticipant?.id === participantId;
+    const isControllable = (canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player';
 
-    if ((canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player') {
+    if (isControllable) {
       setSelectedParticipantId(participantId);
       if (match?.status === 'live' && activeTurn) {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
-        const isAttacking = p.club_id === match.possession_club_id;
-        // Allow action (or re-action) during the appropriate phase - no blocking by allSubmittedIds
+        const isAttacking = p.club_id === (activeTurn.possession_club_id || match.possession_club_id);
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking && !isBH) ||
@@ -792,16 +894,17 @@ export default function MatchRoomPage() {
 
   // Get actions for current phase
   const getActionsForParticipant = (participantId: string): string[] => {
-    if (!activeTurn) return [];
+    if (!activeTurn || isPhaseProcessing) return [];
     const p = participants.find(x => x.id === participantId);
     if (!p) return [];
     const phase = activeTurn.phase;
     const isBH = activeTurn.ball_holder_participant_id === participantId;
-    const isAttacking = p.club_id === match.possession_club_id;
+    const isAttacking = p.club_id === (activeTurn.possession_club_id || match.possession_club_id);
+    const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'shoot'];
-    if (phase === 'attacking_support' && isAttacking && !isBH) return ['no_action', 'move'];
-    if (phase === 'defending_response' && !isAttacking) return ['no_action', 'move'];
+    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+    if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
   };
 
@@ -966,9 +1069,9 @@ export default function MatchRoomPage() {
             {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
           </Badge>
           {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">TESTE 2v2</Badge>}
+          {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
         </div>
 
-        {/* Score */}
         <div className="flex items-center gap-4">
           <ClubBadgeInline club={homeClub} />
           <div className="font-display text-3xl font-extrabold tracking-widest">
@@ -980,6 +1083,9 @@ export default function MatchRoomPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={exitToDashboard} className="h-8 text-[10px] font-display">
+            <LogOut className="h-3 w-3" /> Sair
+          </Button>
           {isManager && isTestMatch && isLive && (
             <button
               onClick={finishMatch}
@@ -1237,10 +1343,11 @@ export default function MatchRoomPage() {
               );
             })()}
 
-            {/* Phase 4 animation overlay */}
-            {animating && (
+            {(animating || isPhaseProcessing) && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
-                <span className="text-[11px] font-display font-bold text-tactical animate-pulse">⚡ MOTION — Resolvendo jogada...</span>
+                <span className="text-[11px] font-display font-bold text-tactical animate-pulse">
+                  {isPhaseProcessing ? `⏸ ${processingLabel}` : '⚡ MOTION — Resolvendo jogada...'}
+                </span>
               </div>
             )}
 
@@ -1405,13 +1512,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   }
 
   const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / phaseDuration) : 0;
-
-  const phaseColors: Record<string, string> = {
-    ball_holder: '#22c55e',
-    attacking_support: '#eab308',
-    defending_response: '#f59e0b',
-    resolution: '#6b7280',
-  };
+  const phaseFills = ['hsl(var(--pitch))', 'hsl(var(--warning))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -1424,9 +1525,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         {quadrants.map((q, i) => {
           const isActive = i === currentIdx;
           const isPast = i < currentIdx;
-          const fillColor = isActive
-            ? (phaseColors[phases[i].key] || '#22c55e')
-            : isPast ? 'hsl(140,20%,18%)' : 'hsl(220,15%,20%)';
+          const fillColor = isActive ? phaseFills[i] : isPast ? 'hsl(var(--secondary))' : 'hsl(var(--muted))';
 
           return (
             <g key={i}>
@@ -1434,7 +1533,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
                 d={arcPath(q.startAngle, q.endAngle, R_INNER, R_OUTER)}
                 fill={fillColor}
                 opacity={isActive ? 1 : isPast ? 0.6 : 0.35}
-                stroke={isActive ? '#fff' : 'hsl(220,10%,15%)'}
+                stroke={isActive ? 'hsl(var(--foreground))' : 'hsl(var(--border))'}
                 strokeWidth={isActive ? 1.5 : 0.5}
               />
               {(() => {
@@ -1442,7 +1541,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
                 return (
                   <text x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="central"
                     fontSize="14" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-                    fill={isActive ? '#fff' : 'rgba(255,255,255,0.4)'}
+                    fill={isActive ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
                   >
                     {phases[i].label}
                   </text>
@@ -1461,25 +1560,25 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
           return (
             <path
               d={`M ${p1.x} ${p1.y} A ${R_OUTER - 2} ${R_OUTER - 2} 0 ${largeArc} 1 ${p2.x} ${p2.y}`}
-              fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="4" strokeLinecap="round"
+              fill="none" stroke="hsl(var(--foreground) / 0.35)" strokeWidth="4" strokeLinecap="round"
             />
           );
         })()}
 
-        <circle cx={CX} cy={CY} r={R_INNER - 2} fill="hsl(220,20%,8%)" stroke="hsl(220,10%,15%)" strokeWidth="1" />
-        <line x1={CX - 6} y1={CY} x2={CX + 6} y2={CY} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        <line x1={CX} y1={CY - 6} x2={CX} y2={CY + 6} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        <circle cx={CX} cy={CY} r={R_INNER - 2} fill="hsl(var(--background))" stroke="hsl(var(--border))" strokeWidth="1" />
+        <line x1={CX - 6} y1={CY} x2={CX + 6} y2={CY} stroke="hsl(var(--foreground) / 0.2)" strokeWidth="0.5" />
+        <line x1={CX} y1={CY - 6} x2={CX} y2={CY + 6} stroke="hsl(var(--foreground) / 0.2)" strokeWidth="0.5" />
 
         <text x={CX} y={CY - 2} textAnchor="middle" dominantBaseline="central"
           fontSize="12" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-          fill={currentPhase ? '#fff' : 'rgba(255,255,255,0.3)'}
+          fill={currentPhase ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
         >
           {currentPhase ? (PHASE_LABELS[currentPhase] || 'Wait') : 'Wait'}
         </text>
         {currentPhase && timeLeft > 0 && (
           <text x={CX} y={CY + 10} textAnchor="middle"
             fontSize="9" fontWeight="700" fontFamily="'Barlow Condensed', sans-serif"
-            fill={timeLeft <= 2 ? '#ef4444' : 'rgba(255,255,255,0.5)'}
+            fill={timeLeft <= 2 ? 'hsl(var(--destructive))' : 'hsl(var(--muted-foreground))'}
           >
             {timeLeft}s
           </text>
@@ -1492,13 +1591,10 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
             <span>{PHASE_LABELS[currentPhase]}</span>
             <span className={timeLeft <= 2 ? 'text-destructive' : ''}>{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
           </div>
-          <div className="h-1 rounded-full bg-[hsl(220,10%,20%)] overflow-hidden">
+          <div className="h-1 rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full transition-all duration-100"
-              style={{
-                width: `${(timeLeft / phaseDuration) * 100}%`,
-                background: timeLeft > 3 ? 'hsl(var(--pitch-green))' : timeLeft > 1 ? 'hsl(var(--warning-amber))' : 'hsl(var(--destructive))',
-              }}
+              className="h-full rounded-full transition-all duration-100 bg-primary"
+              style={{ width: `${(timeLeft / phaseDuration) * 100}%` }}
             />
           </div>
         </div>
