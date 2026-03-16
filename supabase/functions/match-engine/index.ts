@@ -206,9 +206,18 @@ Deno.serve(async (req) => {
       let nextBallHolderParticipantId = ballHolder?.id || null;
 
       if (activeTurn.phase === 'resolution') {
-        // Apply all move actions: update participant positions
+        // Get ALL turn row IDs for this turn number (phases 1-4)
+        const { data: turnRows } = await supabase
+          .from('match_turns')
+          .select('id')
+          .eq('match_id', match_id)
+          .eq('turn_number', activeTurn.turn_number);
+
+        const allTurnIds = (turnRows || []).map(t => t.id);
+
+        // Get all pending actions across ALL phases of this turn
         const { data: allActions } = await supabase
-          .from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
+          .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending');
 
         // Update positions for all move actions
         for (const a of (allActions || [])) {

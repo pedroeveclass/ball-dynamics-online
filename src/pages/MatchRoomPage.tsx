@@ -407,15 +407,19 @@ export default function MatchRoomPage() {
     if (!activeTurn || match?.status !== 'live') return;
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
-      if (bh && !allSubmittedIds.has(bh.id) && (
+      const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+      const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+      const isTest = hCount <= 4 && aCount <= 4;
+      const canControlBH = bh && (
         (myRole === 'player' && myParticipant?.id === bh.id) ||
-        (myRole === 'manager' && bh.club_id === myClubId)
-      )) {
+        (myRole === 'manager' && (bh.club_id === myClubId || isTest))
+      );
+      if (canControlBH) {
         setShowActionMenu(bh.id);
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, allSubmittedIds]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId]);
 
   // ── Engine tick ─────────────────────────────────────────────
   useEffect(() => {
