@@ -1268,6 +1268,7 @@ export default function MatchRoomPage() {
               timeLeft={phaseTimeLeft}
               turnNumber={match.current_turn_number}
               possessionClub={possClubId === match.home_club_id ? homeClub : awayClub}
+              phaseDuration={currentPhaseDuration}
             />
           </div>
 
