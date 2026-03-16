@@ -913,7 +913,8 @@ export default function MatchRoomPage() {
     };
   };
 
-  const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / PHASE_DURATION : 0;
+  const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
+  const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
   // Get arrow color for action type
   const getActionArrowColor = (
