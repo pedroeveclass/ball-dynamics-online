@@ -1727,9 +1727,14 @@ export default function MatchRoomPage() {
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
                 <p className="font-display text-lg text-white/80">
                   {(() => {
-                    const d = new Date(match.scheduled_at);
-                    if (isNaN(d.getTime())) return 'Aguardando início...';
-                    return d <= new Date() ? 'Iniciando engine...' : `Começa: ${formatScheduledDate(match.scheduled_at)}`;
+                    const scheduledDate = new Date(match.scheduled_at);
+                    if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
+                    const now = Date.now();
+                    const countdownStart = scheduledDate.getTime();
+                    const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
+                    if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
+                    if (now < countdownEnd) return `Preparar... ${preMatchCountdownLeft}s`;
+                    return 'Iniciando partida...';
                   })()}
                 </p>
               </div>
