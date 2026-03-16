@@ -110,6 +110,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
+const RESOLUTION_PHASE_DURATION = 3;
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
@@ -651,11 +652,18 @@ export default function MatchRoomPage() {
       }
     }
 
-    const isManager = myRole === 'manager';
     const p = participants.find(x => x.id === participantId);
     if (!p) return;
 
-    if (isManager && p.club_id === myClubId && p.role_type === 'player') {
+    // In test match, manager can control ALL players (both teams)
+    const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+    const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+    const isTest = hCount <= 4 && aCount <= 4;
+    const canControlInTest = isTest && myRole === 'manager';
+    const canControlOwn = myRole === 'manager' && p.club_id === myClubId;
+    const canControlSelf = myRole === 'player' && myParticipant?.id === participantId;
+
+    if ((canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player') {
       setSelectedParticipantId(participantId);
       if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
         const phase = activeTurn.phase;
@@ -669,45 +677,15 @@ export default function MatchRoomPage() {
           setShowActionMenu(participantId);
         }
       }
-    } else if (myRole === 'player' && myParticipant?.id === participantId) {
-      setSelectedParticipantId(participantId);
-      if (match?.status === 'live' && activeTurn && !allSubmittedIds.has(participantId)) {
-        setShowActionMenu(participantId);
-      }
     }
   };
 
-  // ─── Determine which actions are visible in current phase ───
+  // ─── All submitted actions are always visible ───────────────
   const visibleActions = useMemo(() => {
-    if (!activeTurn || !match) return [];
-    const phase = activeTurn.phase;
-    const possClub = match.possession_club_id;
-
-    return turnActions.filter(a => {
-      const p = participants.find(x => x.id === a.participant_id);
-      if (!p) return false;
-      const isAttacking = p.club_id === possClub;
-      const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
-
-      // Phase 1 (ball_holder): only show ball holder's own action if already submitted
-      if (phase === 'ball_holder') {
-        return isBH; // show ball holder action as it's submitted
-      }
-      // Phase 2 (attacking_support): show ball holder + attacking actions
-      if (phase === 'attacking_support') {
-        return isBH || (isAttacking && !isBH);
-      }
-      // Phase 3 (defending_response): show all actions (ball holder + attacking + defending)
-      if (phase === 'defending_response') {
-        return true; // defending team can see everything
-      }
-      // Phase 4 (resolution): show everything
-      if (phase === 'resolution') {
-        return true;
-      }
-      return false;
-    });
-  }, [turnActions, activeTurn, match, participants]);
+    // Show ALL submitted actions for the current turn, regardless of phase
+    // This keeps arrows fixed on screen until the turn ends
+    return turnActions;
+  }, [turnActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
   useEffect(() => {
@@ -726,7 +704,7 @@ export default function MatchRoomPage() {
     setAnimating(true);
     setAnimProgress(0);
 
-    const duration = 2000;
+    const duration = 2500;
     let startTime: number | null = null;
 
     const animate = (now: number) => {
@@ -935,7 +913,8 @@ export default function MatchRoomPage() {
     };
   };
 
-  const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / PHASE_DURATION : 0;
+  const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
+  const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
   // Get arrow color for action type
   const getActionArrowColor = (
@@ -1289,6 +1268,7 @@ export default function MatchRoomPage() {
               timeLeft={phaseTimeLeft}
               turnNumber={match.current_turn_number}
               possessionClub={possClubId === match.home_club_id ? homeClub : awayClub}
+              phaseDuration={currentPhaseDuration}
             />
           </div>
 
@@ -1366,9 +1346,9 @@ export default function MatchRoomPage() {
 }
 
 // ─── TurnWheel (animated clock) ───────────────────────────────
-function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
+function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
-  possessionClub: ClubInfo | null;
+  possessionClub: ClubInfo | null; phaseDuration: number;
 }) {
   const phases = [
     { key: 'ball_holder', label: '1' },
@@ -1410,7 +1390,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
     return polar(mid, r);
   }
 
-  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / PHASE_DURATION) : 0;
+  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / phaseDuration) : 0;
 
   const phaseColors: Record<string, string> = {
     ball_holder: '#22c55e',
@@ -1502,7 +1482,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
             <div
               className="h-full rounded-full transition-all duration-100"
               style={{
-                width: `${(timeLeft / PHASE_DURATION) * 100}%`,
+                width: `${(timeLeft / phaseDuration) * 100}%`,
                 background: timeLeft > 3 ? 'hsl(var(--pitch-green))' : timeLeft > 1 ? 'hsl(var(--warning-amber))' : 'hsl(var(--destructive))',
               }}
             />

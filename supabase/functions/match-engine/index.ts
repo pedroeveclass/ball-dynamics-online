@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 const PHASE_DURATION_MS = 6000;
+const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
 
@@ -196,37 +197,7 @@ Deno.serve(async (req) => {
         ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
         : possPlayers[0];
 
-      // Generate bot actions for participants who haven't acted
-      const actionsToInsert: any[] = [];
-
-      for (const p of (participants || [])) {
-        if (humanActionMap.has(p.id)) continue;
-        const isBH = p.id === ballHolder?.id;
-        const phase = activeTurn.phase;
-        const isAttacking = p.club_id === possClubId;
-
-        if (phase === 'ball_holder' && !isBH) continue;
-        if (phase === 'attacking_support' && (!isAttacking || isBH)) continue;
-        if (phase === 'defending_response' && isAttacking) continue;
-
-        const decision = botDecideAction(p, phase, isBH);
-
-        actionsToInsert.push({
-          match_id,
-          match_turn_id: activeTurn.id,
-          participant_id: p.id,
-          controlled_by_type: 'bot',
-          controlled_by_user_id: null,
-          action_type: decision.action,
-          target_x: decision.target_x ?? null,
-          target_y: decision.target_y ?? null,
-          status: 'pending',
-        });
-      }
-
-      if (actionsToInsert.length > 0) {
-        await supabase.from('match_actions').insert(actionsToInsert);
-      }
+      // No bot actions - humans only. If no action submitted, player stays in place (no-op).
 
       // ── RESOLUTION ──
       let newPossessionClubId = possClubId;
@@ -352,7 +323,8 @@ Deno.serve(async (req) => {
         const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
 
         const nextPhaseStart = new Date().toISOString();
-        const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+        const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
+        const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
 
         await supabase.from('match_turns')
           .update({ status: 'resolved', resolved_at: new Date().toISOString() })
@@ -412,7 +384,18 @@ Deno.serve(async (req) => {
 
       const isManagerOfClub = managerClub?.id === participant?.club_id;
 
-      if (!isOwnParticipant && !isManagerOfClub) {
+      // Check if this is a test match (<=4 players total) - manager who created it can control all players
+      const { data: allParts } = await supabase
+        .from('match_participants').select('id').eq('match_id', match_id).eq('role_type', 'player');
+      const isTestMatch = (allParts || []).length <= 4;
+
+      // In test matches, the manager of either club can control ALL participants (both teams)
+      const isManagerOfMatch = isTestMatch && (
+        managerClub?.id === (participant as any)?.matches?.home_club_id ||
+        managerClub?.id === (participant as any)?.matches?.away_club_id
+      );
+
+      if (!isOwnParticipant && !isManagerOfClub && !isManagerOfMatch) {
         return new Response(JSON.stringify({ error: 'Not authorized to control this participant' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
