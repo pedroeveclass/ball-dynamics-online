@@ -421,31 +421,35 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId]);
 
-  // ── Engine tick ─────────────────────────────────────────────
+  // ── Engine tick — fires when phase timer expires ─────────────
+  const tickInFlightRef = useRef(false);
   useEffect(() => {
     if (engineRef.current) clearInterval(engineRef.current);
     if (match?.status !== 'live' || !matchId) return;
-    const tick = async () => {
-      await callEngine({ action: 'tick', match_id: matchId });
-      const [matchRes, turnRes] = await Promise.all([
-        supabase.from('matches').select('*').eq('id', matchId).single(),
-        supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
-          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
-      ]);
-      if (matchRes.data) setMatch(matchRes.data as MatchData);
-      if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
-      // Reload actions after tick
-      loadTurnActions();
-      // Reload participants to get updated positions
-      const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
-      if (parts) {
-        // Re-enrich participants with updated pos_x/pos_y
-        reEnrichParticipants(parts, matchRes.data as MatchData);
-      }
+    const checkAndAdvance = async () => {
+      if (tickInFlightRef.current) return;
+      if (!activeTurn) return;
+      const remaining = new Date(activeTurn.ends_at).getTime() - Date.now();
+      if (remaining > 300) return; // Phase hasn't expired yet
+      tickInFlightRef.current = true;
+      try {
+        await callEngine({ action: 'tick', match_id: matchId });
+        const [matchRes, turnRes] = await Promise.all([
+          supabase.from('matches').select('*').eq('id', matchId).single(),
+          supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
+            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        ]);
+        if (matchRes.data) setMatch(matchRes.data as MatchData);
+        if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
+        loadTurnActions();
+        const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
+        if (parts && matchRes.data) reEnrichParticipants(parts, matchRes.data as MatchData);
+      } catch (e) { console.error('Tick failed:', e); }
+      finally { tickInFlightRef.current = false; }
     };
-    engineRef.current = setInterval(tick, 2500);
+    engineRef.current = setInterval(checkAndAdvance, 800);
     return () => { if (engineRef.current) clearInterval(engineRef.current); };
-  }, [match?.status, matchId]);
+  }, [match?.status, matchId, activeTurn?.ends_at]);
 
   // Helper to re-enrich participants after position updates
   const reEnrichParticipants = useCallback(async (parts: any[], matchData: MatchData) => {
