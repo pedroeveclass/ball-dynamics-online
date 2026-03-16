@@ -119,7 +119,7 @@ const ACTION_LABELS: Record<string, string> = {
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
 const RESOLUTION_PHASE_DURATION = 3;
-const INTERCEPT_RADIUS = 5; // % of field for interception zone
+const INTERCEPT_RADIUS = 2.5; // % of field for interception zone (smaller = harder to intercept)
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
@@ -813,6 +813,8 @@ export default function MatchRoomPage() {
         return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot';
       });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      
+      // Check interception of ball trajectory
       if (
         ballPathAction &&
         ballHolderNow?.field_x != null &&
@@ -827,6 +829,19 @@ export default function MatchRoomPage() {
         setMouseFieldPct(null);
         return;
       }
+      
+      // Check if clicking near a loose ball position
+      if (isLooseBall && looseBallPos) {
+        const distToBall = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
+        if (distToBall <= INTERCEPT_RADIUS * 2.5) {
+          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+          setShowActionMenu(drawingAction.fromParticipantId);
+          setDrawingAction(null);
+          setMouseFieldPct(null);
+          return;
+        }
+      }
+      
       submitAction('move', drawingAction.fromParticipantId, pctX, pctY);
     }
     setDrawingAction(null);
@@ -886,6 +901,9 @@ export default function MatchRoomPage() {
   const turnActionsRef = useRef(turnActions);
   turnActionsRef.current = turnActions;
 
+  const matchRef = useRef(match);
+  matchRef.current = match;
+
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
@@ -921,7 +939,8 @@ export default function MatchRoomPage() {
           const finals: Record<string, { x: number; y: number }> = {};
           
           for (const p of participantsRef.current) {
-            const action = latestActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
+            // Both 'move' and 'receive' actions cause player to end at target
+            const action = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
             if (action && action.target_x != null && action.target_y != null) {
               finals[p.id] = { x: action.target_x, y: action.target_y };
             } else {
@@ -934,14 +953,30 @@ export default function MatchRoomPage() {
           
           // Compute final ball position
           const bhId = activeTurn.ball_holder_participant_id;
+          const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
+          
           if (bhId) {
             const ballAction = latestActions
               .filter(a => a.participant_id === bhId)
               .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
             
             if (ballAction) {
-              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
-                setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high') && ballAction.target_x != null && ballAction.target_y != null) {
+                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  // Ball stops at interceptor position
+                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
+                } else {
+                  setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+                }
+              } else if (ballAction.action_type === 'shoot' && ballAction.target_x != null && ballAction.target_y != null) {
+                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
+                } else {
+                  // Shot with no interception: ball ends in the goal
+                  const shooter = participantsRef.current.find(p => p.id === bhId);
+                  const isHome = shooter?.club_id === matchRef.current?.home_club_id;
+                  setFinalBallPos({ x: isHome ? 100 : 0, y: ballAction.target_y });
+                }
               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
                 setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
               }
@@ -979,8 +1014,9 @@ export default function MatchRoomPage() {
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
 
+    // Both 'move' and 'receive' actions cause the player to move to target
     const moveAction = turnActions.find(
-      a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null
+      a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null
     );
     const startPos = resolutionStartPositions[p.id];
     const startX = startPos?.x ?? p.field_x ?? 50;
@@ -1085,6 +1121,21 @@ export default function MatchRoomPage() {
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
+  // Find if anyone intercepted the ball this turn (has a 'receive' action)
+  const interceptorAction = turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
+
+  // Loose ball position: last known ball target or finalBallPos
+  const looseBallPos = (() => {
+    if (!isLooseBall) return null;
+    if (finalBallPos) return finalBallPos;
+    const lastBallAction = turnActions.find(a =>
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
+      a.target_x != null && a.target_y != null
+    );
+    if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
+    return null;
+  })();
+
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
     // Use locked final ball position if available (post-animation)
     if (finalBallPos && !animating) {
@@ -1092,7 +1143,8 @@ export default function MatchRoomPage() {
     }
 
     if (!ballHolder) {
-      // Loose ball: show at last known position or center
+      // Loose ball: show at last known position
+      if (looseBallPos) return looseBallPos;
       if (finalBallPos) return finalBallPos;
       return null;
     }
@@ -1127,6 +1179,38 @@ export default function MatchRoomPage() {
     }
 
     if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
+      // Check if someone intercepted — ball stops at interceptor's target position
+      if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
+        // Calculate how far along the path the interceptor is
+        const dx = ballAction.target_x - startPos.x;
+        const dy = ballAction.target_y - startPos.y;
+        const len2 = dx * dx + dy * dy;
+        let interceptT = 1;
+        if (len2 > 0) {
+          interceptT = clamp(
+            ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+            0, 1
+          );
+        }
+        // Ball travels to intercept point, then stops
+        const effectiveT = Math.min(t, interceptT);
+        return {
+          x: startPos.x + dx * effectiveT + 1.2,
+          y: startPos.y + dy * effectiveT - 1.2,
+        };
+      }
+
+      // Shot with no interception: ball goes to goal
+      if (ballAction.action_type === 'shoot') {
+        const isHome = ballHolder.club_id === match.home_club_id;
+        const goalX = isHome ? 100 : 0;
+        const goalY = ballAction.target_y;
+        return {
+          x: startPos.x + (goalX - startPos.x) * t + 1.2,
+          y: startPos.y + (goalY - startPos.y) * t - 1.2,
+        };
+      }
+
       return {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
         y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
@@ -1189,6 +1273,10 @@ export default function MatchRoomPage() {
 
     if (action.action_type === 'move') {
       return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
+    }
+    if (action.action_type === 'receive') {
+      // Receive = move arrow with cyan tip (indicates intercept at end of move)
+      return { color: '#1a1a2e', markerId: 'ah-cyan', strokeW: 2 };
     }
     if (action.action_type === 'shoot') {
       const color = action.target_x != null && action.target_y != null
@@ -1365,7 +1453,22 @@ export default function MatchRoomPage() {
                 })()
               )}
 
-              {/* ── Persisted action arrows (visible based on phase) ── */}
+              {/* ── Loose ball intercept zone (circle around loose ball) ── */}
+              {isLooseBall && looseBallPos && !animating &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
+                const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 2.5;
+                return (
+                  <circle
+                    cx={ballSvg.x} cy={ballSvg.y} r={zoneR}
+                    fill="rgba(59, 130, 246, 0.08)"
+                    stroke="rgba(59, 130, 246, 0.25)"
+                    strokeWidth="1"
+                    strokeDasharray="6,4"
+                  />
+                );
+              })()}
+
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
                 const fromPart = participants.find(p => p.id === action.participant_id);
