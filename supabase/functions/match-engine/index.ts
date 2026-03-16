@@ -239,13 +239,8 @@ Deno.serve(async (req) => {
         }
 
         // Resolve ball holder action
-        const ballHolderAction = (allActions || [])
-          .filter(a => a.participant_id === ballHolder?.id)
-          .sort((a, b) => {
-            const priority = { player: 0, manager: 1, bot: 2 };
-            return (priority[a.controlled_by_type as keyof typeof priority] ?? 2) -
-                   (priority[b.controlled_by_type as keyof typeof priority] ?? 2);
-          })[0];
+        const ballHolderAction = allActions
+          .find(a => a.participant_id === ballHolder?.id);
 
         if (ballHolderAction) {
           const defender = defPlayers[0];
@@ -277,23 +272,15 @@ Deno.serve(async (req) => {
               nextBallHolderParticipantId = samePlayers[Math.floor(Math.random() * samePlayers.length)].id;
             }
           }
+        }
 
-          // Mark actions
-          const usedIds = (allActions || [])
-            .filter(a => a.participant_id === ballHolder?.id && a.id !== ballHolderAction.id)
-            .map(a => a.id);
-
-          await supabase.from('match_actions').update({ status: 'used' }).eq('id', ballHolderAction.id);
-
-          if (usedIds.length > 0) {
-            await supabase.from('match_actions').update({ status: 'overridden' }).in('id', usedIds);
-          }
-
-          // Mark all other pending actions as used
-          const remainingPending = (allActions || []).filter(a => a.id !== ballHolderAction.id && !usedIds.includes(a.id)).map(a => a.id);
-          if (remainingPending.length > 0) {
-            await supabase.from('match_actions').update({ status: 'used' }).in('id', remainingPending);
-          }
+        // Mark ALL raw actions for this turn as used/overridden
+        const allRawIds = (rawActions || []).map(a => a.id);
+        if (allRawIds.length > 0) {
+          const usedIds = allActions.map(a => a.id);
+          const overriddenIds = allRawIds.filter(id => !usedIds.includes(id));
+          if (usedIds.length > 0) await supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds);
+          if (overriddenIds.length > 0) await supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds);
         }
 
         // ── Advance to next turn ──
