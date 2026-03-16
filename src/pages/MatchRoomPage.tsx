@@ -217,8 +217,9 @@ export default function MatchRoomPage() {
     // Safely check scheduled_at
     const scheduledDate = new Date(m.scheduled_at);
     const isValidDate = !isNaN(scheduledDate.getTime());
+    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= Date.now();
 
-    if (m.status === 'scheduled' && isValidDate && scheduledDate <= new Date()) {
+    if (m.status === 'scheduled' && shouldAutoStart) {
       await callEngine({ action: 'auto_start' });
       const { data: updated } = await supabase.from('matches').select('*').eq('id', matchId).single();
       if (updated) setMatch(updated as MatchData);
