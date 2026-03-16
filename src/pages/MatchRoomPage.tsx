@@ -656,7 +656,10 @@ export default function MatchRoomPage() {
     if (!p) return;
 
     // In test match, manager can control ALL players (both teams)
-    const canControlInTest = isTestMatch && myRole === 'manager';
+    const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+    const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+    const isTest = hCount <= 4 && aCount <= 4;
+    const canControlInTest = isTest && myRole === 'manager';
     const canControlOwn = myRole === 'manager' && p.club_id === myClubId;
     const canControlSelf = myRole === 'player' && myParticipant?.id === participantId;
 
