@@ -805,51 +805,63 @@ export default function MatchRoomPage() {
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
+  // Store turnActions in ref so animation closure always has latest
+  const turnActionsRef = useRef(turnActions);
+  turnActionsRef.current = turnActions;
+
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    // Snapshot current positions before animation starts
-    const currentParticipants = participantsRef.current;
-    const snapshot = Object.fromEntries(
-      currentParticipants
-        .filter(p => p.field_x != null && p.field_y != null)
-        .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
-    );
+    // Small delay to ensure turnActions are loaded before snapshotting
+    const startDelay = setTimeout(() => {
+      if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    setResolutionStartPositions(snapshot);
-    animatedResolutionIdRef.current = activeTurn.id;
-    setAnimating(true);
-    setAnimProgress(0);
+      // Snapshot current positions before animation starts
+      const currentParticipants = participantsRef.current;
+      const snapshot = Object.fromEntries(
+        currentParticipants
+          .filter(p => p.field_x != null && p.field_y != null)
+          .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
+      );
 
-    const duration = 2500;
-    let startTime: number | null = null;
+      setResolutionStartPositions(snapshot);
+      animatedResolutionIdRef.current = activeTurn.id;
+      setAnimating(true);
+      setAnimProgress(0);
 
-    const animate = (now: number) => {
-      if (startTime === null) startTime = now;
-      const progress = Math.min(1, (now - startTime) / duration);
-      setAnimProgress(progress);
+      const duration = 2500;
+      let startTime: number | null = null;
 
-      if (progress < 1) {
-        animFrameRef.current = requestAnimationFrame(animate);
-      } else {
-        setAnimating(false);
-        // Update positions to final animated positions
-        setParticipants(prev => prev.map(p => {
-          const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
-          if (action && action.target_x != null && action.target_y != null) {
-            return { ...p, field_x: action.target_x, field_y: action.target_y };
-          }
-          return p;
-        }));
-      }
-    };
+      const animate = (now: number) => {
+        if (startTime === null) startTime = now;
+        const progress = Math.min(1, (now - startTime) / duration);
+        setAnimProgress(progress);
 
-    animFrameRef.current = requestAnimationFrame(animate);
+        if (progress < 1) {
+          animFrameRef.current = requestAnimationFrame(animate);
+        } else {
+          setAnimating(false);
+          // Update positions to final animated positions using ref for latest actions
+          const latestActions = turnActionsRef.current;
+          setParticipants(prev => prev.map(p => {
+            const action = latestActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
+            if (action && action.target_x != null && action.target_y != null) {
+              return { ...p, field_x: action.target_x, field_y: action.target_y, pos_x: action.target_x, pos_y: action.target_y };
+            }
+            return p;
+          }));
+        }
+      };
+
+      animFrameRef.current = requestAnimationFrame(animate);
+    }, 200); // Wait 200ms for turnActions to be populated
+
     return () => {
+      clearTimeout(startDelay);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [activeTurn?.phase, activeTurn?.id, turnActions]);
+  }, [activeTurn?.phase, activeTurn?.id]);
 
   // ── Compute animated positions ─────────────────────────────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
