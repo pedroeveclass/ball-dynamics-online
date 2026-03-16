@@ -119,6 +119,7 @@ const ACTION_LABELS: Record<string, string> = {
 const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
 const RESOLUTION_PHASE_DURATION = 3;
+const INTERCEPT_RADIUS = 5; // % of field for interception zone
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
@@ -129,17 +130,22 @@ const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, 
   const cy = ay + dy * t;
   return Math.hypot(px - cx, py - cy);
 };
-const pointSegmentProgress = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
-  const dx = bx - ax;
-  const dy = by - ay;
-  if (dx === 0 && dy === 0) return 0;
-  return clamp((((px - ax) * dx) + ((py - ay) * dy)) / ((dx * dx) + (dy * dy)), 0, 1);
-};
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
   type: 'move' | 'pass_low' | 'pass_high' | 'shoot';
   fromParticipantId: string;
+}
+
+// Safe date formatter
+function formatScheduledDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Data inválida';
+    return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return 'Data inválida';
+  }
 }
 
 // ─── Main Component ───────────────────────────────────────────
@@ -178,6 +184,13 @@ export default function MatchRoomPage() {
   const [animating, setAnimating] = useState(false);
   const [animProgress, setAnimProgress] = useState(0);
   const [resolutionStartPositions, setResolutionStartPositions] = useState<Record<string, { x: number; y: number }>>({});
+  // Final positions after animation (locked until next turn)
+  const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Possession change visual feedback
+  const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
+  const prevPossClubRef = useRef<string | null>(null);
 
   // Accordion states
   const [homeAccOpen, setHomeAccOpen] = useState(false);
@@ -197,7 +210,11 @@ export default function MatchRoomPage() {
     const { data: m } = await supabase.from('matches').select('*').eq('id', matchId).single();
     if (!m) return;
 
-    if (m.status === 'scheduled' && new Date(m.scheduled_at) <= new Date()) {
+    // Safely check scheduled_at
+    const scheduledDate = new Date(m.scheduled_at);
+    const isValidDate = !isNaN(scheduledDate.getTime());
+
+    if (m.status === 'scheduled' && isValidDate && scheduledDate <= new Date()) {
       await callEngine({ action: 'auto_start' });
       const { data: updated } = await supabase.from('matches').select('*').eq('id', matchId).single();
       if (updated) setMatch(updated as MatchData);
@@ -290,7 +307,19 @@ export default function MatchRoomPage() {
     const { data: turn } = await supabase
       .from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    setActiveTurn(turn as MatchTurn | null);
+    
+    // Validate turn ends_at before setting
+    if (turn) {
+      const endsAt = new Date(turn.ends_at);
+      if (isNaN(endsAt.getTime())) {
+        console.error('Invalid ends_at in turn:', turn.ends_at);
+        // Don't set an invalid turn
+      } else {
+        setActiveTurn(turn as MatchTurn | null);
+      }
+    } else {
+      setActiveTurn(null);
+    }
 
     const { data: evts } = await supabase
       .from('match_event_logs').select('*').eq('match_id', matchId)
@@ -409,8 +438,16 @@ export default function MatchRoomPage() {
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
     if (!activeTurn || match?.status !== 'live') return;
+    
+    // Validate ends_at before using
+    const endsAt = new Date(activeTurn.ends_at);
+    if (isNaN(endsAt.getTime())) {
+      setPhaseTimeLeft(0);
+      return;
+    }
+    
     tickRef.current = setInterval(() => {
-      const remaining = Math.max(0, new Date(activeTurn.ends_at).getTime() - Date.now());
+      const remaining = Math.max(0, endsAt.getTime() - Date.now());
       setPhaseTimeLeft(Math.ceil(remaining / 1000));
     }, 100);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
@@ -420,6 +457,8 @@ export default function MatchRoomPage() {
   useEffect(() => {
     setSubmittedActions(new Set());
     setResolutionStartPositions({});
+    setFinalPositions({});
+    setFinalBallPos(null);
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
 
@@ -434,7 +473,22 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.id, activeTurn?.phase]);
 
+  // ── Possession change detection ────────────────────────────
+  useEffect(() => {
+    if (!activeTurn) return;
+    const currentPoss = activeTurn.possession_club_id;
+    if (prevPossClubRef.current && currentPoss && prevPossClubRef.current !== currentPoss) {
+      // Possession changed! Find new ball holder and pulse
+      if (activeTurn.ball_holder_participant_id) {
+        setPossessionChangePulse(activeTurn.ball_holder_participant_id);
+        setTimeout(() => setPossessionChangePulse(null), 2000);
+      }
+    }
+    prevPossClubRef.current = currentPoss ?? null;
+  }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
+
   // Auto-show action menu for ball holder in phase 1
+  // For loose ball (no ball_holder), skip phase 1 — handled by engine
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
@@ -458,6 +512,13 @@ export default function MatchRoomPage() {
   useEffect(() => {
     if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
     if (match?.status !== 'live' || !matchId || !activeTurn || isPhaseProcessing) return;
+
+    // Validate ends_at
+    const endsAtDate = new Date(activeTurn.ends_at);
+    if (isNaN(endsAtDate.getTime())) {
+      console.error('Invalid ends_at, cannot schedule tick:', activeTurn.ends_at);
+      return;
+    }
 
     const processTurnPhase = async () => {
       if (tickInFlightRef.current) return;
@@ -486,6 +547,7 @@ export default function MatchRoomPage() {
         if (result?.status === 'waiting') {
           const retryMs = Math.max(150, Number(result.remaining_ms ?? 250));
           tickInFlightRef.current = false;
+          setIsPhaseProcessing(false);
           phaseTimeoutRef.current = setTimeout(processTurnPhase, retryMs);
           return;
         }
@@ -502,7 +564,17 @@ export default function MatchRoomPage() {
         ]);
 
         if (matchRes.data) setMatch(matchRes.data as MatchData);
-        if (turnRes.data !== undefined) setActiveTurn(turnRes.data as MatchTurn | null);
+        if (turnRes.data !== undefined) {
+          // Validate turn before setting
+          if (turnRes.data) {
+            const endsAt = new Date(turnRes.data.ends_at);
+            if (!isNaN(endsAt.getTime())) {
+              setActiveTurn(turnRes.data as MatchTurn | null);
+            }
+          } else {
+            setActiveTurn(null);
+          }
+        }
         if (partsRes.data && matchRes.data) await reEnrichParticipants(partsRes.data, matchRes.data as MatchData);
         await loadTurnActions();
       } catch (e) {
@@ -514,13 +586,13 @@ export default function MatchRoomPage() {
       }
     };
 
-    const remaining = Math.max(0, new Date(activeTurn.ends_at).getTime() - Date.now());
+    const remaining = Math.max(0, endsAtDate.getTime() - Date.now());
     phaseTimeoutRef.current = setTimeout(processTurnPhase, remaining + 50);
 
     return () => {
       if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
     };
-  }, [match?.status, matchId, activeTurn?.id, activeTurn?.ends_at, activeTurn?.phase, isPhaseProcessing, loadTurnActions, reEnrichParticipants]);
+  }, [match?.status, matchId, activeTurn?.id, activeTurn?.ends_at, activeTurn?.phase, isPhaseProcessing, loadTurnActions]);
 
   // Helper to re-enrich participants after position updates
   async function reEnrichParticipants(parts: any[], matchData: MatchData) {
@@ -599,7 +671,16 @@ export default function MatchRoomPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_turns', filter: `match_id=eq.${matchId}` }, () => {
         supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
           .order('created_at', { ascending: false }).limit(1).maybeSingle()
-          .then(({ data }) => setActiveTurn(data as MatchTurn | null));
+          .then(({ data }) => {
+            if (data) {
+              const endsAt = new Date(data.ends_at);
+              if (!isNaN(endsAt.getTime())) {
+                setActiveTurn(data as MatchTurn | null);
+              }
+            } else {
+              setActiveTurn(null);
+            }
+          });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_event_logs', filter: `match_id=eq.${matchId}` }, (p) => {
         setEvents(prev => [...prev, p.new as EventLog]);
@@ -608,14 +689,13 @@ export default function MatchRoomPage() {
         loadTurnActions();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${matchId}` }, () => {
-        // Reload participants when positions update
         supabase.from('match_participants').select('*').eq('match_id', matchId).then(({ data }) => {
           if (data && match) reEnrichParticipants(data, match);
         });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [matchId, match, reEnrichParticipants, loadTurnActions]);
+  }, [matchId, match, loadTurnActions]);
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
@@ -658,7 +738,6 @@ export default function MatchRoomPage() {
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
-        // Reload actions immediately
         loadTurnActions();
       }
     } catch { toast.error('Erro ao enviar ação'); }
@@ -696,9 +775,9 @@ export default function MatchRoomPage() {
     }
     if (actionType === 'receive') {
       if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
-        submitAction('move', participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
+        submitAction('receive', participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
       } else {
-        submitAction('move', participantId);
+        submitAction('receive', participantId);
       }
       setShowActionMenu(null);
       setPendingInterceptChoice(null);
@@ -727,6 +806,7 @@ export default function MatchRoomPage() {
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high') {
       submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
     } else {
+      // Move action - check if clicking near a ball trajectory for interception
       const ballPathAction = turnActions.find(action => {
         if (!activeTurn?.ball_holder_participant_id) return false;
         if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
@@ -739,7 +819,7 @@ export default function MatchRoomPage() {
         ballHolderNow.field_y != null &&
         ballPathAction.target_x != null &&
         ballPathAction.target_y != null &&
-        pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= 4
+        pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= INTERCEPT_RADIUS
       ) {
         setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
         setShowActionMenu(drawingAction.fromParticipantId);
@@ -796,8 +876,6 @@ export default function MatchRoomPage() {
 
   // ─── All submitted actions are always visible ───────────────
   const visibleActions = useMemo(() => {
-    // Show ALL submitted actions for the current turn, regardless of phase
-    // This keeps arrows fixed on screen until the turn ends
     return turnActions;
   }, [turnActions]);
 
@@ -805,7 +883,6 @@ export default function MatchRoomPage() {
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
-  // Store turnActions in ref so animation closure always has latest
   const turnActionsRef = useRef(turnActions);
   turnActionsRef.current = turnActions;
 
@@ -813,11 +890,9 @@ export default function MatchRoomPage() {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    // Small delay to ensure turnActions are loaded before snapshotting
     const startDelay = setTimeout(() => {
       if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-      // Snapshot current positions before animation starts
       const currentParticipants = participantsRef.current;
       const snapshot = Object.fromEntries(
         currentParticipants
@@ -841,21 +916,51 @@ export default function MatchRoomPage() {
         if (progress < 1) {
           animFrameRef.current = requestAnimationFrame(animate);
         } else {
-          setAnimating(false);
-          // Update positions to final animated positions using ref for latest actions
+          // Animation done: lock final positions
           const latestActions = turnActionsRef.current;
-          setParticipants(prev => prev.map(p => {
+          const finals: Record<string, { x: number; y: number }> = {};
+          
+          for (const p of participantsRef.current) {
             const action = latestActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
             if (action && action.target_x != null && action.target_y != null) {
-              return { ...p, field_x: action.target_x, field_y: action.target_y, pos_x: action.target_x, pos_y: action.target_y };
+              finals[p.id] = { x: action.target_x, y: action.target_y };
+            } else {
+              const startPos = snapshot[p.id];
+              if (startPos) finals[p.id] = startPos;
             }
+          }
+          
+          setFinalPositions(finals);
+          
+          // Compute final ball position
+          const bhId = activeTurn.ball_holder_participant_id;
+          if (bhId) {
+            const ballAction = latestActions
+              .filter(a => a.participant_id === bhId)
+              .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+            
+            if (ballAction) {
+              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
+                setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+              } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+                setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+              }
+            }
+          }
+          
+          setAnimating(false);
+
+          // Update participant positions
+          setParticipants(prev => prev.map(p => {
+            const f = finals[p.id];
+            if (f) return { ...p, field_x: f.x, field_y: f.y, pos_x: f.x, pos_y: f.y };
             return p;
           }));
         }
       };
 
       animFrameRef.current = requestAnimationFrame(animate);
-    }, 200); // Wait 200ms for turnActions to be populated
+    }, 200);
 
     return () => {
       clearTimeout(startDelay);
@@ -865,6 +970,11 @@ export default function MatchRoomPage() {
 
   // ── Compute animated positions ─────────────────────────────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
+    // If we have final locked positions (post-animation), use them
+    if (finalPositions[p.id] && !animating) {
+      return finalPositions[p.id];
+    }
+    
     if (!animating || activeTurn?.phase !== 'resolution') {
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
@@ -904,8 +1014,9 @@ export default function MatchRoomPage() {
   const homePlayers = participants.filter(p => p.club_id === match.home_club_id && p.role_type === 'player');
   const awayPlayers = participants.filter(p => p.club_id === match.away_club_id && p.role_type === 'player');
 
-  const possClubId = match.possession_club_id;
+  const possClubId = activeTurn?.possession_club_id ?? match.possession_club_id;
   const isTestMatch = homePlayers.length <= 4 && awayPlayers.length <= 4;
+  const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
   // Get actions for current phase
   const getActionsForParticipant = (participantId: string): string[] => {
@@ -914,10 +1025,17 @@ export default function MatchRoomPage() {
     if (!p) return [];
     const phase = activeTurn.phase;
     const isBH = activeTurn.ball_holder_participant_id === participantId;
-    // Always use activeTurn.possession_club_id for consistency
     const currentPossClubId = activeTurn.possession_club_id;
     const isAttacking = p.club_id === currentPossClubId;
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
+
+    // Loose ball: skip phase 1, both teams move in phase 2/3
+    if (isLooseBall) {
+      if (phase === 'ball_holder') return []; // Skipped
+      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+      if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+      return [];
+    }
 
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'shoot'];
     if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
@@ -968,12 +1086,20 @@ export default function MatchRoomPage() {
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
-    if (!ballHolder) return null;
+    // Use locked final ball position if available (post-animation)
+    if (finalBallPos && !animating) {
+      return finalBallPos;
+    }
+
+    if (!ballHolder) {
+      // Loose ball: show at last known position or center
+      if (finalBallPos) return finalBallPos;
+      return null;
+    }
 
     const holderRenderPos = getAnimatedPos(ballHolder);
     const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
 
-    // Find the ball holder's action (pass, shoot, or move)
     const ballAction = turnActions
       .filter(action => action.participant_id === ballHolder.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
@@ -989,7 +1115,6 @@ export default function MatchRoomPage() {
     const t = 1 - Math.pow(1 - animProgress, 3);
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-      // Ball follows the player during a move (dribble)
       const currentX = startPos.x + (ballAction.target_x - startPos.x) * t;
       const currentY = startPos.y + (ballAction.target_y - startPos.y) * t;
       const dx = ballAction.target_x - startPos.x;
@@ -1002,7 +1127,6 @@ export default function MatchRoomPage() {
     }
 
     if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
-      // Ball travels from holder's start position to the target (player stays put)
       return {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
         y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
@@ -1080,6 +1204,19 @@ export default function MatchRoomPage() {
     return { color, markerId, strokeW: 3 };
   };
 
+  // Compute intercept zone path for ball trajectory
+  const getBallTrajectoryAction = (): MatchAction | null => {
+    if (!activeTurn?.ball_holder_participant_id) return null;
+    return turnActions.find(a => 
+      a.participant_id === activeTurn.ball_holder_participant_id &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot') &&
+      a.target_x != null && a.target_y != null
+    ) || null;
+  };
+
+  const ballTrajectoryAction = getBallTrajectoryAction();
+  const ballTrajectoryHolder = ballTrajectoryAction ? participants.find(p => p.id === ballTrajectoryAction.participant_id) : null;
+
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
       {/* ── Top scoreboard bar ── */}
@@ -1090,6 +1227,7 @@ export default function MatchRoomPage() {
             {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
           </Badge>
           {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">TESTE 2v2</Badge>}
+          {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
           {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
         </div>
 
@@ -1147,6 +1285,10 @@ export default function MatchRoomPage() {
                 </pattern>
                 <filter id="glow"><feGaussianBlur stdDeviation="2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
                 <filter id="shadow"><feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.5" /></filter>
+                <filter id="pulse-glow">
+                  <feGaussianBlur stdDeviation="4" result="b" />
+                  <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+                </filter>
                 {/* Arrow markers */}
                 <marker id="ah-black" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a1a2e" /></marker>
                 <marker id="ah-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#22c55e" /></marker>
@@ -1190,6 +1332,38 @@ export default function MatchRoomPage() {
                   </g>
                 ))}
               </g>
+
+              {/* ── Intercept zone visualization ── */}
+              {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
+                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
+                (() => {
+                  const fromSvg = toSVG(ballTrajectoryHolder.field_x!, ballTrajectoryHolder.field_y!);
+                  const toSvgPt = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
+                  const dx = toSvgPt.x - fromSvg.x;
+                  const dy = toSvgPt.y - fromSvg.y;
+                  const len = Math.sqrt(dx * dx + dy * dy);
+                  if (len < 1) return null;
+                  // Perpendicular offset for the zone width
+                  const px = (-dy / len) * (INTERCEPT_RADIUS / 100) * INNER_W;
+                  const py = (dx / len) * (INTERCEPT_RADIUS / 100) * INNER_H;
+                  const points = [
+                    `${fromSvg.x + px},${fromSvg.y + py}`,
+                    `${toSvgPt.x + px},${toSvgPt.y + py}`,
+                    `${toSvgPt.x - px},${toSvgPt.y - py}`,
+                    `${fromSvg.x - px},${fromSvg.y - py}`,
+                  ].join(' ');
+                  return (
+                    <polygon
+                      points={points}
+                      fill="rgba(59, 130, 246, 0.08)"
+                      stroke="rgba(59, 130, 246, 0.25)"
+                      strokeWidth="1"
+                      strokeDasharray="6,4"
+                    />
+                  );
+                })()
+              )}
 
               {/* ── Persisted action arrows (visible based on phase) ── */}
               {visibleActions.map(action => {
@@ -1262,6 +1436,7 @@ export default function MatchRoomPage() {
                 const isSelected = p.id === selectedParticipantId;
                 const isControllable = (isManager && p.club_id === myClubId) || (isPlayer && p.id === myParticipant?.id);
                 const hasSubmitted = allSubmittedIds.has(p.id);
+                const isPulsingNewCarrier = possessionChangePulse === p.id;
                 const R = 9;
 
                 return (
@@ -1269,6 +1444,18 @@ export default function MatchRoomPage() {
                     onClick={(e) => { e.stopPropagation(); handlePlayerClick(p.id); }}
                     style={{ cursor: isControllable ? 'pointer' : 'default' }}
                   >
+                    {/* Possession change pulse */}
+                    {isPulsingNewCarrier && (
+                      <>
+                        <circle cx={x} cy={y} r={R + 10} fill="none" stroke="#f59e0b" strokeWidth="2" opacity={0.6} filter="url(#pulse-glow)">
+                          <animate attributeName="r" from={String(R + 4)} to={String(R + 18)} dur="0.8s" repeatCount="3" />
+                          <animate attributeName="opacity" from="0.8" to="0" dur="0.8s" repeatCount="3" />
+                        </circle>
+                        <circle cx={x} cy={y} r={R + 6} fill="none" stroke="#fbbf24" strokeWidth="2.5" opacity={0.9}>
+                          <animate attributeName="opacity" from="1" to="0.3" dur="0.5s" repeatCount="indefinite" begin="0s" />
+                        </circle>
+                      </>
+                    )}
                     {isBH && (
                       <circle cx={x} cy={y} r={R + 5} fill="none" stroke="#f59e0b" strokeWidth="1.5" opacity={0.6} filter="url(#glow)" />
                     )}
@@ -1372,11 +1559,22 @@ export default function MatchRoomPage() {
               </div>
             )}
 
+            {/* Intercept zone hint */}
+            {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
+              <div className="absolute bottom-2 right-2 bg-[hsl(220,20%,10%)]/80 border border-blue-500/30 rounded px-3 py-1 z-30">
+                <span className="text-[9px] font-display text-blue-400">💡 Mova para a zona azul para DOMINAR BOLA</span>
+              </div>
+            )}
+
             {/* Status overlay for non-live */}
             {!isLive && !isFinished && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
                 <p className="font-display text-lg text-white/80">
-                  {new Date(match.scheduled_at) <= new Date() ? 'Iniciando engine...' : `Começa: ${new Date(match.scheduled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`}
+                  {(() => {
+                    const d = new Date(match.scheduled_at);
+                    if (isNaN(d.getTime())) return 'Aguardando início...';
+                    return d <= new Date() ? 'Iniciando engine...' : `Começa: ${formatScheduledDate(match.scheduled_at)}`;
+                  })()}
                 </p>
               </div>
             )}
@@ -1411,6 +1609,7 @@ export default function MatchRoomPage() {
               turnNumber={match.current_turn_number}
               possessionClub={possClubId === match.home_club_id ? homeClub : awayClub}
               phaseDuration={currentPhaseDuration}
+              isLooseBall={!!isLooseBall}
             />
           </div>
 
@@ -1488,9 +1687,9 @@ export default function MatchRoomPage() {
 }
 
 // ─── TurnWheel (animated clock) ───────────────────────────────
-function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration }: {
+function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
-  possessionClub: ClubInfo | null; phaseDuration: number;
+  possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
 }) {
   const phases = [
     { key: 'ball_holder', label: '1' },
@@ -1546,14 +1745,15 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         {quadrants.map((q, i) => {
           const isActive = i === currentIdx;
           const isPast = i < currentIdx;
-          const fillColor = isActive ? phaseFills[i] : isPast ? 'hsl(var(--secondary))' : 'hsl(var(--muted))';
+          const isSkipped = isLooseBall && i === 0; // Phase 1 skipped on loose ball
+          const fillColor = isSkipped ? 'hsl(var(--muted))' : isActive ? phaseFills[i] : isPast ? 'hsl(var(--secondary))' : 'hsl(var(--muted))';
 
           return (
             <g key={i}>
               <path
                 d={arcPath(q.startAngle, q.endAngle, R_INNER, R_OUTER)}
                 fill={fillColor}
-                opacity={isActive ? 1 : isPast ? 0.6 : 0.35}
+                opacity={isSkipped ? 0.2 : isActive ? 1 : isPast ? 0.6 : 0.35}
                 stroke={isActive ? 'hsl(var(--foreground))' : 'hsl(var(--border))'}
                 strokeWidth={isActive ? 1.5 : 0.5}
               />
@@ -1562,9 +1762,9 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
                 return (
                   <text x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="central"
                     fontSize="14" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-                    fill={isActive ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
+                    fill={isSkipped ? 'hsl(var(--muted-foreground) / 0.3)' : isActive ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
                   >
-                    {phases[i].label}
+                    {isSkipped ? '—' : phases[i].label}
                   </text>
                 );
               })()}
@@ -1609,7 +1809,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
       {currentPhase && (
         <div className="w-full px-3">
           <div className="flex justify-between text-[9px] font-display text-muted-foreground mb-0.5">
-            <span>{PHASE_LABELS[currentPhase]}</span>
+            <span>{isLooseBall && currentPhase === 'ball_holder' ? 'Pulando...' : PHASE_LABELS[currentPhase]}</span>
             <span className={timeLeft <= 2 ? 'text-destructive' : ''}>{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
           </div>
           <div className="h-1 rounded-full bg-muted overflow-hidden">
@@ -1624,7 +1824,9 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
       {possessionClub && (
         <div className="flex items-center gap-1.5 mt-1">
           <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
-          <span className="text-[9px] font-display text-muted-foreground">⚽ {possessionClub.short_name}</span>
+          <span className="text-[9px] font-display text-muted-foreground">
+            {isLooseBall ? '⚽ BOLA SOLTA' : `⚽ ${possessionClub.short_name}`}
+          </span>
         </div>
       )}
     </div>
