@@ -1230,11 +1230,28 @@ export default function MatchRoomPage() {
     const t = 1 - Math.pow(1 - animProgress, 3);
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-      const currentX = startPos.x + (ballAction.target_x - startPos.x) * t;
-      const currentY = startPos.y + (ballAction.target_y - startPos.y) * t;
       const dx = ballAction.target_x - startPos.x;
       const dy = ballAction.target_y - startPos.y;
       const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+
+      if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
+        const len2 = dx * dx + dy * dy;
+        const interceptT = len2 > 0
+          ? clamp(
+              ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+              0,
+              1
+            )
+          : 1;
+        const effectiveT = Math.min(t, interceptT);
+        return {
+          x: startPos.x + dx * effectiveT + 1.2,
+          y: startPos.y + dy * effectiveT - 1.2,
+        };
+      }
+
+      const currentX = startPos.x + dx * t;
+      const currentY = startPos.y + dy * t;
       return {
         x: currentX + (dx / len) * 1.8,
         y: currentY + (dy / len) * 1.8,
@@ -1266,7 +1283,7 @@ export default function MatchRoomPage() {
       // Shot with no interception: ball goes to goal
       if (ballAction.action_type === 'shoot') {
         const isHome = ballHolder.club_id === match.home_club_id;
-        const goalX = isHome ? 100 : 0;
+        const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
         const goalY = ballAction.target_y;
         return {
           x: startPos.x + (goalX - startPos.x) * t + 1.2,
