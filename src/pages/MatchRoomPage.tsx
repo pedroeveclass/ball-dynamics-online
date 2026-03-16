@@ -1441,7 +1441,22 @@ export default function MatchRoomPage() {
                 })()
               )}
 
-              {/* ── Persisted action arrows (visible based on phase) ── */}
+              {/* ── Loose ball intercept zone (circle around loose ball) ── */}
+              {isLooseBall && looseBallPos && !animating &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
+                const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 2.5;
+                return (
+                  <circle
+                    cx={ballSvg.x} cy={ballSvg.y} r={zoneR}
+                    fill="rgba(59, 130, 246, 0.08)"
+                    stroke="rgba(59, 130, 246, 0.25)"
+                    strokeWidth="1"
+                    strokeDasharray="6,4"
+                  />
+                );
+              })()}
+
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
                 const fromPart = participants.find(p => p.id === action.participant_id);
