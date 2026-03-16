@@ -1510,7 +1510,7 @@ export default function MatchRoomPage() {
               {isLooseBall && looseBallPos && !animating &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                 const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
-                const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 2.5;
+                const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 1.15;
                 return (
                   <circle
                     cx={ballSvg.x} cy={ballSvg.y} r={zoneR}
