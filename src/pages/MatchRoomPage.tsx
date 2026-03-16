@@ -1072,16 +1072,17 @@ export default function MatchRoomPage() {
               </g>
 
               {/* ── Persisted action arrows (visible based on phase) ── */}
-              {!animating && visibleActions.map(action => {
+              {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
                 const fromPart = participants.find(p => p.id === action.participant_id);
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
-                const from = toSVG(fromPart.field_x, fromPart.field_y);
+                const lockedOrigin = activeTurn?.phase === 'resolution' ? resolutionStartPositions[action.participant_id] : null;
+                const fromX = lockedOrigin?.x ?? fromPart.field_x;
+                const fromY = lockedOrigin?.y ?? fromPart.field_y;
+                const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
-                const { color, markerId, strokeW } = getActionArrowColor(action, fromPart);
-
-                // Show controller badge
+                const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
                 const controlLabel = action.controlled_by_type === 'bot' ? '🤖' : action.controlled_by_type === 'manager' ? '📋' : '👤';
 
                 return (
@@ -1089,14 +1090,13 @@ export default function MatchRoomPage() {
                     <line
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                       stroke={color} strokeWidth={strokeW}
-                      strokeLinecap="round" opacity={0.7}
+                      strokeLinecap="round" opacity={animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8}
                       markerEnd={`url(#${markerId})`}
                       strokeDasharray={action.controlled_by_type === 'bot' ? '4,3' : 'none'}
                     />
-                    {/* Small label at midpoint */}
                     <text
                       x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
-                      textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.6)"
+                      textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.68)"
                       fontFamily="'Barlow Condensed', sans-serif"
                     >
                       {controlLabel} {ACTION_LABELS[action.action_type] || action.action_type}
