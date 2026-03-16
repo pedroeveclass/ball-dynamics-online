@@ -697,13 +697,17 @@ export default function MatchRoomPage() {
   }, [turnActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
+  const participantsRef = useRef(participants);
+  participantsRef.current = participants;
+
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
-    if (turnActions.length === 0) return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
+    // Snapshot current positions before animation starts
+    const currentParticipants = participantsRef.current;
     const snapshot = Object.fromEntries(
-      participants
+      currentParticipants
         .filter(p => p.field_x != null && p.field_y != null)
         .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
     );
@@ -725,6 +729,7 @@ export default function MatchRoomPage() {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
         setAnimating(false);
+        // Update positions to final animated positions
         setParticipants(prev => prev.map(p => {
           const action = turnActions.find(a => a.participant_id === p.id && a.action_type === 'move' && a.target_x != null && a.target_y != null);
           if (action && action.target_x != null && action.target_y != null) {
@@ -739,7 +744,7 @@ export default function MatchRoomPage() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [activeTurn?.phase, activeTurn?.id, turnActions, participants]);
+  }, [activeTurn?.phase, activeTurn?.id, turnActions]);
 
   // ── Compute animated positions ─────────────────────────────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
