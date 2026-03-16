@@ -1345,9 +1345,9 @@ export default function MatchRoomPage() {
 }
 
 // ─── TurnWheel (animated clock) ───────────────────────────────
-function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub }: {
+function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
-  possessionClub: ClubInfo | null;
+  possessionClub: ClubInfo | null; phaseDuration: number;
 }) {
   const phases = [
     { key: 'ball_holder', label: '1' },
