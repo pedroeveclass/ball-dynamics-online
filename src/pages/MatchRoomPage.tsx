@@ -387,9 +387,14 @@ export default function MatchRoomPage() {
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, [activeTurn, match?.status]);
 
-  // Reset submitted actions when turn/phase changes
+  // Reset local submission cache only when a brand-new turn starts
   useEffect(() => {
     setSubmittedActions(new Set());
+    setResolutionStartPositions({});
+    animatedResolutionIdRef.current = null;
+  }, [activeTurn?.turn_number]);
+
+  useEffect(() => {
     setDrawingAction(null);
     setShowActionMenu(null);
     setAnimating(false);
@@ -401,7 +406,7 @@ export default function MatchRoomPage() {
     if (!activeTurn || match?.status !== 'live') return;
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
-      if (bh && (
+      if (bh && !allSubmittedIds.has(bh.id) && (
         (myRole === 'player' && myParticipant?.id === bh.id) ||
         (myRole === 'manager' && bh.club_id === myClubId)
       )) {
@@ -409,7 +414,7 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, allSubmittedIds]);
 
   // ── Engine tick ─────────────────────────────────────────────
   useEffect(() => {
