@@ -308,10 +308,9 @@ Deno.serve(async (req) => {
                 body: `Turno ${match.current_turn_number}`,
               });
 
-              // After goal, possession goes to the other team
+              // After goal, restart from midfield with the team that conceded
               newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-              const otherTeamPlayers = (participants || []).filter(p => p.club_id === newPossessionClubId);
-              nextBallHolderParticipantId = otherTeamPlayers[0]?.id || null;
+              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
             } else if (result.newBallHolderId) {
               nextBallHolderParticipantId = result.newBallHolderId;
               newPossessionClubId = result.newPossessionClubId || possClubId;
