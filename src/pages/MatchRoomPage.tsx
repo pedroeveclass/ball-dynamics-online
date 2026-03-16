@@ -524,7 +524,7 @@ export default function MatchRoomPage() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_event_logs', filter: `match_id=eq.${matchId}` }, (p) => {
         setEvents(prev => [...prev, p.new as EventLog]);
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_actions', filter: `match_id=eq.${matchId}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_actions', filter: `match_id=eq.${matchId}` }, () => {
         loadTurnActions();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${matchId}` }, () => {
