@@ -439,6 +439,41 @@ export default function MatchRoomPage() {
 
   useEffect(() => { loadMatch(); }, [loadMatch]);
 
+  // ── Pre-match countdown / auto-start ────────────────────────
+  useEffect(() => {
+    if (!match || match.status !== 'scheduled') return;
+
+    const scheduledDate = new Date(match.scheduled_at);
+    if (isNaN(scheduledDate.getTime())) {
+      setPreMatchCountdownLeft(PRE_MATCH_COUNTDOWN_SECONDS);
+      return;
+    }
+
+    const countdownStart = scheduledDate.getTime();
+    const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
+    let triggered = false;
+
+    const update = () => {
+      const now = Date.now();
+      if (now < countdownStart) {
+        setPreMatchCountdownLeft(PRE_MATCH_COUNTDOWN_SECONDS);
+        return;
+      }
+
+      const remainingMs = Math.max(0, countdownEnd - now);
+      setPreMatchCountdownLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+
+      if (!triggered && now >= countdownEnd) {
+        triggered = true;
+        loadMatch();
+      }
+    };
+
+    update();
+    const interval = setInterval(update, 200);
+    return () => clearInterval(interval);
+  }, [match?.status, match?.scheduled_at, loadMatch]);
+
   // ── Phase countdown timer ────────────────────────────────────
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
