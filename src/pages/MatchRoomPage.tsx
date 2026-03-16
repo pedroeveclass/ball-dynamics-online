@@ -1141,7 +1141,7 @@ export default function MatchRoomPage() {
                 const isMe = p.id === myParticipant?.id;
                 const isSelected = p.id === selectedParticipantId;
                 const isControllable = (isManager && p.club_id === myClubId) || (isPlayer && p.id === myParticipant?.id);
-                const hasSubmitted = submittedActions.has(p.id);
+                const hasSubmitted = allSubmittedIds.has(p.id);
                 const R = 9;
 
                 return (
@@ -1172,15 +1172,19 @@ export default function MatchRoomPage() {
                     >
                       {p.jersey_number || idx + 1}
                     </text>
-                    {isBH && (
-                      <g>
-                        <circle cx={x + R} cy={y - R} r={4.5} fill="white" stroke="#333" strokeWidth="0.5" />
-                        <text x={x + R} y={y - R + 0.5} textAnchor="middle" dominantBaseline="central" fontSize="5">⚽</text>
-                      </g>
-                    )}
                   </g>
                 );
               })}
+
+              {ballDisplayPos && (() => {
+                const { x, y } = toSVG(ballDisplayPos.x, ballDisplayPos.y);
+                return (
+                  <g pointerEvents="none">
+                    <circle cx={x} cy={y} r={5.5} fill="hsl(0 0% 98%)" stroke="hsl(220 15% 12%)" strokeWidth="1" filter="url(#shadow)" />
+                    <path d={`M ${x - 2.5} ${y} L ${x} ${y - 2.5} L ${x + 2.5} ${y} L ${x} ${y + 2.5} Z`} fill="hsl(220 15% 12%)" opacity="0.72" />
+                  </g>
+                );
+              })()}
             </svg>
 
             {/* Action menu overlay */}
