@@ -1023,7 +1023,6 @@ export default function MatchRoomPage() {
             if (ballAction) {
               if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high') && ballAction.target_x != null && ballAction.target_y != null) {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                  // Ball stops at interceptor position
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
                   setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
@@ -1032,13 +1031,16 @@ export default function MatchRoomPage() {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
-                  // Shot with no interception: ball ends in the goal
                   const shooter = participantsRef.current.find(p => p.id === bhId);
                   const isHome = shooter?.club_id === matchRef.current?.home_club_id;
-                  setFinalBallPos({ x: isHome ? 100 : 0, y: ballAction.target_y });
+                  setFinalBallPos({ x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y });
                 }
               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-                setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
+                } else {
+                  setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
+                }
               }
             }
           }
