@@ -97,7 +97,7 @@ function getInterceptableRanges(actionType: string): Array<[number, number]> {
     case 'pass_high':
       return [[0, 0.2], [0.8, 1]]; // yellow zones only
     case 'pass_launch':
-      return [[0, 0.35], [0.65, 1]]; // green zones
+      return [[0, 0.35], [0.65, 1]]; // yellow zones (interceptable)
     case 'shoot_controlled':
       return [[0, 1]]; // ground ball, fully interceptable
     case 'shoot_power':
