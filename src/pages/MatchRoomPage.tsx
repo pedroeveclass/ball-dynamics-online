@@ -1960,8 +1960,11 @@ export default function MatchRoomPage() {
                       className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
                     >
                       {a === 'move' && <span className="text-[10px]">↗</span>}
-                      {a === 'pass_low' && <span className="text-[10px]">⚡</span>}
-                      {a === 'shoot' && <span className="text-[10px]">🎯</span>}
+                      {a === 'pass_low' && <span className="text-[10px]">➡</span>}
+                      {a === 'pass_high' && <span className="text-[10px]">⤴</span>}
+                      {a === 'pass_launch' && <span className="text-[10px]">🚀</span>}
+                      {a === 'shoot_controlled' && <span className="text-[10px]">🎯</span>}
+                      {a === 'shoot_power' && <span className="text-[10px]">💥</span>}
                       {a === 'no_action' && <span className="text-[10px]">⊘</span>}
                       {a === 'receive' && <span className="text-[10px]">🤲</span>}
                       {ACTION_LABELS[a]}
