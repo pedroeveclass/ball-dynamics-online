@@ -1502,7 +1502,9 @@ export default function MatchRoomPage() {
   const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
-  // Get arrow color for action type
+  const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
+  const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+
   const getActionArrowColor = (
     action: MatchAction,
     fromPart: Participant,
@@ -1515,16 +1517,23 @@ export default function MatchRoomPage() {
       return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
     }
     if (action.action_type === 'receive') {
-      // Receive = move arrow with cyan tip (indicates intercept at end of move)
       return { color: '#1a1a2e', markerId: 'ah-cyan', strokeW: 2 };
     }
-    if (action.action_type === 'shoot') {
+    if (isShootAction(action.action_type)) {
       const color = action.target_x != null && action.target_y != null
-        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot', action.participant_id)
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, action.action_type, action.participant_id)
         : '#f59e0b';
-      const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
+      const markerId = 'ah-green'; // arrow tip always green
       return { color, markerId, strokeW: 3.5 };
     }
+    if (isPassAction(action.action_type)) {
+      const color = action.target_x != null && action.target_y != null
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, action.action_type, action.participant_id)
+        : '#06b6d4';
+      const markerId = 'ah-green'; // arrow tip always green
+      return { color, markerId, strokeW: 3 };
+    }
+    // fallback
     const color = action.target_x != null && action.target_y != null
       ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass', action.participant_id)
       : '#06b6d4';
