@@ -1310,7 +1310,7 @@ export default function MatchRoomPage() {
     if (finalBallPos) return finalBallPos;
     if (carriedLooseBallPos) return carriedLooseBallPos;
     const lastBallAction = turnActions.find(a =>
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' || a.action_type === 'shoot' || a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     );
     if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
