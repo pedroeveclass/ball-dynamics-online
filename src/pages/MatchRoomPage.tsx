@@ -1727,8 +1727,12 @@ export default function MatchRoomPage() {
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
                 const lockedOrigin = activeTurn?.phase === 'resolution' ? resolutionStartPositions[action.participant_id] : null;
-                const fromX = lockedOrigin?.x ?? fromPart.field_x;
-                const fromY = lockedOrigin?.y ?? fromPart.field_y;
+                const isBHAction = action.participant_id === activeTurn?.ball_holder_participant_id && (isPassAction(action.action_type) || isShootAction(action.action_type));
+                const baseFromX = lockedOrigin?.x ?? fromPart.field_x;
+                const baseFromY = lockedOrigin?.y ?? fromPart.field_y;
+                // Pass/shoot arrows start from ball position
+                const fromX = isBHAction ? (baseFromX + 1.2) : baseFromX;
+                const fromY = isBHAction ? (baseFromY - 1.2) : baseFromY;
                 const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
