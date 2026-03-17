@@ -105,6 +105,145 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
   return chosen.id;
 }
 
+// ─── Physics helpers ───────────────────────────────────────────
+const NUM_SUBSTEPS = 10;
+
+function normalizeAttr(val: number): number {
+  return Math.max(0, Math.min(1, (val - 10) / 89));
+}
+
+interface Vec2 { x: number; y: number; }
+
+function vecLen(v: Vec2): number { return Math.sqrt(v.x * v.x + v.y * v.y); }
+function vecNorm(v: Vec2): Vec2 {
+  const l = vecLen(v);
+  return l > 0.001 ? { x: v.x / l, y: v.y / l } : { x: 0, y: 0 };
+}
+function angleBetween(a: Vec2, b: Vec2): number {
+  const la = vecLen(a), lb = vecLen(b);
+  if (la < 0.001 || lb < 0.001) return 0;
+  const dot = (a.x * b.x + a.y * b.y) / (la * lb);
+  return Math.acos(Math.max(-1, Math.min(1, dot)));
+}
+
+interface PhysicsPlayerState {
+  pos: Vec2;
+  vel: Vec2;
+}
+
+function simulatePlayerMovement(
+  startPos: Vec2,
+  targetPos: Vec2,
+  attrs: { aceleracao: number; agilidade: number; velocidade: number; forca: number; stamina: number },
+  turnNumber: number,
+): Vec2 {
+  const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
+  const agilityFactor = 0.4 + normalizeAttr(attrs.agilidade) * 0.5;
+  const forceFactor = normalizeAttr(attrs.forca);
+  const maxSpeed = (3 + normalizeAttr(attrs.velocidade) * 4) / NUM_SUBSTEPS;
+  const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
+
+  const state: PhysicsPlayerState = { pos: { ...startPos }, vel: { x: 0, y: 0 } };
+
+  for (let i = 0; i < NUM_SUBSTEPS; i++) {
+    const toTarget = { x: targetPos.x - state.pos.x, y: targetPos.y - state.pos.y };
+    const dist = vecLen(toTarget);
+    if (dist < 0.1) break;
+
+    const desired = vecNorm(toTarget);
+    const desiredVel = { x: desired.x * maxSpeed * staminaDecay, y: desired.y * maxSpeed * staminaDecay };
+
+    // Direction change penalty
+    const angle = angleBetween(state.vel, desiredVel);
+    const basePenalty = angle / Math.PI; // 0 for same dir, 1 for 180°
+    const turnPenalty = 1 - basePenalty * (1 - agilityFactor * 0.5) * (1 - forceFactor * 0.2);
+
+    state.vel.x = state.vel.x * turnPenalty * (1 - accelFactor) + desiredVel.x * accelFactor;
+    state.vel.y = state.vel.y * turnPenalty * (1 - accelFactor) + desiredVel.y * accelFactor;
+
+    // Clamp velocity
+    const speed = vecLen(state.vel);
+    if (speed > maxSpeed) {
+      state.vel.x = (state.vel.x / speed) * maxSpeed;
+      state.vel.y = (state.vel.y / speed) * maxSpeed;
+    }
+
+    state.pos.x += state.vel.x;
+    state.pos.y += state.vel.y;
+
+    // Don't overshoot
+    const newDist = vecLen({ x: targetPos.x - state.pos.x, y: targetPos.y - state.pos.y });
+    if (newDist < 0.3 || newDist > dist) {
+      state.pos = { ...targetPos };
+      break;
+    }
+  }
+
+  return state.pos;
+}
+
+interface BallPhysicsResult {
+  finalPos: Vec2;
+  speedAtEnd: number;
+}
+
+function simulateBallPhysics(
+  startPos: Vec2,
+  targetPos: Vec2,
+  actionType: string,
+  attrs: { passe_baixo: number; passe_alto: number; forca_chute: number; acuracia_chute: number },
+): BallPhysicsResult {
+  let impulse: number;
+  let friction: number;
+
+  if (actionType === 'pass_low') {
+    impulse = 8 + normalizeAttr(attrs.passe_baixo) * 4;
+    friction = 0.92;
+  } else if (actionType === 'pass_high') {
+    impulse = 12 + normalizeAttr(attrs.passe_alto) * 5;
+    friction = 0.90;
+  } else if (actionType === 'shoot') {
+    impulse = 15 + normalizeAttr(attrs.forca_chute) * 8;
+    friction = 0.95;
+  } else {
+    // move/carry - ball follows player, no independent physics
+    return { finalPos: { ...targetPos }, speedAtEnd: 0 };
+  }
+
+  const dir = vecNorm({ x: targetPos.x - startPos.x, y: targetPos.y - startPos.y });
+  const totalDist = vecLen({ x: targetPos.x - startPos.x, y: targetPos.y - startPos.y });
+
+  let vel = impulse / NUM_SUBSTEPS;
+  const pos = { ...startPos };
+  let speed = 0;
+
+  for (let i = 0; i < NUM_SUBSTEPS; i++) {
+    pos.x += dir.x * vel;
+    pos.y += dir.y * vel;
+    vel *= friction;
+    speed = vel * NUM_SUBSTEPS;
+
+    const traveled = vecLen({ x: pos.x - startPos.x, y: pos.y - startPos.y });
+    if (traveled >= totalDist) {
+      // Ball reaches target area
+      return { finalPos: { ...targetPos }, speedAtEnd: speed };
+    }
+    if (vel < 0.01) break;
+  }
+
+  // Ball stopped short of target
+  return { finalPos: pos, speedAtEnd: speed };
+}
+
+function computeBallControlDifficulty(
+  ballSpeed: number,
+  attrs: { controle_bola: number; agilidade: number; um_toque: number },
+): number {
+  let chance = 0.7 + normalizeAttr(attrs.controle_bola) * 0.15 + normalizeAttr(attrs.agilidade) * 0.08 + normalizeAttr(attrs.um_toque) * 0.07;
+  if (ballSpeed > 5) chance -= Math.min(0.3, (ballSpeed - 5) * 0.05);
+  return Math.max(0.1, Math.min(1.0, chance));
+}
+
 function findLooseBallClaimer(allActions: any[], participants: any[]): any | null {
   const receiveActions = allActions.filter((a) => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
