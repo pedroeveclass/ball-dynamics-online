@@ -920,7 +920,22 @@ export default function MatchRoomPage() {
         }
       }
       
-      submitAction('move', drawingAction.fromParticipantId, pctX, pctY);
+      // Clamp move to max range based on player physics
+      const moveFrom = participants.find(p => p.id === drawingAction.fromParticipantId);
+      let mx = pctX, my = pctY;
+      if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+        const dx = pctX - moveFrom.field_x;
+        const dy = pctY - moveFrom.field_y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          mx = moveFrom.field_x + dx * scale;
+          my = moveFrom.field_y + dy * scale;
+        }
+        console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange}`);
+      }
+      submitAction('move', drawingAction.fromParticipantId, mx, my);
     }
     setDrawingAction(null);
     setMouseFieldPct(null);
