@@ -1762,11 +1762,11 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'pass_launch') {
-                    // Green (35%) → Yellow (30%) → Green (35%), tip green
+                    // Yellow (35%) → Red (30%) → Yellow (35%), tip green
                     const seg = [
-                      { t0: 0, t1: 0.35, color: '#22c55e' },
-                      { t0: 0.35, t1: 0.65, color: '#f59e0b' },
-                      { t0: 0.65, t1: 1, color: '#22c55e' },
+                      { t0: 0, t1: 0.35, color: '#f59e0b' },
+                      { t0: 0.35, t1: 0.65, color: '#ef4444' },
+                      { t0: 0.65, t1: 1, color: '#f59e0b' },
                     ];
                     return seg.map((s, i) => (
                       <line key={i}
