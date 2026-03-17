@@ -79,9 +79,7 @@ function computeDeviation(
     }
   }
 
-  // Clamp to field
-  actualX = Math.max(0, Math.min(100, actualX));
-  actualY = Math.max(0, Math.min(100, actualY));
+  // Don't clamp — allow ball to go out of bounds for set pieces
 
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
@@ -913,23 +911,37 @@ Deno.serve(async (req) => {
             || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
           if (ballHolderAction) {
-            // For shoot_power with overGoal, skip goal check
-            const deviation = ballHolderAction._overGoal;
-
             const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile);
 
             if (result.goal) {
-              if (possClubId === match.home_club_id) homeScore++;
-              else awayScore++;
+              // Check if the shot is actually on target
+              const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
+              const shotTargetY = Number(ballHolderAction.target_y ?? 50);
+              const isOnTarget = shotTargetY >= 38 && shotTargetY <= 62 && !isOverGoal;
 
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'goal',
-                title: `⚽ GOL! ${homeScore} – ${awayScore}`,
-                body: `Turno ${match.current_turn_number}`,
-              });
+              if (isOnTarget) {
+                if (possClubId === match.home_club_id) homeScore++;
+                else awayScore++;
 
-              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'goal',
+                  title: `⚽ GOL! ${homeScore} – ${awayScore}`,
+                  body: `Turno ${match.current_turn_number}`,
+                });
+
+                newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+                nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+              } else {
+                // Shot missed — ball goes out of bounds
+                nextBallHolderParticipantId = null;
+                ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'shot_missed',
+                  title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
+                  body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
+                });
+                console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
+              }
             } else if (result.looseBallPos) {
               // Shot blocked — ball deflects to random position
               nextBallHolderParticipantId = null;

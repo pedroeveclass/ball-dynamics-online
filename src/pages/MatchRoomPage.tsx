@@ -206,6 +206,8 @@ export default function MatchRoomPage() {
   const [ballInertiaDir, setBallInertiaDir] = useState<{ dx: number; dy: number } | null>(null);
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
   const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
+  const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const attrsLoadedRef = useRef(false);
 
   // Possession change visual feedback
@@ -593,26 +595,25 @@ export default function MatchRoomPage() {
         // Ball was ALREADY loose — inertia only lasts ONE turn, stop it
         setBallInertiaDir(null);
         // Keep carriedLooseBallPos where it is (ball stays put)
-      } else if (finalBallPos) {
-        // Ball JUST became loose — set initial position and compute inertia for this one turn
-        setCarriedLooseBallPos(finalBallPos);
-        const lastBallAction = turnActions.find(a =>
-          (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch') &&
-          a.target_x != null && a.target_y != null
-        );
-        const bhParticipant = lastBallAction ? participants.find(p => p.id === lastBallAction.participant_id) : null;
-        if (lastBallAction && bhParticipant && bhParticipant.field_x != null && bhParticipant.field_y != null) {
-          const dx = lastBallAction.target_x! - bhParticipant.field_x;
-          const dy = lastBallAction.target_y! - bhParticipant.field_y;
-          setBallInertiaDir({ dx, dy });
+      } else {
+        // Ball JUST became loose — use ref for position (avoids race condition with state)
+        const pos = finalBallPosRef.current || finalBallPos;
+        if (pos) {
+          setCarriedLooseBallPos(pos);
+          // Use stored direction from animation end
+          if (lastBallDirRef.current) {
+            setBallInertiaDir(lastBallDirRef.current);
+          }
         }
       }
     } else {
       setCarriedLooseBallPos(null);
       setBallInertiaDir(null);
+      lastBallDirRef.current = null;
     }
 
     setFinalBallPos(null);
+    // Don't clear finalBallPosRef here — it's consumed above
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
 
@@ -1260,30 +1261,47 @@ export default function MatchRoomPage() {
              const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
                || bhAllActions[0];
              
-             if (ballAction) {
-               if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
-                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
-                 } else {
-                   setFinalBallPos({ x: ballAction.target_x, y: ballAction.target_y });
-                 }
-               } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
-                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
-                 } else {
-                   const shooter = participantsRef.current.find(p => p.id === bhId);
-                   const isHome = shooter?.club_id === matchRef.current?.home_club_id;
-                   setFinalBallPos({ x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y });
-                 }
-               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
-                 } else {
-                   setFinalBallPos({ x: ballAction.target_x, y: ballAction.target_y });
-                 }
-               }
-             }
-           }
+              if (ballAction) {
+                let fbp: { x: number; y: number } | null = null;
+                const sp = snapshot[bhId];
+                
+                if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  } else {
+                    fbp = { x: ballAction.target_x, y: ballAction.target_y };
+                  }
+                  // Store direction for inertia (from passer start to ball end)
+                  if (sp) {
+                    lastBallDirRef.current = { dx: ballAction.target_x - sp.x, dy: ballAction.target_y - sp.y };
+                  }
+                } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  } else {
+                    const shooter = participantsRef.current.find(p => p.id === bhId);
+                    const isHome = shooter?.club_id === matchRef.current?.home_club_id;
+                    fbp = { x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y };
+                  }
+                  // Store direction for missed shots too
+                  if (sp) {
+                    lastBallDirRef.current = { dx: ballAction.target_x - sp.x, dy: ballAction.target_y - sp.y };
+                  }
+                } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  } else {
+                    fbp = { x: ballAction.target_x, y: ballAction.target_y };
+                  }
+                  lastBallDirRef.current = null; // No inertia for dribble
+                }
+                
+                if (fbp) {
+                  setFinalBallPos(fbp);
+                  finalBallPosRef.current = fbp;
+                }
+              }
+            }
           
           setAnimating(false);
 
