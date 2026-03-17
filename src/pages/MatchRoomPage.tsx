@@ -968,11 +968,22 @@ export default function MatchRoomPage() {
         (canContestBallPath || canContestCarrierMove) &&
         pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= INTERCEPT_RADIUS
       ) {
-        setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
-        setShowActionMenu(drawingAction.fromParticipantId);
-        setDrawingAction(null);
-        setMouseFieldPct(null);
-        return;
+        // Check if click falls in red (uninterceptable altitude) zone
+        const _tdx = ballPathAction.target_x - ballHolderNow.field_x;
+        const _tdy = ballPathAction.target_y - ballHolderNow.field_y;
+        const _tlen2 = _tdx * _tdx + _tdy * _tdy;
+        const _t = _tlen2 > 0 ? clamp(((pctX - ballHolderNow.field_x) * _tdx + (pctY - ballHolderNow.field_y) * _tdy) / _tlen2, 0, 1) : 0;
+        const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
+                          (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
+        
+        if (!isRedZone) {
+          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+          setShowActionMenu(drawingAction.fromParticipantId);
+          setDrawingAction(null);
+          setMouseFieldPct(null);
+          return;
+        }
+        // Red zone: treat as normal move, don't offer intercept
       }
       
       // Check if clicking near a loose ball position
@@ -1929,10 +1940,11 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
-                // Arrow starts from ball position for ball holder actions
+                // Move arrows start from player center; pass/shoot arrows start from ball position
                 const isBallHolderAction = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
-                const fromFieldX = isBallHolderAction && ballDisplayPos ? ballDisplayPos.x : drawingFrom.field_x!;
-                const fromFieldY = isBallHolderAction && ballDisplayPos ? ballDisplayPos.y : drawingFrom.field_y!;
+                const isBallAction = drawingAction.type !== 'move';
+                const fromFieldX = isBallHolderAction && isBallAction && ballDisplayPos ? ballDisplayPos.x : drawingFrom.field_x!;
+                const fromFieldY = isBallHolderAction && isBallAction && ballDisplayPos ? ballDisplayPos.y : drawingFrom.field_y!;
                 const from = toSVG(fromFieldX, fromFieldY);
                 let to: { x: number; y: number };
                 let toFieldX: number, toFieldY: number;
@@ -2024,23 +2036,55 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Range circle for physics constraints */}
-              {((drawingAction?.type === 'move') || (showActionMenu && !drawingAction)) && (() => {
-                const targetId = drawingAction?.fromParticipantId || showActionMenu;
-                if (!targetId) return null;
-                const p = [...homePlayers, ...awayPlayers].find(pp => pp.id === targetId);
-                if (!p || p.field_x == null || p.field_y == null) return null;
-                const maxRange = computeMaxMoveRange(targetId);
-                const center = toSVG(p.field_x, p.field_y);
-                const radiusX = (maxRange / 100) * INNER_W;
-                const radiusY = (maxRange / 100) * INNER_H;
+              {/* Green cursor shadow + player glow during drawing */}
+              {drawingAction && drawingFrom && mouseFieldPct && (() => {
+                const cursorSvg = toSVG(mouseFieldPct.x, mouseFieldPct.y);
+                const fromSvg = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 return (
-                  <ellipse
-                    cx={center.x} cy={center.y} rx={radiusX} ry={radiusY}
-                    fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.20)"
-                    strokeWidth="1.2" strokeDasharray="5,4" pointerEvents="none"
-                  />
+                  <>
+                    {/* Outer glow around active player */}
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke="rgba(34,197,94,0.3)" strokeWidth="2" filter="url(#pulse-glow)" />
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="4" />
+                    {/* Green translucent circle at cursor (destination shadow) */}
+                    <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                  </>
                 );
+              })()}
+
+              {/* Live ball preview synced to movement % during phases 2/3 */}
+              {drawingAction?.type === 'move' && mouseFieldPct && drawingFrom &&
+                ballTrajectoryAction && ballTrajectoryHolder &&
+                ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
+                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                ballTrajectoryAction.action_type !== 'move' &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                  const mdx = mouseFieldPct.x - drawingFrom.field_x!;
+                  const mdy = mouseFieldPct.y - drawingFrom.field_y!;
+                  const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+                  const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                  const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+
+                  const bfx = ballTrajectoryHolder.field_x!;
+                  const bfy = ballTrajectoryHolder.field_y!;
+                  const btx = ballTrajectoryAction.target_x!;
+                  const bty = ballTrajectoryAction.target_y!;
+                  const ballPreviewX = bfx + (btx - bfx) * movePct;
+                  const ballPreviewY = bfy + (bty - bfy) * movePct;
+                  const previewSvg = toSVG(ballPreviewX, ballPreviewY);
+
+                  return (
+                    <g pointerEvents="none" opacity={0.55}>
+                      <circle cx={previewSvg.x} cy={previewSvg.y} r={5.5}
+                        fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.6)"
+                        strokeWidth="0.8" strokeDasharray="2,1.5" />
+                      <circle cx={previewSvg.x} cy={previewSvg.y} r={2} fill="rgba(255,255,255,0.5)" />
+                      <text x={previewSvg.x} y={previewSvg.y - 9} textAnchor="middle"
+                        fontSize="6" fill="rgba(255,255,255,0.7)"
+                        fontFamily="'Barlow Condensed', sans-serif" fontWeight="700">
+                        ⚽ {Math.round(movePct * 100)}%
+                      </text>
+                    </g>
+                  );
               })()}
 
               {/* Players */}
@@ -2104,10 +2148,24 @@ export default function MatchRoomPage() {
 
               {ballDisplayPos && (() => {
                 const { x, y } = toSVG(ballDisplayPos.x, ballDisplayPos.y);
+                const r = 5.5;
                 return (
                   <g pointerEvents="none">
-                    <circle cx={x} cy={y} r={5.5} fill="hsl(0 0% 98%)" stroke="hsl(220 15% 12%)" strokeWidth="1" filter="url(#shadow)" />
-                    <path d={`M ${x - 2.5} ${y} L ${x} ${y - 2.5} L ${x + 2.5} ${y} L ${x} ${y + 2.5} Z`} fill="hsl(220 15% 12%)" opacity="0.72" />
+                    {/* Shadow */}
+                    <ellipse cx={x + 0.8} cy={y + 2.5} rx={r * 0.9} ry={r * 0.35} fill="rgba(0,0,0,0.3)" />
+                    {/* Ball body */}
+                    <circle cx={x} cy={y} r={r} fill="#f5f5f5" stroke="#2a2a2a" strokeWidth="0.7" />
+                    {/* Soccer ball pentagon pattern */}
+                    <polygon points={`${x},${y - r * 0.45} ${x + r * 0.43},${y - r * 0.14} ${x + r * 0.26},${y + r * 0.36} ${x - r * 0.26},${y + r * 0.36} ${x - r * 0.43},${y - r * 0.14}`}
+                      fill="#2a2a2a" opacity="0.75" />
+                    {/* Side patches */}
+                    <circle cx={x - r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
+                    <circle cx={x + r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
+                    <circle cx={x - r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
+                    <circle cx={x + r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
+                    <circle cx={x} cy={y + r * 0.65} r={r * 0.15} fill="#2a2a2a" opacity="0.4" />
+                    {/* Highlight */}
+                    <circle cx={x - r * 0.25} cy={y - r * 0.3} r={r * 0.22} fill="rgba(255,255,255,0.4)" />
                   </g>
                 );
               })()}
