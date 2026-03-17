@@ -2467,18 +2467,22 @@ export default function MatchRoomPage() {
               {events.length === 0 && (
                 <p className="text-[10px] text-muted-foreground px-1">Aguardando eventos...</p>
               )}
-              {events.slice(-30).map(e => (
-                <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
-                  e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-                  e.event_type === 'kickoff' ? 'border-tactical text-foreground' :
-                  e.event_type === 'possession_change' ? 'border-warning/60 text-muted-foreground' :
-                  e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
-                  'border-[hsl(140,10%,25%)] text-muted-foreground'
-                }`}>
-                  <p className="font-display font-semibold">{e.title}</p>
-                  {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
-                </div>
-              ))}
+               {events.slice(-30).map(e => (
+                 <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
+                   e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
+                   e.event_type === 'kickoff' ? 'border-tactical text-foreground' :
+                   e.event_type === 'possession_change' ? 'border-warning/60 text-muted-foreground' :
+                   e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
+                   e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
+                   e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
+                   e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
+                   e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
+                   'border-[hsl(140,10%,25%)] text-muted-foreground'
+                 }`}>
+                   <p className="font-display font-semibold">{e.title}</p>
+                   {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
+                 </div>
+               ))}
               <div ref={eventsEndRef} />
             </div>
           </AccordionSection>
