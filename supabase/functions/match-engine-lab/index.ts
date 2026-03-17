@@ -701,16 +701,16 @@ Deno.serve(async (req) => {
         await supabase.from('matches').update({
           status: 'live',
           started_at: now,
-          current_phase: 'ball_holder',
+          current_phase: 'positioning_attack',
           current_turn_number: 1,
           possession_club_id: possessionClubId,
         }).eq('id', m.id);
 
-        const phaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+        const phaseEnd = new Date(Date.now() + POSITIONING_PHASE_DURATION_MS).toISOString();
         await supabase.from('match_turns').insert({
           match_id: m.id,
           turn_number: 1,
-          phase: 'ball_holder',
+          phase: 'positioning_attack',
           possession_club_id: possessionClubId,
           ball_holder_participant_id: ballHolderParticipantId,
           started_at: now,
