@@ -1929,10 +1929,11 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
-                // Arrow starts from ball position for ball holder actions
+                // Move arrows start from player center; pass/shoot arrows start from ball position
                 const isBallHolderAction = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
-                const fromFieldX = isBallHolderAction && ballDisplayPos ? ballDisplayPos.x : drawingFrom.field_x!;
-                const fromFieldY = isBallHolderAction && ballDisplayPos ? ballDisplayPos.y : drawingFrom.field_y!;
+                const isBallAction = drawingAction.type !== 'move';
+                const fromFieldX = isBallHolderAction && isBallAction && ballDisplayPos ? ballDisplayPos.x : drawingFrom.field_x!;
+                const fromFieldY = isBallHolderAction && isBallAction && ballDisplayPos ? ballDisplayPos.y : drawingFrom.field_y!;
                 const from = toSVG(fromFieldX, fromFieldY);
                 let to: { x: number; y: number };
                 let toFieldX: number, toFieldY: number;
