@@ -124,6 +124,7 @@ const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
 const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
 const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const normalizeAttr = (val: number) => Math.max(0, Math.min(1, (val - 10) / 89));
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
   const dy = by - ay;
@@ -200,6 +201,8 @@ export default function MatchRoomPage() {
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
   const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
+  const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
+  const attrsLoadedRef = useRef(false);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -447,6 +450,44 @@ export default function MatchRoomPage() {
   }, [user, participants, match, club]);
 
   useEffect(() => { loadMatch(); }, [loadMatch]);
+
+  // ── Load player attributes for physics constraints ──
+  useEffect(() => {
+    if (attrsLoadedRef.current || participants.length === 0) return;
+    const profileIds = [...new Set(participants.filter(p => p.player_profile_id).map(p => p.player_profile_id!))];
+    if (profileIds.length === 0) return;
+    attrsLoadedRef.current = true;
+    (async () => {
+      const { data } = await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds);
+      if (!data) return;
+      const map: Record<string, any> = {};
+      for (const row of data) {
+        for (const part of participants.filter(p => p.player_profile_id === row.player_profile_id)) {
+          map[part.id] = row;
+        }
+      }
+      setPlayerAttrsMap(map);
+      console.log('[PHYSICS] Loaded attributes for', Object.keys(map).length, 'participants');
+      for (const [pid, a] of Object.entries(map)) {
+        console.log(`[PHYSICS] ${pid.slice(0,8)}: vel=${a.velocidade} accel=${a.aceleracao} agil=${a.agilidade} stam=${a.stamina} forca=${a.forca} ctrl=${a.controle_bola} pass_lo=${a.passe_baixo} pass_hi=${a.passe_alto} shot_acc=${a.acuracia_chute} shot_pow=${a.forca_chute}`);
+      }
+    })();
+  }, [participants]);
+
+  // ── Compute max move range from player attributes ──
+  const computeMaxMoveRange = useCallback((participantId: string): number => {
+    const attrs = playerAttrsMap[participantId];
+    const turnNum = match?.current_turn_number ?? 1;
+    const vel = Number(attrs?.velocidade ?? 40);
+    const accel = Number(attrs?.aceleracao ?? 40);
+    const stam = Number(attrs?.stamina ?? 40);
+    const forca = Number(attrs?.forca ?? 40);
+    const baseRange = 5 + normalizeAttr(vel) * 13;
+    const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
+    const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
+    const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
+    return baseRange * accelFactor * staminaDecay * forceFactor;
+  }, [playerAttrsMap, match?.current_turn_number]);
 
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
@@ -917,7 +958,22 @@ export default function MatchRoomPage() {
         }
       }
       
-      submitAction('move', drawingAction.fromParticipantId, pctX, pctY);
+      // Clamp move to max range based on player physics
+      const moveFrom = participants.find(p => p.id === drawingAction.fromParticipantId);
+      let mx = pctX, my = pctY;
+      if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+        const dx = pctX - moveFrom.field_x;
+        const dy = pctY - moveFrom.field_y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          mx = moveFrom.field_x + dx * scale;
+          my = moveFrom.field_y + dy * scale;
+        }
+        console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange}`);
+      }
+      submitAction('move', drawingAction.fromParticipantId, mx, my);
     }
     setDrawingAction(null);
     setMouseFieldPct(null);
@@ -1199,7 +1255,26 @@ export default function MatchRoomPage() {
     const svgX = ((e.clientX - rect.left) / rect.width) * totalW;
     const svgY = ((e.clientY - rect.top) / rect.height) * totalH;
     const fp = toField(svgX, svgY);
-    setMouseFieldPct({ x: Math.max(0, Math.min(100, fp.x)), y: Math.max(0, Math.min(100, fp.y)) });
+    let finalX = clamp(fp.x, 0, 100);
+    let finalY = clamp(fp.y, 0, 100);
+
+    // Clamp move arrow to max range based on player physics
+    if (drawingAction.type === 'move') {
+      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+      if (fromP && fromP.field_x != null && fromP.field_y != null) {
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+        const dx = finalX - fromP.field_x;
+        const dy = finalY - fromP.field_y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          finalX = fromP.field_x + dx * scale;
+          finalY = fromP.field_y + dy * scale;
+        }
+      }
+    }
+
+    setMouseFieldPct({ x: finalX, y: finalY });
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -1350,15 +1425,23 @@ export default function MatchRoomPage() {
   };
 
   // Arrow quality based on distance
-  const getArrowQuality = (fromX: number, fromY: number, toX: number, toY: number, type: string): string => {
+  const getArrowQuality = (fromX: number, fromY: number, toX: number, toY: number, type: string, participantId?: string): string => {
     const dist = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
+    const attrs = participantId ? playerAttrsMap[participantId] : null;
+
     if (type === 'shoot') {
-      if (dist < 30) return '#22c55e';
-      if (dist < 50) return '#f59e0b';
+      const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 10;
+      const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 5;
+      const eDist = dist - accBonus - powBonus;
+      if (eDist < 30) return '#22c55e';
+      if (eDist < 50) return '#f59e0b';
       return '#ef4444';
     }
-    if (dist < 20) return '#22c55e';
-    if (dist < 40) return '#f59e0b';
+    const passAttr = type === 'pass_high' ? Number(attrs?.passe_alto ?? 40) : Number(attrs?.passe_baixo ?? 40);
+    const passBonus = normalizeAttr(passAttr) * 8;
+    const eDist = dist - passBonus;
+    if (eDist < 20) return '#22c55e';
+    if (eDist < 40) return '#f59e0b';
     return '#ef4444';
   };
 
@@ -1398,13 +1481,13 @@ export default function MatchRoomPage() {
     }
     if (action.action_type === 'shoot') {
       const color = action.target_x != null && action.target_y != null
-        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot')
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot', action.participant_id)
         : '#f59e0b';
       const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
       return { color, markerId, strokeW: 3.5 };
     }
     const color = action.target_x != null && action.target_y != null
-      ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass')
+      ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass', action.participant_id)
       : '#06b6d4';
     const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
     return { color, markerId, strokeW: 3 };
@@ -1631,7 +1714,7 @@ export default function MatchRoomPage() {
                   to = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 }
                 const isMove = drawingAction.type === 'move';
-                const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type);
+                const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
                 const markerId = isMove ? 'ah-black' : color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
                 const strokeW = isMove ? 2 : drawingAction.type === 'shoot' ? 3.5 : 3;
 
@@ -1641,6 +1724,25 @@ export default function MatchRoomPage() {
                     stroke={color} strokeWidth={strokeW}
                     strokeLinecap="round" opacity={0.85}
                     markerEnd={`url(#${markerId})`}
+                  />
+                );
+              })()}
+
+              {/* Range circle for physics constraints */}
+              {((drawingAction?.type === 'move') || (showActionMenu && !drawingAction)) && (() => {
+                const targetId = drawingAction?.fromParticipantId || showActionMenu;
+                if (!targetId) return null;
+                const p = [...homePlayers, ...awayPlayers].find(pp => pp.id === targetId);
+                if (!p || p.field_x == null || p.field_y == null) return null;
+                const maxRange = computeMaxMoveRange(targetId);
+                const center = toSVG(p.field_x, p.field_y);
+                const radiusX = (maxRange / 100) * INNER_W;
+                const radiusY = (maxRange / 100) * INNER_H;
+                return (
+                  <ellipse
+                    cx={center.x} cy={center.y} rx={radiusX} ry={radiusY}
+                    fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.20)"
+                    strokeWidth="1.2" strokeDasharray="5,4" pointerEvents="none"
                   />
                 );
               })()}
@@ -1753,7 +1855,7 @@ export default function MatchRoomPage() {
 
             {/* Pass/Shot quality indicator */}
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
-              const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type);
+              const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
               const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Média' : 'Ruim';
               return (
                 <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-[hsl(140,10%,8%)] rounded px-3 py-1.5 border border-[hsl(140,10%,20%)]">
