@@ -61,14 +61,16 @@ function computeDeviation(
   }
 
   const baseDifficulty = (dist / 100) * difficultyMultiplier;
-  const deviationRadius = baseDifficulty * (1 - skillFactor) * (0.5 + Math.random() * 0.5);
+  // Exponential curve: 99 skill = zero deviation, below 50 = harsh, below 40 = always large
+  const skillCurve = Math.pow(1 - skillFactor, 2.5);
+  const deviationRadius = baseDifficulty * skillCurve * (0.6 + Math.random() * 0.4);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
 
   // For shoot_power: if deviation is large, ball goes over the goal
   let overGoal = false;
-  if (actionType === 'shoot_power' && deviationRadius > 3) {
+  if (actionType === 'shoot_power' && deviationRadius > 1.5) {
     // Push target_y outside goal range (38-62)
     if (actualY >= 38 && actualY <= 62) {
       actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
@@ -95,7 +97,7 @@ function getInterceptableRanges(actionType: string): Array<[number, number]> {
     case 'pass_high':
       return [[0, 0.2], [0.8, 1]]; // yellow zones only
     case 'pass_launch':
-      return [[0, 0.35], [0.65, 1]]; // green zones
+      return [[0, 0.35], [0.65, 1]]; // yellow zones (interceptable)
     case 'shoot_controlled':
       return [[0, 1]]; // ground ball, fully interceptable
     case 'shoot_power':
@@ -676,6 +678,11 @@ Deno.serve(async (req) => {
               }
             } else if (ballHolderAction.action_type === 'move') {
               nextBallHolderParticipantId = ballHolder.id;
+              // Ball follows player on dribble — update ball position to match player
+              const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+              if (bhMoveAction && bhMoveAction.target_x != null && bhMoveAction.target_y != null) {
+                // Ball position is player position (already updated above)
+              }
             }
           }
         } else {

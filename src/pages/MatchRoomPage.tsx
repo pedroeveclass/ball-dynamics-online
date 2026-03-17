@@ -484,7 +484,7 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40);
     const stam = Number(attrs?.stamina ?? 40);
     const forca = Number(attrs?.forca ?? 40);
-    const baseRange = 5 + normalizeAttr(vel) * 13;
+    const baseRange = 8 + normalizeAttr(vel) * 17;
     const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
@@ -1355,7 +1355,6 @@ export default function MatchRoomPage() {
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
       const dx = ballAction.target_x - startPos.x;
       const dy = ballAction.target_y - startPos.y;
-      const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
 
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
         const len2 = dx * dx + dy * dy;
@@ -1373,11 +1372,11 @@ export default function MatchRoomPage() {
         };
       }
 
-      const currentX = startPos.x + dx * t;
-      const currentY = startPos.y + dy * t;
+      // Ball sticks to player during dribbling — use player's animated position
+      const playerAnimPos = getAnimatedPos(ballHolder);
       return {
-        x: currentX + (dx / len) * 1.8,
-        y: currentY + (dy / len) * 1.8,
+        x: playerAnimPos.x + 1.2,
+        y: playerAnimPos.y - 1.2,
       };
     }
 
@@ -1412,11 +1411,6 @@ export default function MatchRoomPage() {
           y: startPos.y + (goalY - startPos.y) * t - 1.2,
         };
       }
-
-      return {
-        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
-        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
-      };
 
       return {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
@@ -1728,8 +1722,12 @@ export default function MatchRoomPage() {
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
                 const lockedOrigin = activeTurn?.phase === 'resolution' ? resolutionStartPositions[action.participant_id] : null;
-                const fromX = lockedOrigin?.x ?? fromPart.field_x;
-                const fromY = lockedOrigin?.y ?? fromPart.field_y;
+                const isBHAction = action.participant_id === activeTurn?.ball_holder_participant_id && (isPassAction(action.action_type) || isShootAction(action.action_type));
+                const baseFromX = lockedOrigin?.x ?? fromPart.field_x;
+                const baseFromY = lockedOrigin?.y ?? fromPart.field_y;
+                // Pass/shoot arrows start from ball position
+                const fromX = isBHAction ? (baseFromX + 1.2) : baseFromX;
+                const fromY = isBHAction ? (baseFromY - 1.2) : baseFromY;
                 const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
@@ -1762,11 +1760,11 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'pass_launch') {
-                    // Green (35%) → Yellow (30%) → Green (35%), tip green
+                    // Yellow (35%) → Red (30%) → Yellow (35%), tip green
                     const seg = [
-                      { t0: 0, t1: 0.35, color: '#22c55e' },
-                      { t0: 0.35, t1: 0.65, color: '#f59e0b' },
-                      { t0: 0.65, t1: 1, color: '#22c55e' },
+                      { t0: 0, t1: 0.35, color: '#f59e0b' },
+                      { t0: 0.35, t1: 0.65, color: '#ef4444' },
+                      { t0: 0.65, t1: 1, color: '#f59e0b' },
                     ];
                     return seg.map((s, i) => (
                       <line key={i}
@@ -1781,13 +1779,49 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'shoot_power') {
-                    // Full yellow or red depending on quality
+                    // Yellow→Red segments based on quality
+                    if (color === '#ef4444') {
+                      // Full red = terrible
+                      return [(
+                        <line key="power"
+                          x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                          stroke="#ef4444" strokeWidth={strokeW}
+                          strokeLinecap="round" opacity={opacity}
+                          markerEnd="url(#ah-red)"
+                          strokeDasharray={dashArray}
+                        />
+                      )];
+                    }
+                    // Check if it's a borderline case — yellow→red at end
+                    const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
+                    const attrs = playerAttrsMap[action.participant_id];
+                    const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
+                    const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 4;
+                    const eDist = (Math.sqrt((action.target_x! - (fromPart.field_x ?? 50)) ** 2 + (action.target_y! - (fromPart.field_y ?? 50)) ** 2)) - accBonus - powBonus;
+                    if (eDist > 25) {
+                      // Yellow front half, red back half
+                      const seg = [
+                        { t0: 0, t1: 0.5, color: '#f59e0b' },
+                        { t0: 0.5, t1: 1, color: '#ef4444' },
+                      ];
+                      return seg.map((s, i) => (
+                        <line key={i}
+                          x1={from.x + (to.x - from.x) * s.t0} y1={from.y + (to.y - from.y) * s.t0}
+                          x2={from.x + (to.x - from.x) * s.t1} y2={from.y + (to.y - from.y) * s.t1}
+                          stroke={s.color} strokeWidth={strokeW}
+                          strokeLinecap="round" opacity={opacity}
+                          strokeDasharray={dashArray}
+                          markerEnd={i === seg.length - 1 ? 'url(#ah-red)' : undefined}
+                        />
+                      ));
+                    }
+                    // Full yellow = decent
                     return [(
                       <line key="power"
                         x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                        stroke={color} strokeWidth={strokeW}
+                        stroke="#f59e0b" strokeWidth={strokeW}
                         strokeLinecap="round" opacity={opacity}
-                        markerEnd={`url(#${markerId})`}
+                        markerEnd="url(#ah-yellow)"
                         strokeDasharray={dashArray}
                       />
                     )];
@@ -1822,25 +1856,96 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
-                const from = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
+                // Arrow starts from ball position for ball holder actions
+                const isBallHolderAction = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
+                const fromFieldX = isBallHolderAction && ballDisplayPos ? ballDisplayPos.x : drawingFrom.field_x!;
+                const fromFieldY = isBallHolderAction && ballDisplayPos ? ballDisplayPos.y : drawingFrom.field_y!;
+                const from = toSVG(fromFieldX, fromFieldY);
                 let to: { x: number; y: number };
+                let toFieldX: number, toFieldY: number;
                 if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
                   const goalTarget = getShootTarget(drawingFrom);
-                  to = toSVG(goalTarget.x, Math.max(38, Math.min(62, mouseFieldPct.y)));
+                  toFieldX = goalTarget.x;
+                  toFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
+                  to = toSVG(toFieldX, toFieldY);
                 } else {
-                  to = toSVG(mouseFieldPct.x, mouseFieldPct.y);
+                  toFieldX = mouseFieldPct.x;
+                  toFieldY = mouseFieldPct.y;
+                  to = toSVG(toFieldX, toFieldY);
                 }
                 const isMove = drawingAction.type === 'move';
                 const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
-                const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
-                const markerId = isMove ? 'ah-black' : color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
                 const strokeW = isMove ? 2 : isShoot ? 3.5 : 3;
+                const opacity = 0.85;
 
+                if (isMove) {
+                  return (
+                    <line
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke="#1a1a2e" strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      markerEnd="url(#ah-black)"
+                    />
+                  );
+                }
+
+                // Multi-segment preview for passes
+                if (drawingAction.type === 'pass_high') {
+                  const dx = to.x - from.x;
+                  const dy = to.y - from.y;
+                  const seg = [
+                    { t0: 0, t1: 0.2, color: '#f59e0b' },
+                    { t0: 0.2, t1: 0.8, color: '#ef4444' },
+                    { t0: 0.8, t1: 1, color: '#f59e0b' },
+                  ];
+                  return (<>{seg.map((s, i) => (
+                    <line key={i}
+                      x1={from.x + dx * s.t0} y1={from.y + dy * s.t0}
+                      x2={from.x + dx * s.t1} y2={from.y + dy * s.t1}
+                      stroke={s.color} strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      markerEnd={i === seg.length - 1 ? 'url(#ah-green)' : undefined}
+                    />
+                  ))}</>);
+                }
+                if (drawingAction.type === 'pass_launch') {
+                  const dx = to.x - from.x;
+                  const dy = to.y - from.y;
+                  const seg = [
+                    { t0: 0, t1: 0.35, color: '#f59e0b' },
+                    { t0: 0.35, t1: 0.65, color: '#ef4444' },
+                    { t0: 0.65, t1: 1, color: '#f59e0b' },
+                  ];
+                  return (<>{seg.map((s, i) => (
+                    <line key={i}
+                      x1={from.x + dx * s.t0} y1={from.y + dy * s.t0}
+                      x2={from.x + dx * s.t1} y2={from.y + dy * s.t1}
+                      stroke={s.color} strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      markerEnd={i === seg.length - 1 ? 'url(#ah-green)' : undefined}
+                    />
+                  ))}</>);
+                }
+                if (drawingAction.type === 'pass_low') {
+                  return (
+                    <line
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke="#22c55e" strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      markerEnd="url(#ah-green)"
+                    />
+                  );
+                }
+                // Shots: preview only green/yellow (no red — surprise)
+                const color = getArrowQuality(fromFieldX, fromFieldY, toFieldX, toFieldY, drawingAction.type, drawingAction.fromParticipantId);
+                const previewColor = drawingAction.type === 'shoot_controlled' ? '#22c55e' :
+                  (color === '#ef4444' ? '#f59e0b' : color); // cap at yellow for shots
+                const markerId = previewColor === '#22c55e' ? 'ah-green' : 'ah-yellow';
                 return (
                   <line
                     x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                    stroke={color} strokeWidth={strokeW}
-                    strokeLinecap="round" opacity={0.85}
+                    stroke={previewColor} strokeWidth={strokeW}
+                    strokeLinecap="round" opacity={opacity}
                     markerEnd={`url(#${markerId})`}
                   />
                 );
