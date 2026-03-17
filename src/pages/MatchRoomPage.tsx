@@ -1730,16 +1730,81 @@ export default function MatchRoomPage() {
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
                 const controlLabel = action.controlled_by_type === 'bot' ? '🤖' : action.controlled_by_type === 'manager' ? '📋' : '👤';
+                const opacity = animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8;
+                const dashArray = action.controlled_by_type === 'bot' ? '4,3' : 'none';
+
+                // Multi-segment arrow rendering for height-based actions
+                const renderMultiSegmentArrow = () => {
+                  const dx = to.x - from.x;
+                  const dy = to.y - from.y;
+
+                  if (action.action_type === 'pass_high') {
+                    // Yellow (20%) → Red (60%) → Yellow (20%), tip green
+                    const seg = [
+                      { t0: 0, t1: 0.2, color: '#f59e0b' },
+                      { t0: 0.2, t1: 0.8, color: '#ef4444' },
+                      { t0: 0.8, t1: 1, color: '#f59e0b' },
+                    ];
+                    return seg.map((s, i) => (
+                      <line key={i}
+                        x1={from.x + dx * s.t0} y1={from.y + dy * s.t0}
+                        x2={from.x + dx * s.t1} y2={from.y + dy * s.t1}
+                        stroke={s.color} strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        strokeDasharray={dashArray}
+                        markerEnd={i === seg.length - 1 ? `url(#${markerId})` : undefined}
+                      />
+                    ));
+                  }
+
+                  if (action.action_type === 'pass_launch') {
+                    // Green (35%) → Yellow (30%) → Green (35%), tip green
+                    const seg = [
+                      { t0: 0, t1: 0.35, color: '#22c55e' },
+                      { t0: 0.35, t1: 0.65, color: '#f59e0b' },
+                      { t0: 0.65, t1: 1, color: '#22c55e' },
+                    ];
+                    return seg.map((s, i) => (
+                      <line key={i}
+                        x1={from.x + dx * s.t0} y1={from.y + dy * s.t0}
+                        x2={from.x + dx * s.t1} y2={from.y + dy * s.t1}
+                        stroke={s.color} strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        strokeDasharray={dashArray}
+                        markerEnd={i === seg.length - 1 ? `url(#${markerId})` : undefined}
+                      />
+                    ));
+                  }
+
+                  if (action.action_type === 'shoot_power') {
+                    // Full yellow or red depending on quality
+                    return [(
+                      <line key="power"
+                        x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                        stroke={color} strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        markerEnd={`url(#${markerId})`}
+                        strokeDasharray={dashArray}
+                      />
+                    )];
+                  }
+
+                  // pass_low, shoot_controlled, move, receive — single solid line
+                  return [(
+                    <line key="single"
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke={action.action_type === 'pass_low' || action.action_type === 'shoot_controlled' ? '#22c55e' : color}
+                      strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      markerEnd={`url(#${markerId})`}
+                      strokeDasharray={dashArray}
+                    />
+                  )];
+                };
 
                 return (
                   <g key={action.id}>
-                    <line
-                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke={color} strokeWidth={strokeW}
-                      strokeLinecap="round" opacity={animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8}
-                      markerEnd={`url(#${markerId})`}
-                      strokeDasharray={action.controlled_by_type === 'bot' ? '4,3' : 'none'}
-                    />
+                    {renderMultiSegmentArrow()}
                     <text
                       x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
                       textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.68)"
