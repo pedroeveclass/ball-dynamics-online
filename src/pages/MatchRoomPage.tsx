@@ -595,26 +595,25 @@ export default function MatchRoomPage() {
         // Ball was ALREADY loose — inertia only lasts ONE turn, stop it
         setBallInertiaDir(null);
         // Keep carriedLooseBallPos where it is (ball stays put)
-      } else if (finalBallPos) {
-        // Ball JUST became loose — set initial position and compute inertia for this one turn
-        setCarriedLooseBallPos(finalBallPos);
-        const lastBallAction = turnActions.find(a =>
-          (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch') &&
-          a.target_x != null && a.target_y != null
-        );
-        const bhParticipant = lastBallAction ? participants.find(p => p.id === lastBallAction.participant_id) : null;
-        if (lastBallAction && bhParticipant && bhParticipant.field_x != null && bhParticipant.field_y != null) {
-          const dx = lastBallAction.target_x! - bhParticipant.field_x;
-          const dy = lastBallAction.target_y! - bhParticipant.field_y;
-          setBallInertiaDir({ dx, dy });
+      } else {
+        // Ball JUST became loose — use ref for position (avoids race condition with state)
+        const pos = finalBallPosRef.current || finalBallPos;
+        if (pos) {
+          setCarriedLooseBallPos(pos);
+          // Use stored direction from animation end
+          if (lastBallDirRef.current) {
+            setBallInertiaDir(lastBallDirRef.current);
+          }
         }
       }
     } else {
       setCarriedLooseBallPos(null);
       setBallInertiaDir(null);
+      lastBallDirRef.current = null;
     }
 
     setFinalBallPos(null);
+    // Don't clear finalBallPosRef here — it's consumed above
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
 
