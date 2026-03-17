@@ -1203,7 +1203,8 @@ export default function MatchRoomPage() {
           setFinalPositions(finals);
 
           // Store movement directions for inertia system
-          const newDirections: Record<string, { x: number; y: number }> = {};
+          // IMPORTANT: if a player did NOT move this turn, RESET their inertia
+          const newDirections: Record<string, { x: number; y: number }> = { ...prevDirectionsRef.current };
           for (const p of participantsRef.current) {
             const moveAct = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
             if (moveAct && moveAct.target_x != null && moveAct.target_y != null) {
@@ -1213,11 +1214,16 @@ export default function MatchRoomPage() {
                 const ddy = moveAct.target_y - sp.y;
                 if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
                   newDirections[p.id] = { x: ddx, y: ddy };
+                } else {
+                  delete newDirections[p.id]; // Stayed still — reset inertia
                 }
               }
+            } else {
+              // Player didn't move at all — reset inertia completely
+              delete newDirections[p.id];
             }
           }
-          prevDirectionsRef.current = { ...prevDirectionsRef.current, ...newDirections };
+          prevDirectionsRef.current = newDirections;
           
           // Compute final ball position
           const bhId = activeTurn.ball_holder_participant_id;
