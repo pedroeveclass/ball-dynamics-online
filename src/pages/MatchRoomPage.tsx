@@ -139,7 +139,7 @@ const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, 
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
-  type: 'move' | 'pass_low' | 'pass_high' | 'shoot';
+  type: 'move' | 'pass_low' | 'pass_high' | 'pass_launch' | 'shoot_controlled' | 'shoot_power';
   fromParticipantId: string;
 }
 
