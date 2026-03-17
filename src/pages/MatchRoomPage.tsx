@@ -2232,6 +2232,35 @@ export default function MatchRoomPage() {
                   </g>
                 );
               })()}
+
+              {/* Contest visual effect during phase 4 */}
+              {contestEffect && (() => {
+                const pos = toSVG(contestEffect.x, contestEffect.y);
+                const isSuccess = contestEffect.type === 'tackle_success' || contestEffect.type === 'block' || contestEffect.type === 'intercept';
+                const color = isSuccess ? '#ef4444' : '#22c55e';
+                const bgColor = isSuccess ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+                return (
+                  <g pointerEvents="none">
+                    {/* Expanding ring */}
+                    <circle cx={pos.x} cy={pos.y} r={8} fill="none" stroke={color} strokeWidth="2.5" opacity="0.7">
+                      <animate attributeName="r" from="8" to="35" dur="1.5s" fill="freeze" />
+                      <animate attributeName="opacity" from="0.8" to="0" dur="1.5s" fill="freeze" />
+                    </circle>
+                    {/* Inner flash */}
+                    <circle cx={pos.x} cy={pos.y} r={12} fill={bgColor}>
+                      <animate attributeName="r" from="6" to="20" dur="0.8s" fill="freeze" />
+                      <animate attributeName="opacity" from="0.6" to="0" dur="1.2s" fill="freeze" />
+                    </circle>
+                    {/* Label */}
+                    <text x={pos.x} y={pos.y - 22} textAnchor="middle" fontSize="8" fontWeight="800"
+                      fontFamily="'Barlow Condensed', sans-serif" fill={color}>
+                      <animate attributeName="y" from={String(pos.y - 14)} to={String(pos.y - 30)} dur="1.5s" fill="freeze" />
+                      <animate attributeName="opacity" from="1" to="0" dur="2s" fill="freeze" />
+                      {contestEffect.label}
+                    </text>
+                  </g>
+                );
+              })()}
             </svg>
 
             {/* Action menu overlay */}
