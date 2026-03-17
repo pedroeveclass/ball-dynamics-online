@@ -1381,10 +1381,11 @@ export default function MatchRoomPage() {
       };
     }
 
-    if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
-      // Check if someone intercepted — ball stops at interceptor's target position
+    const isBallPass = ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch';
+    const isBallShoot = ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power';
+
+    if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
-        // Calculate how far along the path the interceptor is
         const dx = ballAction.target_x - startPos.x;
         const dy = ballAction.target_y - startPos.y;
         const len2 = dx * dx + dy * dy;
@@ -1395,7 +1396,6 @@ export default function MatchRoomPage() {
             0, 1
           );
         }
-        // Ball travels to intercept point, then stops
         const effectiveT = Math.min(t, interceptT);
         return {
           x: startPos.x + dx * effectiveT + 1.2,
@@ -1403,8 +1403,7 @@ export default function MatchRoomPage() {
         };
       }
 
-      // Shot with no interception: ball goes to goal
-      if (ballAction.action_type === 'shoot') {
+      if (isBallShoot) {
         const isHome = ballHolder.club_id === match.home_club_id;
         const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
         const goalY = ballAction.target_y;
@@ -1413,6 +1412,11 @@ export default function MatchRoomPage() {
           y: startPos.y + (goalY - startPos.y) * t - 1.2,
         };
       }
+
+      return {
+        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
+        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
+      };
 
       return {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
