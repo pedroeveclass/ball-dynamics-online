@@ -203,6 +203,7 @@ export default function MatchRoomPage() {
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
   const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
+  const [ballInertiaDir, setBallInertiaDir] = useState<{ dx: number; dy: number } | null>(null);
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
   const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const attrsLoadedRef = useRef(false);
@@ -588,9 +589,37 @@ export default function MatchRoomPage() {
     setFinalPositions({});
 
     if (activeTurn?.ball_holder_participant_id == null) {
-      if (finalBallPos) setCarriedLooseBallPos(finalBallPos);
+      if (finalBallPos) {
+        // Ball is loose: compute inertia direction from previous trajectory
+        if (carriedLooseBallPos && finalBallPos) {
+          // Continuing loose ball — apply inertia: move ball further in same direction (decaying)
+          const INERTIA_DECAY = 0.35; // ball rolls ~35% of previous distance
+          if (ballInertiaDir) {
+            const newX = clamp(finalBallPos.x + ballInertiaDir.dx * INERTIA_DECAY, 2, 98);
+            const newY = clamp(finalBallPos.y + ballInertiaDir.dy * INERTIA_DECAY, 2, 98);
+            setCarriedLooseBallPos({ x: newX, y: newY });
+            setBallInertiaDir({ dx: ballInertiaDir.dx * INERTIA_DECAY, dy: ballInertiaDir.dy * INERTIA_DECAY });
+          } else {
+            setCarriedLooseBallPos(finalBallPos);
+          }
+        } else if (finalBallPos) {
+          setCarriedLooseBallPos(finalBallPos);
+          // Compute inertia from the ball action that caused it to be loose
+          const lastBallAction = turnActions.find(a =>
+            (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch') &&
+            a.target_x != null && a.target_y != null
+          );
+          const bhParticipant = lastBallAction ? participants.find(p => p.id === lastBallAction.participant_id) : null;
+          if (lastBallAction && bhParticipant && bhParticipant.field_x != null && bhParticipant.field_y != null) {
+            const dx = lastBallAction.target_x! - bhParticipant.field_x;
+            const dy = lastBallAction.target_y! - bhParticipant.field_y;
+            setBallInertiaDir({ dx, dy });
+          }
+        }
+      }
     } else {
       setCarriedLooseBallPos(null);
+      setBallInertiaDir(null);
     }
 
     setFinalBallPos(null);
@@ -1026,10 +1055,11 @@ export default function MatchRoomPage() {
           
           // Player arrives at cursor position when movePct of their range is used
           // Ball arrives at tCursor when ball progress = tCursor
-          // Player can act if: they arrive at a trajectory point BEFORE or WITH the ball
-          // i.e. movePct >= tCursor (player covers their movement % before ball reaches that %)
-          // Also: if within intercept radius of trajectory and ahead of ball
-          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
+          // Player can act if: they arrive BEFORE or WITH the ball
+          // movePct = fraction of player's range used to reach cursor (lower = arrives sooner)
+          // tCursor = fraction of ball's trajectory at that point (lower = ball arrives sooner)
+          // Player arrives first if movePct <= tCursor (needs less % of range than ball needs of trajectory)
+          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
         }
         
         if (!isRedZone && canReach) {
@@ -1108,7 +1138,7 @@ export default function MatchRoomPage() {
         const isAttacking = p.club_id === activeTurn.possession_club_id;
         if (
           (phase === 'ball_holder' && isBH) ||
-          (phase === 'attacking_support' && isAttacking && !isBH) ||
+          (phase === 'attacking_support' && isAttacking) ||
           (phase === 'defending_response' && !isAttacking)
         ) {
           setShowActionMenu(participantId);
@@ -1829,6 +1859,33 @@ export default function MatchRoomPage() {
                 );
               })()}
 
+              {/* ── Ball inertia arrow (green arrow showing where loose ball will roll) ── */}
+              {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
+                if (inertiaLen < 0.5) return null; // Too small to show
+                const INERTIA_DISPLAY = 0.35;
+                const endX = clamp(looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+                const endY = clamp(looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+                const from = toSVG(looseBallPos.x, looseBallPos.y);
+                const to = toSVG(endX, endY);
+                return (
+                  <>
+                    <line
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke="#22c55e" strokeWidth="2.5"
+                      strokeLinecap="round" opacity={0.7}
+                      markerEnd="url(#ah-green)"
+                      strokeDasharray="5,3"
+                    />
+                    <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
+                      textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
+                      Inércia
+                    </text>
+                  </>
+                );
+              })()}
+
               {/* (Fixed markers removed — live preview replaces them) */}
 
               {visibleActions.map(action => {
@@ -2117,10 +2174,11 @@ export default function MatchRoomPage() {
                     const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
                     
                     // Core reachability: player arrives at this trajectory point (tCursor) before ball does
-                    // movePct = how much of their range they've used (0-1), tCursor = ball progress at that point (0-1)
-                    // Player can act if movePct >= tCursor (they arrive before/with the ball)
-                    // Once reachable, everything from tCursor to END is also reachable (ball hasn't passed yet)
-                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
+                    // movePct = fraction of player's range used to reach cursor (lower = arrives sooner)
+                    // tCursor = fraction of ball's trajectory at that point (lower = ball arrives sooner)
+                    // Player can act if movePct <= tCursor (needs less % of range than ball needs of trajectory)
+                    // Once reachable at a point, everything from that point to END is also reachable
+                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
