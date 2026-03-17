@@ -589,32 +589,22 @@ export default function MatchRoomPage() {
     setFinalPositions({});
 
     if (activeTurn?.ball_holder_participant_id == null) {
-      if (finalBallPos) {
-        // Ball is loose: compute inertia direction from previous trajectory
-        if (carriedLooseBallPos && finalBallPos) {
-          // Continuing loose ball — apply inertia: move ball further in same direction (decaying)
-          const INERTIA_DECAY = 0.15; // ball rolls ~15% of previous distance
-          if (ballInertiaDir) {
-            const newX = clamp(finalBallPos.x + ballInertiaDir.dx * INERTIA_DECAY, 2, 98);
-            const newY = clamp(finalBallPos.y + ballInertiaDir.dy * INERTIA_DECAY, 2, 98);
-            setCarriedLooseBallPos({ x: newX, y: newY });
-            setBallInertiaDir({ dx: ballInertiaDir.dx * INERTIA_DECAY, dy: ballInertiaDir.dy * INERTIA_DECAY });
-          } else {
-            setCarriedLooseBallPos(finalBallPos);
-          }
-        } else if (finalBallPos) {
-          setCarriedLooseBallPos(finalBallPos);
-          // Compute inertia from the ball action that caused it to be loose
-          const lastBallAction = turnActions.find(a =>
-            (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch') &&
-            a.target_x != null && a.target_y != null
-          );
-          const bhParticipant = lastBallAction ? participants.find(p => p.id === lastBallAction.participant_id) : null;
-          if (lastBallAction && bhParticipant && bhParticipant.field_x != null && bhParticipant.field_y != null) {
-            const dx = lastBallAction.target_x! - bhParticipant.field_x;
-            const dy = lastBallAction.target_y! - bhParticipant.field_y;
-            setBallInertiaDir({ dx, dy });
-          }
+      if (carriedLooseBallPos) {
+        // Ball was ALREADY loose — inertia only lasts ONE turn, stop it
+        setBallInertiaDir(null);
+        // Keep carriedLooseBallPos where it is (ball stays put)
+      } else if (finalBallPos) {
+        // Ball JUST became loose — set initial position and compute inertia for this one turn
+        setCarriedLooseBallPos(finalBallPos);
+        const lastBallAction = turnActions.find(a =>
+          (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch') &&
+          a.target_x != null && a.target_y != null
+        );
+        const bhParticipant = lastBallAction ? participants.find(p => p.id === lastBallAction.participant_id) : null;
+        if (lastBallAction && bhParticipant && bhParticipant.field_x != null && bhParticipant.field_y != null) {
+          const dx = lastBallAction.target_x! - bhParticipant.field_x;
+          const dy = lastBallAction.target_y! - bhParticipant.field_y;
+          setBallInertiaDir({ dx, dy });
         }
       }
     } else {
@@ -1258,39 +1248,42 @@ export default function MatchRoomPage() {
           }
           prevDirectionsRef.current = newDirections;
           
-          // Compute final ball position
-          const bhId = activeTurn.ball_holder_participant_id;
-          const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
-          
-          if (bhId) {
-            const ballAction = latestActions
-              .filter(a => a.participant_id === bhId)
-              .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
-            
-            if (ballAction) {
-              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
-                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
-                } else {
-                  setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
-                }
-              } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
-                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
-                } else {
-                  const shooter = participantsRef.current.find(p => p.id === bhId);
-                  const isHome = shooter?.club_id === matchRef.current?.home_club_id;
-                  setFinalBallPos({ x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y });
-                }
-              } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-                if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                  setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
-                } else {
-                  setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
-                }
-              }
-            }
-          }
+           // Compute final ball position
+           const bhId = activeTurn.ball_holder_participant_id;
+           const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
+           
+           if (bhId) {
+             // Prioritize pass/shoot over move for ball destination
+             const bhAllActions = latestActions
+               .filter(a => a.participant_id === bhId)
+               .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+             const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
+               || bhAllActions[0];
+             
+             if (ballAction) {
+               if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
+                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
+                 } else {
+                   setFinalBallPos({ x: ballAction.target_x, y: ballAction.target_y });
+                 }
+               } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
+                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
+                 } else {
+                   const shooter = participantsRef.current.find(p => p.id === bhId);
+                   const isHome = shooter?.club_id === matchRef.current?.home_club_id;
+                   setFinalBallPos({ x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y });
+                 }
+               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
+                 } else {
+                   setFinalBallPos({ x: ballAction.target_x, y: ballAction.target_y });
+                 }
+               }
+             }
+           }
           
           setAnimating(false);
 
@@ -1493,6 +1486,21 @@ export default function MatchRoomPage() {
     }
 
     if (!ballHolder) {
+      // During resolution, animate loose ball along inertia trajectory
+      if (animating && activeTurn?.phase === 'resolution' && ballInertiaDir && carriedLooseBallPos) {
+        const INERTIA_DISPLAY = 0.15;
+        const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+        const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+        const raw = animProgress;
+        const ballEaseK = 3;
+        const expDecay = 1 - Math.exp(-ballEaseK * raw);
+        const normFactor = 1 - Math.exp(-ballEaseK);
+        const t = expDecay / normFactor;
+        return {
+          x: carriedLooseBallPos.x + (endX - carriedLooseBallPos.x) * t,
+          y: carriedLooseBallPos.y + (endY - carriedLooseBallPos.y) * t,
+        };
+      }
       // Loose ball: show at last known position
       if (looseBallPos) return looseBallPos;
       if (finalBallPos) return finalBallPos;
@@ -1502,9 +1510,12 @@ export default function MatchRoomPage() {
     const holderRenderPos = getAnimatedPos(ballHolder);
     const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
 
-    const ballAction = turnActions
+    // Prioritize pass/shoot over move for ball animation
+    const bhAllActions = turnActions
       .filter(action => action.participant_id === ballHolder.id)
-      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
+      || bhAllActions[0];
 
     if (!animating || activeTurn?.phase !== 'resolution' || !ballAction) {
       return defaultBallPos;
@@ -1514,6 +1525,10 @@ export default function MatchRoomPage() {
       x: ballHolder.field_x ?? 50,
       y: ballHolder.field_y ?? 50,
     };
+    // Ball starts from player + offset (matching arrow origin)
+    const ballStartX = startPos.x + 1.2;
+    const ballStartY = startPos.y - 1.2;
+
     // Physics-based ball easing: exponential decay (fast launch, decelerating)
     const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
     const rawT = animProgress;
@@ -1535,6 +1550,7 @@ export default function MatchRoomPage() {
             )
           : 1;
         const effectiveT = Math.min(t, interceptT);
+        // Ball follows player path during dribble + offset
         return {
           x: startPos.x + dx * effectiveT + 1.2,
           y: startPos.y + dy * effectiveT - 1.2,
@@ -1554,20 +1570,21 @@ export default function MatchRoomPage() {
 
     if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
-        const dx = ballAction.target_x - startPos.x;
-        const dy = ballAction.target_y - startPos.y;
+        // Ball follows trajectory from ball start to target, capped at intercept point
+        const dx = ballAction.target_x - ballStartX;
+        const dy = ballAction.target_y - ballStartY;
         const len2 = dx * dx + dy * dy;
         let interceptT = 1;
         if (len2 > 0) {
           interceptT = clamp(
-            ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+            ((interceptorAction.target_x - ballStartX) * dx + (interceptorAction.target_y - ballStartY) * dy) / len2,
             0, 1
           );
         }
         const effectiveT = Math.min(t, interceptT);
         return {
-          x: startPos.x + dx * effectiveT + 1.2,
-          y: startPos.y + dy * effectiveT - 1.2,
+          x: ballStartX + dx * effectiveT,
+          y: ballStartY + dy * effectiveT,
         };
       }
 
@@ -1576,14 +1593,15 @@ export default function MatchRoomPage() {
         const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
         const goalY = ballAction.target_y;
         return {
-          x: startPos.x + (goalX - startPos.x) * t + 1.2,
-          y: startPos.y + (goalY - startPos.y) * t - 1.2,
+          x: ballStartX + (goalX - ballStartX) * t,
+          y: ballStartY + (goalY - ballStartY) * t,
         };
       }
 
+      // Ball follows exact trajectory line from ball start to target
       return {
-        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
-        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
+        x: ballStartX + (ballAction.target_x - ballStartX) * t,
+        y: ballStartY + (ballAction.target_y - ballStartY) * t,
       };
     }
 
@@ -1913,19 +1931,28 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Ball inertia trajectory (rendered as pass_low via ballTrajectoryAction virtual entry) ── */}
-              {/* Inertia label shown above the trajectory */}
+              {/* ── Ball inertia trajectory — green arrow + label (rendered like a real pass_low) ── */}
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
                 ballTrajectoryAction?.id === '__inertia__' &&
+                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                 const from = toSVG(looseBallPos.x, looseBallPos.y);
                 const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
-                  <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
-                    textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}
-                    pointerEvents="none">
-                    ⚽ Inércia
-                  </text>
+                  <g pointerEvents="none">
+                    {/* Solid green arrow — same as pass_low */}
+                    <line
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke="#22c55e" strokeWidth={3}
+                      strokeLinecap="round" opacity={0.8}
+                      markerEnd="url(#ah-green)"
+                    />
+                    {/* Label */}
+                    <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
+                      textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
+                      ⚽ Inércia
+                    </text>
+                  </g>
                 );
               })()}
 
