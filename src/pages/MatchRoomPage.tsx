@@ -1486,6 +1486,21 @@ export default function MatchRoomPage() {
     }
 
     if (!ballHolder) {
+      // During resolution, animate loose ball along inertia trajectory
+      if (animating && activeTurn?.phase === 'resolution' && ballInertiaDir && carriedLooseBallPos) {
+        const INERTIA_DISPLAY = 0.15;
+        const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+        const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+        const raw = animProgress;
+        const ballEaseK = 3;
+        const expDecay = 1 - Math.exp(-ballEaseK * raw);
+        const normFactor = 1 - Math.exp(-ballEaseK);
+        const t = expDecay / normFactor;
+        return {
+          x: carriedLooseBallPos.x + (endX - carriedLooseBallPos.x) * t,
+          y: carriedLooseBallPos.y + (endY - carriedLooseBallPos.y) * t,
+        };
+      }
       // Loose ball: show at last known position
       if (looseBallPos) return looseBallPos;
       if (finalBallPos) return finalBallPos;
@@ -1495,9 +1510,12 @@ export default function MatchRoomPage() {
     const holderRenderPos = getAnimatedPos(ballHolder);
     const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
 
-    const ballAction = turnActions
+    // Prioritize pass/shoot over move for ball animation
+    const bhAllActions = turnActions
       .filter(action => action.participant_id === ballHolder.id)
-      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
+      || bhAllActions[0];
 
     if (!animating || activeTurn?.phase !== 'resolution' || !ballAction) {
       return defaultBallPos;
@@ -1507,6 +1525,10 @@ export default function MatchRoomPage() {
       x: ballHolder.field_x ?? 50,
       y: ballHolder.field_y ?? 50,
     };
+    // Ball starts from player + offset (matching arrow origin)
+    const ballStartX = startPos.x + 1.2;
+    const ballStartY = startPos.y - 1.2;
+
     // Physics-based ball easing: exponential decay (fast launch, decelerating)
     const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
     const rawT = animProgress;
@@ -1528,6 +1550,7 @@ export default function MatchRoomPage() {
             )
           : 1;
         const effectiveT = Math.min(t, interceptT);
+        // Ball follows player path during dribble + offset
         return {
           x: startPos.x + dx * effectiveT + 1.2,
           y: startPos.y + dy * effectiveT - 1.2,
@@ -1547,20 +1570,21 @@ export default function MatchRoomPage() {
 
     if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
-        const dx = ballAction.target_x - startPos.x;
-        const dy = ballAction.target_y - startPos.y;
+        // Ball follows trajectory from ball start to target, capped at intercept point
+        const dx = ballAction.target_x - ballStartX;
+        const dy = ballAction.target_y - ballStartY;
         const len2 = dx * dx + dy * dy;
         let interceptT = 1;
         if (len2 > 0) {
           interceptT = clamp(
-            ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+            ((interceptorAction.target_x - ballStartX) * dx + (interceptorAction.target_y - ballStartY) * dy) / len2,
             0, 1
           );
         }
         const effectiveT = Math.min(t, interceptT);
         return {
-          x: startPos.x + dx * effectiveT + 1.2,
-          y: startPos.y + dy * effectiveT - 1.2,
+          x: ballStartX + dx * effectiveT,
+          y: ballStartY + dy * effectiveT,
         };
       }
 
@@ -1569,14 +1593,15 @@ export default function MatchRoomPage() {
         const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
         const goalY = ballAction.target_y;
         return {
-          x: startPos.x + (goalX - startPos.x) * t + 1.2,
-          y: startPos.y + (goalY - startPos.y) * t - 1.2,
+          x: ballStartX + (goalX - ballStartX) * t,
+          y: ballStartY + (goalY - ballStartY) * t,
         };
       }
 
+      // Ball follows exact trajectory line from ball start to target
       return {
-        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
-        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
+        x: ballStartX + (ballAction.target_x - ballStartX) * t,
+        y: ballStartY + (ballAction.target_y - ballStartY) * t,
       };
     }
 
