@@ -1287,14 +1287,15 @@ export default function MatchRoomPage() {
     let finalX = clamp(fp.x, 0, 100);
     let finalY = clamp(fp.y, 0, 100);
 
-    // Clamp move arrow to max range based on player physics
+    // Clamp move arrow to max range based on player physics + inertia
     if (drawingAction.type === 'move') {
       const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (fromP && fromP.field_x != null && fromP.field_y != null) {
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
         const dx = finalX - fromP.field_x;
         const dy = finalY - fromP.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
         if (dist > maxRange) {
           const scale = maxRange / dist;
           finalX = fromP.field_x + dx * scale;
