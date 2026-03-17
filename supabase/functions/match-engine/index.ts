@@ -61,7 +61,9 @@ function computeDeviation(
   }
 
   const baseDifficulty = (dist / 100) * difficultyMultiplier;
-  const deviationRadius = baseDifficulty * (1 - skillFactor) * (0.5 + Math.random() * 0.5);
+  // Exponential curve: 99 skill = zero deviation, below 50 = harsh, below 40 = always large
+  const skillCurve = Math.pow(1 - skillFactor, 2.5);
+  const deviationRadius = baseDifficulty * skillCurve * (0.6 + Math.random() * 0.4);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
