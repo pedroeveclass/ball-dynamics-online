@@ -194,6 +194,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
   looseBallPos?: { x: number; y: number };
+  failedContestParticipantId?: string;
+  failedContestLog?: string;
 } {
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
