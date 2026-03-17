@@ -1436,6 +1436,11 @@ export default function MatchRoomPage() {
     y: ((svgY - PAD) / INNER_H) * 100,
   });
 
+  const getDrawingBounds = (type: DrawingState['type']) => {
+    if (type === 'move') return { min: 0, max: 100 };
+    return { min: -8, max: 108 };
+  };
+
   const handleSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!drawingAction || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
@@ -1444,8 +1449,9 @@ export default function MatchRoomPage() {
     const svgX = ((e.clientX - rect.left) / rect.width) * totalW;
     const svgY = ((e.clientY - rect.top) / rect.height) * totalH;
     const fp = toField(svgX, svgY);
-    let finalX = clamp(fp.x, 0, 100);
-    let finalY = clamp(fp.y, 0, 100);
+    const bounds = getDrawingBounds(drawingAction.type);
+    let finalX = clamp(fp.x, bounds.min, bounds.max);
+    let finalY = clamp(fp.y, bounds.min, bounds.max);
 
     // Clamp move arrow to max range based on player physics + inertia
     if (drawingAction.type === 'move') {
@@ -1475,7 +1481,8 @@ export default function MatchRoomPage() {
     const svgX = ((e.clientX - rect.left) / rect.width) * totalW;
     const svgY = ((e.clientY - rect.top) / rect.height) * totalH;
     const fp = toField(svgX, svgY);
-    handleFieldClick(Math.max(0, Math.min(100, fp.x)), Math.max(0, Math.min(100, fp.y)));
+    const bounds = getDrawingBounds(drawingAction.type);
+    handleFieldClick(clamp(fp.x, bounds.min, bounds.max), clamp(fp.y, bounds.min, bounds.max));
   };
 
   // Ball holder position

@@ -1,4 +1,4 @@
-﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,7 +10,7 @@ const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
 
-// â”€â”€â”€ Accuracy deviation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Accuracy deviation ─────────────────────────────────────────
 function normalizeAttr(val: number): number {
   return Math.max(0, Math.min(1, (val - 10) / 89));
 }
@@ -79,9 +79,7 @@ function computeDeviation(
     }
   }
 
-  // Clamp to field
-  actualX = Math.max(0, Math.min(100, actualX));
-  actualY = Math.max(0, Math.min(100, actualY));
+  // Don't clamp — allow ball to go out of bounds for set pieces
 
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
@@ -90,7 +88,7 @@ function computeDeviation(
   return { actualX, actualY, deviationDist, overGoal };
 }
 
-// â”€â”€â”€ Height-based interception zones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Height-based interception zones ─────────────────────────────
 function getInterceptableRanges(actionType: string): Array<[number, number]> {
   switch (actionType) {
     case 'pass_low':
@@ -118,7 +116,7 @@ function isShootType(action: string): boolean {
   return action === 'shoot' || action === 'shoot_controlled' || action === 'shoot_power';
 }
 
-// â”€â”€â”€ Skill-based interception probability â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Skill-based interception probability ────────────────────
 interface InterceptContext {
   type: 'tackle' | 'receive_pass' | 'block_shot' | 'gk_save';
   baseChance: number;
@@ -224,7 +222,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
 
     if (success) {
       if (context.type === 'tackle') {
-        return { success: false, event: 'tackle', description: `ðŸ¦µ Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+        return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       }
       if (context.type === 'block_shot') {
         // Deflect ball randomly
@@ -234,45 +232,47 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         const deflectDist = 3 + Math.random() * 5;
         const looseBallX = Math.max(0, Math.min(100, blockX + Math.cos(deflectAngle) * deflectDist));
         const looseBallY = Math.max(0, Math.min(100, blockY + Math.sin(deflectAngle) * deflectDist));
-        return { success: false, event: 'blocked', description: `ðŸ›¡ï¸ Bloqueio! (${chancePct})`, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
+        return { success: false, event: 'blocked', description: `🛡️ Bloqueio! (${chancePct})`, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
       }
       if (context.type === 'gk_save') {
-        return { success: false, event: 'saved', description: `ðŸ§¤ Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+        return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       }
       // receive_pass
-      return { success: false, event: 'intercepted', description: `ðŸ¤² Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     } else {
-      // Failure - log event and continue to next candidate
+      // Failure — log event and continue to next candidate
       if (context.type === 'tackle') {
         // Tackle failed: dribble continues, apply penalty to defender (reduce movement by 25%)
         return { 
           success: true, event: 'dribble', 
-          description: `Drible bem-sucedido! (Desarme: ${chancePct})`, 
+          description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, 
           possession_change: false, goal: false,
           failedContestParticipantId: candidate.participant.id,
-          failedContestLog: `Desarme falhou! (${chancePct})`
+          failedContestLog: `🦵 Desarme falhou! (${chancePct})`
         };
       } else if (context.type === 'block_shot') {
-        console.log(`[ENGINE] Bloqueio falhou! (${chancePct}) Chute continua.`);
+        // Block failed: shot continues — log and continue
+        console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
       } else if (context.type === 'gk_save') {
-        console.log(`[ENGINE] Goleiro nao segurou! (${chancePct})`);
+        console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
       } else {
-        console.log(`[ENGINE] Falhou o dominio! (${chancePct}) Bola continua.`);
+        // Pass receive failed: ball continues, next interceptor gets a chance
+        console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
       }
     }
   }
 
   // No interceptors succeeded or none exist
   if (isShootType(action)) {
-    return { success: true, event: 'goal', description: 'âš½ GOL!', possession_change: false, goal: true };
+    return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
   }
   if (isPassType(action)) {
-    return { success: true, event: 'pass_complete', description: 'âœ… Passe completo', possession_change: false, goal: false };
+    return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   }
   if (action === 'move') {
-    return { success: true, event: 'move', description: 'ðŸ”„ ConduÃ§Ã£o', possession_change: false, goal: false };
+    return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   }
-  return { success: true, event: 'no_action', description: 'ðŸ”„ Sem aÃ§Ã£o', possession_change: false, goal: false };
+  return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
 function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[]): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
@@ -353,7 +353,7 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
   return chosen.id;
 }
 
-// â”€â”€â”€ Physics helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Physics helpers ───────────────────────────────────────────
 const NUM_SUBSTEPS = 10;
 
 interface Vec2 { x: number; y: number; }
@@ -513,6 +513,131 @@ function findLooseBallClaimer(allActions: any[], participants: any[]): any | nul
   ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
   return ranked[0].participant;
 }
+// ─── Out of bounds detection ─────────────────────────────────
+interface OOBResult {
+  type: 'throw_in' | 'corner' | 'goal_kick';
+  awardedClubId: string;
+  exitX: number;
+  exitY: number;
+  side?: 'top' | 'bottom';
+}
+
+function detectOutOfBounds(
+  ballX: number, ballY: number,
+  lastTouchClubId: string,
+  match: { home_club_id: string; away_club_id: string }
+): OOBResult | null {
+  const oppositeClub = lastTouchClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+
+  // Sidelines: y <= 1 or y >= 99 → throw-in
+  if (ballY <= 1 || ballY >= 99) {
+    return { type: 'throw_in', awardedClubId: oppositeClub, exitX: ballX, exitY: ballY, side: ballY <= 1 ? 'top' : 'bottom' };
+  }
+
+  // Home end line (x <= 1): home defends left side
+  if (ballX <= 1) {
+    if (lastTouchClubId === match.home_club_id) {
+      return { type: 'corner', awardedClubId: match.away_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    } else {
+      return { type: 'goal_kick', awardedClubId: match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    }
+  }
+
+  // Away end line (x >= 99)
+  if (ballX >= 99) {
+    if (lastTouchClubId === match.away_club_id) {
+      return { type: 'corner', awardedClubId: match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    } else {
+      return { type: 'goal_kick', awardedClubId: match.away_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    }
+  }
+
+  return null;
+}
+
+async function handleSetPiece(
+  supabase: any,
+  matchId: string,
+  oob: OOBResult,
+  participants: any[],
+  match: { home_club_id: string; away_club_id: string },
+  allActions: any[]
+): Promise<{ playerId: string; clubId: string; title: string; body: string } | null> {
+  const teamPlayers = participants.filter((p: any) => p.club_id === oob.awardedClubId && p.role_type === 'player');
+  if (teamPlayers.length === 0) return null;
+
+  const isHomeTeam = oob.awardedClubId === match.home_club_id;
+
+  // Load slot positions for GK detection
+  const slotIds = teamPlayers.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id);
+  const { data: slots } = slotIds.length > 0
+    ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
+    : { data: [] };
+  const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+
+  const getSlotPos = (p: any) => slotMap.get(p.lineup_slot_id) || '';
+  const getPlayerFinalPos = (p: any) => {
+    const moveAct = allActions.find((ac: any) => ac.participant_id === p.id && (ac.action_type === 'move' || ac.action_type === 'receive'));
+    return { x: Number(moveAct?.target_x ?? p.pos_x ?? 50), y: Number(moveAct?.target_y ?? p.pos_y ?? 50) };
+  };
+
+  if (oob.type === 'throw_in') {
+    const outfield = teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK');
+    const candidates = outfield.length > 0 ? outfield : teamPlayers;
+
+    candidates.sort((a: any, b: any) => {
+      const posA = getPlayerFinalPos(a);
+      const posB = getPlayerFinalPos(b);
+      const distA = Math.sqrt((posA.x - oob.exitX) ** 2 + (posA.y - oob.exitY) ** 2);
+      const distB = Math.sqrt((posB.x - oob.exitX) ** 2 + (posB.y - oob.exitY) ** 2);
+      return distA - distB;
+    });
+
+    const chosen = candidates[0];
+    const restartY = oob.side === 'top' ? 1 : 99;
+    const restartX = Math.max(2, Math.min(98, oob.exitX));
+    await supabase.from('match_participants').update({ pos_x: restartX, pos_y: restartY }).eq('id', chosen.id);
+
+    return {
+      playerId: chosen.id, clubId: oob.awardedClubId,
+      title: '🏳️ Lateral!',
+      body: `Reposição pela lateral para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.`,
+    };
+  }
+
+  if (oob.type === 'corner') {
+    const forwards = teamPlayers.filter((p: any) => {
+      const pos = getSlotPos(p).toUpperCase();
+      return ['ST', 'CF', 'LW', 'RW', 'LM', 'RM', 'CAM'].includes(pos);
+    });
+    const chosen = forwards.length > 0 ? forwards[0] : teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK')[0] || teamPlayers[0];
+
+    const cornerX = isHomeTeam ? 99 : 1;
+    const cornerY = oob.side === 'top' ? 1 : 99;
+    await supabase.from('match_participants').update({ pos_x: cornerX, pos_y: cornerY }).eq('id', chosen.id);
+
+    return {
+      playerId: chosen.id, clubId: oob.awardedClubId,
+      title: '🚩 Escanteio!',
+      body: `Escanteio para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.`,
+    };
+  }
+
+  if (oob.type === 'goal_kick') {
+    const gk = teamPlayers.find((p: any) => getSlotPos(p).toUpperCase() === 'GK') || teamPlayers[0];
+    const gkX = isHomeTeam ? 6 : 94;
+    const gkY = Math.max(40, Math.min(60, oob.exitY));
+    await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
+
+    return {
+      playerId: gk.id, clubId: oob.awardedClubId,
+      title: '🥅 Tiro de Meta!',
+      body: `Tiro de meta para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.`,
+    };
+  }
+
+  return null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -528,7 +653,7 @@ Deno.serve(async (req) => {
     const { match_id, action } = body;
     const forceTick = body.force === true;
 
-    // â”€â”€â”€ FINISH MATCH â”€â”€â”€
+    // ─── FINISH MATCH ───
     if (action === 'finish_match' && match_id) {
       const { data: match } = await supabase
         .from('matches').select('*').eq('id', match_id).single();
@@ -546,14 +671,14 @@ Deno.serve(async (req) => {
       await supabase.from('match_event_logs').insert({
         match_id,
         event_type: 'final_whistle',
-        title: `ðŸ Apito final! ${match.home_score} â€“ ${match.away_score}`,
+        title: `🏁 Apito final! ${match.home_score} – ${match.away_score}`,
         body: 'Partida encerrada manualmente.',
       });
 
       return new Response(JSON.stringify({ status: 'finished', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // â”€â”€â”€ AUTO-START â”€â”€â”€
+    // ─── AUTO-START ───
     if (action === 'auto_start' || !action) {
       const now = new Date().toISOString();
       const { data: dueMatches } = await supabase
@@ -591,8 +716,8 @@ Deno.serve(async (req) => {
         await supabase.from('match_event_logs').insert({
           match_id: m.id,
           event_type: 'kickoff',
-          title: 'âš½ Partida iniciada!',
-          body: 'Time da casa comeÃ§a com a bola no meio-campo.',
+          title: '⚽ Partida iniciada!',
+          body: 'Time da casa começa com a bola no meio-campo.',
         });
 
         started.push(m.id);
@@ -603,7 +728,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // â”€â”€â”€ TICK â”€â”€â”€
+    // ─── TICK ───
     if (action === 'tick' && match_id) {
       const { data: match } = await supabase
         .from('matches').select('*').eq('id', match_id).eq('status', 'live').single();
@@ -640,11 +765,13 @@ Deno.serve(async (req) => {
 
       const isLooseBall = !activeTurn.ball_holder_participant_id;
 
-      // â”€â”€ RESOLUTION â”€â”€
+      // ── RESOLUTION ──
       let newPossessionClubId = possClubId;
       let homeScore = match.home_score;
       let awayScore = match.away_score;
       let nextBallHolderParticipantId = ballHolder?.id || null;
+      let ballEndPos: { x: number; y: number } | null = null;
+      const lastTouchClubId = possClubId;
 
       if (activeTurn.phase === 'resolution') {
         console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
@@ -660,14 +787,35 @@ Deno.serve(async (req) => {
           .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
           .order('created_at', { ascending: false });
 
-        const seenParticipants = new Set<string>();
+        // Dedup: keep latest action per participant, BUT allow ball holder to have
+        // BOTH a pass/shoot (from phase 1) AND a move (from phase 2)
+        const seenParticipants = new Map<string, string[]>(); // participantId -> action_types kept
         const allActions = (rawActions || []).filter(a => {
-          if (seenParticipants.has(a.participant_id)) return false;
-          seenParticipants.add(a.participant_id);
+          const existing = seenParticipants.get(a.participant_id);
+          const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
+          if (isBH) {
+            // Ball holder can have both a ball action (pass/shoot) AND a move
+            const isBallAction = isPassType(a.action_type) || isShootType(a.action_type);
+            const isMoveAction = a.action_type === 'move';
+            if (existing) {
+              const hasBallAction = existing.some(t => isPassType(t) || isShootType(t));
+              const hasMoveAction = existing.some(t => t === 'move');
+              if (isBallAction && hasBallAction) return false; // Already has a ball action
+              if (isMoveAction && hasMoveAction) return false; // Already has a move
+              if (!isBallAction && !isMoveAction) return false; // Unknown dupe
+              existing.push(a.action_type);
+              return true;
+            }
+            seenParticipants.set(a.participant_id, [a.action_type]);
+            return true;
+          }
+          // Non-ball-holder: only one action
+          if (existing) return false;
+          seenParticipants.set(a.participant_id, [a.action_type]);
           return true;
         });
 
-        // â”€â”€ Load player attributes for physics â”€â”€
+        // ── Load player attributes for physics ──
         const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
         const { data: attrRows } = profileIds.length > 0
           ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
@@ -693,7 +841,7 @@ Deno.serve(async (req) => {
           };
         };
 
-        // â”€â”€ Apply accuracy deviation to ball actions before resolution â”€â”€
+        // ── Apply accuracy deviation to ball actions before resolution ──
         if (ballHolder) {
           const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
           if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
@@ -717,7 +865,7 @@ Deno.serve(async (req) => {
               if (deviation.overGoal) {
                 await supabase.from('match_event_logs').insert({
                   match_id, event_type: 'shot_over',
-                  title: 'ðŸ’¨ Chute para fora!',
+                  title: '💨 Chute para fora!',
                   body: 'A bola foi por cima do gol.',
                 });
               }
@@ -727,18 +875,27 @@ Deno.serve(async (req) => {
           }
         }
 
-        // â”€â”€ Apply movement â”€â”€
-        console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw)`);
+        // ── Apply movement ──
+        // Check if ball holder has a ball action (pass/shoot) — if so, defer their move until after resolution
+        const bhHasBallAction = ballHolder && allActions.some(a =>
+          a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+
+        console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction}`);
         for (const a of allActions) {
-          console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} â†’ (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
+          console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
           if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
+            // Skip ball holder's move if they have a ball action — defer it after ball resolution
+            if (a.participant_id === ballHolder?.id && a.action_type === 'move' && bhHasBallAction) {
+              console.log(`[ENGINE] Deferring BH move until after ball resolution`);
+              continue;
+            }
             const part = (participants || []).find(p => p.id === a.participant_id);
             const startX = Number(part?.pos_x ?? 50);
             const startY = Number(part?.pos_y ?? 50);
             const dist = Math.sqrt((Number(a.target_x) - startX) ** 2 + (Number(a.target_y) - startY) ** 2);
             const attrs = getAttrs(part);
 
-            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) â†’ (${Number(a.target_x).toFixed(1)},${Number(a.target_y).toFixed(1)}) dist=${dist.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
+            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${Number(a.target_x).toFixed(1)},${Number(a.target_y).toFixed(1)}) dist=${dist.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
             await supabase.from('match_participants').update({
               pos_x: Number(a.target_x),
@@ -748,29 +905,45 @@ Deno.serve(async (req) => {
         }
 
         if (ballHolder) {
+          // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
           const ballHolderAction = allActions
-            .find(a => a.participant_id === ballHolder.id);
+            .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+            || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
           if (ballHolderAction) {
-            // For shoot_power with overGoal, skip goal check
-            const deviation = ballHolderAction._overGoal;
-
             const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile);
 
             if (result.goal) {
-              if (possClubId === match.home_club_id) homeScore++;
-              else awayScore++;
+              // Check if the shot is actually on target
+              const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
+              const shotTargetY = Number(ballHolderAction.target_y ?? 50);
+              const isOnTarget = shotTargetY >= 38 && shotTargetY <= 62 && !isOverGoal;
 
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'goal',
-                title: `âš½ GOL! ${homeScore} â€“ ${awayScore}`,
-                body: `Turno ${match.current_turn_number}`,
-              });
+              if (isOnTarget) {
+                if (possClubId === match.home_club_id) homeScore++;
+                else awayScore++;
 
-              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'goal',
+                  title: `⚽ GOL! ${homeScore} – ${awayScore}`,
+                  body: `Turno ${match.current_turn_number}`,
+                });
+
+                newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+                nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+              } else {
+                // Shot missed — ball goes out of bounds
+                nextBallHolderParticipantId = null;
+                ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'shot_missed',
+                  title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
+                  body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
+                });
+                console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
+              }
             } else if (result.looseBallPos) {
-              // Shot blocked â€” ball deflects to random position
+              // Shot blocked — ball deflects to random position
               nextBallHolderParticipantId = null;
               await supabase.from('match_event_logs').insert({
                 match_id, event_type: 'blocked',
@@ -783,7 +956,7 @@ Deno.serve(async (req) => {
 
               await supabase.from('match_event_logs').insert({
                 match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'),
-                title: result.possession_change ? `ðŸ”„ Troca de posse` : result.description,
+                title: result.possession_change ? `🔄 Troca de posse` : result.description,
                 body: result.description,
               });
             } else if (result.event === 'dribble') {
@@ -799,7 +972,7 @@ Deno.serve(async (req) => {
                 await supabase.from('match_event_logs').insert({
                   match_id, event_type: 'tackle_failed',
                   title: result.failedContestLog,
-                  body: 'O defensor perdeu o equilibrio e tera penalidade de velocidade.',
+                  body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
                 });
               }
               // Apply movement penalty to failed tackler: reduce their effective movement by 25%
@@ -808,7 +981,7 @@ Deno.serve(async (req) => {
                 if (failedPart) {
                   const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
                   if (failMoveAct) {
-                    // Reduce their movement by 25% - move them only 75% of the way
+                    // Reduce their movement by 25% — move them only 75% of the way
                     const startX = Number(failedPart.pos_x ?? 50);
                     const startY = Number(failedPart.pos_y ?? 50);
                     const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
@@ -842,16 +1015,16 @@ Deno.serve(async (req) => {
                     newPossessionClubId = closestPlayer.club_id;
                     await supabase.from('match_event_logs').insert({
                       match_id, event_type: 'possession_change',
-                      title: 'ðŸ”„ Troca de posse',
-                      body: 'Passe interceptado pelo adversÃ¡rio mais prÃ³ximo.',
+                      title: '🔄 Troca de posse',
+                      body: 'Passe interceptado pelo adversário mais próximo.',
                     });
                   }
                 } else {
                   nextBallHolderParticipantId = null;
                   await supabase.from('match_event_logs').insert({
                     match_id, event_type: 'loose_ball',
-                    title: 'âš½ Bola solta!',
-                    body: 'Passe para Ã¡rea vazia. NinguÃ©m estÃ¡ com a bola.',
+                    title: '⚽ Bola solta!',
+                    body: 'Passe para área vazia. Ninguém está com a bola.',
                   });
                 }
               }
@@ -860,6 +1033,19 @@ Deno.serve(async (req) => {
             }
           }
         } else {
+          // ── LOOSE BALL HANDLING ──
+          // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
+          const { data: prevTurnData } = await supabase
+            .from('match_turns')
+            .select('ball_holder_participant_id')
+            .eq('match_id', match_id)
+            .eq('turn_number', match.current_turn_number - 1)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
+
           const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
 
           if (looseBallClaimer) {
@@ -869,11 +1055,38 @@ Deno.serve(async (req) => {
             await supabase.from('match_event_logs').insert({
               match_id,
               event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
-              title: looseBallClaimer.club_id === possClubId ? 'ðŸ¤² Bola recuperada!' : 'ðŸ”„ Bola roubada!',
+              title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
               body: 'Quem chegou primeiro na bola solta ficou com a posse.',
             });
           } else {
             nextBallHolderParticipantId = null;
+            if (wasAlreadyLoose) {
+              // Ball was already loose — inertia stops, ball is stationary
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'ball_stopped',
+                title: '⚽ Bola parada',
+                body: 'A bola perdeu a inércia e está parada no campo.',
+              });
+            } else {
+              // First turn loose — apply inertia
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'ball_inertia',
+                title: '⚽ Bola continua rolando...',
+                body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+              });
+            }
+          }
+        }
+
+        // ── Apply deferred ball holder move (after ball resolution) ──
+        if (bhHasBallAction && ballHolder) {
+          const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+          if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
+            await supabase.from('match_participants').update({
+              pos_x: Number(bhMoveAction.target_x),
+              pos_y: Number(bhMoveAction.target_y),
+            }).eq('id', ballHolder.id);
+            console.log(`[ENGINE] Deferred BH move applied: (${Number(bhMoveAction.target_x).toFixed(1)},${Number(bhMoveAction.target_y).toFixed(1)})`);
           }
         }
 
@@ -883,6 +1096,44 @@ Deno.serve(async (req) => {
           const overriddenIds = allRawIds.filter(id => !usedIds.includes(id));
           if (usedIds.length > 0) await supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds);
           if (overriddenIds.length > 0) await supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds);
+        }
+
+        // ── Compute ball end position for out-of-bounds check ──
+        if (!ballEndPos) {
+          if (nextBallHolderParticipantId) {
+            const holder = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
+            if (holder) {
+              const moveAct = allActions.find((a: any) => a.participant_id === holder.id && (a.action_type === 'move' || a.action_type === 'receive'));
+              ballEndPos = {
+                x: Number(moveAct?.target_x ?? holder.pos_x ?? 50),
+                y: Number(moveAct?.target_y ?? holder.pos_y ?? 50),
+              };
+            }
+          } else if (ballHolder) {
+            // Loose ball — ball is at the pass/shot target
+            const bhAction = allActions.find((a: any) => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+            if (bhAction?.target_x != null && bhAction?.target_y != null) {
+              ballEndPos = { x: Number(bhAction.target_x), y: Number(bhAction.target_y) };
+            }
+          }
+        }
+
+        // ── Out-of-bounds detection — only if no goal scored and ball is loose ──
+        const goalScored = homeScore > match.home_score || awayScore > match.away_score;
+        if (ballEndPos && !goalScored && nextBallHolderParticipantId === null) {
+          const oob = detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match);
+          if (oob) {
+            const restart = await handleSetPiece(supabase, match_id, oob, participants || [], match, allActions);
+            if (restart) {
+              nextBallHolderParticipantId = restart.playerId;
+              newPossessionClubId = restart.clubId;
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: oob.type,
+                title: restart.title,
+                body: restart.body,
+              });
+            }
+          }
         }
 
         const newTurnNumber = match.current_turn_number + 1;
@@ -900,7 +1151,7 @@ Deno.serve(async (req) => {
 
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'final_whistle',
-            title: `ðŸ Apito final! ${homeScore} â€“ ${awayScore}`,
+            title: `🏁 Apito final! ${homeScore} – ${awayScore}`,
             body: 'Partida encerrada.',
           });
         } else {
@@ -928,7 +1179,7 @@ Deno.serve(async (req) => {
           if (isNextLooseBall) {
             await supabase.from('match_event_logs').insert({
               match_id, event_type: 'loose_ball_phase',
-              title: 'âš½ Bola solta â€” Fase 1 pulada',
+              title: '⚽ Bola solta — Fase 1 pulada',
               body: 'Todos os jogadores se movimentam para disputar a bola.',
             });
           }
@@ -952,7 +1203,7 @@ Deno.serve(async (req) => {
           status: 'active',
         });
       } else {
-        // â”€â”€ Early deviation at ball_holder â†’ attacking_support transition â”€â”€
+        // ── Early deviation at ball_holder → attacking_support transition ──
         if (activeTurn.phase === 'ball_holder' && ballHolder) {
           const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
           const { data: devAttrRows } = profileIds.length > 0
@@ -988,12 +1239,12 @@ Deno.serve(async (req) => {
               payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal },
             }).eq('id', bhAction.id);
 
-            console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) â†’ (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
+            console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
 
             if (deviation.overGoal) {
               await supabase.from('match_event_logs').insert({
                 match_id, event_type: 'shot_over',
-                title: 'ðŸ’¨ Chute para fora!',
+                title: '💨 Chute para fora!',
                 body: 'A bola foi por cima do gol.',
               });
             }
@@ -1026,7 +1277,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // â”€â”€â”€ SUBMIT HUMAN ACTION â”€â”€â”€
+    // ─── SUBMIT HUMAN ACTION ───
     if (action === 'submit_action' && match_id) {
       const authHeader = req.headers.get('Authorization');
       if (!authHeader) {
@@ -1107,4 +1358,3 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
-
