@@ -2089,10 +2089,26 @@ export default function MatchRoomPage() {
                 const isMove = drawingAction.type === 'move';
 
                 // Compute whether the action circle can reach the ball trajectory
+                // Key rule: player can act if they reach ANY point on the trajectory BEFORE or AT the same time as the ball
+                // Once purple at a point, everything from that point to END of trajectory is also reachable
                 let canReachBall = false;
-                if (isMove && ballTrajectoryAction && ballTrajectoryHolder &&
-                    ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
-                    ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                
+                // Also check for stationary ball holder (no action = tackle opportunity)
+                const effectiveBallTrajectoryAction = (() => {
+                  if (ballTrajectoryAction) return ballTrajectoryAction;
+                  // If ball holder has no action, treat as stationary
+                  if (activeTurn?.ball_holder_participant_id && ballTrajectoryHolder &&
+                      ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null) {
+                    return { action_type: 'move', target_x: ballTrajectoryHolder.field_x, target_y: ballTrajectoryHolder.field_y, participant_id: activeTurn.ball_holder_participant_id } as MatchAction;
+                  }
+                  return null;
+                })();
+                
+                const effectiveHolder = effectiveBallTrajectoryAction ? (ballTrajectoryHolder || participants.find(p => p.id === effectiveBallTrajectoryAction.participant_id)) : null;
+                
+                if (isMove && effectiveBallTrajectoryAction && effectiveHolder &&
+                    effectiveHolder.field_x != null && effectiveHolder.field_y != null &&
+                    effectiveBallTrajectoryAction.target_x != null && effectiveBallTrajectoryAction.target_y != null &&
                     (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
@@ -2100,26 +2116,30 @@ export default function MatchRoomPage() {
                   const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
                   const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
 
-                  const bfx = ballTrajectoryHolder.field_x!;
-                  const bfy = ballTrajectoryHolder.field_y!;
-                  const btx = ballTrajectoryAction.target_x!;
-                  const bty = ballTrajectoryAction.target_y!;
-                  const ballPreviewX = bfx + (btx - bfx) * movePct;
-                  const ballPreviewY = bfy + (bty - bfy) * movePct;
+                  const bfx = effectiveHolder.field_x!;
+                  const bfy = effectiveHolder.field_y!;
+                  const btx = effectiveBallTrajectoryAction.target_x!;
+                  const bty = effectiveBallTrajectoryAction.target_y!;
 
-                  // Check if action circle (at cursor) touches the ball preview position
-                  const circleRadiusField = 9 / INNER_W * 100; // ~1% field width
-                  const distToBallPreview = Math.sqrt((mouseFieldPct.x - ballPreviewX) ** 2 + (mouseFieldPct.y - ballPreviewY) ** 2);
+                  const circleRadiusField = 9 / INNER_W * 100;
                   
-                  // Also check if cursor position is AHEAD of ball on trajectory (player arrives before ball)
                   const trajDx = btx - bfx;
                   const trajDy = bty - bfy;
                   const trajLen2 = trajDx * trajDx + trajDy * trajDy;
+                  
                   if (trajLen2 > 0) {
                     const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
                     const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
-                    // Can reach if: circle touches ball preview OR player is on trajectory before ball arrives
-                    canReachBall = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+                    
+                    // Core reachability: player arrives at this trajectory point (tCursor) before ball does
+                    // movePct = how much of their range they've used (0-1), tCursor = ball progress at that point (0-1)
+                    // Player can act if movePct >= tCursor (they arrive before/with the ball)
+                    // Once reachable, everything from tCursor to END is also reachable (ball hasn't passed yet)
+                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
+                  } else {
+                    // Stationary ball holder — if within reach, can tackle
+                    const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
+                    canReachBall = distToBH <= (circleRadiusField + INTERCEPT_RADIUS + 2);
                   }
                 }
 
