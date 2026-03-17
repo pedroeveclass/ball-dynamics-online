@@ -1479,6 +1479,9 @@ export default function MatchRoomPage() {
     return null;
   })();
 
+  const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
+  const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
     // Use locked final ball position if available (post-animation)
     if (finalBallPos && !animating) {
@@ -1687,8 +1690,6 @@ export default function MatchRoomPage() {
   const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
-  const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
-  const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
 
   const getActionArrowColor = (
     action: MatchAction,
