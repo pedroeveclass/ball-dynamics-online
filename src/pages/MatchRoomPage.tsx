@@ -1234,7 +1234,7 @@ export default function MatchRoomPage() {
       return [];
     }
 
-    if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'shoot'];
+    if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
     if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
