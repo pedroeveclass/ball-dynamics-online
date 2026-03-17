@@ -1765,40 +1765,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Trajectory progress markers (25%, 50%, 75%) ── */}
-              {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
-                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
-                (() => {
-                  const fromSvg = toSVG(ballTrajectoryHolder.field_x!, ballTrajectoryHolder.field_y!);
-                  const toSvgPt = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
-                  const dx = toSvgPt.x - fromSvg.x;
-                  const dy = toSvgPt.y - fromSvg.y;
-                  const markers = [0.25, 0.5, 0.75];
-                  return markers.map((t, i) => (
-                    <g key={`progress-${i}`}>
-                      <circle
-                        cx={fromSvg.x + dx * t}
-                        cy={fromSvg.y + dy * t}
-                        r={3}
-                        fill="rgba(255,255,255,0.4)"
-                        stroke="rgba(255,255,255,0.7)"
-                        strokeWidth="0.5"
-                      />
-                      <text
-                        x={fromSvg.x + dx * t}
-                        y={fromSvg.y + dy * t - 6}
-                        textAnchor="middle"
-                        fontSize="5"
-                        fill="rgba(255,255,255,0.55)"
-                        fontFamily="'Barlow Condensed', sans-serif"
-                      >
-                        {Math.round(t * 100)}%
-                      </text>
-                    </g>
-                  ));
-                })()
-              )}
+              {/* (Fixed markers removed — live preview replaces them) */}
 
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
@@ -2036,27 +2003,29 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Green cursor shadow + player glow during drawing */}
+              {/* Player glow during drawing + green cursor shadow only on MOVE */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const cursorSvg = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 const fromSvg = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
+                const isMove = drawingAction.type === 'move';
                 return (
                   <>
-                    {/* Outer glow around active player */}
+                    {/* Outer glow around active player (all actions) */}
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke="rgba(34,197,94,0.3)" strokeWidth="2" filter="url(#pulse-glow)" />
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="4" />
-                    {/* Green translucent circle at cursor (destination shadow) */}
-                    <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                    {/* Green translucent circle at cursor (only for MOVE) */}
+                    {isMove && (
+                      <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                    )}
                   </>
                 );
               })()}
 
-              {/* Live ball preview synced to movement % during phases 2/3 */}
+              {/* Live ball preview synced to movement % during phases 2/3 (works for ALL ball actions including move/dribble) */}
               {drawingAction?.type === 'move' && mouseFieldPct && drawingFrom &&
                 ballTrajectoryAction && ballTrajectoryHolder &&
                 ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                ballTrajectoryAction.action_type !== 'move' &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
@@ -2188,24 +2157,52 @@ export default function MatchRoomPage() {
                   className="absolute z-50 bg-[hsl(45,30%,90%)] border border-[hsl(45,20%,60%)] rounded shadow-lg py-1 min-w-[140px]"
                   style={{ left, top, transform: 'translateY(-50%)' }}
                 >
-                  {actions.map(a => (
-                    <button
-                      key={a}
-                      disabled={submittingAction}
-                      onClick={() => handleActionMenuSelect(a, showActionMenu)}
-                      className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
-                    >
-                      {a === 'move' && <span className="text-[10px]">↗</span>}
-                      {a === 'pass_low' && <span className="text-[10px]">➡</span>}
-                      {a === 'pass_high' && <span className="text-[10px]">⤴</span>}
-                      {a === 'pass_launch' && <span className="text-[10px]">🚀</span>}
-                      {a === 'shoot_controlled' && <span className="text-[10px]">🎯</span>}
-                      {a === 'shoot_power' && <span className="text-[10px]">💥</span>}
-                      {a === 'no_action' && <span className="text-[10px]">⊘</span>}
-                      {a === 'receive' && <span className="text-[10px]">🤲</span>}
-                      {ACTION_LABELS[a]}
-                    </button>
-                  ))}
+                  {actions.map(a => {
+                    // Context-aware label for 'receive' action
+                    let label = ACTION_LABELS[a];
+                    let icon = '';
+                    if (a === 'move') icon = '↗';
+                    else if (a === 'pass_low') icon = '➡';
+                    else if (a === 'pass_high') icon = '⤴';
+                    else if (a === 'pass_launch') icon = '🚀';
+                    else if (a === 'shoot_controlled') icon = '🎯';
+                    else if (a === 'shoot_power') icon = '💥';
+                    else if (a === 'no_action') icon = '⊘';
+                    else if (a === 'receive') {
+                      icon = '🤲';
+                      // Determine context
+                      const menuPlayer = participants.find(p => p.id === showActionMenu);
+                      const bhAction = ballTrajectoryAction;
+                      const bhPlayer = ballTrajectoryHolder;
+                      if (bhAction && bhPlayer && menuPlayer) {
+                        const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
+                        if (bhAction.action_type === 'move' && isOpponent) {
+                          label = 'DESARME';
+                          icon = '🦵';
+                        } else if (isShootAction(bhAction.action_type) && isOpponent) {
+                          const isGK = menuPlayer.field_pos === 'GK';
+                          if (isGK) {
+                            label = 'DEFENDER';
+                            icon = '🧤';
+                          } else {
+                            label = 'BLOQUEAR';
+                            icon = '🛡️';
+                          }
+                        }
+                      }
+                    }
+                    return (
+                      <button
+                        key={a}
+                        disabled={submittingAction}
+                        onClick={() => handleActionMenuSelect(a, showActionMenu)}
+                        className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
+                      >
+                        <span className="text-[10px]">{icon}</span>
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })()}
