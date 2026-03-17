@@ -1131,7 +1131,7 @@ export default function MatchRoomPage() {
         const isAttacking = p.club_id === activeTurn.possession_club_id;
         if (
           (phase === 'ball_holder' && isBH) ||
-          (phase === 'attacking_support' && isAttacking && !isBH) ||
+          (phase === 'attacking_support' && isAttacking) ||
           (phase === 'defending_response' && !isAttacking)
         ) {
           setShowActionMenu(participantId);
