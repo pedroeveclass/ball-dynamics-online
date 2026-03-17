@@ -772,6 +772,8 @@ Deno.serve(async (req) => {
       let homeScore = match.home_score;
       let awayScore = match.away_score;
       let nextBallHolderParticipantId = ballHolder?.id || null;
+      let ballEndPos: { x: number; y: number } | null = null;
+      const lastTouchClubId = possClubId;
 
       if (activeTurn.phase === 'resolution') {
         console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
