@@ -1116,7 +1116,18 @@ export default function MatchRoomPage() {
       // Clamp move to max range based on player physics + inertia
       const moveFrom = participants.find(p => p.id === drawingAction.fromParticipantId);
       let mx = pctX, my = pctY;
-      if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+      if (isPositioningTurn) {
+        // Positioning: unlimited range, clamp to field + kickoff half
+        mx = clamp(mx, 1, 99);
+        my = clamp(my, 1, 99);
+        const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+        const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+        if (isKickoff && moveFrom) {
+          const isHome = moveFrom.club_id === match?.home_club_id;
+          if (isHome) mx = Math.min(mx, 49);
+          else mx = Math.max(mx, 51);
+        }
+      } else if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
         const dx = pctX - moveFrom.field_x;
         const dy = pctY - moveFrom.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
