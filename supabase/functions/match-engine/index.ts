@@ -876,6 +876,12 @@ Deno.serve(async (req) => {
             });
           } else {
             nextBallHolderParticipantId = null;
+            // Ball inertia: log that the ball continues rolling
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'ball_inertia',
+              title: '⚽ Bola continua rolando...',
+              body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+            });
           }
         }
 
