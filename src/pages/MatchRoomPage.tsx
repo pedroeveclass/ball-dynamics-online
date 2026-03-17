@@ -1717,16 +1717,17 @@ export default function MatchRoomPage() {
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const from = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 let to: { x: number; y: number };
-                if (drawingAction.type === 'shoot') {
+                if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
                   const goalTarget = getShootTarget(drawingFrom);
                   to = toSVG(goalTarget.x, Math.max(38, Math.min(62, mouseFieldPct.y)));
                 } else {
                   to = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 }
                 const isMove = drawingAction.type === 'move';
+                const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
                 const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
                 const markerId = isMove ? 'ah-black' : color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
-                const strokeW = isMove ? 2 : drawingAction.type === 'shoot' ? 3.5 : 3;
+                const strokeW = isMove ? 2 : isShoot ? 3.5 : 3;
 
                 return (
                   <line
