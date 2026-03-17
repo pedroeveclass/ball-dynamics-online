@@ -2003,19 +2003,60 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Player glow during drawing + green cursor shadow only on MOVE */}
+              {/* Player glow during drawing + action circle (green=can't reach, purple=can reach ball) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const cursorSvg = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 const fromSvg = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 const isMove = drawingAction.type === 'move';
+
+                // Compute whether the action circle can reach the ball trajectory
+                let canReachBall = false;
+                if (isMove && ballTrajectoryAction && ballTrajectoryHolder &&
+                    ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
+                    ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                    (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
+                  const mdx = mouseFieldPct.x - drawingFrom.field_x!;
+                  const mdy = mouseFieldPct.y - drawingFrom.field_y!;
+                  const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+                  const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                  const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+
+                  const bfx = ballTrajectoryHolder.field_x!;
+                  const bfy = ballTrajectoryHolder.field_y!;
+                  const btx = ballTrajectoryAction.target_x!;
+                  const bty = ballTrajectoryAction.target_y!;
+                  const ballPreviewX = bfx + (btx - bfx) * movePct;
+                  const ballPreviewY = bfy + (bty - bfy) * movePct;
+
+                  // Check if action circle (at cursor) touches the ball preview position
+                  const circleRadiusField = 9 / INNER_W * 100; // ~1% field width
+                  const distToBallPreview = Math.sqrt((mouseFieldPct.x - ballPreviewX) ** 2 + (mouseFieldPct.y - ballPreviewY) ** 2);
+                  
+                  // Also check if cursor position is AHEAD of ball on trajectory (player arrives before ball)
+                  const trajDx = btx - bfx;
+                  const trajDy = bty - bfy;
+                  const trajLen2 = trajDx * trajDx + trajDy * trajDy;
+                  if (trajLen2 > 0) {
+                    const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
+                    const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
+                    // Can reach if: circle touches ball preview OR player is on trajectory before ball arrives
+                    canReachBall = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+                  }
+                }
+
+                const circleColor = canReachBall ? 'rgba(139,92,246,0.35)' : 'rgba(34,197,94,0.15)';
+                const circleStroke = canReachBall ? 'rgba(139,92,246,0.7)' : 'rgba(34,197,94,0.45)';
+                const glowColor = canReachBall ? 'rgba(139,92,246,0.3)' : 'rgba(34,197,94,0.3)';
+                const glowStroke = canReachBall ? 'rgba(139,92,246,0.15)' : 'rgba(34,197,94,0.15)';
+
                 return (
                   <>
                     {/* Outer glow around active player (all actions) */}
-                    <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke="rgba(34,197,94,0.3)" strokeWidth="2" filter="url(#pulse-glow)" />
-                    <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="4" />
-                    {/* Green translucent circle at cursor (only for MOVE) */}
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke={glowColor} strokeWidth="2" filter="url(#pulse-glow)" />
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke={glowStroke} strokeWidth="4" />
+                    {/* Action circle at cursor (only for MOVE) — green=can't reach, purple=can reach */}
                     {isMove && (
-                      <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                      <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill={circleColor} stroke={circleStroke} strokeWidth="1.2" />
                     )}
                   </>
                 );
