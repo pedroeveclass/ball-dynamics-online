@@ -1016,7 +1016,7 @@ export default function MatchRoomPage() {
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
-        // Check reachability: can the player's action circle reach the ball at that point?
+        // Check reachability: can the player's action circle reach the ball BEFORE or AT the same time?
         let canReach = true;
         if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
           const mdx = pctX - drawingParticipant.field_x;
@@ -1029,17 +1029,20 @@ export default function MatchRoomPage() {
           const bfy = ballHolderNow.field_y;
           const btx = ballPathAction.target_x;
           const bty = ballPathAction.target_y;
-          const ballPreviewX = bfx + (btx - bfx) * movePct;
-          const ballPreviewY = bfy + (bty - bfy) * movePct;
           
           const circleRadiusField = 9 / INNER_W * 100;
-          const distToBallPreview = Math.sqrt((pctX - ballPreviewX) ** 2 + (pctY - ballPreviewY) ** 2);
           
-          // Check if cursor is ahead of ball on trajectory
+          // Core logic: find the earliest point on trajectory where player can arrive before ball
+          // tCursor = where along trajectory (0-1) the cursor's closest projection is
           const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
           const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
           
-          canReach = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+          // Player arrives at cursor position when movePct of their range is used
+          // Ball arrives at tCursor when ball progress = tCursor
+          // Player can act if: they arrive at a trajectory point BEFORE or WITH the ball
+          // i.e. movePct >= tCursor (player covers their movement % before ball reaches that %)
+          // Also: if within intercept radius of trajectory and ahead of ball
+          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
         }
         
         if (!isRedZone && canReach) {
