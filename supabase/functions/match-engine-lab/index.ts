@@ -1279,8 +1279,23 @@ Deno.serve(async (req) => {
         } else {
           const nextPhaseStart = new Date().toISOString();
           const isNextLooseBall = nextBallHolderParticipantId === null;
-          const nextPhase = isNextLooseBall ? 'attacking_support' : 'ball_holder';
-          const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+
+          // Dead-ball restarts (goal kickoff, set pieces) get positioning turn
+          const isDeadBallRestart = goalScored || (ballEndPos && !isNextLooseBall && (
+            detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match) !== null
+          ));
+          // OOB set piece restarts also get positioning
+          const hadSetPiece = ballEndPos && !goalScored && nextBallHolderParticipantId !== null && !isNextLooseBall && (
+            detectOutOfBounds(
+              // use original ball end pos before set piece handler modified things
+              ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match
+            ) !== null
+          );
+
+          const usePositioning = goalScored || hadSetPiece;
+          const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
+          const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
+          const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
 
           await supabase.from('matches').update({
             current_turn_number: newTurnNumber,
@@ -1303,6 +1318,12 @@ Deno.serve(async (req) => {
               match_id, event_type: 'loose_ball_phase',
               title: '⚽ Bola solta — Fase 1 pulada',
               body: 'Todos os jogadores se movimentam para disputar a bola.',
+            });
+          } else if (usePositioning) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'positioning',
+              title: '📍 Posicionamento',
+              body: 'Time com a bola posiciona seus jogadores primeiro.',
             });
           }
         }
