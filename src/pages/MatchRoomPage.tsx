@@ -2148,10 +2148,24 @@ export default function MatchRoomPage() {
 
               {ballDisplayPos && (() => {
                 const { x, y } = toSVG(ballDisplayPos.x, ballDisplayPos.y);
+                const r = 5.5;
                 return (
                   <g pointerEvents="none">
-                    <circle cx={x} cy={y} r={5.5} fill="hsl(0 0% 98%)" stroke="hsl(220 15% 12%)" strokeWidth="1" filter="url(#shadow)" />
-                    <path d={`M ${x - 2.5} ${y} L ${x} ${y - 2.5} L ${x + 2.5} ${y} L ${x} ${y + 2.5} Z`} fill="hsl(220 15% 12%)" opacity="0.72" />
+                    {/* Shadow */}
+                    <ellipse cx={x + 0.8} cy={y + 2.5} rx={r * 0.9} ry={r * 0.35} fill="rgba(0,0,0,0.3)" />
+                    {/* Ball body */}
+                    <circle cx={x} cy={y} r={r} fill="#f5f5f5" stroke="#2a2a2a" strokeWidth="0.7" />
+                    {/* Soccer ball pentagon pattern */}
+                    <polygon points={`${x},${y - r * 0.45} ${x + r * 0.43},${y - r * 0.14} ${x + r * 0.26},${y + r * 0.36} ${x - r * 0.26},${y + r * 0.36} ${x - r * 0.43},${y - r * 0.14}`}
+                      fill="#2a2a2a" opacity="0.75" />
+                    {/* Side patches */}
+                    <circle cx={x - r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
+                    <circle cx={x + r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
+                    <circle cx={x - r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
+                    <circle cx={x + r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
+                    <circle cx={x} cy={y + r * 0.65} r={r * 0.15} fill="#2a2a2a" opacity="0.4" />
+                    {/* Highlight */}
+                    <circle cx={x - r * 0.25} cy={y - r * 0.3} r={r * 0.22} fill="rgba(255,255,255,0.4)" />
                   </g>
                 );
               })()}
