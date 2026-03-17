@@ -481,7 +481,7 @@ export default function MatchRoomPage() {
   }, [participants]);
 
   // ── Compute max move range from player attributes ──
-  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }): number => {
+  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
     const vel = Number(attrs?.velocidade ?? 40);
@@ -493,6 +493,17 @@ export default function MatchRoomPage() {
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
     let range = baseRange * accelFactor * staminaDecay * forceFactor;
+
+    // Ball carrier speed penalty (carrying ball = 15% slower)
+    const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
+    if (isBallHolder) {
+      // In phase 2 (attacking_support), ball holder who already acted gets only 20% range
+      if (activeTurn?.phase === 'attacking_support') {
+        range *= 0.20;
+      } else {
+        range *= 0.85;
+      }
+    }
 
     // Inertia multiplier based on previous direction
     if (targetDirection) {
@@ -510,8 +521,10 @@ export default function MatchRoomPage() {
       }
     }
 
+    if (overrideMultiplier != null) range *= overrideMultiplier;
+
     return range;
-  }, [playerAttrsMap, match?.current_turn_number]);
+  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase]);
 
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
