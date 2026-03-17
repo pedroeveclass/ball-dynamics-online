@@ -601,6 +601,7 @@ export default function MatchRoomPage() {
         const result = await response.json().catch(() => ({}));
 
         if (result?.status === 'waiting') {
+          if (result.server_now) updateServerOffset(result.server_now);
           const retryMs = Math.max(150, Number(result.remaining_ms ?? 250));
           tickInFlightRef.current = false;
           setIsPhaseProcessing(false);
