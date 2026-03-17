@@ -1479,6 +1479,9 @@ export default function MatchRoomPage() {
     return null;
   })();
 
+  const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
+  const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
     // Use locked final ball position if available (post-animation)
     if (finalBallPos && !animating) {
