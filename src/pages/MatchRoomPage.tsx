@@ -845,7 +845,15 @@ export default function MatchRoomPage() {
         }
       );
       const result = await resp.json();
-      if (result.error) toast.error(result.error);
+      if (result.error) {
+        if (result.recoverable || result.error === 'No active turn') {
+          console.warn('[SUBMIT] No active turn — phase transition in progress, retrying...');
+          await loadMatch();
+          toast.info('Turno em transição, tente novamente');
+        } else {
+          toast.error(result.error);
+        }
+      }
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
