@@ -1261,30 +1261,47 @@ export default function MatchRoomPage() {
              const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
                || bhAllActions[0];
              
-             if (ballAction) {
-               if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
-                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
-                 } else {
-                   setFinalBallPos({ x: ballAction.target_x, y: ballAction.target_y });
-                 }
-               } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
-                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
-                 } else {
-                   const shooter = participantsRef.current.find(p => p.id === bhId);
-                   const isHome = shooter?.club_id === matchRef.current?.home_club_id;
-                   setFinalBallPos({ x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y });
-                 }
-               } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                   setFinalBallPos({ x: interceptAction.target_x, y: interceptAction.target_y });
-                 } else {
-                   setFinalBallPos({ x: ballAction.target_x, y: ballAction.target_y });
-                 }
-               }
-             }
-           }
+              if (ballAction) {
+                let fbp: { x: number; y: number } | null = null;
+                const sp = snapshot[bhId];
+                
+                if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  } else {
+                    fbp = { x: ballAction.target_x, y: ballAction.target_y };
+                  }
+                  // Store direction for inertia (from passer start to ball end)
+                  if (sp) {
+                    lastBallDirRef.current = { dx: ballAction.target_x - sp.x, dy: ballAction.target_y - sp.y };
+                  }
+                } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  } else {
+                    const shooter = participantsRef.current.find(p => p.id === bhId);
+                    const isHome = shooter?.club_id === matchRef.current?.home_club_id;
+                    fbp = { x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y };
+                  }
+                  // Store direction for missed shots too
+                  if (sp) {
+                    lastBallDirRef.current = { dx: ballAction.target_x - sp.x, dy: ballAction.target_y - sp.y };
+                  }
+                } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  } else {
+                    fbp = { x: ballAction.target_x, y: ballAction.target_y };
+                  }
+                  lastBallDirRef.current = null; // No inertia for dribble
+                }
+                
+                if (fbp) {
+                  setFinalBallPos(fbp);
+                  finalBallPosRef.current = fbp;
+                }
+              }
+            }
           
           setAnimating(false);
 
