@@ -2036,23 +2036,55 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Range circle for physics constraints */}
-              {((drawingAction?.type === 'move') || (showActionMenu && !drawingAction)) && (() => {
-                const targetId = drawingAction?.fromParticipantId || showActionMenu;
-                if (!targetId) return null;
-                const p = [...homePlayers, ...awayPlayers].find(pp => pp.id === targetId);
-                if (!p || p.field_x == null || p.field_y == null) return null;
-                const maxRange = computeMaxMoveRange(targetId);
-                const center = toSVG(p.field_x, p.field_y);
-                const radiusX = (maxRange / 100) * INNER_W;
-                const radiusY = (maxRange / 100) * INNER_H;
+              {/* Green cursor shadow + player glow during drawing */}
+              {drawingAction && drawingFrom && mouseFieldPct && (() => {
+                const cursorSvg = toSVG(mouseFieldPct.x, mouseFieldPct.y);
+                const fromSvg = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 return (
-                  <ellipse
-                    cx={center.x} cy={center.y} rx={radiusX} ry={radiusY}
-                    fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.20)"
-                    strokeWidth="1.2" strokeDasharray="5,4" pointerEvents="none"
-                  />
+                  <>
+                    {/* Outer glow around active player */}
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke="rgba(34,197,94,0.3)" strokeWidth="2" filter="url(#pulse-glow)" />
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="4" />
+                    {/* Green translucent circle at cursor (destination shadow) */}
+                    <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                  </>
                 );
+              })()}
+
+              {/* Live ball preview synced to movement % during phases 2/3 */}
+              {drawingAction?.type === 'move' && mouseFieldPct && drawingFrom &&
+                ballTrajectoryAction && ballTrajectoryHolder &&
+                ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
+                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                ballTrajectoryAction.action_type !== 'move' &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                  const mdx = mouseFieldPct.x - drawingFrom.field_x!;
+                  const mdy = mouseFieldPct.y - drawingFrom.field_y!;
+                  const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+                  const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                  const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+
+                  const bfx = ballTrajectoryHolder.field_x!;
+                  const bfy = ballTrajectoryHolder.field_y!;
+                  const btx = ballTrajectoryAction.target_x!;
+                  const bty = ballTrajectoryAction.target_y!;
+                  const ballPreviewX = bfx + (btx - bfx) * movePct;
+                  const ballPreviewY = bfy + (bty - bfy) * movePct;
+                  const previewSvg = toSVG(ballPreviewX, ballPreviewY);
+
+                  return (
+                    <g pointerEvents="none" opacity={0.55}>
+                      <circle cx={previewSvg.x} cy={previewSvg.y} r={5.5}
+                        fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.6)"
+                        strokeWidth="0.8" strokeDasharray="2,1.5" />
+                      <circle cx={previewSvg.x} cy={previewSvg.y} r={2} fill="rgba(255,255,255,0.5)" />
+                      <text x={previewSvg.x} y={previewSvg.y - 9} textAnchor="middle"
+                        fontSize="6" fill="rgba(255,255,255,0.7)"
+                        fontFamily="'Barlow Condensed', sans-serif" fontWeight="700">
+                        ⚽ {Math.round(movePct * 100)}%
+                      </text>
+                    </g>
+                  );
               })()}
 
               {/* Players */}
