@@ -747,7 +747,7 @@ Deno.serve(async (req) => {
             // For shoot_power with overGoal, skip goal check
             const deviation = ballHolderAction._overGoal;
 
-            const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '');
+            const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile);
 
             if (result.goal) {
               if (possClubId === match.home_club_id) homeScore++;
