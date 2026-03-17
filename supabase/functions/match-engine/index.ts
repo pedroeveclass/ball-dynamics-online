@@ -785,7 +785,7 @@ Deno.serve(async (req) => {
               nextBallHolderParticipantId = ballHolder.id;
               await supabase.from('match_event_logs').insert({
                 match_id, event_type: 'dribble',
-                title: '🏃 Drible bem-sucedido!',
+                title: result.description,
                 body: 'O desarme falhou e o jogador seguiu com a bola.',
               });
             } else if (isPassType(ballHolderAction.action_type)) {
