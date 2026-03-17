@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
         body: 'Partida encerrada manualmente.',
       });
 
-      return new Response(JSON.stringify({ status: 'finished' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ status: 'finished', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ─── AUTO-START ───
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
       }
 
       if (!match_id) {
-        return new Response(JSON.stringify({ started }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ started, server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
       const endsAt = new Date(activeTurn.ends_at);
 
       if (now < endsAt) {
-        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       const { data: participants } = await supabase
@@ -488,7 +488,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      return new Response(JSON.stringify({ status: 'advanced' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ─── SUBMIT HUMAN ACTION ───
@@ -558,7 +558,7 @@ Deno.serve(async (req) => {
         status: 'pending',
       });
 
-      return new Response(JSON.stringify({ status: 'action_submitted' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ status: 'action_submitted', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

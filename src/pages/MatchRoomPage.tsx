@@ -172,7 +172,15 @@ export default function MatchRoomPage() {
   const [preMatchCountdownLeft, setPreMatchCountdownLeft] = useState(PRE_MATCH_COUNTDOWN_SECONDS);
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
-  const [processingLabel, setProcessingLabel] = useState('Processando todos os movimentos...');
+  const [processingLabel, setProcessingLabel] = useState('Processando todos os movimientos...');
+  // Server clock offset: serverTime ≈ Date.now() + serverClockOffset
+  const serverClockOffsetRef = useRef(0);
+  const serverNow = useCallback(() => Date.now() + serverClockOffsetRef.current, []);
+  const updateServerOffset = useCallback((serverTimestamp: number) => {
+    if (serverTimestamp && serverTimestamp > 0) {
+      serverClockOffsetRef.current = serverTimestamp - Date.now();
+    }
+  }, []);
 
   // Interactive drawing
   const [drawingAction, setDrawingAction] = useState<DrawingState | null>(null);
@@ -218,7 +226,7 @@ export default function MatchRoomPage() {
     // Safely check scheduled_at
     const scheduledDate = new Date(m.scheduled_at);
     const isValidDate = !isNaN(scheduledDate.getTime());
-    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= Date.now();
+    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= serverNow();
 
     if (m.status === 'scheduled' && shouldAutoStart) {
       await callEngine({ action: 'auto_start' });
@@ -455,7 +463,7 @@ export default function MatchRoomPage() {
     let triggered = false;
 
     const update = () => {
-      const now = Date.now();
+      const now = serverNow();
       if (now < countdownStart) {
         setPreMatchCountdownLeft(PRE_MATCH_COUNTDOWN_SECONDS);
         return;
@@ -488,7 +496,7 @@ export default function MatchRoomPage() {
     }
     
     tickRef.current = setInterval(() => {
-      const remaining = Math.max(0, endsAt.getTime() - Date.now());
+      const remaining = Math.max(0, endsAt.getTime() - serverNow());
       setPhaseTimeLeft(Math.ceil(remaining / 1000));
     }, 100);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
@@ -593,6 +601,7 @@ export default function MatchRoomPage() {
         const result = await response.json().catch(() => ({}));
 
         if (result?.status === 'waiting') {
+          if (result.server_now) updateServerOffset(result.server_now);
           const retryMs = Math.max(150, Number(result.remaining_ms ?? 250));
           tickInFlightRef.current = false;
           setIsPhaseProcessing(false);
@@ -610,6 +619,9 @@ export default function MatchRoomPage() {
         if (!response.ok || result?.error) {
           throw new Error(result?.error || 'Erro ao processar turno');
         }
+
+        // Sync server clock from tick response
+        if (result?.server_now) updateServerOffset(result.server_now);
 
         const [matchRes, turnRes, partsRes] = await Promise.all([
           supabase.from('matches').select('*').eq('id', matchId).single(),
@@ -641,7 +653,7 @@ export default function MatchRoomPage() {
       }
     };
 
-    const remaining = Math.max(0, endsAtDate.getTime() - Date.now());
+    const remaining = Math.max(0, endsAtDate.getTime() - serverNow());
     phaseTimeoutRef.current = setTimeout(processTurnPhase, remaining + 50);
 
     return () => {
@@ -758,7 +770,7 @@ export default function MatchRoomPage() {
   const callEngine = async (body: Record<string, unknown>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await fetch(
+      const resp = await fetch(
         `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
         {
           method: 'POST',
@@ -766,7 +778,10 @@ export default function MatchRoomPage() {
           body: JSON.stringify(body),
         }
       );
-    } catch (e) { console.error('Engine call failed:', e); }
+      const result = await resp.json().catch(() => ({}));
+      if (result?.server_now) updateServerOffset(result.server_now);
+      return result;
+    } catch (e) { console.error('Engine call failed:', e); return {}; }
   };
 
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string) => {
@@ -1756,7 +1771,7 @@ export default function MatchRoomPage() {
                   {(() => {
                     const scheduledDate = new Date(match.scheduled_at);
                     if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
-                    const now = Date.now();
+                    const now = serverNow();
                     const countdownStart = scheduledDate.getTime();
                     const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
                     if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
