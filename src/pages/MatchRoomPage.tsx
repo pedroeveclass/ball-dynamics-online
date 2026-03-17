@@ -588,9 +588,37 @@ export default function MatchRoomPage() {
     setFinalPositions({});
 
     if (activeTurn?.ball_holder_participant_id == null) {
-      if (finalBallPos) setCarriedLooseBallPos(finalBallPos);
+      if (finalBallPos) {
+        // Ball is loose: compute inertia direction from previous trajectory
+        if (carriedLooseBallPos && finalBallPos) {
+          // Continuing loose ball — apply inertia: move ball further in same direction (decaying)
+          const INERTIA_DECAY = 0.35; // ball rolls ~35% of previous distance
+          if (ballInertiaDir) {
+            const newX = clamp(finalBallPos.x + ballInertiaDir.dx * INERTIA_DECAY, 2, 98);
+            const newY = clamp(finalBallPos.y + ballInertiaDir.dy * INERTIA_DECAY, 2, 98);
+            setCarriedLooseBallPos({ x: newX, y: newY });
+            setBallInertiaDir({ dx: ballInertiaDir.dx * INERTIA_DECAY, dy: ballInertiaDir.dy * INERTIA_DECAY });
+          } else {
+            setCarriedLooseBallPos(finalBallPos);
+          }
+        } else if (finalBallPos) {
+          setCarriedLooseBallPos(finalBallPos);
+          // Compute inertia from the ball action that caused it to be loose
+          const lastBallAction = turnActions.find(a =>
+            (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch') &&
+            a.target_x != null && a.target_y != null
+          );
+          const bhParticipant = lastBallAction ? participants.find(p => p.id === lastBallAction.participant_id) : null;
+          if (lastBallAction && bhParticipant && bhParticipant.field_x != null && bhParticipant.field_y != null) {
+            const dx = lastBallAction.target_x! - bhParticipant.field_x;
+            const dy = lastBallAction.target_y! - bhParticipant.field_y;
+            setBallInertiaDir({ dx, dy });
+          }
+        }
+      }
     } else {
       setCarriedLooseBallPos(null);
+      setBallInertiaDir(null);
     }
 
     setFinalBallPos(null);
