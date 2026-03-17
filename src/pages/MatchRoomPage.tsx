@@ -739,7 +739,7 @@ export default function MatchRoomPage() {
         }
 
         if (!response.ok || result?.error) {
-          throw new Error(result?.error || 'Erro ao processar turno');
+          throw new Error(String(result?.error || 'Erro ao processar turno'));
         }
 
         const [matchRes, turnRes, partsRes] = await Promise.all([
