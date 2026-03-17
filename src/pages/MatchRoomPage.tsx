@@ -923,7 +923,7 @@ export default function MatchRoomPage() {
           await loadMatch();
           toast.info('Turno em transição, tente novamente');
         } else {
-          toast.error(result.error);
+          toast.error(String(result.error));
         }
       }
       else {
