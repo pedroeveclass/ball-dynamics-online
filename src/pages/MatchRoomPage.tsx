@@ -211,6 +211,9 @@ export default function MatchRoomPage() {
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
   const prevPossClubRef = useRef<string | null>(null);
 
+  // Contest visual feedback during phase 4
+  const [contestEffect, setContestEffect] = useState<{ type: 'tackle_fail' | 'tackle_success' | 'block' | 'dribble' | 'save' | 'intercept'; x: number; y: number; label: string } | null>(null);
+
   // Accordion states
   const [homeAccOpen, setHomeAccOpen] = useState(false);
   const [awayAccOpen, setAwayAccOpen] = useState(false);
