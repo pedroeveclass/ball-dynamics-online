@@ -987,20 +987,21 @@ export default function MatchRoomPage() {
         }
       }
       
-      // Clamp move to max range based on player physics
+      // Clamp move to max range based on player physics + inertia
       const moveFrom = participants.find(p => p.id === drawingAction.fromParticipantId);
       let mx = pctX, my = pctY;
       if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
         const dx = pctX - moveFrom.field_x;
         const dy = pctY - moveFrom.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
         if (dist > maxRange) {
           const scale = maxRange / dist;
           mx = moveFrom.field_x + dx * scale;
           my = moveFrom.field_y + dy * scale;
         }
-        console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange}`);
+        console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange} inertia=${direction ? 'yes' : 'no'}`);
       }
       submitAction('move', drawingAction.fromParticipantId, mx, my);
     }
