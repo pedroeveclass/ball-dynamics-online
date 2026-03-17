@@ -994,7 +994,7 @@ export default function MatchRoomPage() {
 
     if (drawingAction) {
       const p = participants.find(x => x.id === participantId);
-      if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high')) {
+      if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch')) {
         submitAction(drawingAction.type, drawingAction.fromParticipantId, p.field_x, p.field_y, participantId);
         setDrawingAction(null);
         setMouseFieldPct(null);
