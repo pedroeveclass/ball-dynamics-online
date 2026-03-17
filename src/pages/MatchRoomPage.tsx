@@ -631,6 +631,11 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.id, activeTurn?.phase]);
 
+  // Positioning turn detection
+  const isPositioningTurn = activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense';
+  const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
+  const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
+
   // ── Possession change detection ────────────────────────────
   useEffect(() => {
     if (!activeTurn) return;
