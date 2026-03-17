@@ -463,7 +463,7 @@ export default function MatchRoomPage() {
     let triggered = false;
 
     const update = () => {
-      const now = Date.now();
+      const now = serverNow();
       if (now < countdownStart) {
         setPreMatchCountdownLeft(PRE_MATCH_COUNTDOWN_SECONDS);
         return;
