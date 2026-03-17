@@ -1768,7 +1768,7 @@ export default function MatchRoomPage() {
                   {(() => {
                     const scheduledDate = new Date(match.scheduled_at);
                     if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
-                    const now = Date.now();
+                    const now = serverNow();
                     const countdownStart = scheduledDate.getTime();
                     const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
                     if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
