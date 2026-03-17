@@ -148,7 +148,7 @@ function computeInterceptSuccess(
   context: InterceptContext,
   attackerAttrs: Record<string, number>,
   defenderAttrs: Record<string, number>,
-): boolean {
+): { success: boolean; chance: number } {
   let attackerSkill: number;
   let defenderSkill: number;
 
