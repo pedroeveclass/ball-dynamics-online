@@ -684,12 +684,18 @@ Deno.serve(async (req) => {
 
       const { participant_id, action_type, target_participant_id, target_x, target_y } = body;
 
-      const { data: activeTurn } = await supabase
-        .from('match_turns').select('id').eq('match_id', match_id).eq('status', 'active')
-        .order('created_at', { ascending: false }).limit(1).single();
+      let activeTurn: any = null;
+      // Retry up to 3 times with small delay to handle race conditions during phase transitions
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data } = await supabase
+          .from('match_turns').select('id').eq('match_id', match_id).eq('status', 'active')
+          .order('created_at', { ascending: false }).limit(1).single();
+        if (data) { activeTurn = data; break; }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 300));
+      }
 
       if (!activeTurn) {
-        return new Response(JSON.stringify({ error: 'No active turn' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: 'No active turn', recoverable: true }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       const { data: participant } = await supabase
