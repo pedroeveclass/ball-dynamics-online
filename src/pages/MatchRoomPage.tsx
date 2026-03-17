@@ -1765,40 +1765,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Trajectory progress markers (25%, 50%, 75%) ── */}
-              {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
-                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
-                (() => {
-                  const fromSvg = toSVG(ballTrajectoryHolder.field_x!, ballTrajectoryHolder.field_y!);
-                  const toSvgPt = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
-                  const dx = toSvgPt.x - fromSvg.x;
-                  const dy = toSvgPt.y - fromSvg.y;
-                  const markers = [0.25, 0.5, 0.75];
-                  return markers.map((t, i) => (
-                    <g key={`progress-${i}`}>
-                      <circle
-                        cx={fromSvg.x + dx * t}
-                        cy={fromSvg.y + dy * t}
-                        r={3}
-                        fill="rgba(255,255,255,0.4)"
-                        stroke="rgba(255,255,255,0.7)"
-                        strokeWidth="0.5"
-                      />
-                      <text
-                        x={fromSvg.x + dx * t}
-                        y={fromSvg.y + dy * t - 6}
-                        textAnchor="middle"
-                        fontSize="5"
-                        fill="rgba(255,255,255,0.55)"
-                        fontFamily="'Barlow Condensed', sans-serif"
-                      >
-                        {Math.round(t * 100)}%
-                      </text>
-                    </g>
-                  ));
-                })()
-              )}
+              {/* (Fixed markers removed — live preview replaces them) */}
 
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
