@@ -678,6 +678,11 @@ Deno.serve(async (req) => {
               }
             } else if (ballHolderAction.action_type === 'move') {
               nextBallHolderParticipantId = ballHolder.id;
+              // Ball follows player on dribble — update ball position to match player
+              const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+              if (bhMoveAction && bhMoveAction.target_x != null && bhMoveAction.target_y != null) {
+                // Ball position is player position (already updated above)
+              }
             }
           }
         } else {

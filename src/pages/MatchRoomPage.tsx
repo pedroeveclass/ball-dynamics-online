@@ -484,7 +484,7 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40);
     const stam = Number(attrs?.stamina ?? 40);
     const forca = Number(attrs?.forca ?? 40);
-    const baseRange = 5 + normalizeAttr(vel) * 13;
+    const baseRange = 8 + normalizeAttr(vel) * 17;
     const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
