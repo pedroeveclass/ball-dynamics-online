@@ -398,6 +398,7 @@ Deno.serve(async (req) => {
       let nextBallHolderParticipantId = ballHolder?.id || null;
 
       if (activeTurn.phase === 'resolution') {
+        console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
         // Get ALL turn row IDs for this turn number (phases 1-4)
         const { data: turnRows } = await supabase
           .from('match_turns')
