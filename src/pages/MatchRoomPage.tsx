@@ -1102,13 +1102,13 @@ export default function MatchRoomPage() {
               .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
             
             if (ballAction) {
-              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high') && ballAction.target_x != null && ballAction.target_y != null) {
+              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
                   setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
                 }
-              } else if (ballAction.action_type === 'shoot' && ballAction.target_x != null && ballAction.target_y != null) {
+              } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
