@@ -1301,6 +1301,18 @@ export default function MatchRoomPage() {
                   finalBallPosRef.current = fbp;
                 }
               }
+            } else if (!bhId && carriedLooseBallPos && ballInertiaDir) {
+              // Loose ball with inertia: move ball to post-inertia position
+              const INERTIA_DISPLAY = 0.15;
+              const newX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+              const newY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+              const newPos = { x: newX, y: newY };
+              setCarriedLooseBallPos(newPos);
+              finalBallPosRef.current = newPos;
+              setFinalBallPos(newPos);
+              // Inertia consumed — ball will stop next turn
+              setBallInertiaDir(null);
+              lastBallDirRef.current = null;
             }
           
           setAnimating(false);
