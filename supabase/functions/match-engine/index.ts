@@ -796,6 +796,30 @@ Deno.serve(async (req) => {
                 title: result.description,
                 body: 'O desarme falhou e o jogador seguiu com a bola.',
               });
+              // Log the failed contest too
+              if (result.failedContestLog) {
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'tackle_failed',
+                  title: result.failedContestLog,
+                  body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
+                });
+              }
+              // Apply movement penalty to failed tackler: reduce their effective movement by 25%
+              if (result.failedContestParticipantId) {
+                const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
+                if (failedPart) {
+                  const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
+                  if (failMoveAct) {
+                    // Reduce their movement by 25% — move them only 75% of the way
+                    const startX = Number(failedPart.pos_x ?? 50);
+                    const startY = Number(failedPart.pos_y ?? 50);
+                    const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
+                    const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.75;
+                    await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', failedPart.id);
+                    console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 25%`);
+                  }
+                }
+              }
             } else if (isPassType(ballHolderAction.action_type)) {
               if (ballHolderAction.target_participant_id) {
                 nextBallHolderParticipantId = ballHolderAction.target_participant_id;
