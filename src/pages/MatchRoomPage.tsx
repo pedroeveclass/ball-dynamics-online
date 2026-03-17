@@ -499,9 +499,9 @@ export default function MatchRoomPage() {
     // Ball carrier speed penalty (carrying ball = 15% slower)
     const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
     if (isBallHolder) {
-      // In phase 2 (attacking_support), ball holder who already acted gets only 20% range
+      // In phase 2 (attacking_support), ball holder who already acted gets only 35% range
       if (activeTurn?.phase === 'attacking_support') {
-        range *= 0.20;
+        range *= 0.35;
       } else {
         range *= 0.85;
       }
@@ -593,7 +593,7 @@ export default function MatchRoomPage() {
         // Ball is loose: compute inertia direction from previous trajectory
         if (carriedLooseBallPos && finalBallPos) {
           // Continuing loose ball — apply inertia: move ball further in same direction (decaying)
-          const INERTIA_DECAY = 0.35; // ball rolls ~35% of previous distance
+          const INERTIA_DECAY = 0.15; // ball rolls ~15% of previous distance
           if (ballInertiaDir) {
             const newX = clamp(finalBallPos.x + ballInertiaDir.dx * INERTIA_DECAY, 2, 98);
             const newY = clamp(finalBallPos.y + ballInertiaDir.dy * INERTIA_DECAY, 2, 98);
@@ -739,7 +739,7 @@ export default function MatchRoomPage() {
         }
 
         if (!response.ok || result?.error) {
-          throw new Error(result?.error || 'Erro ao processar turno');
+          throw new Error(String(result?.error || 'Erro ao processar turno'));
         }
 
         const [matchRes, turnRes, partsRes] = await Promise.all([
@@ -923,7 +923,7 @@ export default function MatchRoomPage() {
           await loadMatch();
           toast.info('Turno em transição, tente novamente');
         } else {
-          toast.error(result.error);
+          toast.error(String(result.error));
         }
       }
       else {
@@ -1072,9 +1072,35 @@ export default function MatchRoomPage() {
         // Red zone or can't reach: treat as normal move, don't offer intercept
       }
       
-      // Check if clicking near a loose ball position
+      // Check if clicking near a loose ball position or its inertia trajectory
       if (isLooseBall && looseBallPos) {
         const distToBall = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
+        // Check inertia trajectory interception
+        if (ballInertiaDir && ballTrajectoryAction?.id === '__inertia__' && ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null) {
+          const distToTraj = pointToSegmentDistance(pctX, pctY, looseBallPos.x, looseBallPos.y, ballTrajectoryAction.target_x, ballTrajectoryAction.target_y);
+          if (distToTraj <= INTERCEPT_RADIUS) {
+            // Check reachability
+            const dp = participants.find(p => p.id === drawingAction.fromParticipantId);
+            if (dp && dp.field_x != null && dp.field_y != null) {
+              const mdx = pctX - dp.field_x;
+              const mdy = pctY - dp.field_y;
+              const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+              const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+              const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+              const tdx = ballTrajectoryAction.target_x - looseBallPos.x;
+              const tdy = ballTrajectoryAction.target_y - looseBallPos.y;
+              const tlen2 = tdx * tdx + tdy * tdy;
+              const tCursor = tlen2 > 0 ? clamp(((pctX - looseBallPos.x) * tdx + (pctY - looseBallPos.y) * tdy) / tlen2, 0, 1) : 0;
+              if (movePct <= tCursor) {
+                setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+                setShowActionMenu(drawingAction.fromParticipantId);
+                setDrawingAction(null);
+                setMouseFieldPct(null);
+                return;
+              }
+            }
+          }
+        }
         if (distToBall <= INTERCEPT_RADIUS * 1.2) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
           setShowActionMenu(drawingAction.fromParticipantId);
@@ -1684,7 +1710,30 @@ export default function MatchRoomPage() {
 
   // Compute intercept zone path for ball trajectory
   const getBallTrajectoryAction = (): MatchAction | null => {
-    if (!activeTurn?.ball_holder_participant_id) return null;
+    if (!activeTurn?.ball_holder_participant_id) {
+      // Loose ball with inertia — create a virtual pass_low trajectory
+      if (isLooseBall && looseBallPos && ballInertiaDir) {
+        const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
+        if (inertiaLen >= 0.5) {
+          const INERTIA_DISPLAY = 0.15;
+          const endX = clamp(looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+          const endY = clamp(looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+          return {
+            id: '__inertia__',
+            match_id: matchId || '',
+            match_turn_id: activeTurn?.id || '',
+            participant_id: '__inertia_origin__',
+            controlled_by_type: 'system',
+            action_type: 'pass_low',
+            target_x: endX,
+            target_y: endY,
+            target_participant_id: null,
+            status: 'pending',
+          } as MatchAction;
+        }
+      }
+      return null;
+    }
     return turnActions.find(a => 
       a.participant_id === activeTurn.ball_holder_participant_id &&
       (isPassAction(a.action_type) || isShootAction(a.action_type) || a.action_type === 'move') &&
@@ -1693,7 +1742,12 @@ export default function MatchRoomPage() {
   };
 
   const ballTrajectoryAction = getBallTrajectoryAction();
-  const ballTrajectoryHolder = ballTrajectoryAction ? participants.find(p => p.id === ballTrajectoryAction.participant_id) : null;
+  // For inertia trajectories, create a virtual holder at the loose ball position
+  const ballTrajectoryHolder = ballTrajectoryAction
+    ? (ballTrajectoryAction.id === '__inertia__' && looseBallPos
+      ? { id: '__inertia_origin__', field_x: looseBallPos.x, field_y: looseBallPos.y, club_id: '' } as unknown as Participant
+      : participants.find(p => p.id === ballTrajectoryAction.participant_id) || null)
+    : null;
 
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
@@ -1859,30 +1913,19 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Ball inertia arrow (green arrow showing where loose ball will roll) ── */}
+              {/* ── Ball inertia trajectory (rendered as pass_low via ballTrajectoryAction virtual entry) ── */}
+              {/* Inertia label shown above the trajectory */}
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
+                ballTrajectoryAction?.id === '__inertia__' &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
-                const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
-                if (inertiaLen < 0.5) return null; // Too small to show
-                const INERTIA_DISPLAY = 0.35;
-                const endX = clamp(looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
-                const endY = clamp(looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
                 const from = toSVG(looseBallPos.x, looseBallPos.y);
-                const to = toSVG(endX, endY);
+                const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
-                  <>
-                    <line
-                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke="#22c55e" strokeWidth="2.5"
-                      strokeLinecap="round" opacity={0.7}
-                      markerEnd="url(#ah-green)"
-                      strokeDasharray="5,3"
-                    />
-                    <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
-                      textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
-                      Inércia
-                    </text>
-                  </>
+                  <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
+                    textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}
+                    pointerEvents="none">
+                    ⚽ Inércia
+                  </text>
                 );
               })()}
 

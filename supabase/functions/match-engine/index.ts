@@ -662,10 +662,31 @@ Deno.serve(async (req) => {
           .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
           .order('created_at', { ascending: false });
 
-        const seenParticipants = new Set<string>();
+        // Dedup: keep latest action per participant, BUT allow ball holder to have
+        // BOTH a pass/shoot (from phase 1) AND a move (from phase 2)
+        const seenParticipants = new Map<string, string[]>(); // participantId -> action_types kept
         const allActions = (rawActions || []).filter(a => {
-          if (seenParticipants.has(a.participant_id)) return false;
-          seenParticipants.add(a.participant_id);
+          const existing = seenParticipants.get(a.participant_id);
+          const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
+          if (isBH) {
+            // Ball holder can have both a ball action (pass/shoot) AND a move
+            const isBallAction = isPassType(a.action_type) || isShootType(a.action_type);
+            const isMoveAction = a.action_type === 'move';
+            if (existing) {
+              const hasBallAction = existing.some(t => isPassType(t) || isShootType(t));
+              const hasMoveAction = existing.some(t => t === 'move');
+              if (isBallAction && hasBallAction) return false; // Already has a ball action
+              if (isMoveAction && hasMoveAction) return false; // Already has a move
+              if (!isBallAction && !isMoveAction) return false; // Unknown dupe
+              existing.push(a.action_type);
+              return true;
+            }
+            seenParticipants.set(a.participant_id, [a.action_type]);
+            return true;
+          }
+          // Non-ball-holder: only one action
+          if (existing) return false;
+          seenParticipants.set(a.participant_id, [a.action_type]);
           return true;
         });
 
@@ -750,8 +771,10 @@ Deno.serve(async (req) => {
         }
 
         if (ballHolder) {
+          // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
           const ballHolderAction = allActions
-            .find(a => a.participant_id === ballHolder.id);
+            .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+            || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
           if (ballHolderAction) {
             // For shoot_power with overGoal, skip goal check
