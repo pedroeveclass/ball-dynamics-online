@@ -1439,6 +1439,21 @@ export default function MatchRoomPage() {
     const dist = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
     const attrs = participantId ? playerAttrsMap[participantId] : null;
 
+    if (type === 'shoot_controlled') {
+      const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 12;
+      const eDist = dist - accBonus;
+      if (eDist < 35) return '#22c55e';
+      if (eDist < 55) return '#f59e0b';
+      return '#ef4444';
+    }
+    if (type === 'shoot_power') {
+      const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
+      const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 4;
+      const eDist = dist - accBonus - powBonus;
+      if (eDist < 25) return '#f59e0b'; // power shot default yellow
+      if (eDist < 40) return '#f59e0b';
+      return '#ef4444'; // red = over the goal risk
+    }
     if (type === 'shoot') {
       const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 10;
       const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 5;
@@ -1447,8 +1462,22 @@ export default function MatchRoomPage() {
       if (eDist < 50) return '#f59e0b';
       return '#ef4444';
     }
-    const passAttr = type === 'pass_high' ? Number(attrs?.passe_alto ?? 40) : Number(attrs?.passe_baixo ?? 40);
-    const passBonus = normalizeAttr(passAttr) * 8;
+    if (type === 'pass_high') {
+      const passBonus = normalizeAttr(Number(attrs?.passe_alto ?? 40)) * 10;
+      const eDist = dist - passBonus;
+      if (eDist < 25) return '#22c55e';
+      if (eDist < 45) return '#f59e0b';
+      return '#ef4444';
+    }
+    if (type === 'pass_launch') {
+      const passBonus = (normalizeAttr(Number(attrs?.passe_baixo ?? 40)) + normalizeAttr(Number(attrs?.passe_alto ?? 40))) / 2 * 9;
+      const eDist = dist - passBonus;
+      if (eDist < 22) return '#22c55e';
+      if (eDist < 42) return '#f59e0b';
+      return '#ef4444';
+    }
+    // pass_low default
+    const passBonus = normalizeAttr(Number(attrs?.passe_baixo ?? 40)) * 8;
     const eDist = dist - passBonus;
     if (eDist < 20) return '#22c55e';
     if (eDist < 40) return '#f59e0b';
