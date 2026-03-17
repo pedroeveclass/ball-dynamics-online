@@ -226,7 +226,7 @@ export default function MatchRoomPage() {
     // Safely check scheduled_at
     const scheduledDate = new Date(m.scheduled_at);
     const isValidDate = !isNaN(scheduledDate.getTime());
-    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= Date.now();
+    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= serverNow();
 
     if (m.status === 'scheduled' && shouldAutoStart) {
       await callEngine({ action: 'auto_start' });
