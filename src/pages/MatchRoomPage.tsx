@@ -1427,6 +1427,14 @@ export default function MatchRoomPage() {
     const isAttacking = p.club_id === currentPossClubId;
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
+    // Positioning turn: move only, ball holder can't move
+    if (isPositioningTurn) {
+      if (isBH) return []; // Ball holder (kicker) can't reposition
+      if (phase === 'positioning_attack' && isAttacking) return ['move'];
+      if (phase === 'positioning_defense' && !isAttacking) return ['move'];
+      return [];
+    }
+
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
