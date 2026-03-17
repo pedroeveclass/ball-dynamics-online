@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { getInitialMatchEngineFunction, invokeConfiguredMatchEngine } from '@/lib/matchEngine';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -118,7 +119,6 @@ const ACTION_LABELS: Record<string, string> = {
   block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
-const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
 const PHASE_DURATION = 6;
 const RESOLUTION_PHASE_DURATION = 3;
 const PRE_MATCH_COUNTDOWN_SECONDS = 10;
@@ -225,6 +225,7 @@ export default function MatchRoomPage() {
   const animFrameRef = useRef<number | null>(null);
   const animatedResolutionIdRef = useRef<string | null>(null);
   const phaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resolvedMatchEngineRef = useRef(getInitialMatchEngineFunction());
 
   // ── Load match data ──────────────────────────────────────────
   const loadMatch = useCallback(async () => {
@@ -691,19 +692,9 @@ export default function MatchRoomPage() {
       );
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const response = await fetch(
-          `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: session ? `Bearer ${session.access_token}` : '' },
-            body: JSON.stringify({ action: 'tick', match_id: matchId }),
-          }
-        );
-        const result = await response.json().catch(() => ({}));
+        const { response, result } = await invokeMatchEngine({ action: 'tick', match_id: matchId });
 
         if (result?.status === 'waiting') {
-          if (result.server_now) updateServerOffset(result.server_now);
           const retryMs = Math.max(150, Number(result.remaining_ms ?? 250));
           tickInFlightRef.current = false;
           setIsPhaseProcessing(false);
@@ -721,9 +712,6 @@ export default function MatchRoomPage() {
         if (!response.ok || result?.error) {
           throw new Error(result?.error || 'Erro ao processar turno');
         }
-
-        // Sync server clock from tick response
-        if (result?.server_now) updateServerOffset(result.server_now);
 
         const [matchRes, turnRes, partsRes] = await Promise.all([
           supabase.from('matches').select('*').eq('id', matchId).single(),
@@ -761,7 +749,7 @@ export default function MatchRoomPage() {
     return () => {
       if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
     };
-  }, [match?.status, matchId, activeTurn?.id, activeTurn?.ends_at, activeTurn?.phase, isPhaseProcessing, loadTurnActions]);
+  }, [match?.status, matchId, activeTurn?.id, activeTurn?.ends_at, activeTurn?.phase, isPhaseProcessing, loadMatch, loadTurnActions]);
 
   // Helper to re-enrich participants after position updates
   async function reEnrichParticipants(parts: any[], matchData: MatchData) {
@@ -869,19 +857,19 @@ export default function MatchRoomPage() {
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
   // ── Helpers ──────────────────────────────────────────────────
+  const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return invokeConfiguredMatchEngine({
+      body,
+      accessToken: session?.access_token,
+      onServerNow: updateServerOffset,
+      resolvedFunctionRef: resolvedMatchEngineRef,
+    });
+  }, [updateServerOffset]);
+
   const callEngine = async (body: Record<string, unknown>) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const resp = await fetch(
-        `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: session ? `Bearer ${session.access_token}` : '' },
-          body: JSON.stringify(body),
-        }
-      );
-      const result = await resp.json().catch(() => ({}));
-      if (result?.server_now) updateServerOffset(result.server_now);
+      const { result } = await invokeMatchEngine(body);
       return result;
     } catch (e) { console.error('Engine call failed:', e); return {}; }
   };
@@ -891,21 +879,15 @@ export default function MatchRoomPage() {
     if (!matchId || !pid) return;
     setSubmittingAction(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const resp = await fetch(
-        `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: session ? `Bearer ${session.access_token}` : '' },
-          body: JSON.stringify({
-            action: 'submit_action', match_id: matchId,
-            participant_id: pid, action_type: actionType,
-            target_x: targetX, target_y: targetY,
-            target_participant_id: targetParticipantId,
-          }),
-        }
-      );
-      const result = await resp.json();
+      const { response, result } = await invokeMatchEngine({
+        action: 'submit_action', match_id: matchId,
+        participant_id: pid, action_type: actionType,
+        target_x: targetX, target_y: targetY,
+        target_participant_id: targetParticipantId,
+      });
+      if (!response.ok && !result?.error) {
+        throw new Error('Erro ao enviar ação');
+      }
       if (result.error) {
         if (result.recoverable || result.error === 'No active turn') {
           console.warn('[SUBMIT] No active turn — phase transition in progress, retrying...');
@@ -927,15 +909,10 @@ export default function MatchRoomPage() {
   const finishMatch = async () => {
     if (!matchId) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      await fetch(
-        `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: session ? `Bearer ${session.access_token}` : '' },
-          body: JSON.stringify({ action: 'finish_match', match_id: matchId }),
-        }
-      );
+      const { response, result } = await invokeMatchEngine({ action: 'finish_match', match_id: matchId });
+      if (!response.ok || result?.error) {
+        throw new Error(String(result?.error || 'Erro ao finalizar'));
+      }
       toast.success('Partida finalizada!');
       loadMatch();
     } catch { toast.error('Erro ao finalizar'); }
