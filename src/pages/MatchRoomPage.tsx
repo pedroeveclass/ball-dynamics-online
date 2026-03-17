@@ -1217,7 +1217,26 @@ export default function MatchRoomPage() {
     const svgX = ((e.clientX - rect.left) / rect.width) * totalW;
     const svgY = ((e.clientY - rect.top) / rect.height) * totalH;
     const fp = toField(svgX, svgY);
-    setMouseFieldPct({ x: Math.max(0, Math.min(100, fp.x)), y: Math.max(0, Math.min(100, fp.y)) });
+    let finalX = clamp(fp.x, 0, 100);
+    let finalY = clamp(fp.y, 0, 100);
+
+    // Clamp move arrow to max range based on player physics
+    if (drawingAction.type === 'move') {
+      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+      if (fromP && fromP.field_x != null && fromP.field_y != null) {
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+        const dx = finalX - fromP.field_x;
+        const dy = finalY - fromP.field_y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          finalX = fromP.field_x + dx * scale;
+          finalY = fromP.field_y + dy * scale;
+        }
+      }
+    }
+
+    setMouseFieldPct({ x: finalX, y: finalY });
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
