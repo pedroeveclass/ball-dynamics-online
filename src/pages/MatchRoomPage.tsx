@@ -1416,11 +1416,6 @@ export default function MatchRoomPage() {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
         y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
       };
-
-      return {
-        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
-        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
-      };
     }
 
     return defaultBallPos;
