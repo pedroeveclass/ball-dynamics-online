@@ -2157,24 +2157,52 @@ export default function MatchRoomPage() {
                   className="absolute z-50 bg-[hsl(45,30%,90%)] border border-[hsl(45,20%,60%)] rounded shadow-lg py-1 min-w-[140px]"
                   style={{ left, top, transform: 'translateY(-50%)' }}
                 >
-                  {actions.map(a => (
-                    <button
-                      key={a}
-                      disabled={submittingAction}
-                      onClick={() => handleActionMenuSelect(a, showActionMenu)}
-                      className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
-                    >
-                      {a === 'move' && <span className="text-[10px]">↗</span>}
-                      {a === 'pass_low' && <span className="text-[10px]">➡</span>}
-                      {a === 'pass_high' && <span className="text-[10px]">⤴</span>}
-                      {a === 'pass_launch' && <span className="text-[10px]">🚀</span>}
-                      {a === 'shoot_controlled' && <span className="text-[10px]">🎯</span>}
-                      {a === 'shoot_power' && <span className="text-[10px]">💥</span>}
-                      {a === 'no_action' && <span className="text-[10px]">⊘</span>}
-                      {a === 'receive' && <span className="text-[10px]">🤲</span>}
-                      {ACTION_LABELS[a]}
-                    </button>
-                  ))}
+                  {actions.map(a => {
+                    // Context-aware label for 'receive' action
+                    let label = ACTION_LABELS[a];
+                    let icon = '';
+                    if (a === 'move') icon = '↗';
+                    else if (a === 'pass_low') icon = '➡';
+                    else if (a === 'pass_high') icon = '⤴';
+                    else if (a === 'pass_launch') icon = '🚀';
+                    else if (a === 'shoot_controlled') icon = '🎯';
+                    else if (a === 'shoot_power') icon = '💥';
+                    else if (a === 'no_action') icon = '⊘';
+                    else if (a === 'receive') {
+                      icon = '🤲';
+                      // Determine context
+                      const menuPlayer = participants.find(p => p.id === showActionMenu);
+                      const bhAction = ballTrajectoryAction;
+                      const bhPlayer = ballTrajectoryHolder;
+                      if (bhAction && bhPlayer && menuPlayer) {
+                        const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
+                        if (bhAction.action_type === 'move' && isOpponent) {
+                          label = 'DESARME';
+                          icon = '🦵';
+                        } else if (isShootAction(bhAction.action_type) && isOpponent) {
+                          const isGK = menuPlayer.field_pos === 'GK';
+                          if (isGK) {
+                            label = 'DEFENDER';
+                            icon = '🧤';
+                          } else {
+                            label = 'BLOQUEAR';
+                            icon = '🛡️';
+                          }
+                        }
+                      }
+                    }
+                    return (
+                      <button
+                        key={a}
+                        disabled={submittingAction}
+                        onClick={() => handleActionMenuSelect(a, showActionMenu)}
+                        className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
+                      >
+                        <span className="text-[10px]">{icon}</span>
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })()}
