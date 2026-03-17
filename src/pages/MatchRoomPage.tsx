@@ -1887,30 +1887,19 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Ball inertia arrow (green arrow showing where loose ball will roll) ── */}
+              {/* ── Ball inertia trajectory (rendered as pass_low via ballTrajectoryAction virtual entry) ── */}
+              {/* Inertia label shown above the trajectory */}
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
+                ballTrajectoryAction?.id === '__inertia__' &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
-                const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
-                if (inertiaLen < 0.5) return null; // Too small to show
-                const INERTIA_DISPLAY = 0.35;
-                const endX = clamp(looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
-                const endY = clamp(looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
                 const from = toSVG(looseBallPos.x, looseBallPos.y);
-                const to = toSVG(endX, endY);
+                const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
-                  <>
-                    <line
-                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke="#22c55e" strokeWidth="2.5"
-                      strokeLinecap="round" opacity={0.7}
-                      markerEnd="url(#ah-green)"
-                      strokeDasharray="5,3"
-                    />
-                    <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
-                      textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
-                      Inércia
-                    </text>
-                  </>
+                  <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
+                    textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}
+                    pointerEvents="none">
+                    ⚽ Inércia
+                  </text>
                 );
               })()}
 
