@@ -111,8 +111,10 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  move: 'MOVER', pass_low: 'PASSAR', pass_high: 'PASSE ALTO',
-  shoot: 'CHUTAR', press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
+  move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
+  pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
+  shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
+  press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
   block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
@@ -137,7 +139,7 @@ const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, 
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
-  type: 'move' | 'pass_low' | 'pass_high' | 'shoot';
+  type: 'move' | 'pass_low' | 'pass_high' | 'pass_launch' | 'shoot_controlled' | 'shoot_power';
   fromParticipantId: string;
 }
 
@@ -917,12 +919,12 @@ export default function MatchRoomPage() {
       return Math.sqrt(dx * dx + dy * dy) < 5;
     });
 
-    if (drawingAction.type === 'shoot') {
+    if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction('shoot', drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
-    } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high') {
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
+    } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
       submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
@@ -930,7 +932,7 @@ export default function MatchRoomPage() {
       const ballPathAction = turnActions.find(action => {
         if (!activeTurn?.ball_holder_participant_id) return false;
         if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot' || action.action_type === 'move';
+        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
       });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
       const canContestCarrierMove = ballPathAction?.action_type === 'move' && drawingParticipant?.club_id !== ballHolderNow?.club_id;
@@ -992,7 +994,7 @@ export default function MatchRoomPage() {
 
     if (drawingAction) {
       const p = participants.find(x => x.id === participantId);
-      if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high')) {
+      if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch')) {
         submitAction(drawingAction.type, drawingAction.fromParticipantId, p.field_x, p.field_y, participantId);
         setDrawingAction(null);
         setMouseFieldPct(null);
@@ -1100,13 +1102,13 @@ export default function MatchRoomPage() {
               .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
             
             if (ballAction) {
-              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high') && ballAction.target_x != null && ballAction.target_y != null) {
+              if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
                   setFinalBallPos({ x: ballAction.target_x + 1.2, y: ballAction.target_y - 1.2 });
                 }
-              } else if (ballAction.action_type === 'shoot' && ballAction.target_x != null && ballAction.target_y != null) {
+              } else if ((ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power') && ballAction.target_x != null && ballAction.target_y != null) {
                 if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                   setFinalBallPos({ x: interceptAction.target_x + 1.2, y: interceptAction.target_y - 1.2 });
                 } else {
@@ -1232,7 +1234,7 @@ export default function MatchRoomPage() {
       return [];
     }
 
-    if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'shoot'];
+    if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
     if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
@@ -1308,7 +1310,7 @@ export default function MatchRoomPage() {
     if (finalBallPos) return finalBallPos;
     if (carriedLooseBallPos) return carriedLooseBallPos;
     const lastBallAction = turnActions.find(a =>
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' || a.action_type === 'shoot' || a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     );
     if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
@@ -1344,7 +1346,7 @@ export default function MatchRoomPage() {
       y: ballHolder.field_y ?? 50,
     };
     // Physics-based ball easing: exponential decay (fast launch, decelerating)
-    const ballEaseK = ballAction.action_type === 'shoot' ? 4 : ballAction.action_type === 'pass_high' ? 2.5 : 3;
+    const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
     const rawT = animProgress;
     const expDecay = 1 - Math.exp(-ballEaseK * rawT);
     const normFactor = 1 - Math.exp(-ballEaseK);
@@ -1379,10 +1381,11 @@ export default function MatchRoomPage() {
       };
     }
 
-    if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'shoot') && ballAction.target_x != null && ballAction.target_y != null) {
-      // Check if someone intercepted — ball stops at interceptor's target position
+    const isBallPass = ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch';
+    const isBallShoot = ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power';
+
+    if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
-        // Calculate how far along the path the interceptor is
         const dx = ballAction.target_x - startPos.x;
         const dy = ballAction.target_y - startPos.y;
         const len2 = dx * dx + dy * dy;
@@ -1393,7 +1396,6 @@ export default function MatchRoomPage() {
             0, 1
           );
         }
-        // Ball travels to intercept point, then stops
         const effectiveT = Math.min(t, interceptT);
         return {
           x: startPos.x + dx * effectiveT + 1.2,
@@ -1401,8 +1403,7 @@ export default function MatchRoomPage() {
         };
       }
 
-      // Shot with no interception: ball goes to goal
-      if (ballAction.action_type === 'shoot') {
+      if (isBallShoot) {
         const isHome = ballHolder.club_id === match.home_club_id;
         const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
         const goalY = ballAction.target_y;
@@ -1411,6 +1412,11 @@ export default function MatchRoomPage() {
           y: startPos.y + (goalY - startPos.y) * t - 1.2,
         };
       }
+
+      return {
+        x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
+        y: startPos.y + (ballAction.target_y - startPos.y) * t - 1.2,
+      };
 
       return {
         x: startPos.x + (ballAction.target_x - startPos.x) * t + 1.2,
@@ -1437,6 +1443,21 @@ export default function MatchRoomPage() {
     const dist = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
     const attrs = participantId ? playerAttrsMap[participantId] : null;
 
+    if (type === 'shoot_controlled') {
+      const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 12;
+      const eDist = dist - accBonus;
+      if (eDist < 35) return '#22c55e';
+      if (eDist < 55) return '#f59e0b';
+      return '#ef4444';
+    }
+    if (type === 'shoot_power') {
+      const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
+      const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 4;
+      const eDist = dist - accBonus - powBonus;
+      if (eDist < 25) return '#f59e0b'; // power shot default yellow
+      if (eDist < 40) return '#f59e0b';
+      return '#ef4444'; // red = over the goal risk
+    }
     if (type === 'shoot') {
       const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 10;
       const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 5;
@@ -1445,8 +1466,22 @@ export default function MatchRoomPage() {
       if (eDist < 50) return '#f59e0b';
       return '#ef4444';
     }
-    const passAttr = type === 'pass_high' ? Number(attrs?.passe_alto ?? 40) : Number(attrs?.passe_baixo ?? 40);
-    const passBonus = normalizeAttr(passAttr) * 8;
+    if (type === 'pass_high') {
+      const passBonus = normalizeAttr(Number(attrs?.passe_alto ?? 40)) * 10;
+      const eDist = dist - passBonus;
+      if (eDist < 25) return '#22c55e';
+      if (eDist < 45) return '#f59e0b';
+      return '#ef4444';
+    }
+    if (type === 'pass_launch') {
+      const passBonus = (normalizeAttr(Number(attrs?.passe_baixo ?? 40)) + normalizeAttr(Number(attrs?.passe_alto ?? 40))) / 2 * 9;
+      const eDist = dist - passBonus;
+      if (eDist < 22) return '#22c55e';
+      if (eDist < 42) return '#f59e0b';
+      return '#ef4444';
+    }
+    // pass_low default
+    const passBonus = normalizeAttr(Number(attrs?.passe_baixo ?? 40)) * 8;
     const eDist = dist - passBonus;
     if (eDist < 20) return '#22c55e';
     if (eDist < 40) return '#f59e0b';
@@ -1471,7 +1506,9 @@ export default function MatchRoomPage() {
   const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
-  // Get arrow color for action type
+  const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
+  const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+
   const getActionArrowColor = (
     action: MatchAction,
     fromPart: Participant,
@@ -1484,16 +1521,23 @@ export default function MatchRoomPage() {
       return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
     }
     if (action.action_type === 'receive') {
-      // Receive = move arrow with cyan tip (indicates intercept at end of move)
       return { color: '#1a1a2e', markerId: 'ah-cyan', strokeW: 2 };
     }
-    if (action.action_type === 'shoot') {
+    if (isShootAction(action.action_type)) {
       const color = action.target_x != null && action.target_y != null
-        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot', action.participant_id)
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, action.action_type, action.participant_id)
         : '#f59e0b';
-      const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
+      const markerId = 'ah-green'; // arrow tip always green
       return { color, markerId, strokeW: 3.5 };
     }
+    if (isPassAction(action.action_type)) {
+      const color = action.target_x != null && action.target_y != null
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, action.action_type, action.participant_id)
+        : '#06b6d4';
+      const markerId = 'ah-green'; // arrow tip always green
+      return { color, markerId, strokeW: 3 };
+    }
+    // fallback
     const color = action.target_x != null && action.target_y != null
       ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass', action.participant_id)
       : '#06b6d4';
@@ -1506,7 +1550,7 @@ export default function MatchRoomPage() {
     if (!activeTurn?.ball_holder_participant_id) return null;
     return turnActions.find(a => 
       a.participant_id === activeTurn.ball_holder_participant_id &&
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
+      (isPassAction(a.action_type) || isShootAction(a.action_type) || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     ) || null;
   };
@@ -1586,12 +1630,12 @@ export default function MatchRoomPage() {
                   <feGaussianBlur stdDeviation="4" result="b" />
                   <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
                 </filter>
-                {/* Arrow markers */}
-                <marker id="ah-black" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1a1a2e" /></marker>
-                <marker id="ah-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#22c55e" /></marker>
-                <marker id="ah-yellow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f59e0b" /></marker>
-                <marker id="ah-red" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#ef4444" /></marker>
-                <marker id="ah-cyan" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#06b6d4" /></marker>
+                {/* Arrow markers — smaller (ball-sized) */}
+                <marker id="ah-black" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#1a1a2e" /></marker>
+                <marker id="ah-green" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#22c55e" /></marker>
+                <marker id="ah-yellow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#f59e0b" /></marker>
+                <marker id="ah-red" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#ef4444" /></marker>
+                <marker id="ah-cyan" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#06b6d4" /></marker>
               </defs>
 
               {/* Border frame */}
@@ -1690,16 +1734,81 @@ export default function MatchRoomPage() {
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
                 const controlLabel = action.controlled_by_type === 'bot' ? '🤖' : action.controlled_by_type === 'manager' ? '📋' : '👤';
+                const opacity = animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8;
+                const dashArray = action.controlled_by_type === 'bot' ? '4,3' : 'none';
+
+                // Multi-segment arrow rendering for height-based actions
+                const renderMultiSegmentArrow = () => {
+                  const dx = to.x - from.x;
+                  const dy = to.y - from.y;
+
+                  if (action.action_type === 'pass_high') {
+                    // Yellow (20%) → Red (60%) → Yellow (20%), tip green
+                    const seg = [
+                      { t0: 0, t1: 0.2, color: '#f59e0b' },
+                      { t0: 0.2, t1: 0.8, color: '#ef4444' },
+                      { t0: 0.8, t1: 1, color: '#f59e0b' },
+                    ];
+                    return seg.map((s, i) => (
+                      <line key={i}
+                        x1={from.x + dx * s.t0} y1={from.y + dy * s.t0}
+                        x2={from.x + dx * s.t1} y2={from.y + dy * s.t1}
+                        stroke={s.color} strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        strokeDasharray={dashArray}
+                        markerEnd={i === seg.length - 1 ? `url(#${markerId})` : undefined}
+                      />
+                    ));
+                  }
+
+                  if (action.action_type === 'pass_launch') {
+                    // Green (35%) → Yellow (30%) → Green (35%), tip green
+                    const seg = [
+                      { t0: 0, t1: 0.35, color: '#22c55e' },
+                      { t0: 0.35, t1: 0.65, color: '#f59e0b' },
+                      { t0: 0.65, t1: 1, color: '#22c55e' },
+                    ];
+                    return seg.map((s, i) => (
+                      <line key={i}
+                        x1={from.x + dx * s.t0} y1={from.y + dy * s.t0}
+                        x2={from.x + dx * s.t1} y2={from.y + dy * s.t1}
+                        stroke={s.color} strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        strokeDasharray={dashArray}
+                        markerEnd={i === seg.length - 1 ? `url(#${markerId})` : undefined}
+                      />
+                    ));
+                  }
+
+                  if (action.action_type === 'shoot_power') {
+                    // Full yellow or red depending on quality
+                    return [(
+                      <line key="power"
+                        x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                        stroke={color} strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        markerEnd={`url(#${markerId})`}
+                        strokeDasharray={dashArray}
+                      />
+                    )];
+                  }
+
+                  // pass_low, shoot_controlled, move, receive — single solid line
+                  return [(
+                    <line key="single"
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke={action.action_type === 'pass_low' || action.action_type === 'shoot_controlled' ? '#22c55e' : color}
+                      strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      markerEnd={`url(#${markerId})`}
+                      strokeDasharray={dashArray}
+                    />
+                  )];
+                };
 
                 return (
                   <g key={action.id}>
-                    <line
-                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke={color} strokeWidth={strokeW}
-                      strokeLinecap="round" opacity={animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8}
-                      markerEnd={`url(#${markerId})`}
-                      strokeDasharray={action.controlled_by_type === 'bot' ? '4,3' : 'none'}
-                    />
+                    {renderMultiSegmentArrow()}
                     <text
                       x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}
                       textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.68)"
@@ -1715,16 +1824,17 @@ export default function MatchRoomPage() {
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const from = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 let to: { x: number; y: number };
-                if (drawingAction.type === 'shoot') {
+                if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
                   const goalTarget = getShootTarget(drawingFrom);
                   to = toSVG(goalTarget.x, Math.max(38, Math.min(62, mouseFieldPct.y)));
                 } else {
                   to = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 }
                 const isMove = drawingAction.type === 'move';
+                const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
                 const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
                 const markerId = isMove ? 'ah-black' : color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
-                const strokeW = isMove ? 2 : drawingAction.type === 'shoot' ? 3.5 : 3;
+                const strokeW = isMove ? 2 : isShoot ? 3.5 : 3;
 
                 return (
                   <line
@@ -1850,8 +1960,11 @@ export default function MatchRoomPage() {
                       className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
                     >
                       {a === 'move' && <span className="text-[10px]">↗</span>}
-                      {a === 'pass_low' && <span className="text-[10px]">⚡</span>}
-                      {a === 'shoot' && <span className="text-[10px]">🎯</span>}
+                      {a === 'pass_low' && <span className="text-[10px]">➡</span>}
+                      {a === 'pass_high' && <span className="text-[10px]">⤴</span>}
+                      {a === 'pass_launch' && <span className="text-[10px]">🚀</span>}
+                      {a === 'shoot_controlled' && <span className="text-[10px]">🎯</span>}
+                      {a === 'shoot_power' && <span className="text-[10px]">💥</span>}
                       {a === 'no_action' && <span className="text-[10px]">⊘</span>}
                       {a === 'receive' && <span className="text-[10px]">🤲</span>}
                       {ACTION_LABELS[a]}
@@ -1865,10 +1978,12 @@ export default function MatchRoomPage() {
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
               const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Média' : 'Ruim';
+              const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+              const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
               return (
                 <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-[hsl(140,10%,8%)] rounded px-3 py-1.5 border border-[hsl(140,10%,20%)]">
                   <span className="text-[10px] font-display text-muted-foreground uppercase tracking-wide">
-                    {drawingAction.type === 'shoot' ? 'Shot' : 'Pass'} Quality:
+                    {actionName}:
                   </span>
                   <div className="flex gap-0.5">
                     {[0, 1, 2, 3, 4].map(i => (
