@@ -1498,17 +1498,34 @@ export default function MatchRoomPage() {
 
     // Clamp move arrow to max range based on player physics + inertia
     if (drawingAction.type === 'move') {
-      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
-      if (fromP && fromP.field_x != null && fromP.field_y != null) {
-        const dx = finalX - fromP.field_x;
-        const dy = finalY - fromP.field_y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
-        if (dist > maxRange) {
-          const scale = maxRange / dist;
-          finalX = fromP.field_x + dx * scale;
-          finalY = fromP.field_y + dy * scale;
+      if (isPositioningTurn) {
+        // Positioning: unlimited range, but clamp to field and kickoff half-field
+        finalX = clamp(finalX, 1, 99);
+        finalY = clamp(finalY, 1, 99);
+        // Kickoff half-field constraint
+        const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+        const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+        if (isKickoff) {
+          const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+          if (fromP) {
+            const isHome = fromP.club_id === match?.home_club_id;
+            if (isHome) finalX = Math.min(finalX, 49);
+            else finalX = Math.max(finalX, 51);
+          }
+        }
+      } else {
+        const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+        if (fromP && fromP.field_x != null && fromP.field_y != null) {
+          const dx = finalX - fromP.field_x;
+          const dy = finalY - fromP.field_y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
+          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
+          if (dist > maxRange) {
+            const scale = maxRange / dist;
+            finalX = fromP.field_x + dx * scale;
+            finalY = fromP.field_y + dy * scale;
+          }
         }
       }
     }
