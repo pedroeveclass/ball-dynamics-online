@@ -240,19 +240,24 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       // receive_pass
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     } else {
-      // Failure — log and continue to next candidate
+      // Failure — log event and continue to next candidate
       if (context.type === 'tackle') {
-        console.log(`[ENGINE] 🦵 Desarme falhou! (${chancePct}) Dribble continua.`);
+        // Tackle failed: dribble continues, apply penalty to defender (reduce movement by 25%)
+        return { 
+          success: true, event: 'dribble', 
+          description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, 
+          possession_change: false, goal: false,
+          failedContestParticipantId: candidate.participant.id,
+          failedContestLog: `🦵 Desarme falhou! (${chancePct})`
+        };
       } else if (context.type === 'block_shot') {
+        // Block failed: shot continues — log and continue
         console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
       } else if (context.type === 'gk_save') {
         console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
       } else {
+        // Pass receive failed: ball continues, next interceptor gets a chance
         console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
-      }
-      // For tackle, failure means dribble continues - stop processing
-      if (context.type === 'tackle') {
-        return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false };
       }
     }
   }
