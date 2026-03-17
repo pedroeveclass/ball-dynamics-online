@@ -620,6 +620,9 @@ export default function MatchRoomPage() {
           throw new Error(result?.error || 'Erro ao processar turno');
         }
 
+        // Sync server clock from tick response
+        if (result?.server_now) updateServerOffset(result.server_now);
+
         const [matchRes, turnRes, partsRes] = await Promise.all([
           supabase.from('matches').select('*').eq('id', matchId).single(),
           supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
