@@ -1676,7 +1676,7 @@ export default function MatchRoomPage() {
                   to = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 }
                 const isMove = drawingAction.type === 'move';
-                const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type);
+                const color = isMove ? '#1a1a2e' : getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
                 const markerId = isMove ? 'ah-black' : color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
                 const strokeW = isMove ? 2 : drawingAction.type === 'shoot' ? 3.5 : 3;
 
