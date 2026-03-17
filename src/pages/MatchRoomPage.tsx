@@ -770,7 +770,7 @@ export default function MatchRoomPage() {
   const callEngine = async (body: Record<string, unknown>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await fetch(
+      const resp = await fetch(
         `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/match-engine`,
         {
           method: 'POST',
@@ -778,7 +778,10 @@ export default function MatchRoomPage() {
           body: JSON.stringify(body),
         }
       );
-    } catch (e) { console.error('Engine call failed:', e); }
+      const result = await resp.json().catch(() => ({}));
+      if (result?.server_now) updateServerOffset(result.server_now);
+      return result;
+    } catch (e) { console.error('Engine call failed:', e); return {}; }
   };
 
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string) => {
