@@ -2003,17 +2003,20 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Green cursor shadow + player glow during drawing */}
+              {/* Player glow during drawing + green cursor shadow only on MOVE */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const cursorSvg = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 const fromSvg = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
+                const isMove = drawingAction.type === 'move';
                 return (
                   <>
-                    {/* Outer glow around active player */}
+                    {/* Outer glow around active player (all actions) */}
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke="rgba(34,197,94,0.3)" strokeWidth="2" filter="url(#pulse-glow)" />
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="4" />
-                    {/* Green translucent circle at cursor (destination shadow) */}
-                    <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                    {/* Green translucent circle at cursor (only for MOVE) */}
+                    {isMove && (
+                      <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                    )}
                   </>
                 );
               })()}
