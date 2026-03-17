@@ -478,7 +478,7 @@ export default function MatchRoomPage() {
   }, [participants]);
 
   // ── Compute max move range from player attributes ──
-  const computeMaxMoveRange = useCallback((participantId: string): number => {
+  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
     const vel = Number(attrs?.velocidade ?? 40);
@@ -489,7 +489,25 @@ export default function MatchRoomPage() {
     const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
-    return baseRange * accelFactor * staminaDecay * forceFactor;
+    let range = baseRange * accelFactor * staminaDecay * forceFactor;
+
+    // Inertia multiplier based on previous direction
+    if (targetDirection) {
+      const prevDir = prevDirectionsRef.current[participantId];
+      if (prevDir) {
+        const prevLen = Math.sqrt(prevDir.x * prevDir.x + prevDir.y * prevDir.y);
+        const curLen = Math.sqrt(targetDirection.x * targetDirection.x + targetDirection.y * targetDirection.y);
+        if (prevLen > 0.1 && curLen > 0.1) {
+          const dot = (prevDir.x * targetDirection.x + prevDir.y * targetDirection.y) / (prevLen * curLen);
+          const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
+          const normalizedAngle = angleDiff / Math.PI; // 0 = same dir, 1 = opposite
+          const multiplier = 1.2 - 0.4 * normalizedAngle; // 1.2x same, 0.8x opposite
+          range *= multiplier;
+        }
+      }
+    }
+
+    return range;
   }, [playerAttrsMap, match?.current_turn_number]);
 
   // ── Pre-match countdown / auto-start ────────────────────────
