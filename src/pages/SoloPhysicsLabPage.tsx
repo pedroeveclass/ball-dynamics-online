@@ -792,18 +792,24 @@ export default function SoloPhysicsLabPage() {
             LAB SOLO
           </Badge>
           <Badge variant="secondary" className="text-[10px] font-display">
-            1 JOGADOR
+            JOGADOR + BONECO
           </Badge>
           <Badge variant="secondary" className="text-[10px] font-display text-warning border-warning/40">
             SEM TIMER
           </Badge>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <Button variant="outline" size="sm" onClick={clearInertia} className="h-8 text-[10px] font-display">
             <Wind className="h-3 w-3" /> Zerar inercia
           </Button>
           <Button variant="outline" size="sm" onClick={placeBallOnPlayer} className="h-8 text-[10px] font-display">
             Bola no pe
+          </Button>
+          <Button variant="outline" size="sm" onClick={placeBallOnDummy} className="h-8 text-[10px] font-display">
+            Bola no boneco
+          </Button>
+          <Button variant="outline" size="sm" onClick={dropBallLoose} className="h-8 text-[10px] font-display">
+            Bola solta
           </Button>
           <Button variant="outline" size="sm" onClick={resetPlayer} className="h-8 text-[10px] font-display">
             <RotateCcw className="h-3 w-3" /> Resetar
@@ -825,6 +831,7 @@ export default function SoloPhysicsLabPage() {
                   type="button"
                   variant={selectedAction === action ? "default" : "outline"}
                   onClick={() => setSelectedAction(action)}
+                  disabled={action !== "move" && !playerControlsBall}
                   className="justify-start text-[11px] font-display"
                 >
                   {ACTION_LABELS[action]}
@@ -838,6 +845,8 @@ export default function SoloPhysicsLabPage() {
             <div className="grid grid-cols-2 gap-2 text-[11px] font-display">
               <div className="rounded bg-black/20 px-2 py-1.5">X: {playerPos.x.toFixed(1)}</div>
               <div className="rounded bg-black/20 px-2 py-1.5">Y: {playerPos.y.toFixed(1)}</div>
+              <div className="rounded bg-black/20 px-2 py-1.5">Boneco X: {dummyPos.x.toFixed(1)}</div>
+              <div className="rounded bg-black/20 px-2 py-1.5">Boneco Y: {dummyPos.y.toFixed(1)}</div>
               <div className="rounded bg-black/20 px-2 py-1.5 col-span-2">
                 Alcance base: {idleMoveRange.toFixed(1)}
               </div>
@@ -845,7 +854,23 @@ export default function SoloPhysicsLabPage() {
                 Ultimo vetor: {lastMoveVector ? `${lastMoveVector.x.toFixed(1)}, ${lastMoveVector.y.toFixed(1)}` : "parado"}
               </div>
               <div className="rounded bg-black/20 px-2 py-1.5 col-span-2">
-                Bola: {ballHeldByPlayer ? "com o jogador" : ballFlight ? `em voo (${Math.round(ballFlightProgress * 100)}%)` : "solta"}
+                Bola:{" "}
+                {ballFlight
+                  ? `em voo (${Math.round(ballFlightProgress * 100)}%)`
+                  : ballOwner === "player"
+                    ? "com o jogador"
+                    : ballOwner === "dummy"
+                      ? "com o boneco"
+                      : "solta"}
+              </div>
+              <div className="rounded bg-black/20 px-2 py-1.5 col-span-2">
+                Resultado: {lastResolution.label}
+              </div>
+              <div className="rounded bg-black/20 px-2 py-1.5 col-span-2 text-muted-foreground">
+                {lastResolution.detail}
+              </div>
+              <div className="rounded bg-black/20 px-2 py-1.5 col-span-2">
+                Severidade do erro: {errorScalePct}%
               </div>
               {committedAction && committedAction.type !== "move" && (
                 <div className="rounded bg-black/20 px-2 py-1.5 col-span-2">
@@ -858,6 +883,35 @@ export default function SoloPhysicsLabPage() {
                   {ACTION_LABELS[selectedAction]}: {previewMeta.label}
                 </div>
               )}
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Simulacao</h2>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-display">Erro da acao</Label>
+                <span className="text-[11px] font-display text-muted-foreground">{errorScalePct}%</span>
+              </div>
+              <Slider min={25} max={250} step={5} value={[errorScalePct]} onValueChange={(value) => setErrorScalePct(value[0] ?? DEFAULT_ERROR_SCALE)} />
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Boneco</h2>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-display">Posicao X</Label>
+                <span className="text-[11px] font-display text-muted-foreground">{dummyPos.x.toFixed(1)}</span>
+              </div>
+              <Slider min={0} max={100} step={0.5} value={[dummyPos.x]} onValueChange={(value) => updateDummyAxis("x", value)} />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-display">Posicao Y</Label>
+                <span className="text-[11px] font-display text-muted-foreground">{dummyPos.y.toFixed(1)}</span>
+              </div>
+              <Slider min={0} max={100} step={0.5} value={[dummyPos.y]} onValueChange={(value) => updateDummyAxis("y", value)} />
             </div>
           </section>
 
@@ -989,8 +1043,29 @@ export default function SoloPhysicsLabPage() {
               )}
 
               <g>
-                <circle cx={playerSvg.x} cy={playerSvg.y} r={16} fill="rgba(34,197,94,0.16)" stroke="rgba(34,197,94,0.25)" strokeWidth="6" />
+                <circle
+                  cx={playerSvg.x}
+                  cy={playerSvg.y}
+                  r={16}
+                  fill="rgba(34,197,94,0.16)"
+                  stroke={ballOwner === "player" ? "rgba(34,197,94,0.55)" : "rgba(34,197,94,0.25)"}
+                  strokeWidth="6"
+                />
                 <circle cx={playerSvg.x} cy={playerSvg.y} r={11} fill="#f8fafc" stroke="hsl(220,20%,15%)" strokeWidth="2" />
+              </g>
+
+              <g>
+                <circle
+                  cx={dummySvg.x}
+                  cy={dummySvg.y}
+                  r={16}
+                  fill="rgba(248,113,113,0.12)"
+                  stroke={ballOwner === "dummy" ? "rgba(248,113,113,0.55)" : "rgba(248,113,113,0.28)"}
+                  strokeWidth="6"
+                />
+                <circle cx={dummySvg.x} cy={dummySvg.y} r={11} fill="#fee2e2" stroke="#7f1d1d" strokeWidth="2" />
+                <line x1={dummySvg.x - 5} y1={dummySvg.y - 5} x2={dummySvg.x + 5} y2={dummySvg.y + 5} stroke="#7f1d1d" strokeWidth="1.5" />
+                <line x1={dummySvg.x + 5} y1={dummySvg.y - 5} x2={dummySvg.x - 5} y2={dummySvg.y + 5} stroke="#7f1d1d" strokeWidth="1.5" />
               </g>
 
               <ellipse cx={ballSvg.x + 0.8} cy={ballSvg.y + 2.6} rx={4.8} ry={1.9} fill="rgba(0,0,0,0.28)" />
@@ -1004,7 +1079,7 @@ export default function SoloPhysicsLabPage() {
 
             <div className="absolute left-3 bottom-3 rounded border border-[hsl(140,10%,22%)] bg-[hsl(140,10%,10%)]/92 px-3 py-2 text-[11px] font-display">
               Clique no campo para aplicar <span className="font-bold">{ACTION_LABELS[selectedAction]}</span>.
-              O jogador sempre usa o ultimo deslocamento como referencia de inercia, e a bola agora voa com perfil proprio por acao.
+              Passe, chute e lancamento resolvem recepcao, dominio ou disputa automaticamente quando a bola chega perto do jogador ou do boneco.
             </div>
           </div>
         </main>
