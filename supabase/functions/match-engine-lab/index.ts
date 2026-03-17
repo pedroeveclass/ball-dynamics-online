@@ -6,9 +6,14 @@ const corsHeaders = {
 };
 
 const PHASE_DURATION_MS = 6000;
+const POSITIONING_PHASE_DURATION_MS = 15000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
+
+function isPositioningPhase(phase: string): boolean {
+  return phase === 'positioning_attack' || phase === 'positioning_defense';
+}
 
 // ─── Accuracy deviation ─────────────────────────────────────────
 function normalizeAttr(val: number): number {
@@ -696,16 +701,16 @@ Deno.serve(async (req) => {
         await supabase.from('matches').update({
           status: 'live',
           started_at: now,
-          current_phase: 'ball_holder',
+          current_phase: 'positioning_attack',
           current_turn_number: 1,
           possession_club_id: possessionClubId,
         }).eq('id', m.id);
 
-        const phaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+        const phaseEnd = new Date(Date.now() + POSITIONING_PHASE_DURATION_MS).toISOString();
         await supabase.from('match_turns').insert({
           match_id: m.id,
           turn_number: 1,
-          phase: 'ball_holder',
+          phase: 'positioning_attack',
           possession_club_id: possessionClubId,
           ball_holder_participant_id: ballHolderParticipantId,
           started_at: now,
@@ -750,6 +755,123 @@ Deno.serve(async (req) => {
 
       if (!forceTick && now < endsAt) {
         return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ── POSITIONING PHASES ──
+      if (isPositioningPhase(activeTurn.phase)) {
+        const { data: participants } = await supabase
+          .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+
+        const possClubId = activeTurn.possession_club_id;
+        const isAttackPhase = activeTurn.phase === 'positioning_attack';
+
+        // Load actions for this phase turn
+        const { data: rawActions } = await supabase
+          .from('match_actions').select('*')
+          .eq('match_turn_id', activeTurn.id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+
+        // Dedup: keep latest action per participant
+        const seen = new Set<string>();
+        const moveActions = (rawActions || []).filter(a => {
+          if (a.action_type !== 'move') return false;
+          if (seen.has(a.participant_id)) return false;
+          seen.add(a.participant_id);
+          return true;
+        });
+
+        // Determine if this is a kickoff (ball holder at center)
+        const bhId = activeTurn.ball_holder_participant_id;
+        const bh = bhId ? (participants || []).find((p: any) => p.id === bhId) : null;
+        const isKickoff = bh && Math.abs(Number(bh.pos_x ?? 50) - 50) < 5 && Math.abs(Number(bh.pos_y ?? 50) - 50) < 5;
+
+        // Apply move actions
+        for (const a of moveActions) {
+          const part = (participants || []).find((p: any) => p.id === a.participant_id);
+          if (!part) continue;
+
+          // Don't move the ball holder (kicker)
+          if (part.id === bhId) continue;
+
+          // Check team phase constraint
+          const isAttacker = part.club_id === possClubId;
+          if (isAttackPhase && !isAttacker) continue;
+          if (!isAttackPhase && isAttacker) continue;
+
+          let targetX = Number(a.target_x ?? part.pos_x ?? 50);
+          let targetY = Number(a.target_y ?? part.pos_y ?? 50);
+
+          // Kickoff half-field constraint
+          if (isKickoff) {
+            const isHome = part.club_id === match.home_club_id;
+            if (isHome) targetX = Math.min(targetX, 49);
+            else targetX = Math.max(targetX, 51);
+          }
+
+          // Clamp to field
+          targetX = Math.max(1, Math.min(99, targetX));
+          targetY = Math.max(1, Math.min(99, targetY));
+
+          await supabase.from('match_participants').update({
+            pos_x: targetX, pos_y: targetY,
+          }).eq('id', part.id);
+
+          console.log(`[ENGINE] Positioning move: ${part.id.slice(0,8)} → (${targetX.toFixed(1)},${targetY.toFixed(1)})`);
+        }
+
+        // Mark actions as used
+        const actionIds = moveActions.map(a => a.id);
+        if (actionIds.length > 0) {
+          await supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds);
+        }
+
+        // Resolve current positioning turn
+        await supabase.from('match_turns')
+          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+          .eq('id', activeTurn.id);
+
+        const nextPhaseStart = new Date().toISOString();
+
+        if (isAttackPhase) {
+          // Advance to positioning_defense
+          const nextPhaseEnd = new Date(Date.now() + POSITIONING_PHASE_DURATION_MS).toISOString();
+          await supabase.from('matches').update({ current_phase: 'positioning_defense' }).eq('id', match_id);
+          await supabase.from('match_turns').insert({
+            match_id, turn_number: activeTurn.turn_number,
+            phase: 'positioning_defense',
+            possession_club_id: possClubId,
+            ball_holder_participant_id: bhId,
+            started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+            status: 'active',
+          });
+
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'positioning',
+            title: '📍 Posicionamento — Ataque concluído',
+            body: 'Agora a defesa posiciona seus jogadores.',
+          });
+        } else {
+          // Advance to ball_holder (normal turn starts)
+          const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+          await supabase.from('matches').update({ current_phase: 'ball_holder' }).eq('id', match_id);
+          await supabase.from('match_turns').insert({
+            match_id, turn_number: activeTurn.turn_number,
+            phase: 'ball_holder',
+            possession_club_id: possClubId,
+            ball_holder_participant_id: bhId,
+            started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+            status: 'active',
+          });
+
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'positioning',
+            title: '📍 Posicionamento concluído',
+            body: 'A partida continua!',
+          });
+        }
+
+        return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       const { data: participants } = await supabase
@@ -1157,8 +1279,23 @@ Deno.serve(async (req) => {
         } else {
           const nextPhaseStart = new Date().toISOString();
           const isNextLooseBall = nextBallHolderParticipantId === null;
-          const nextPhase = isNextLooseBall ? 'attacking_support' : 'ball_holder';
-          const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+
+          // Dead-ball restarts (goal kickoff, set pieces) get positioning turn
+          const isDeadBallRestart = goalScored || (ballEndPos && !isNextLooseBall && (
+            detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match) !== null
+          ));
+          // OOB set piece restarts also get positioning
+          const hadSetPiece = ballEndPos && !goalScored && nextBallHolderParticipantId !== null && !isNextLooseBall && (
+            detectOutOfBounds(
+              // use original ball end pos before set piece handler modified things
+              ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match
+            ) !== null
+          );
+
+          const usePositioning = goalScored || hadSetPiece;
+          const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
+          const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
+          const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
 
           await supabase.from('matches').update({
             current_turn_number: newTurnNumber,
@@ -1181,6 +1318,12 @@ Deno.serve(async (req) => {
               match_id, event_type: 'loose_ball_phase',
               title: '⚽ Bola solta — Fase 1 pulada',
               body: 'Todos os jogadores se movimentam para disputar a bola.',
+            });
+          } else if (usePositioning) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'positioning',
+              title: '📍 Posicionamento',
+              body: 'Time com a bola posiciona seus jogadores primeiro.',
             });
           }
         }

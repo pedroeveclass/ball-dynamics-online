@@ -109,6 +109,7 @@ const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
   defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
   processing: 'Pausa',
+  positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -120,6 +121,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const PHASE_DURATION = 6;
+const POSITIONING_PHASE_DURATION = 15;
 const RESOLUTION_PHASE_DURATION = 3;
 const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
@@ -413,6 +415,8 @@ export default function MatchRoomPage() {
     }
 
     const phaseOrder: Record<string, number> = {
+      positioning_attack: -2,
+      positioning_defense: -1,
       ball_holder: 0,
       attacking_support: 1,
       defending_response: 2,
@@ -628,6 +632,11 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.id, activeTurn?.phase]);
 
+  // Positioning turn detection
+  const isPositioningTurn = activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense';
+  const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
+  const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
+
   // ── Possession change detection ────────────────────────────
   useEffect(() => {
     if (!activeTurn) return;
@@ -670,6 +679,10 @@ export default function MatchRoomPage() {
   // For loose ball (no ball_holder), skip phase 1 — handled by engine
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
+    
+    // Positioning turn: no auto-open action menu, players click manually
+    if (isPositioningTurn) return;
+    
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
       const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
@@ -684,7 +697,7 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   const tickInFlightRef = useRef(false);
@@ -704,7 +717,9 @@ export default function MatchRoomPage() {
       tickInFlightRef.current = true;
       setIsPhaseProcessing(true);
       setProcessingLabel(
-        activeTurn.phase === 'defending_response'
+        isPositioningTurn
+          ? 'Aplicando posicionamento...'
+          : activeTurn.phase === 'defending_response'
           ? 'Processando todos os movimentos...'
           : activeTurn.phase === 'resolution'
             ? 'Processando próximo turno...'
@@ -1104,7 +1119,18 @@ export default function MatchRoomPage() {
       // Clamp move to max range based on player physics + inertia
       const moveFrom = participants.find(p => p.id === drawingAction.fromParticipantId);
       let mx = pctX, my = pctY;
-      if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+      if (isPositioningTurn) {
+        // Positioning: unlimited range, clamp to field + kickoff half
+        mx = clamp(mx, 1, 99);
+        my = clamp(my, 1, 99);
+        const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+        const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+        if (isKickoff && moveFrom) {
+          const isHome = moveFrom.club_id === match?.home_club_id;
+          if (isHome) mx = Math.min(mx, 49);
+          else mx = Math.max(mx, 51);
+        }
+      } else if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
         const dx = pctX - moveFrom.field_x;
         const dy = pctY - moveFrom.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1153,6 +1179,17 @@ export default function MatchRoomPage() {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
         const isAttacking = p.club_id === activeTurn.possession_club_id;
+
+        // Positioning turn: directly start move drawing (skip action menu)
+        if (isPositioningTurn) {
+          if (isBH) return; // Ball holder can't reposition
+          if ((phase === 'positioning_attack' && isAttacking) || (phase === 'positioning_defense' && !isAttacking)) {
+            setDrawingAction({ type: 'move', fromParticipantId: participantId });
+            setShowActionMenu(null);
+          }
+          return;
+        }
+
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking) ||
@@ -1415,6 +1452,14 @@ export default function MatchRoomPage() {
     const isAttacking = p.club_id === currentPossClubId;
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
+    // Positioning turn: move only, ball holder can't move
+    if (isPositioningTurn) {
+      if (isBH) return []; // Ball holder (kicker) can't reposition
+      if (phase === 'positioning_attack' && isAttacking) return ['move'];
+      if (phase === 'positioning_defense' && !isAttacking) return ['move'];
+      return [];
+    }
+
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
@@ -1467,17 +1512,34 @@ export default function MatchRoomPage() {
 
     // Clamp move arrow to max range based on player physics + inertia
     if (drawingAction.type === 'move') {
-      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
-      if (fromP && fromP.field_x != null && fromP.field_y != null) {
-        const dx = finalX - fromP.field_x;
-        const dy = finalY - fromP.field_y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
-        if (dist > maxRange) {
-          const scale = maxRange / dist;
-          finalX = fromP.field_x + dx * scale;
-          finalY = fromP.field_y + dy * scale;
+      if (isPositioningTurn) {
+        // Positioning: unlimited range, but clamp to field and kickoff half-field
+        finalX = clamp(finalX, 1, 99);
+        finalY = clamp(finalY, 1, 99);
+        // Kickoff half-field constraint
+        const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+        const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+        if (isKickoff) {
+          const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+          if (fromP) {
+            const isHome = fromP.club_id === match?.home_club_id;
+            if (isHome) finalX = Math.min(finalX, 49);
+            else finalX = Math.max(finalX, 51);
+          }
+        }
+      } else {
+        const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+        if (fromP && fromP.field_x != null && fromP.field_y != null) {
+          const dx = finalX - fromP.field_x;
+          const dy = finalY - fromP.field_y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
+          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
+          if (dist > maxRange) {
+            const scale = maxRange / dist;
+            finalX = fromP.field_x + dx * scale;
+            finalY = fromP.field_y + dy * scale;
+          }
         }
       }
     }
@@ -1724,7 +1786,8 @@ export default function MatchRoomPage() {
     };
   };
 
-  const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
+  const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION
+    : isPositioningTurn ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
 
@@ -1817,6 +1880,7 @@ export default function MatchRoomPage() {
           {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">TESTE 2v2</Badge>}
           {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
           {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
+          {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">📍 POSICIONAMENTO</Badge>}
         </div>
 
         <div className="flex items-center gap-4">
@@ -1920,6 +1984,23 @@ export default function MatchRoomPage() {
                   </g>
                 ))}
               </g>
+
+              {/* ── Kickoff half-field overlay during positioning ── */}
+              {isPositioningTurn && (() => {
+                const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+                const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+                if (!isKickoff || !drawingAction) return null;
+                const drawingPlayer = participants.find(p => p.id === drawingAction.fromParticipantId);
+                if (!drawingPlayer) return null;
+                const isHome = drawingPlayer.club_id === match.home_club_id;
+                // Shade the opponent's half
+                const shadeX = isHome ? toSVG(50, 0).x : PAD;
+                const shadeW = isHome ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
+                return (
+                  <rect x={shadeX} y={PAD} width={shadeW} height={INNER_H}
+                    fill="rgba(239,68,68,0.12)" stroke="rgba(239,68,68,0.3)" strokeWidth="1" strokeDasharray="6,4" />
+                );
+              })()}
 
               {/* ── Intercept zone visualization ── */}
               {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
@@ -2699,12 +2780,21 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
 }) {
-  const phases = [
-    { key: 'ball_holder', label: '1' },
-    { key: 'attacking_support', label: '2' },
-    { key: 'defending_response', label: '3' },
-    { key: 'resolution', label: '4' },
-  ];
+  const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
+
+  const phases = isPositioning
+    ? [
+        { key: 'positioning_attack', label: '⚽' },
+        { key: 'positioning_defense', label: '🛡' },
+        { key: '_skip1', label: '—' },
+        { key: '_skip2', label: '—' },
+      ]
+    : [
+        { key: 'ball_holder', label: '1' },
+        { key: 'attacking_support', label: '2' },
+        { key: 'defending_response', label: '3' },
+        { key: 'resolution', label: '4' },
+      ];
   const currentIdx = phases.findIndex(p => p.key === currentPhase);
 
   const SIZE = 140;
@@ -2740,7 +2830,9 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   }
 
   const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / phaseDuration) : 0;
-  const phaseFills = ['hsl(var(--pitch))', 'hsl(var(--warning))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
+  const phaseFills = isPositioning
+    ? ['hsl(var(--pitch))', 'hsl(var(--tactical))', 'hsl(var(--muted))', 'hsl(var(--muted))']
+    : ['hsl(var(--pitch))', 'hsl(var(--warning))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -2753,7 +2845,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         {quadrants.map((q, i) => {
           const isActive = i === currentIdx;
           const isPast = i < currentIdx;
-          const isSkipped = isLooseBall && i === 0; // Phase 1 skipped on loose ball
+          const isSkipped = (isLooseBall && i === 0 && !isPositioning) || (isPositioning && i >= 2);
           const fillColor = isSkipped ? 'hsl(var(--muted))' : isActive ? phaseFills[i] : isPast ? 'hsl(var(--secondary))' : 'hsl(var(--muted))';
 
           return (
