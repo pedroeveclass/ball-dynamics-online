@@ -37,23 +37,23 @@ function computeDeviation(
 
   switch (actionType) {
     case 'pass_low':
-      difficultyMultiplier = 3;
+      difficultyMultiplier = 5;
       skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
       break;
     case 'pass_high':
-      difficultyMultiplier = 4;
+      difficultyMultiplier = 7;
       skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
       break;
     case 'pass_launch':
-      difficultyMultiplier = 3.5;
+      difficultyMultiplier = 6;
       skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
       break;
     case 'shoot_controlled':
-      difficultyMultiplier = 2;
+      difficultyMultiplier = 4;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
       break;
     case 'shoot_power':
-      difficultyMultiplier = 5;
+      difficultyMultiplier = 8;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
       break;
     default:
@@ -61,16 +61,17 @@ function computeDeviation(
   }
 
   const baseDifficulty = (dist / 100) * difficultyMultiplier;
-  // Exponential curve: 99 skill = zero deviation, below 50 = harsh, below 40 = always large
-  const skillCurve = Math.pow(1 - skillFactor, 2.5);
-  const deviationRadius = baseDifficulty * skillCurve * (0.6 + Math.random() * 0.4);
+  // Harsh exponential curve: 99 = zero deviation, <50 = harsh, <40 = always large
+  const skillCurve = Math.pow(1 - skillFactor, 3.5);
+  const minimumDeviation = skillFactor < 0.45 ? (1 + (0.45 - skillFactor) * 3) : 0;
+  const deviationRadius = (baseDifficulty * skillCurve + minimumDeviation) * (0.6 + Math.random() * 0.4);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
 
   // For shoot_power: if deviation is large, ball goes over the goal
   let overGoal = false;
-  if (actionType === 'shoot_power' && deviationRadius > 1.5) {
+  if (actionType === 'shoot_power' && deviationRadius > 1.0) {
     // Push target_y outside goal range (38-62)
     if (actualY >= 38 && actualY <= 62) {
       actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
@@ -563,27 +564,32 @@ Deno.serve(async (req) => {
         if (ballHolder) {
           const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
           if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
-            const bhAttrs = getAttrs(ballHolder);
-            const startX = Number(ballHolder.pos_x ?? 50);
-            const startY = Number(ballHolder.pos_y ?? 50);
-            const deviation = computeDeviation(
-              Number(bhAction.target_x),
-              Number(bhAction.target_y),
-              startX,
-              startY,
-              bhAction.action_type,
-              bhAttrs,
-            );
-            // Apply deviation to the action's targets in-memory
-            bhAction.target_x = deviation.actualX;
-            bhAction.target_y = deviation.actualY;
+            // Check if deviation was already applied at phase transition
+            const alreadyDeviated = bhAction.payload && typeof bhAction.payload === 'object' && (bhAction.payload as any).deviated;
+            if (!alreadyDeviated) {
+              const bhAttrs = getAttrs(ballHolder);
+              const startX = Number(ballHolder.pos_x ?? 50);
+              const startY = Number(ballHolder.pos_y ?? 50);
+              const deviation = computeDeviation(
+                Number(bhAction.target_x),
+                Number(bhAction.target_y),
+                startX,
+                startY,
+                bhAction.action_type,
+                bhAttrs,
+              );
+              bhAction.target_x = deviation.actualX;
+              bhAction.target_y = deviation.actualY;
 
-            if (deviation.overGoal) {
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'shot_over',
-                title: '💨 Chute para fora!',
-                body: 'A bola foi por cima do gol.',
-              });
+              if (deviation.overGoal) {
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'shot_over',
+                  title: '💨 Chute para fora!',
+                  body: 'A bola foi por cima do gol.',
+                });
+              }
+            } else {
+              console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
             }
           }
         }
@@ -778,6 +784,54 @@ Deno.serve(async (req) => {
           status: 'active',
         });
       } else {
+        // ── Early deviation at ball_holder → attacking_support transition ──
+        if (activeTurn.phase === 'ball_holder' && ballHolder) {
+          const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
+          const { data: devAttrRows } = profileIds.length > 0
+            ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
+            : { data: [] };
+          const devAttrByProfile: Record<string, any> = {};
+          for (const row of (devAttrRows || [])) devAttrByProfile[row.player_profile_id] = row;
+
+          const { data: bhActions } = await supabase.from('match_actions')
+            .select('*')
+            .eq('match_turn_id', activeTurn.id)
+            .eq('participant_id', ballHolder.id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          const bhAction = bhActions?.[0];
+          if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
+            const raw = ballHolder.player_profile_id ? devAttrByProfile[ballHolder.player_profile_id] : null;
+            const devAttrs: Record<string, number> = {
+              passe_baixo: Number(raw?.passe_baixo ?? 40),
+              passe_alto: Number(raw?.passe_alto ?? 40),
+              forca_chute: Number(raw?.forca_chute ?? 40),
+              acuracia_chute: Number(raw?.acuracia_chute ?? 40),
+            };
+            const startX = Number(ballHolder.pos_x ?? 50);
+            const startY = Number(ballHolder.pos_y ?? 50);
+            const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs);
+
+            await supabase.from('match_actions').update({
+              target_x: deviation.actualX,
+              target_y: deviation.actualY,
+              payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal },
+            }).eq('id', bhAction.id);
+
+            console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
+
+            if (deviation.overGoal) {
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'shot_over',
+                title: '💨 Chute para fora!',
+                body: 'A bola foi por cima do gol.',
+              });
+            }
+          }
+        }
+
         const currentPhaseIndex = PHASES.indexOf(activeTurn.phase as Phase);
         const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
 

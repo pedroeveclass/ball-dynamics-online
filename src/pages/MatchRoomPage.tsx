@@ -204,6 +204,7 @@ export default function MatchRoomPage() {
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
   const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
+  const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const attrsLoadedRef = useRef(false);
 
   // Possession change visual feedback
@@ -477,7 +478,7 @@ export default function MatchRoomPage() {
   }, [participants]);
 
   // ── Compute max move range from player attributes ──
-  const computeMaxMoveRange = useCallback((participantId: string): number => {
+  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
     const vel = Number(attrs?.velocidade ?? 40);
@@ -488,7 +489,25 @@ export default function MatchRoomPage() {
     const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
-    return baseRange * accelFactor * staminaDecay * forceFactor;
+    let range = baseRange * accelFactor * staminaDecay * forceFactor;
+
+    // Inertia multiplier based on previous direction
+    if (targetDirection) {
+      const prevDir = prevDirectionsRef.current[participantId];
+      if (prevDir) {
+        const prevLen = Math.sqrt(prevDir.x * prevDir.x + prevDir.y * prevDir.y);
+        const curLen = Math.sqrt(targetDirection.x * targetDirection.x + targetDirection.y * targetDirection.y);
+        if (prevLen > 0.1 && curLen > 0.1) {
+          const dot = (prevDir.x * targetDirection.x + prevDir.y * targetDirection.y) / (prevLen * curLen);
+          const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
+          const normalizedAngle = angleDiff / Math.PI; // 0 = same dir, 1 = opposite
+          const multiplier = 1.2 - 0.4 * normalizedAngle; // 1.2x same, 0.8x opposite
+          range *= multiplier;
+        }
+      }
+    }
+
+    return range;
   }, [playerAttrsMap, match?.current_turn_number]);
 
   // ── Pre-match countdown / auto-start ────────────────────────
@@ -968,20 +987,21 @@ export default function MatchRoomPage() {
         }
       }
       
-      // Clamp move to max range based on player physics
+      // Clamp move to max range based on player physics + inertia
       const moveFrom = participants.find(p => p.id === drawingAction.fromParticipantId);
       let mx = pctX, my = pctY;
       if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
         const dx = pctX - moveFrom.field_x;
         const dy = pctY - moveFrom.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
         if (dist > maxRange) {
           const scale = maxRange / dist;
           mx = moveFrom.field_x + dx * scale;
           my = moveFrom.field_y + dy * scale;
         }
-        console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange}`);
+        console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange} inertia=${direction ? 'yes' : 'no'}`);
       }
       submitAction('move', drawingAction.fromParticipantId, mx, my);
     }
@@ -1091,6 +1111,23 @@ export default function MatchRoomPage() {
           }
           
           setFinalPositions(finals);
+
+          // Store movement directions for inertia system
+          const newDirections: Record<string, { x: number; y: number }> = {};
+          for (const p of participantsRef.current) {
+            const moveAct = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
+            if (moveAct && moveAct.target_x != null && moveAct.target_y != null) {
+              const sp = snapshot[p.id];
+              if (sp) {
+                const ddx = moveAct.target_x - sp.x;
+                const ddy = moveAct.target_y - sp.y;
+                if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
+                  newDirections[p.id] = { x: ddx, y: ddy };
+                }
+              }
+            }
+          }
+          prevDirectionsRef.current = { ...prevDirectionsRef.current, ...newDirections };
           
           // Compute final ball position
           const bhId = activeTurn.ball_holder_participant_id;
@@ -1268,14 +1305,15 @@ export default function MatchRoomPage() {
     let finalX = clamp(fp.x, 0, 100);
     let finalY = clamp(fp.y, 0, 100);
 
-    // Clamp move arrow to max range based on player physics
+    // Clamp move arrow to max range based on player physics + inertia
     if (drawingAction.type === 'move') {
       const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (fromP && fromP.field_x != null && fromP.field_y != null) {
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
         const dx = finalX - fromP.field_x;
         const dy = finalY - fromP.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
+        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
         if (dist > maxRange) {
           const scale = maxRange / dist;
           finalX = fromP.field_x + dx * scale;
@@ -1715,6 +1753,41 @@ export default function MatchRoomPage() {
                   />
                 );
               })()}
+
+              {/* ── Trajectory progress markers (25%, 50%, 75%) ── */}
+              {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
+                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
+                (() => {
+                  const fromSvg = toSVG(ballTrajectoryHolder.field_x!, ballTrajectoryHolder.field_y!);
+                  const toSvgPt = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
+                  const dx = toSvgPt.x - fromSvg.x;
+                  const dy = toSvgPt.y - fromSvg.y;
+                  const markers = [0.25, 0.5, 0.75];
+                  return markers.map((t, i) => (
+                    <g key={`progress-${i}`}>
+                      <circle
+                        cx={fromSvg.x + dx * t}
+                        cy={fromSvg.y + dy * t}
+                        r={3}
+                        fill="rgba(255,255,255,0.4)"
+                        stroke="rgba(255,255,255,0.7)"
+                        strokeWidth="0.5"
+                      />
+                      <text
+                        x={fromSvg.x + dx * t}
+                        y={fromSvg.y + dy * t - 6}
+                        textAnchor="middle"
+                        fontSize="5"
+                        fill="rgba(255,255,255,0.55)"
+                        fontFamily="'Barlow Condensed', sans-serif"
+                      >
+                        {Math.round(t * 100)}%
+                      </text>
+                    </g>
+                  ));
+                })()
+              )}
 
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
