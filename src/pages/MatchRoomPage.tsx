@@ -1546,7 +1546,7 @@ export default function MatchRoomPage() {
     if (!activeTurn?.ball_holder_participant_id) return null;
     return turnActions.find(a => 
       a.participant_id === activeTurn.ball_holder_participant_id &&
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'shoot' || a.action_type === 'move') &&
+      (isPassAction(a.action_type) || isShootAction(a.action_type) || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     ) || null;
   };
