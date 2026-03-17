@@ -2021,12 +2021,11 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Live ball preview synced to movement % during phases 2/3 */}
+              {/* Live ball preview synced to movement % during phases 2/3 (works for ALL ball actions including move/dribble) */}
               {drawingAction?.type === 'move' && mouseFieldPct && drawingFrom &&
                 ballTrajectoryAction && ballTrajectoryHolder &&
                 ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                ballTrajectoryAction.action_type !== 'move' &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
