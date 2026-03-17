@@ -148,7 +148,7 @@ function computeInterceptSuccess(
   context: InterceptContext,
   attackerAttrs: Record<string, number>,
   defenderAttrs: Record<string, number>,
-): boolean {
+): { success: boolean; chance: number } {
   let attackerSkill: number;
   let defenderSkill: number;
 
@@ -184,8 +184,9 @@ function computeInterceptSuccess(
   successChance = Math.max(0.05, Math.min(0.95, successChance));
 
   const roll = Math.random();
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${roll < successChance}`);
-  return roll < successChance;
+  const success = roll < successChance;
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success}`);
+  return { success, chance: successChance };
 }
 
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>): {
@@ -216,11 +217,12 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
     const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
-    const success = computeInterceptSuccess(context, bhAttrs, defAttrs);
+    const { success, chance } = computeInterceptSuccess(context, bhAttrs, defAttrs);
+    const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
       if (context.type === 'tackle') {
-        return { success: false, event: 'tackle', description: '🦵 Desarme bem-sucedido!', possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+        return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       }
       if (context.type === 'block_shot') {
         // Deflect ball randomly
@@ -230,27 +232,27 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         const deflectDist = 3 + Math.random() * 5;
         const looseBallX = Math.max(0, Math.min(100, blockX + Math.cos(deflectAngle) * deflectDist));
         const looseBallY = Math.max(0, Math.min(100, blockY + Math.sin(deflectAngle) * deflectDist));
-        return { success: false, event: 'blocked', description: '🛡️ Bloqueio!', possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
+        return { success: false, event: 'blocked', description: `🛡️ Bloqueio! (${chancePct})`, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
       }
       if (context.type === 'gk_save') {
-        return { success: false, event: 'saved', description: '🧤 Defesa do goleiro!', possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+        return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       }
       // receive_pass
-      return { success: false, event: 'intercepted', description: '🤲 Bola dominada!', possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     } else {
       // Failure — log and continue to next candidate
       if (context.type === 'tackle') {
-        console.log(`[ENGINE] 🦵 Desarme falhou! Dribble continua.`);
+        console.log(`[ENGINE] 🦵 Desarme falhou! (${chancePct}) Dribble continua.`);
       } else if (context.type === 'block_shot') {
-        console.log(`[ENGINE] 💨 Bloqueio falhou! Chute continua.`);
+        console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
       } else if (context.type === 'gk_save') {
-        console.log(`[ENGINE] 🧤 Goleiro não segurou!`);
+        console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
       } else {
-        console.log(`[ENGINE] ❌ Falhou o domínio! Bola continua.`);
+        console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
       }
       // For tackle, failure means dribble continues - stop processing
       if (context.type === 'tackle') {
-        return { success: true, event: 'dribble', description: '🔄 Drible bem-sucedido!', possession_change: false, goal: false };
+        return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false };
       }
     }
   }
@@ -783,7 +785,7 @@ Deno.serve(async (req) => {
               nextBallHolderParticipantId = ballHolder.id;
               await supabase.from('match_event_logs').insert({
                 match_id, event_type: 'dribble',
-                title: '🏃 Drible bem-sucedido!',
+                title: result.description,
                 body: 'O desarme falhou e o jogador seguiu com a bola.',
               });
             } else if (isPassType(ballHolderAction.action_type)) {

@@ -211,6 +211,9 @@ export default function MatchRoomPage() {
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
   const prevPossClubRef = useRef<string | null>(null);
 
+  // Contest visual feedback during phase 4
+  const [contestEffect, setContestEffect] = useState<{ type: 'tackle_fail' | 'tackle_success' | 'block' | 'dribble' | 'save' | 'intercept'; x: number; y: number; label: string } | null>(null);
+
   // Accordion states
   const [homeAccOpen, setHomeAccOpen] = useState(false);
   const [awayAccOpen, setAwayAccOpen] = useState(false);
@@ -605,6 +608,30 @@ export default function MatchRoomPage() {
     prevPossClubRef.current = currentPoss ?? null;
   }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
 
+  // ── Contest visual effect from event logs ────────────────────
+  useEffect(() => {
+    if (events.length === 0) return;
+    const last = events[events.length - 1];
+    if (!last) return;
+    // Only trigger during/near resolution
+    const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
+    if (!isContest) return;
+    
+    // Find approximate position from interceptor or ball holder
+    const bhPart = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+    const effectX = bhPart?.field_x ?? 50;
+    const effectY = bhPart?.field_y ?? 50;
+    
+    let effectType: typeof contestEffect extends { type: infer T } | null ? T : never = 'intercept';
+    if (last.event_type === 'tackle') effectType = 'tackle_success';
+    else if (last.event_type === 'dribble') effectType = 'dribble';
+    else if (last.event_type === 'blocked') effectType = 'block';
+    else if (last.event_type === 'saved') effectType = 'tackle_success';
+    
+    setContestEffect({ type: effectType, x: effectX, y: effectY, label: last.title });
+    setTimeout(() => setContestEffect(null), 2500);
+  }, [events.length]);
+
   // Auto-show action menu for ball holder in phase 1
   // For loose ball (no ball_holder), skip phase 1 — handled by engine
   useEffect(() => {
@@ -976,14 +1003,40 @@ export default function MatchRoomPage() {
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
-        if (!isRedZone) {
+        // Check reachability: can the player's action circle reach the ball at that point?
+        let canReach = true;
+        if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
+          const mdx = pctX - drawingParticipant.field_x;
+          const mdy = pctY - drawingParticipant.field_y;
+          const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+          const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+          
+          const bfx = ballHolderNow.field_x;
+          const bfy = ballHolderNow.field_y;
+          const btx = ballPathAction.target_x;
+          const bty = ballPathAction.target_y;
+          const ballPreviewX = bfx + (btx - bfx) * movePct;
+          const ballPreviewY = bfy + (bty - bfy) * movePct;
+          
+          const circleRadiusField = 9 / INNER_W * 100;
+          const distToBallPreview = Math.sqrt((pctX - ballPreviewX) ** 2 + (pctY - ballPreviewY) ** 2);
+          
+          // Check if cursor is ahead of ball on trajectory
+          const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
+          const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
+          
+          canReach = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+        }
+        
+        if (!isRedZone && canReach) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
           setMouseFieldPct(null);
           return;
         }
-        // Red zone: treat as normal move, don't offer intercept
+        // Red zone or can't reach: treat as normal move, don't offer intercept
       }
       
       // Check if clicking near a loose ball position
@@ -2003,19 +2056,60 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* Player glow during drawing + green cursor shadow only on MOVE */}
+              {/* Player glow during drawing + action circle (green=can't reach, purple=can reach ball) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
                 const cursorSvg = toSVG(mouseFieldPct.x, mouseFieldPct.y);
                 const fromSvg = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                 const isMove = drawingAction.type === 'move';
+
+                // Compute whether the action circle can reach the ball trajectory
+                let canReachBall = false;
+                if (isMove && ballTrajectoryAction && ballTrajectoryHolder &&
+                    ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
+                    ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                    (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
+                  const mdx = mouseFieldPct.x - drawingFrom.field_x!;
+                  const mdy = mouseFieldPct.y - drawingFrom.field_y!;
+                  const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+                  const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                  const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+
+                  const bfx = ballTrajectoryHolder.field_x!;
+                  const bfy = ballTrajectoryHolder.field_y!;
+                  const btx = ballTrajectoryAction.target_x!;
+                  const bty = ballTrajectoryAction.target_y!;
+                  const ballPreviewX = bfx + (btx - bfx) * movePct;
+                  const ballPreviewY = bfy + (bty - bfy) * movePct;
+
+                  // Check if action circle (at cursor) touches the ball preview position
+                  const circleRadiusField = 9 / INNER_W * 100; // ~1% field width
+                  const distToBallPreview = Math.sqrt((mouseFieldPct.x - ballPreviewX) ** 2 + (mouseFieldPct.y - ballPreviewY) ** 2);
+                  
+                  // Also check if cursor position is AHEAD of ball on trajectory (player arrives before ball)
+                  const trajDx = btx - bfx;
+                  const trajDy = bty - bfy;
+                  const trajLen2 = trajDx * trajDx + trajDy * trajDy;
+                  if (trajLen2 > 0) {
+                    const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
+                    const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
+                    // Can reach if: circle touches ball preview OR player is on trajectory before ball arrives
+                    canReachBall = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+                  }
+                }
+
+                const circleColor = canReachBall ? 'rgba(139,92,246,0.35)' : 'rgba(34,197,94,0.15)';
+                const circleStroke = canReachBall ? 'rgba(139,92,246,0.7)' : 'rgba(34,197,94,0.45)';
+                const glowColor = canReachBall ? 'rgba(139,92,246,0.3)' : 'rgba(34,197,94,0.3)';
+                const glowStroke = canReachBall ? 'rgba(139,92,246,0.15)' : 'rgba(34,197,94,0.15)';
+
                 return (
                   <>
                     {/* Outer glow around active player (all actions) */}
-                    <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke="rgba(34,197,94,0.3)" strokeWidth="2" filter="url(#pulse-glow)" />
-                    <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="4" />
-                    {/* Green translucent circle at cursor (only for MOVE) */}
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke={glowColor} strokeWidth="2" filter="url(#pulse-glow)" />
+                    <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke={glowStroke} strokeWidth="4" />
+                    {/* Action circle at cursor (only for MOVE) — green=can't reach, purple=can reach */}
                     {isMove && (
-                      <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.45)" strokeWidth="1.2" />
+                      <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill={circleColor} stroke={circleStroke} strokeWidth="1.2" />
                     )}
                   </>
                 );
@@ -2135,6 +2229,35 @@ export default function MatchRoomPage() {
                     <circle cx={x} cy={y + r * 0.65} r={r * 0.15} fill="#2a2a2a" opacity="0.4" />
                     {/* Highlight */}
                     <circle cx={x - r * 0.25} cy={y - r * 0.3} r={r * 0.22} fill="rgba(255,255,255,0.4)" />
+                  </g>
+                );
+              })()}
+
+              {/* Contest visual effect during phase 4 */}
+              {contestEffect && (() => {
+                const pos = toSVG(contestEffect.x, contestEffect.y);
+                const isSuccess = contestEffect.type === 'tackle_success' || contestEffect.type === 'block' || contestEffect.type === 'intercept';
+                const color = isSuccess ? '#ef4444' : '#22c55e';
+                const bgColor = isSuccess ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+                return (
+                  <g pointerEvents="none">
+                    {/* Expanding ring */}
+                    <circle cx={pos.x} cy={pos.y} r={8} fill="none" stroke={color} strokeWidth="2.5" opacity="0.7">
+                      <animate attributeName="r" from="8" to="35" dur="1.5s" fill="freeze" />
+                      <animate attributeName="opacity" from="0.8" to="0" dur="1.5s" fill="freeze" />
+                    </circle>
+                    {/* Inner flash */}
+                    <circle cx={pos.x} cy={pos.y} r={12} fill={bgColor}>
+                      <animate attributeName="r" from="6" to="20" dur="0.8s" fill="freeze" />
+                      <animate attributeName="opacity" from="0.6" to="0" dur="1.2s" fill="freeze" />
+                    </circle>
+                    {/* Label */}
+                    <text x={pos.x} y={pos.y - 22} textAnchor="middle" fontSize="8" fontWeight="800"
+                      fontFamily="'Barlow Condensed', sans-serif" fill={color}>
+                      <animate attributeName="y" from={String(pos.y - 14)} to={String(pos.y - 30)} dur="1.5s" fill="freeze" />
+                      <animate attributeName="opacity" from="1" to="0" dur="2s" fill="freeze" />
+                      {contestEffect.label}
+                    </text>
                   </g>
                 );
               })()}
@@ -2344,18 +2467,22 @@ export default function MatchRoomPage() {
               {events.length === 0 && (
                 <p className="text-[10px] text-muted-foreground px-1">Aguardando eventos...</p>
               )}
-              {events.slice(-30).map(e => (
-                <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
-                  e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-                  e.event_type === 'kickoff' ? 'border-tactical text-foreground' :
-                  e.event_type === 'possession_change' ? 'border-warning/60 text-muted-foreground' :
-                  e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
-                  'border-[hsl(140,10%,25%)] text-muted-foreground'
-                }`}>
-                  <p className="font-display font-semibold">{e.title}</p>
-                  {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
-                </div>
-              ))}
+               {events.slice(-30).map(e => (
+                 <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
+                   e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
+                   e.event_type === 'kickoff' ? 'border-tactical text-foreground' :
+                   e.event_type === 'possession_change' ? 'border-warning/60 text-muted-foreground' :
+                   e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
+                   e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
+                   e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
+                   e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
+                   e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
+                   'border-[hsl(140,10%,25%)] text-muted-foreground'
+                 }`}>
+                   <p className="font-display font-semibold">{e.title}</p>
+                   {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
+                 </div>
+               ))}
               <div ref={eventsEndRef} />
             </div>
           </AccordionSection>
