@@ -1781,13 +1781,49 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'shoot_power') {
-                    // Full yellow or red depending on quality
+                    // Yellow→Red segments based on quality
+                    if (color === '#ef4444') {
+                      // Full red = terrible
+                      return [(
+                        <line key="power"
+                          x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                          stroke="#ef4444" strokeWidth={strokeW}
+                          strokeLinecap="round" opacity={opacity}
+                          markerEnd="url(#ah-red)"
+                          strokeDasharray={dashArray}
+                        />
+                      )];
+                    }
+                    // Check if it's a borderline case — yellow→red at end
+                    const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
+                    const attrs = playerAttrsMap[action.participant_id];
+                    const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
+                    const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 4;
+                    const eDist = (Math.sqrt((action.target_x! - (fromPart.field_x ?? 50)) ** 2 + (action.target_y! - (fromPart.field_y ?? 50)) ** 2)) - accBonus - powBonus;
+                    if (eDist > 25) {
+                      // Yellow front half, red back half
+                      const seg = [
+                        { t0: 0, t1: 0.5, color: '#f59e0b' },
+                        { t0: 0.5, t1: 1, color: '#ef4444' },
+                      ];
+                      return seg.map((s, i) => (
+                        <line key={i}
+                          x1={from.x + (to.x - from.x) * s.t0} y1={from.y + (to.y - from.y) * s.t0}
+                          x2={from.x + (to.x - from.x) * s.t1} y2={from.y + (to.y - from.y) * s.t1}
+                          stroke={s.color} strokeWidth={strokeW}
+                          strokeLinecap="round" opacity={opacity}
+                          strokeDasharray={dashArray}
+                          markerEnd={i === seg.length - 1 ? 'url(#ah-red)' : undefined}
+                        />
+                      ));
+                    }
+                    // Full yellow = decent
                     return [(
                       <line key="power"
                         x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                        stroke={color} strokeWidth={strokeW}
+                        stroke="#f59e0b" strokeWidth={strokeW}
                         strokeLinecap="round" opacity={opacity}
-                        markerEnd={`url(#${markerId})`}
+                        markerEnd="url(#ah-yellow)"
                         strokeDasharray={dashArray}
                       />
                     )];
