@@ -1111,6 +1111,23 @@ export default function MatchRoomPage() {
           }
           
           setFinalPositions(finals);
+
+          // Store movement directions for inertia system
+          const newDirections: Record<string, { x: number; y: number }> = {};
+          for (const p of participantsRef.current) {
+            const moveAct = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
+            if (moveAct && moveAct.target_x != null && moveAct.target_y != null) {
+              const sp = snapshot[p.id];
+              if (sp) {
+                const ddx = moveAct.target_x - sp.x;
+                const ddy = moveAct.target_y - sp.y;
+                if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
+                  newDirections[p.id] = { x: ddx, y: ddy };
+                }
+              }
+            }
+          }
+          prevDirectionsRef.current = { ...prevDirectionsRef.current, ...newDirections };
           
           // Compute final ball position
           const bhId = activeTurn.ball_holder_participant_id;
