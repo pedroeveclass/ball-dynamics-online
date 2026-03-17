@@ -919,12 +919,12 @@ export default function MatchRoomPage() {
       return Math.sqrt(dx * dx + dy * dy) < 5;
     });
 
-    if (drawingAction.type === 'shoot') {
+    if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction('shoot', drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
-    } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high') {
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
+    } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
       submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
