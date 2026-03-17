@@ -118,39 +118,160 @@ function isShootType(action: string): boolean {
   return action === 'shoot' || action === 'shoot_controlled' || action === 'shoot_power';
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string): {
+// ─── Skill-based interception probability ────────────────────
+interface InterceptContext {
+  type: 'tackle' | 'receive_pass' | 'block_shot' | 'gk_save';
+  baseChance: number;
+}
+
+function getInterceptContext(bhActionType: string, interceptorClubId: string, bhClubId: string, interceptorRoleType: string): InterceptContext {
+  const isOpponent = interceptorClubId !== bhClubId;
+
+  if (bhActionType === 'move' && isOpponent) {
+    return { type: 'tackle', baseChance: 0.45 };
+  }
+  if (isShootType(bhActionType)) {
+    if (interceptorRoleType === 'GK' || !isOpponent) {
+      return { type: 'gk_save', baseChance: 0.35 };
+    }
+    return { type: 'block_shot', baseChance: 0.25 };
+  }
+  // Pass types
+  if (bhActionType === 'pass_low') return { type: 'receive_pass', baseChance: 0.85 };
+  if (bhActionType === 'pass_high') return { type: 'receive_pass', baseChance: 0.60 };
+  if (bhActionType === 'pass_launch') return { type: 'receive_pass', baseChance: 0.70 };
+
+  return { type: 'receive_pass', baseChance: 0.75 };
+}
+
+function computeInterceptSuccess(
+  context: InterceptContext,
+  attackerAttrs: Record<string, number>,
+  defenderAttrs: Record<string, number>,
+): boolean {
+  let attackerSkill: number;
+  let defenderSkill: number;
+
+  switch (context.type) {
+    case 'tackle':
+      attackerSkill = (normalizeAttr(attackerAttrs.drible ?? 40) * 0.35 + normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.25 +
+        normalizeAttr(attackerAttrs.forca ?? 40) * 0.2 + normalizeAttr(attackerAttrs.agilidade ?? 40) * 0.2);
+      defenderSkill = (normalizeAttr(defenderAttrs.desarme ?? 40) * 0.3 + normalizeAttr(defenderAttrs.marcacao ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.2 + normalizeAttr(defenderAttrs.forca ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.antecipacao ?? 40) * 0.1);
+      break;
+    case 'receive_pass':
+      attackerSkill = (normalizeAttr(attackerAttrs.passe_baixo ?? 40) * 0.4 + normalizeAttr(attackerAttrs.visao_jogo ?? 40) * 0.3 +
+        normalizeAttr(attackerAttrs.passe_alto ?? 40) * 0.3);
+      defenderSkill = (normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.3 + normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.2 +
+        normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.2 + normalizeAttr(defenderAttrs.um_toque ?? 40) * 0.3);
+      break;
+    case 'block_shot':
+      attackerSkill = (normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.4 + normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.3 +
+        normalizeAttr(attackerAttrs.curva ?? 40) * 0.3);
+      defenderSkill = (normalizeAttr(defenderAttrs.antecipacao ?? 40) * 0.3 + normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.coragem ?? 40) * 0.25 + normalizeAttr(defenderAttrs.forca ?? 40) * 0.2);
+      break;
+    case 'gk_save':
+      attackerSkill = (normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.4 + normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.3 +
+        normalizeAttr(attackerAttrs.curva ?? 40) * 0.3);
+      defenderSkill = (normalizeAttr(defenderAttrs.reflexo ?? 40) * 0.3 + normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.um_contra_um ?? 40) * 0.25 + normalizeAttr(defenderAttrs.tempo_reacao ?? 40) * 0.2);
+      break;
+  }
+
+  let successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
+  successChance = Math.max(0.05, Math.min(0.95, successChance));
+
+  const roll = Math.random();
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${roll < successChance}`);
+  return roll < successChance;
+}
+
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
+  looseBallPos?: { x: number; y: number };
 } {
-  if (isShootType(action)) {
-    const interceptor = findInterceptor(allActions, _attacker, participants);
-    if (interceptor) {
-      return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
+  const getFullAttrs = (participant: any) => {
+    const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+    const result: Record<string, number> = {};
+    const keys = ['drible','controle_bola','forca','agilidade','desarme','marcacao','antecipacao',
+      'passe_baixo','passe_alto','visao_jogo','tomada_decisao','um_toque','acuracia_chute',
+      'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao'];
+    for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
+    return result;
+  };
+
+  const bh = participants.find((p: any) => p.id === _attacker.participant_id);
+  const bhAttrs = getFullAttrs(bh);
+  const bhActionType = _attacker.action_type || action;
+
+  // Find interceptors sorted by progress
+  const interceptors = findInterceptorCandidates(allActions, _attacker, participants);
+
+  for (const candidate of interceptors) {
+    const defAttrs = getFullAttrs(candidate.participant);
+    const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
+    const isGK = slotPos === 'GK';
+    const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
+    const success = computeInterceptSuccess(context, bhAttrs, defAttrs);
+
+    if (success) {
+      if (context.type === 'tackle') {
+        return { success: false, event: 'tackle', description: '🦵 Desarme bem-sucedido!', possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      }
+      if (context.type === 'block_shot') {
+        // Deflect ball randomly
+        const blockX = candidate.interceptX ?? 50;
+        const blockY = candidate.interceptY ?? 50;
+        const deflectAngle = Math.random() * 2 * Math.PI;
+        const deflectDist = 3 + Math.random() * 5;
+        const looseBallX = Math.max(0, Math.min(100, blockX + Math.cos(deflectAngle) * deflectDist));
+        const looseBallY = Math.max(0, Math.min(100, blockY + Math.sin(deflectAngle) * deflectDist));
+        return { success: false, event: 'blocked', description: '🛡️ Bloqueio!', possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
+      }
+      if (context.type === 'gk_save') {
+        return { success: false, event: 'saved', description: '🧤 Defesa do goleiro!', possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      }
+      // receive_pass
+      return { success: false, event: 'intercepted', description: '🤲 Bola dominada!', possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+    } else {
+      // Failure — log and continue to next candidate
+      if (context.type === 'tackle') {
+        console.log(`[ENGINE] 🦵 Desarme falhou! Dribble continua.`);
+      } else if (context.type === 'block_shot') {
+        console.log(`[ENGINE] 💨 Bloqueio falhou! Chute continua.`);
+      } else if (context.type === 'gk_save') {
+        console.log(`[ENGINE] 🧤 Goleiro não segurou!`);
+      } else {
+        console.log(`[ENGINE] ❌ Falhou o domínio! Bola continua.`);
+      }
+      // For tackle, failure means dribble continues - stop processing
+      if (context.type === 'tackle') {
+        return { success: true, event: 'dribble', description: '🔄 Drible bem-sucedido!', possession_change: false, goal: false };
+      }
     }
+  }
+
+  // No interceptors succeeded or none exist
+  if (isShootType(action)) {
     return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
   }
   if (isPassType(action)) {
-    const interceptor = findInterceptor(allActions, _attacker, participants);
-    if (interceptor) {
-      return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
-    }
     return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   }
   if (action === 'move') {
-    const interceptor = findInterceptor(allActions, _attacker, participants);
-    if (interceptor && interceptor.club_id !== possClubId) {
-      return { success: false, event: 'intercepted', description: '🤲 Roubo de bola!', possession_change: true, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
-    }
     return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   }
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptor(allActions: any[], ballHolderAction: any, participants: any[]): any | null {
-  if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return null;
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[]): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
+  if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
-  if (!bh) return null;
+  if (!bh) return [];
 
   const startX = bh.pos_x ?? 50;
   const startY = bh.pos_y ?? 50;
@@ -160,7 +281,7 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
   const bhActionType = ballHolderAction.action_type || 'move';
   const interceptableRanges = getInterceptableRanges(bhActionType);
 
-  const interceptors: Array<{ participant: any; progress: number }> = [];
+  const interceptors: Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> = [];
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
     if (a.action_type !== 'receive' || a.target_x == null || a.target_y == null) continue;
@@ -176,19 +297,23 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
 
     const threshold = 2;
     if (dist <= threshold) {
-      // Check if the t value falls within an interceptable range
       const isInInterceptableZone = interceptableRanges.some(([lo, hi]) => t >= lo && t <= hi);
       if (isInInterceptableZone) {
-        interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t });
+        interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy });
       } else {
         console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
       }
     }
   }
 
-  if (interceptors.length === 0) return null;
   interceptors.sort((a, b) => a.progress - b.progress);
-  return interceptors[0].participant;
+  return interceptors;
+}
+
+// Keep legacy findInterceptor for compatibility (unused now but safe)
+function findInterceptor(allActions: any[], ballHolderAction: any, participants: any[]): any | null {
+  const candidates = findInterceptorCandidates(allActions, ballHolderAction, participants);
+  return candidates.length > 0 ? candidates[0].participant : null;
 }
 
 const KICKOFF_X = 50;
