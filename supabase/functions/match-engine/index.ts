@@ -419,12 +419,45 @@ Deno.serve(async (req) => {
           return true;
         });
 
-        // Update positions for all move/receive actions
+        // ── Load player attributes for physics ──
+        const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
+        const { data: attrRows } = profileIds.length > 0
+          ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
+          : { data: [] };
+        const attrByProfile: Record<string, any> = {};
+        for (const row of (attrRows || [])) {
+          attrByProfile[row.player_profile_id] = row;
+        }
+        const getAttrs = (participant: any) => {
+          const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+          return {
+            aceleracao: Number(raw?.aceleracao ?? 40),
+            agilidade: Number(raw?.agilidade ?? 40),
+            velocidade: Number(raw?.velocidade ?? 40),
+            forca: Number(raw?.forca ?? 40),
+            stamina: Number(raw?.stamina ?? 40),
+            passe_baixo: Number(raw?.passe_baixo ?? 40),
+            passe_alto: Number(raw?.passe_alto ?? 40),
+            forca_chute: Number(raw?.forca_chute ?? 40),
+            acuracia_chute: Number(raw?.acuracia_chute ?? 40),
+            controle_bola: Number(raw?.controle_bola ?? 40),
+            um_toque: Number(raw?.um_toque ?? 40),
+          };
+        };
+
+        // ── Apply physics to movement (substep simulation) ──
         for (const a of allActions) {
           if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
+            const part = (participants || []).find(p => p.id === a.participant_id);
+            const startPos = { x: Number(part?.pos_x ?? 50), y: Number(part?.pos_y ?? 50) };
+            const targetPos = { x: Number(a.target_x), y: Number(a.target_y) };
+            const attrs = getAttrs(part);
+
+            const finalPos = simulatePlayerMovement(startPos, targetPos, attrs, match.current_turn_number);
+
             await supabase.from('match_participants').update({
-              pos_x: a.target_x,
-              pos_y: a.target_y,
+              pos_x: finalPos.x,
+              pos_y: finalPos.y,
             }).eq('id', a.participant_id);
           }
         }
