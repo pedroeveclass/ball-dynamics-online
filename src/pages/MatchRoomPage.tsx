@@ -1355,7 +1355,6 @@ export default function MatchRoomPage() {
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
       const dx = ballAction.target_x - startPos.x;
       const dy = ballAction.target_y - startPos.y;
-      const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
 
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
         const len2 = dx * dx + dy * dy;
@@ -1373,11 +1372,11 @@ export default function MatchRoomPage() {
         };
       }
 
-      const currentX = startPos.x + dx * t;
-      const currentY = startPos.y + dy * t;
+      // Ball sticks to player during dribbling — use player's animated position
+      const playerAnimPos = getAnimatedPos(ballHolder);
       return {
-        x: currentX + (dx / len) * 1.8,
-        y: currentY + (dy / len) * 1.8,
+        x: playerAnimPos.x + 1.2,
+        y: playerAnimPos.y - 1.2,
       };
     }
 
