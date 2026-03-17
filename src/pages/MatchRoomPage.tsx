@@ -109,6 +109,7 @@ const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
   defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
   processing: 'Pausa',
+  positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
 };
 
 const ACTION_LABELS: Record<string, string> = {
