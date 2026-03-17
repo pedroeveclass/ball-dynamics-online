@@ -1443,13 +1443,13 @@ export default function MatchRoomPage() {
     }
     if (action.action_type === 'shoot') {
       const color = action.target_x != null && action.target_y != null
-        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot')
+        ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'shoot', action.participant_id)
         : '#f59e0b';
       const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
       return { color, markerId, strokeW: 3.5 };
     }
     const color = action.target_x != null && action.target_y != null
-      ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass')
+      ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, 'pass', action.participant_id)
       : '#06b6d4';
     const markerId = color === '#22c55e' ? 'ah-green' : color === '#f59e0b' ? 'ah-yellow' : 'ah-red';
     return { color, markerId, strokeW: 3 };
