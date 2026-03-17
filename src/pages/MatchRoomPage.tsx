@@ -968,11 +968,22 @@ export default function MatchRoomPage() {
         (canContestBallPath || canContestCarrierMove) &&
         pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= INTERCEPT_RADIUS
       ) {
-        setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
-        setShowActionMenu(drawingAction.fromParticipantId);
-        setDrawingAction(null);
-        setMouseFieldPct(null);
-        return;
+        // Check if click falls in red (uninterceptable altitude) zone
+        const _tdx = ballPathAction.target_x - ballHolderNow.field_x;
+        const _tdy = ballPathAction.target_y - ballHolderNow.field_y;
+        const _tlen2 = _tdx * _tdx + _tdy * _tdy;
+        const _t = _tlen2 > 0 ? clamp(((pctX - ballHolderNow.field_x) * _tdx + (pctY - ballHolderNow.field_y) * _tdy) / _tlen2, 0, 1) : 0;
+        const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
+                          (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
+        
+        if (!isRedZone) {
+          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+          setShowActionMenu(drawingAction.fromParticipantId);
+          setDrawingAction(null);
+          setMouseFieldPct(null);
+          return;
+        }
+        // Red zone: treat as normal move, don't offer intercept
       }
       
       // Check if clicking near a loose ball position
