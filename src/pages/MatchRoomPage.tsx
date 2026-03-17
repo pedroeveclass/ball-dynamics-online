@@ -451,6 +451,44 @@ export default function MatchRoomPage() {
 
   useEffect(() => { loadMatch(); }, [loadMatch]);
 
+  // ── Load player attributes for physics constraints ──
+  useEffect(() => {
+    if (attrsLoadedRef.current || participants.length === 0) return;
+    const profileIds = [...new Set(participants.filter(p => p.player_profile_id).map(p => p.player_profile_id!))];
+    if (profileIds.length === 0) return;
+    attrsLoadedRef.current = true;
+    (async () => {
+      const { data } = await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds);
+      if (!data) return;
+      const map: Record<string, any> = {};
+      for (const row of data) {
+        for (const part of participants.filter(p => p.player_profile_id === row.player_profile_id)) {
+          map[part.id] = row;
+        }
+      }
+      setPlayerAttrsMap(map);
+      console.log('[PHYSICS] Loaded attributes for', Object.keys(map).length, 'participants');
+      for (const [pid, a] of Object.entries(map)) {
+        console.log(`[PHYSICS] ${pid.slice(0,8)}: vel=${a.velocidade} accel=${a.aceleracao} agil=${a.agilidade} stam=${a.stamina} forca=${a.forca} ctrl=${a.controle_bola} pass_lo=${a.passe_baixo} pass_hi=${a.passe_alto} shot_acc=${a.acuracia_chute} shot_pow=${a.forca_chute}`);
+      }
+    })();
+  }, [participants]);
+
+  // ── Compute max move range from player attributes ──
+  const computeMaxMoveRange = useCallback((participantId: string): number => {
+    const attrs = playerAttrsMap[participantId];
+    const turnNum = match?.current_turn_number ?? 1;
+    const vel = Number(attrs?.velocidade ?? 40);
+    const accel = Number(attrs?.aceleracao ?? 40);
+    const stam = Number(attrs?.stamina ?? 40);
+    const forca = Number(attrs?.forca ?? 40);
+    const baseRange = 5 + normalizeAttr(vel) * 13;
+    const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
+    const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
+    const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
+    return baseRange * accelFactor * staminaDecay * forceFactor;
+  }, [playerAttrsMap, match?.current_turn_number]);
+
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
     if (!match || match.status !== 'scheduled') return;
