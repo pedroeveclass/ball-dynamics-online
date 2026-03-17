@@ -1868,10 +1868,12 @@ export default function MatchRoomPage() {
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
               const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Média' : 'Ruim';
+              const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+              const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
               return (
                 <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-[hsl(140,10%,8%)] rounded px-3 py-1.5 border border-[hsl(140,10%,20%)]">
                   <span className="text-[10px] font-display text-muted-foreground uppercase tracking-wide">
-                    {drawingAction.type === 'shoot' ? 'Shot' : 'Pass'} Quality:
+                    {actionName}:
                   </span>
                   <div className="flex gap-0.5">
                     {[0, 1, 2, 3, 4].map(i => (
