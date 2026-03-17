@@ -71,7 +71,7 @@ function computeDeviation(
 
   // For shoot_power: if deviation is large, ball goes over the goal
   let overGoal = false;
-  if (actionType === 'shoot_power' && deviationRadius > 1.5) {
+  if (actionType === 'shoot_power' && deviationRadius > 1.0) {
     // Push target_y outside goal range (38-62)
     if (actualY >= 38 && actualY <= 62) {
       actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
