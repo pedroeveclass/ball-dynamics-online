@@ -2809,7 +2809,9 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   }
 
   const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / phaseDuration) : 0;
-  const phaseFills = ['hsl(var(--pitch))', 'hsl(var(--warning))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
+  const phaseFills = isPositioning
+    ? ['hsl(var(--pitch))', 'hsl(var(--tactical))', 'hsl(var(--muted))', 'hsl(var(--muted))']
+    : ['hsl(var(--pitch))', 'hsl(var(--warning))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -2822,7 +2824,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         {quadrants.map((q, i) => {
           const isActive = i === currentIdx;
           const isPast = i < currentIdx;
-          const isSkipped = isLooseBall && i === 0; // Phase 1 skipped on loose ball
+          const isSkipped = (isLooseBall && i === 0 && !isPositioning) || (isPositioning && i >= 2);
           const fillColor = isSkipped ? 'hsl(var(--muted))' : isActive ? phaseFills[i] : isPast ? 'hsl(var(--secondary))' : 'hsl(var(--muted))';
 
           return (
