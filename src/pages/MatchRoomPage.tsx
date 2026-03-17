@@ -1080,7 +1080,7 @@ export default function MatchRoomPage() {
     };
   }, [activeTurn?.phase, activeTurn?.id]);
 
-  // ── Compute animated positions ─────────────────────────────
+  // ── Compute animated positions (physics-based easing) ───────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
     // If we have final locked positions (post-animation), use them
     if (finalPositions[p.id] && !animating) {
@@ -1103,7 +1103,25 @@ export default function MatchRoomPage() {
       return { x: startX, y: startY };
     }
 
-    const t = 1 - Math.pow(1 - animProgress, 3);
+    // Physics-based easing: slow start (acceleration), fast mid, slight decel at end
+    // Simulates inertia — player needs to accelerate and can't change direction instantly
+    const raw = animProgress;
+    // Multi-segment ease: slow acceleration phase (0-0.3), cruise (0.3-0.8), slight decel (0.8-1)
+    let t: number;
+    if (raw < 0.3) {
+      // Acceleration phase: quadratic ease-in
+      const seg = raw / 0.3;
+      t = seg * seg * 0.3;
+    } else if (raw < 0.8) {
+      // Cruise phase: linear
+      const seg = (raw - 0.3) / 0.5;
+      t = 0.3 + seg * 0.55;
+    } else {
+      // Deceleration phase: ease-out
+      const seg = (raw - 0.8) / 0.2;
+      t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
+    }
+
     return {
       x: startX + (moveAction.target_x - startX) * t,
       y: startY + (moveAction.target_y - startY) * t,
