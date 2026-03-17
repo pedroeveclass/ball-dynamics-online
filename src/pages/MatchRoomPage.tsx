@@ -206,6 +206,8 @@ export default function MatchRoomPage() {
   const [ballInertiaDir, setBallInertiaDir] = useState<{ dx: number; dy: number } | null>(null);
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
   const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
+  const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const attrsLoadedRef = useRef(false);
 
   // Possession change visual feedback
