@@ -39,7 +39,7 @@ export default function ManagerChallengesPage() {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
-  const [creatingTest, setCreatingTest] = useState(false);
+  const [creatingTarget, setCreatingTarget] = useState<'match' | 'lab' | null>(null);
 
   const loadChallenges = useCallback(async () => {
     if (!club) return;
@@ -250,21 +250,20 @@ export default function ManagerChallengesPage() {
     }
   };
 
-  const handleCreateTestMatch = async () => {
+  const handleCreateTestMatch = async (target: 'match' | 'lab') => {
     if (!club || !managerProfile) return;
-    setCreatingTest(true);
+    setCreatingTarget(target);
     try {
-      // Find any other club
+      // Find a random opponent club
       const { data: otherClubs } = await supabase
-        .from('clubs').select('id').neq('id', club.id).limit(1);
+        .from('clubs').select('id').neq('id', club.id);
 
       if (!otherClubs?.length) {
         toast.error('Nenhum clube adversário encontrado para teste.');
-        setCreatingTest(false);
         return;
       }
 
-      const opponentId = otherClubs[0].id;
+      const opponentId = otherClubs[Math.floor(Math.random() * otherClubs.length)].id;
       const now = new Date().toISOString();
 
       // Create match scheduled for now (auto-starts)
@@ -304,12 +303,17 @@ export default function ManagerChallengesPage() {
         body: '2v2 — GK + CB vs ST + ST',
       });
 
-      toast.success('Partida de teste criada!');
-      navigate(`/match/${match.id}`);
+      if (target === 'lab') {
+        toast.success('Laboratorio criado!');
+        navigate(`/match-lab/${match.id}`);
+      } else {
+        toast.success('Partida de teste criada!');
+        navigate(`/match/${match.id}`);
+      }
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar partida de teste');
+      toast.error(err.message || (target === 'lab' ? 'Erro ao criar laboratorio' : 'Erro ao criar partida de teste'));
     } finally {
-      setCreatingTest(false);
+      setCreatingTarget(null);
     }
   };
 
@@ -329,10 +333,15 @@ export default function ManagerChallengesPage() {
             <Swords className="h-6 w-6 text-tactical" /> Amistosos
           </h1>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={handleCreateTestMatch} disabled={creatingTest}
+            <Button size="sm" variant="outline" onClick={() => navigate('/match-lab/solo')}
+              className="font-display text-xs border-tactical/40 text-tactical hover:bg-tactical/10">
+              <FlaskConical className="h-4 w-4 mr-1" />
+              Laboratorio Solo
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleCreateTestMatch('match')} disabled={creatingTarget !== null}
               className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
               <FlaskConical className="h-4 w-4 mr-1" />
-              {creatingTest ? 'Criando...' : 'Partida Teste 2v2'}
+              {creatingTarget === 'match' ? 'Criando...' : 'Partida Teste 2v2'}
             </Button>
             <Link to="/manager/match/create">
               <Button size="sm" className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
