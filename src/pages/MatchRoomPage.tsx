@@ -932,7 +932,7 @@ export default function MatchRoomPage() {
       const ballPathAction = turnActions.find(action => {
         if (!activeTurn?.ball_holder_participant_id) return false;
         if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'shoot' || action.action_type === 'move';
+        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
       });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
       const canContestCarrierMove = ballPathAction?.action_type === 'move' && drawingParticipant?.club_id !== ballHolderNow?.club_id;
