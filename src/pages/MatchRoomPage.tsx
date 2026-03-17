@@ -653,7 +653,7 @@ export default function MatchRoomPage() {
       }
     };
 
-    const remaining = Math.max(0, endsAtDate.getTime() - Date.now());
+    const remaining = Math.max(0, endsAtDate.getTime() - serverNow());
     phaseTimeoutRef.current = setTimeout(processTurnPhase, remaining + 50);
 
     return () => {
