@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
       }
 
       if (!match_id) {
-        return new Response(JSON.stringify({ started }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ started, server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
