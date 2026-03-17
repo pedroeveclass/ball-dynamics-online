@@ -1690,6 +1690,25 @@ export default function MatchRoomPage() {
                 );
               })()}
 
+              {/* Range circle for physics constraints */}
+              {((drawingAction?.type === 'move') || (showActionMenu && !drawingAction)) && (() => {
+                const targetId = drawingAction?.fromParticipantId || showActionMenu;
+                if (!targetId) return null;
+                const p = [...homePlayers, ...awayPlayers].find(pp => pp.id === targetId);
+                if (!p || p.field_x == null || p.field_y == null) return null;
+                const maxRange = computeMaxMoveRange(targetId);
+                const center = toSVG(p.field_x, p.field_y);
+                const radiusX = (maxRange / 100) * INNER_W;
+                const radiusY = (maxRange / 100) * INNER_H;
+                return (
+                  <ellipse
+                    cx={center.x} cy={center.y} rx={radiusX} ry={radiusY}
+                    fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.20)"
+                    strokeWidth="1.2" strokeDasharray="5,4" pointerEvents="none"
+                  />
+                );
+              })()}
+
               {/* Players */}
               {[...homePlayers, ...awayPlayers].map((p, idx) => {
                 if (p.field_x == null || p.field_y == null) return null;
