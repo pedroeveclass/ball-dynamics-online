@@ -499,9 +499,9 @@ export default function MatchRoomPage() {
     // Ball carrier speed penalty (carrying ball = 15% slower)
     const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
     if (isBallHolder) {
-      // In phase 2 (attacking_support), ball holder who already acted gets only 20% range
+      // In phase 2 (attacking_support), ball holder who already acted gets only 35% range
       if (activeTurn?.phase === 'attacking_support') {
-        range *= 0.20;
+        range *= 0.35;
       } else {
         range *= 0.85;
       }
