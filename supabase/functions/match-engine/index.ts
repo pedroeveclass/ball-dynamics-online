@@ -488,7 +488,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      return new Response(JSON.stringify({ status: 'advanced' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ─── SUBMIT HUMAN ACTION ───
