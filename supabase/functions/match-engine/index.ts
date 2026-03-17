@@ -564,27 +564,32 @@ Deno.serve(async (req) => {
         if (ballHolder) {
           const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
           if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
-            const bhAttrs = getAttrs(ballHolder);
-            const startX = Number(ballHolder.pos_x ?? 50);
-            const startY = Number(ballHolder.pos_y ?? 50);
-            const deviation = computeDeviation(
-              Number(bhAction.target_x),
-              Number(bhAction.target_y),
-              startX,
-              startY,
-              bhAction.action_type,
-              bhAttrs,
-            );
-            // Apply deviation to the action's targets in-memory
-            bhAction.target_x = deviation.actualX;
-            bhAction.target_y = deviation.actualY;
+            // Check if deviation was already applied at phase transition
+            const alreadyDeviated = bhAction.payload && typeof bhAction.payload === 'object' && (bhAction.payload as any).deviated;
+            if (!alreadyDeviated) {
+              const bhAttrs = getAttrs(ballHolder);
+              const startX = Number(ballHolder.pos_x ?? 50);
+              const startY = Number(ballHolder.pos_y ?? 50);
+              const deviation = computeDeviation(
+                Number(bhAction.target_x),
+                Number(bhAction.target_y),
+                startX,
+                startY,
+                bhAction.action_type,
+                bhAttrs,
+              );
+              bhAction.target_x = deviation.actualX;
+              bhAction.target_y = deviation.actualY;
 
-            if (deviation.overGoal) {
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'shot_over',
-                title: '💨 Chute para fora!',
-                body: 'A bola foi por cima do gol.',
-              });
+              if (deviation.overGoal) {
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'shot_over',
+                  title: '💨 Chute para fora!',
+                  body: 'A bola foi por cima do gol.',
+                });
+              }
+            } else {
+              console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
             }
           }
         }
