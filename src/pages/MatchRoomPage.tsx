@@ -1387,15 +1387,23 @@ export default function MatchRoomPage() {
   };
 
   // Arrow quality based on distance
-  const getArrowQuality = (fromX: number, fromY: number, toX: number, toY: number, type: string): string => {
+  const getArrowQuality = (fromX: number, fromY: number, toX: number, toY: number, type: string, participantId?: string): string => {
     const dist = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
+    const attrs = participantId ? playerAttrsMap[participantId] : null;
+
     if (type === 'shoot') {
-      if (dist < 30) return '#22c55e';
-      if (dist < 50) return '#f59e0b';
+      const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 10;
+      const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 5;
+      const eDist = dist - accBonus - powBonus;
+      if (eDist < 30) return '#22c55e';
+      if (eDist < 50) return '#f59e0b';
       return '#ef4444';
     }
-    if (dist < 20) return '#22c55e';
-    if (dist < 40) return '#f59e0b';
+    const passAttr = type === 'pass_high' ? Number(attrs?.passe_alto ?? 40) : Number(attrs?.passe_baixo ?? 40);
+    const passBonus = normalizeAttr(passAttr) * 8;
+    const eDist = dist - passBonus;
+    if (eDist < 20) return '#22c55e';
+    if (eDist < 40) return '#f59e0b';
     return '#ef4444';
   };
 
