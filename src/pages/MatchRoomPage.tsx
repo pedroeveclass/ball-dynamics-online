@@ -201,6 +201,8 @@ export default function MatchRoomPage() {
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
   const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
+  const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
+  const attrsLoadedRef = useRef(false);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
