@@ -446,19 +446,22 @@ Deno.serve(async (req) => {
           };
         };
 
-        // ── Apply physics to movement (substep simulation) ──
+        // ── Apply movement (targets pre-constrained by client physics) ──
+        console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw)`);
         for (const a of allActions) {
+          console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
           if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
             const part = (participants || []).find(p => p.id === a.participant_id);
-            const startPos = { x: Number(part?.pos_x ?? 50), y: Number(part?.pos_y ?? 50) };
-            const targetPos = { x: Number(a.target_x), y: Number(a.target_y) };
+            const startX = Number(part?.pos_x ?? 50);
+            const startY = Number(part?.pos_y ?? 50);
+            const dist = Math.sqrt((Number(a.target_x) - startX) ** 2 + (Number(a.target_y) - startY) ** 2);
             const attrs = getAttrs(part);
 
-            const finalPos = simulatePlayerMovement(startPos, targetPos, attrs, match.current_turn_number);
+            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${Number(a.target_x).toFixed(1)},${Number(a.target_y).toFixed(1)}) dist=${dist.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
             await supabase.from('match_participants').update({
-              pos_x: finalPos.x,
-              pos_y: finalPos.y,
+              pos_x: Number(a.target_x),
+              pos_y: Number(a.target_y),
             }).eq('id', a.participant_id);
           }
         }
