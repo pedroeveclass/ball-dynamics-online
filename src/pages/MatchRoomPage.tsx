@@ -414,6 +414,8 @@ export default function MatchRoomPage() {
     }
 
     const phaseOrder: Record<string, number> = {
+      positioning_attack: -2,
+      positioning_defense: -1,
       ball_holder: 0,
       attacking_support: 1,
       defending_response: 2,
