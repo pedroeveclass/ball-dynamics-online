@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
         body: 'Partida encerrada manualmente.',
       });
 
-      return new Response(JSON.stringify({ status: 'finished' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ status: 'finished', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ─── AUTO-START ───
