@@ -1784,7 +1784,8 @@ export default function MatchRoomPage() {
     };
   };
 
-  const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION : PHASE_DURATION;
+  const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION
+    : isPositioningTurn ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
 
