@@ -203,6 +203,7 @@ export default function MatchRoomPage() {
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [finalBallPos, setFinalBallPos] = useState<{ x: number; y: number } | null>(null);
   const [carriedLooseBallPos, setCarriedLooseBallPos] = useState<{ x: number; y: number } | null>(null);
+  const [ballInertiaDir, setBallInertiaDir] = useState<{ dx: number; dy: number } | null>(null);
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
   const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const attrsLoadedRef = useRef(false);
