@@ -717,7 +717,9 @@ export default function MatchRoomPage() {
       tickInFlightRef.current = true;
       setIsPhaseProcessing(true);
       setProcessingLabel(
-        activeTurn.phase === 'defending_response'
+        isPositioningTurn
+          ? 'Aplicando posicionamento...'
+          : activeTurn.phase === 'defending_response'
           ? 'Processando todos os movimentos...'
           : activeTurn.phase === 'resolution'
             ? 'Processando próximo turno...'
