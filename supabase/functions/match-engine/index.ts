@@ -194,6 +194,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
   looseBallPos?: { x: number; y: number };
+  failedContestParticipantId?: string;
+  failedContestLog?: string;
 } {
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
@@ -240,19 +242,24 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       // receive_pass
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     } else {
-      // Failure — log and continue to next candidate
+      // Failure — log event and continue to next candidate
       if (context.type === 'tackle') {
-        console.log(`[ENGINE] 🦵 Desarme falhou! (${chancePct}) Dribble continua.`);
+        // Tackle failed: dribble continues, apply penalty to defender (reduce movement by 25%)
+        return { 
+          success: true, event: 'dribble', 
+          description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, 
+          possession_change: false, goal: false,
+          failedContestParticipantId: candidate.participant.id,
+          failedContestLog: `🦵 Desarme falhou! (${chancePct})`
+        };
       } else if (context.type === 'block_shot') {
+        // Block failed: shot continues — log and continue
         console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
       } else if (context.type === 'gk_save') {
         console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
       } else {
+        // Pass receive failed: ball continues, next interceptor gets a chance
         console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
-      }
-      // For tackle, failure means dribble continues - stop processing
-      if (context.type === 'tackle') {
-        return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false };
       }
     }
   }
@@ -789,6 +796,30 @@ Deno.serve(async (req) => {
                 title: result.description,
                 body: 'O desarme falhou e o jogador seguiu com a bola.',
               });
+              // Log the failed contest too
+              if (result.failedContestLog) {
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'tackle_failed',
+                  title: result.failedContestLog,
+                  body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
+                });
+              }
+              // Apply movement penalty to failed tackler: reduce their effective movement by 25%
+              if (result.failedContestParticipantId) {
+                const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
+                if (failedPart) {
+                  const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
+                  if (failMoveAct) {
+                    // Reduce their movement by 25% — move them only 75% of the way
+                    const startX = Number(failedPart.pos_x ?? 50);
+                    const startY = Number(failedPart.pos_y ?? 50);
+                    const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
+                    const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.75;
+                    await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', failedPart.id);
+                    console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 25%`);
+                  }
+                }
+              }
             } else if (isPassType(ballHolderAction.action_type)) {
               if (ballHolderAction.target_participant_id) {
                 nextBallHolderParticipantId = ballHolderAction.target_participant_id;

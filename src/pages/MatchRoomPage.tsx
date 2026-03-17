@@ -481,7 +481,7 @@ export default function MatchRoomPage() {
   }, [participants]);
 
   // ── Compute max move range from player attributes ──
-  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }): number => {
+  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
     const vel = Number(attrs?.velocidade ?? 40);
@@ -493,6 +493,17 @@ export default function MatchRoomPage() {
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
     let range = baseRange * accelFactor * staminaDecay * forceFactor;
+
+    // Ball carrier speed penalty (carrying ball = 15% slower)
+    const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
+    if (isBallHolder) {
+      // In phase 2 (attacking_support), ball holder who already acted gets only 20% range
+      if (activeTurn?.phase === 'attacking_support') {
+        range *= 0.20;
+      } else {
+        range *= 0.85;
+      }
+    }
 
     // Inertia multiplier based on previous direction
     if (targetDirection) {
@@ -510,8 +521,10 @@ export default function MatchRoomPage() {
       }
     }
 
+    if (overrideMultiplier != null) range *= overrideMultiplier;
+
     return range;
-  }, [playerAttrsMap, match?.current_turn_number]);
+  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase]);
 
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
@@ -975,12 +988,22 @@ export default function MatchRoomPage() {
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
       const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
-      const ballPathAction = turnActions.find(action => {
-        if (!activeTurn?.ball_holder_participant_id) return false;
-        if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
-      });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      
+      // Allow tackling stationary ball carrier (no action or stayed still)
+      const ballPathAction = (() => {
+        if (!activeTurn?.ball_holder_participant_id) return null;
+        const bhAction = turnActions.find(action => {
+          if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
+          return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
+        });
+        // If ball holder has no action (stationary), treat as move to current position
+        if (!bhAction && ballHolderNow && ballHolderNow.field_x != null && ballHolderNow.field_y != null) {
+          return { action_type: 'move', target_x: ballHolderNow.field_x, target_y: ballHolderNow.field_y, participant_id: activeTurn.ball_holder_participant_id } as MatchAction;
+        }
+        return bhAction ?? null;
+      })();
+      
       const canContestCarrierMove = ballPathAction?.action_type === 'move' && drawingParticipant?.club_id !== ballHolderNow?.club_id;
       const canContestBallPath = ballPathAction?.action_type !== 'move';
       
@@ -1003,7 +1026,7 @@ export default function MatchRoomPage() {
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
-        // Check reachability: can the player's action circle reach the ball at that point?
+        // Check reachability: can the player's action circle reach the ball BEFORE or AT the same time?
         let canReach = true;
         if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
           const mdx = pctX - drawingParticipant.field_x;
@@ -1016,17 +1039,20 @@ export default function MatchRoomPage() {
           const bfy = ballHolderNow.field_y;
           const btx = ballPathAction.target_x;
           const bty = ballPathAction.target_y;
-          const ballPreviewX = bfx + (btx - bfx) * movePct;
-          const ballPreviewY = bfy + (bty - bfy) * movePct;
           
           const circleRadiusField = 9 / INNER_W * 100;
-          const distToBallPreview = Math.sqrt((pctX - ballPreviewX) ** 2 + (pctY - ballPreviewY) ** 2);
           
-          // Check if cursor is ahead of ball on trajectory
+          // Core logic: find the earliest point on trajectory where player can arrive before ball
+          // tCursor = where along trajectory (0-1) the cursor's closest projection is
           const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
           const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
           
-          canReach = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+          // Player arrives at cursor position when movePct of their range is used
+          // Ball arrives at tCursor when ball progress = tCursor
+          // Player can act if: they arrive at a trajectory point BEFORE or WITH the ball
+          // i.e. movePct >= tCursor (player covers their movement % before ball reaches that %)
+          // Also: if within intercept radius of trajectory and ahead of ball
+          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
         }
         
         if (!isRedZone && canReach) {
@@ -1177,7 +1203,8 @@ export default function MatchRoomPage() {
           setFinalPositions(finals);
 
           // Store movement directions for inertia system
-          const newDirections: Record<string, { x: number; y: number }> = {};
+          // IMPORTANT: if a player did NOT move this turn, RESET their inertia
+          const newDirections: Record<string, { x: number; y: number }> = { ...prevDirectionsRef.current };
           for (const p of participantsRef.current) {
             const moveAct = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
             if (moveAct && moveAct.target_x != null && moveAct.target_y != null) {
@@ -1187,11 +1214,16 @@ export default function MatchRoomPage() {
                 const ddy = moveAct.target_y - sp.y;
                 if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
                   newDirections[p.id] = { x: ddx, y: ddy };
+                } else {
+                  delete newDirections[p.id]; // Stayed still — reset inertia
                 }
               }
+            } else {
+              // Player didn't move at all — reset inertia completely
+              delete newDirections[p.id];
             }
           }
-          prevDirectionsRef.current = { ...prevDirectionsRef.current, ...newDirections };
+          prevDirectionsRef.current = newDirections;
           
           // Compute final ball position
           const bhId = activeTurn.ball_holder_participant_id;
@@ -1336,6 +1368,8 @@ export default function MatchRoomPage() {
     }
 
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
+    // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
+    if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
     if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
@@ -2063,10 +2097,26 @@ export default function MatchRoomPage() {
                 const isMove = drawingAction.type === 'move';
 
                 // Compute whether the action circle can reach the ball trajectory
+                // Key rule: player can act if they reach ANY point on the trajectory BEFORE or AT the same time as the ball
+                // Once purple at a point, everything from that point to END of trajectory is also reachable
                 let canReachBall = false;
-                if (isMove && ballTrajectoryAction && ballTrajectoryHolder &&
-                    ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
-                    ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
+                
+                // Also check for stationary ball holder (no action = tackle opportunity)
+                const effectiveBallTrajectoryAction = (() => {
+                  if (ballTrajectoryAction) return ballTrajectoryAction;
+                  // If ball holder has no action, treat as stationary
+                  if (activeTurn?.ball_holder_participant_id && ballTrajectoryHolder &&
+                      ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null) {
+                    return { action_type: 'move', target_x: ballTrajectoryHolder.field_x, target_y: ballTrajectoryHolder.field_y, participant_id: activeTurn.ball_holder_participant_id } as MatchAction;
+                  }
+                  return null;
+                })();
+                
+                const effectiveHolder = effectiveBallTrajectoryAction ? (ballTrajectoryHolder || participants.find(p => p.id === effectiveBallTrajectoryAction.participant_id)) : null;
+                
+                if (isMove && effectiveBallTrajectoryAction && effectiveHolder &&
+                    effectiveHolder.field_x != null && effectiveHolder.field_y != null &&
+                    effectiveBallTrajectoryAction.target_x != null && effectiveBallTrajectoryAction.target_y != null &&
                     (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
@@ -2074,26 +2124,30 @@ export default function MatchRoomPage() {
                   const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
                   const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
 
-                  const bfx = ballTrajectoryHolder.field_x!;
-                  const bfy = ballTrajectoryHolder.field_y!;
-                  const btx = ballTrajectoryAction.target_x!;
-                  const bty = ballTrajectoryAction.target_y!;
-                  const ballPreviewX = bfx + (btx - bfx) * movePct;
-                  const ballPreviewY = bfy + (bty - bfy) * movePct;
+                  const bfx = effectiveHolder.field_x!;
+                  const bfy = effectiveHolder.field_y!;
+                  const btx = effectiveBallTrajectoryAction.target_x!;
+                  const bty = effectiveBallTrajectoryAction.target_y!;
 
-                  // Check if action circle (at cursor) touches the ball preview position
-                  const circleRadiusField = 9 / INNER_W * 100; // ~1% field width
-                  const distToBallPreview = Math.sqrt((mouseFieldPct.x - ballPreviewX) ** 2 + (mouseFieldPct.y - ballPreviewY) ** 2);
+                  const circleRadiusField = 9 / INNER_W * 100;
                   
-                  // Also check if cursor position is AHEAD of ball on trajectory (player arrives before ball)
                   const trajDx = btx - bfx;
                   const trajDy = bty - bfy;
                   const trajLen2 = trajDx * trajDx + trajDy * trajDy;
+                  
                   if (trajLen2 > 0) {
                     const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
                     const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
-                    // Can reach if: circle touches ball preview OR player is on trajectory before ball arrives
-                    canReachBall = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+                    
+                    // Core reachability: player arrives at this trajectory point (tCursor) before ball does
+                    // movePct = how much of their range they've used (0-1), tCursor = ball progress at that point (0-1)
+                    // Player can act if movePct >= tCursor (they arrive before/with the ball)
+                    // Once reachable, everything from tCursor to END is also reachable (ball hasn't passed yet)
+                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
+                  } else {
+                    // Stationary ball holder — if within reach, can tackle
+                    const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
+                    canReachBall = distToBH <= (circleRadiusField + INTERCEPT_RADIUS + 2);
                   }
                 }
 
