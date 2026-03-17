@@ -111,8 +111,10 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  move: 'MOVER', pass_low: 'PASSAR', pass_high: 'PASSE ALTO',
-  shoot: 'CHUTAR', press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
+  move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
+  pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
+  shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
+  press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
   block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
