@@ -1346,7 +1346,7 @@ export default function MatchRoomPage() {
       y: ballHolder.field_y ?? 50,
     };
     // Physics-based ball easing: exponential decay (fast launch, decelerating)
-    const ballEaseK = ballAction.action_type === 'shoot' ? 4 : ballAction.action_type === 'pass_high' ? 2.5 : 3;
+    const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
     const rawT = animProgress;
     const expDecay = 1 - Math.exp(-ballEaseK * rawT);
     const normFactor = 1 - Math.exp(-ballEaseK);
