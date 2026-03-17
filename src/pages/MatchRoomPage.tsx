@@ -2758,12 +2758,21 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
 }) {
-  const phases = [
-    { key: 'ball_holder', label: '1' },
-    { key: 'attacking_support', label: '2' },
-    { key: 'defending_response', label: '3' },
-    { key: 'resolution', label: '4' },
-  ];
+  const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
+
+  const phases = isPositioning
+    ? [
+        { key: 'positioning_attack', label: '⚽' },
+        { key: 'positioning_defense', label: '🛡' },
+        { key: '_skip1', label: '—' },
+        { key: '_skip2', label: '—' },
+      ]
+    : [
+        { key: 'ball_holder', label: '1' },
+        { key: 'attacking_support', label: '2' },
+        { key: 'defending_response', label: '3' },
+        { key: 'resolution', label: '4' },
+      ];
   const currentIdx = phases.findIndex(p => p.key === currentPhase);
 
   const SIZE = 140;
