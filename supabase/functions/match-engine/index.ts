@@ -10,19 +10,124 @@ const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
 
+// ─── Accuracy deviation ─────────────────────────────────────────
+function normalizeAttr(val: number): number {
+  return Math.max(0, Math.min(1, (val - 10) / 89));
+}
+
+interface DeviationResult {
+  actualX: number;
+  actualY: number;
+  deviationDist: number;
+  overGoal: boolean; // for shoot_power when ball goes over
+}
+
+function computeDeviation(
+  targetX: number,
+  targetY: number,
+  startX: number,
+  startY: number,
+  actionType: string,
+  attrs: Record<string, number>,
+): DeviationResult {
+  const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
+
+  let difficultyMultiplier: number;
+  let skillFactor: number;
+
+  switch (actionType) {
+    case 'pass_low':
+      difficultyMultiplier = 3;
+      skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
+      break;
+    case 'pass_high':
+      difficultyMultiplier = 4;
+      skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
+      break;
+    case 'pass_launch':
+      difficultyMultiplier = 3.5;
+      skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
+      break;
+    case 'shoot_controlled':
+      difficultyMultiplier = 2;
+      skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
+      break;
+    case 'shoot_power':
+      difficultyMultiplier = 5;
+      skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
+      break;
+    default:
+      return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
+  }
+
+  const baseDifficulty = (dist / 100) * difficultyMultiplier;
+  const deviationRadius = baseDifficulty * (1 - skillFactor) * (0.5 + Math.random() * 0.5);
+  const angle = Math.random() * 2 * Math.PI;
+  let actualX = targetX + Math.cos(angle) * deviationRadius;
+  let actualY = targetY + Math.sin(angle) * deviationRadius;
+
+  // For shoot_power: if deviation is large, ball goes over the goal
+  let overGoal = false;
+  if (actionType === 'shoot_power' && deviationRadius > 3) {
+    // Push target_y outside goal range (38-62)
+    if (actualY >= 38 && actualY <= 62) {
+      actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
+      overGoal = true;
+    }
+  }
+
+  // Clamp to field
+  actualX = Math.max(0, Math.min(100, actualX));
+  actualY = Math.max(0, Math.min(100, actualY));
+
+  const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
+
+  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} overGoal=${overGoal}`);
+
+  return { actualX, actualY, deviationDist, overGoal };
+}
+
+// ─── Height-based interception zones ─────────────────────────────
+function getInterceptableRanges(actionType: string): Array<[number, number]> {
+  switch (actionType) {
+    case 'pass_low':
+      return [[0, 1]]; // fully interceptable
+    case 'pass_high':
+      return [[0, 0.2], [0.8, 1]]; // yellow zones only
+    case 'pass_launch':
+      return [[0, 0.35], [0.65, 1]]; // green zones
+    case 'shoot_controlled':
+      return [[0, 1]]; // ground ball, fully interceptable
+    case 'shoot_power':
+      return [[0, 0.3]]; // only near start
+    case 'move':
+      return [[0, 1]];
+    default:
+      return [[0, 1]];
+  }
+}
+
+function isPassType(action: string): boolean {
+  return action === 'pass_low' || action === 'pass_high' || action === 'pass_launch';
+}
+
+function isShootType(action: string): boolean {
+  return action === 'shoot' || action === 'shoot_controlled' || action === 'shoot_power';
+}
+
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
 } {
-  if (action === 'shoot') {
+  if (isShootType(action)) {
     const interceptor = findInterceptor(allActions, _attacker, participants);
     if (interceptor) {
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
     }
     return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
   }
-  if (action === 'pass_low' || action === 'pass_high') {
+  if (isPassType(action)) {
     const interceptor = findInterceptor(allActions, _attacker, participants);
     if (interceptor) {
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada!`, possession_change: interceptor.club_id !== possClubId, goal: false, newBallHolderId: interceptor.id, newPossessionClubId: interceptor.club_id };
@@ -49,10 +154,12 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
   const endX = ballHolderAction.target_x;
   const endY = ballHolderAction.target_y;
 
+  const bhActionType = ballHolderAction.action_type || 'move';
+  const interceptableRanges = getInterceptableRanges(bhActionType);
+
   const interceptors: Array<{ participant: any; progress: number }> = [];
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
-    // Only explicit 'receive' actions should dominate/intercept the ball path
     if (a.action_type !== 'receive' || a.target_x == null || a.target_y == null) continue;
 
     const dx = endX - startX;
@@ -66,7 +173,13 @@ function findInterceptor(allActions: any[], ballHolderAction: any, participants:
 
     const threshold = 2;
     if (dist <= threshold) {
-      interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t });
+      // Check if the t value falls within an interceptable range
+      const isInInterceptableZone = interceptableRanges.some(([lo, hi]) => t >= lo && t <= hi);
+      if (isInInterceptableZone) {
+        interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t });
+      } else {
+        console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
+      }
     }
   }
 
@@ -107,10 +220,6 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
 
 // ─── Physics helpers ───────────────────────────────────────────
 const NUM_SUBSTEPS = 10;
-
-function normalizeAttr(val: number): number {
-  return Math.max(0, Math.min(1, (val - 10) / 89));
-}
 
 interface Vec2 { x: number; y: number; }
 
@@ -153,15 +262,13 @@ function simulatePlayerMovement(
     const desired = vecNorm(toTarget);
     const desiredVel = { x: desired.x * maxSpeed * staminaDecay, y: desired.y * maxSpeed * staminaDecay };
 
-    // Direction change penalty
     const angle = angleBetween(state.vel, desiredVel);
-    const basePenalty = angle / Math.PI; // 0 for same dir, 1 for 180°
+    const basePenalty = angle / Math.PI;
     const turnPenalty = 1 - basePenalty * (1 - agilityFactor * 0.5) * (1 - forceFactor * 0.2);
 
     state.vel.x = state.vel.x * turnPenalty * (1 - accelFactor) + desiredVel.x * accelFactor;
     state.vel.y = state.vel.y * turnPenalty * (1 - accelFactor) + desiredVel.y * accelFactor;
 
-    // Clamp velocity
     const speed = vecLen(state.vel);
     if (speed > maxSpeed) {
       state.vel.x = (state.vel.x / speed) * maxSpeed;
@@ -171,7 +278,6 @@ function simulatePlayerMovement(
     state.pos.x += state.vel.x;
     state.pos.y += state.vel.y;
 
-    // Don't overshoot
     const newDist = vecLen({ x: targetPos.x - state.pos.x, y: targetPos.y - state.pos.y });
     if (newDist < 0.3 || newDist > dist) {
       state.pos = { ...targetPos };
@@ -202,11 +308,20 @@ function simulateBallPhysics(
   } else if (actionType === 'pass_high') {
     impulse = 12 + normalizeAttr(attrs.passe_alto) * 5;
     friction = 0.90;
+  } else if (actionType === 'pass_launch') {
+    impulse = 10 + (normalizeAttr(attrs.passe_baixo) + normalizeAttr(attrs.passe_alto)) / 2 * 5;
+    friction = 0.91;
+  } else if (actionType === 'shoot_controlled') {
+    impulse = 12 + normalizeAttr(attrs.acuracia_chute) * 6;
+    friction = 0.93;
+  } else if (actionType === 'shoot_power') {
+    impulse = 18 + normalizeAttr(attrs.forca_chute) * 10;
+    friction = 0.96;
   } else if (actionType === 'shoot') {
+    // Legacy fallback
     impulse = 15 + normalizeAttr(attrs.forca_chute) * 8;
     friction = 0.95;
   } else {
-    // move/carry - ball follows player, no independent physics
     return { finalPos: { ...targetPos }, speedAtEnd: 0 };
   }
 
@@ -225,13 +340,11 @@ function simulateBallPhysics(
 
     const traveled = vecLen({ x: pos.x - startPos.x, y: pos.y - startPos.y });
     if (traveled >= totalDist) {
-      // Ball reaches target area
       return { finalPos: { ...targetPos }, speedAtEnd: speed };
     }
     if (vel < 0.01) break;
   }
 
-  // Ball stopped short of target
   return { finalPos: pos, speedAtEnd: speed };
 }
 
@@ -399,7 +512,6 @@ Deno.serve(async (req) => {
 
       if (activeTurn.phase === 'resolution') {
         console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
-        // Get ALL turn row IDs for this turn number (phases 1-4)
         const { data: turnRows } = await supabase
           .from('match_turns')
           .select('id')
@@ -412,7 +524,6 @@ Deno.serve(async (req) => {
           .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
           .order('created_at', { ascending: false });
 
-        // Deduplicate: keep only the LATEST action per participant
         const seenParticipants = new Set<string>();
         const allActions = (rawActions || []).filter(a => {
           if (seenParticipants.has(a.participant_id)) return false;
@@ -446,7 +557,36 @@ Deno.serve(async (req) => {
           };
         };
 
-        // ── Apply movement (targets pre-constrained by client physics) ──
+        // ── Apply accuracy deviation to ball actions before resolution ──
+        if (ballHolder) {
+          const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
+          if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
+            const bhAttrs = getAttrs(ballHolder);
+            const startX = Number(ballHolder.pos_x ?? 50);
+            const startY = Number(ballHolder.pos_y ?? 50);
+            const deviation = computeDeviation(
+              Number(bhAction.target_x),
+              Number(bhAction.target_y),
+              startX,
+              startY,
+              bhAction.action_type,
+              bhAttrs,
+            );
+            // Apply deviation to the action's targets in-memory
+            bhAction.target_x = deviation.actualX;
+            bhAction.target_y = deviation.actualY;
+
+            if (deviation.overGoal) {
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'shot_over',
+                title: '💨 Chute para fora!',
+                body: 'A bola foi por cima do gol.',
+              });
+            }
+          }
+        }
+
+        // ── Apply movement ──
         console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw)`);
         for (const a of allActions) {
           console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
@@ -467,11 +607,13 @@ Deno.serve(async (req) => {
         }
 
         if (ballHolder) {
-          // Resolve ball holder action
           const ballHolderAction = allActions
             .find(a => a.participant_id === ballHolder.id);
 
           if (ballHolderAction) {
+            // For shoot_power with overGoal, skip goal check
+            const deviation = ballHolderAction._overGoal;
+
             const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '');
 
             if (result.goal) {
@@ -484,7 +626,6 @@ Deno.serve(async (req) => {
                 body: `Turno ${match.current_turn_number}`,
               });
 
-              // After goal, restart from midfield with the team that conceded
               newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
               nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
             } else if (result.newBallHolderId) {
@@ -496,12 +637,10 @@ Deno.serve(async (req) => {
                 title: result.possession_change ? '🔄 Troca de posse - Bola dominada!' : '🤲 Bola dominada!',
                 body: result.description,
               });
-            } else if (ballHolderAction.action_type === 'pass_low' || ballHolderAction.action_type === 'pass_high') {
-              // Pass succeeded without interception
+            } else if (isPassType(ballHolderAction.action_type)) {
               if (ballHolderAction.target_participant_id) {
                 nextBallHolderParticipantId = ballHolderAction.target_participant_id;
               } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
-                // Find closest player to pass target (use final positions after move)
                 let closestDist = Infinity;
                 let closestId: string | null = null;
                 for (const p of (participants || [])) {
@@ -516,7 +655,6 @@ Deno.serve(async (req) => {
                   }
                 }
                 if (closestId && closestDist <= 8) {
-                  // Someone is close enough to receive
                   nextBallHolderParticipantId = closestId;
                   const closestPlayer = (participants || []).find(p => p.id === closestId);
                   if (closestPlayer && closestPlayer.club_id !== possClubId) {
@@ -528,9 +666,7 @@ Deno.serve(async (req) => {
                     });
                   }
                 } else {
-                  // LOOSE BALL: pass went to empty area, nobody close enough
                   nextBallHolderParticipantId = null;
-                  // Keep possession with same team but no ball holder
                   await supabase.from('match_event_logs').insert({
                     match_id, event_type: 'loose_ball',
                     title: '⚽ Bola solta!',
@@ -560,7 +696,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Mark ALL raw actions for this turn as used/overridden
         const allRawIds = (rawActions || []).map(a => a.id);
         if (allRawIds.length > 0) {
           const usedIds = allActions.map(a => a.id);
@@ -569,7 +704,6 @@ Deno.serve(async (req) => {
           if (overriddenIds.length > 0) await supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds);
         }
 
-        // ── Advance to next turn ──
         const newTurnNumber = match.current_turn_number + 1;
         const MAX_TURNS = 40;
 
@@ -590,8 +724,6 @@ Deno.serve(async (req) => {
           });
         } else {
           const nextPhaseStart = new Date().toISOString();
-
-          // If loose ball, skip phase 1 and go directly to attacking_support
           const isNextLooseBall = nextBallHolderParticipantId === null;
           const nextPhase = isNextLooseBall ? 'attacking_support' : 'ball_holder';
           const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
@@ -621,7 +753,6 @@ Deno.serve(async (req) => {
           }
         }
       } else if (activeTurn.phase === 'ball_holder' && isLooseBall) {
-        // Loose ball: skip ball_holder phase immediately, go to attacking_support
         await supabase.from('match_turns')
           .update({ status: 'resolved', resolved_at: new Date().toISOString() })
           .eq('id', activeTurn.id);
@@ -640,7 +771,6 @@ Deno.serve(async (req) => {
           status: 'active',
         });
       } else {
-        // Advance to next phase within same turn
         const currentPhaseIndex = PHASES.indexOf(activeTurn.phase as Phase);
         const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
 
@@ -685,7 +815,6 @@ Deno.serve(async (req) => {
       const { participant_id, action_type, target_participant_id, target_x, target_y } = body;
 
       let activeTurn: any = null;
-      // Retry up to 3 times with small delay to handle race conditions during phase transitions
       for (let attempt = 0; attempt < 3; attempt++) {
         const { data } = await supabase
           .from('match_turns').select('id').eq('match_id', match_id).eq('status', 'active')
