@@ -1072,9 +1072,35 @@ export default function MatchRoomPage() {
         // Red zone or can't reach: treat as normal move, don't offer intercept
       }
       
-      // Check if clicking near a loose ball position
+      // Check if clicking near a loose ball position or its inertia trajectory
       if (isLooseBall && looseBallPos) {
         const distToBall = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
+        // Check inertia trajectory interception
+        if (ballInertiaDir && ballTrajectoryAction?.id === '__inertia__' && ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null) {
+          const distToTraj = pointToSegmentDistance(pctX, pctY, looseBallPos.x, looseBallPos.y, ballTrajectoryAction.target_x, ballTrajectoryAction.target_y);
+          if (distToTraj <= INTERCEPT_RADIUS) {
+            // Check reachability
+            const dp = participants.find(p => p.id === drawingAction.fromParticipantId);
+            if (dp && dp.field_x != null && dp.field_y != null) {
+              const mdx = pctX - dp.field_x;
+              const mdy = pctY - dp.field_y;
+              const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+              const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+              const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+              const tdx = ballTrajectoryAction.target_x - looseBallPos.x;
+              const tdy = ballTrajectoryAction.target_y - looseBallPos.y;
+              const tlen2 = tdx * tdx + tdy * tdy;
+              const tCursor = tlen2 > 0 ? clamp(((pctX - looseBallPos.x) * tdx + (pctY - looseBallPos.y) * tdy) / tlen2, 0, 1) : 0;
+              if (movePct <= tCursor) {
+                setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+                setShowActionMenu(drawingAction.fromParticipantId);
+                setDrawingAction(null);
+                setMouseFieldPct(null);
+                return;
+              }
+            }
+          }
+        }
         if (distToBall <= INTERCEPT_RADIUS * 1.2) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
           setShowActionMenu(drawingAction.fromParticipantId);
