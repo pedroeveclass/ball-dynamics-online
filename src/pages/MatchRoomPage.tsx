@@ -678,6 +678,10 @@ export default function MatchRoomPage() {
   // For loose ball (no ball_holder), skip phase 1 — handled by engine
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
+    
+    // Positioning turn: no auto-open action menu, players click manually
+    if (isPositioningTurn) return;
+    
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
       const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
@@ -692,7 +696,7 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   const tickInFlightRef = useRef(false);
