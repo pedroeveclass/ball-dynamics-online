@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
       const endsAt = new Date(activeTurn.ends_at);
 
       if (now < endsAt) {
-        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       const { data: participants } = await supabase
