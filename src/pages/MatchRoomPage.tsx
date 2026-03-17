@@ -1165,6 +1165,17 @@ export default function MatchRoomPage() {
         const phase = activeTurn.phase;
         const isBH = activeTurn.ball_holder_participant_id === participantId;
         const isAttacking = p.club_id === activeTurn.possession_club_id;
+
+        // Positioning turn: directly start move drawing (skip action menu)
+        if (isPositioningTurn) {
+          if (isBH) return; // Ball holder can't reposition
+          if ((phase === 'positioning_attack' && isAttacking) || (phase === 'positioning_defense' && !isAttacking)) {
+            setDrawingAction({ type: 'move', fromParticipantId: participantId });
+            setShowActionMenu(null);
+          }
+          return;
+        }
+
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking) ||
