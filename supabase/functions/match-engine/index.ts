@@ -878,10 +878,19 @@ Deno.serve(async (req) => {
         }
 
         // ── Apply movement ──
-        console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw)`);
+        // Check if ball holder has a ball action (pass/shoot) — if so, defer their move until after resolution
+        const bhHasBallAction = ballHolder && allActions.some(a =>
+          a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+
+        console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction}`);
         for (const a of allActions) {
           console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
           if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
+            // Skip ball holder's move if they have a ball action — defer it after ball resolution
+            if (a.participant_id === ballHolder?.id && a.action_type === 'move' && bhHasBallAction) {
+              console.log(`[ENGINE] Deferring BH move until after ball resolution`);
+              continue;
+            }
             const part = (participants || []).find(p => p.id === a.participant_id);
             const startX = Number(part?.pos_x ?? 50);
             const startY = Number(part?.pos_y ?? 50);
