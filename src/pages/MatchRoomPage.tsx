@@ -2141,10 +2141,11 @@ export default function MatchRoomPage() {
                     const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
                     
                     // Core reachability: player arrives at this trajectory point (tCursor) before ball does
-                    // movePct = how much of their range they've used (0-1), tCursor = ball progress at that point (0-1)
-                    // Player can act if movePct >= tCursor (they arrive before/with the ball)
-                    // Once reachable, everything from tCursor to END is also reachable (ball hasn't passed yet)
-                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
+                    // movePct = fraction of player's range used to reach cursor (lower = arrives sooner)
+                    // tCursor = fraction of ball's trajectory at that point (lower = ball arrives sooner)
+                    // Player can act if movePct <= tCursor (needs less % of range than ball needs of trajectory)
+                    // Once reachable at a point, everything from that point to END is also reachable
+                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
