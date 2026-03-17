@@ -976,14 +976,40 @@ export default function MatchRoomPage() {
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
-        if (!isRedZone) {
+        // Check reachability: can the player's action circle reach the ball at that point?
+        let canReach = true;
+        if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
+          const mdx = pctX - drawingParticipant.field_x;
+          const mdy = pctY - drawingParticipant.field_y;
+          const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+          const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
+          
+          const bfx = ballHolderNow.field_x;
+          const bfy = ballHolderNow.field_y;
+          const btx = ballPathAction.target_x;
+          const bty = ballPathAction.target_y;
+          const ballPreviewX = bfx + (btx - bfx) * movePct;
+          const ballPreviewY = bfy + (bty - bfy) * movePct;
+          
+          const circleRadiusField = 9 / INNER_W * 100;
+          const distToBallPreview = Math.sqrt((pctX - ballPreviewX) ** 2 + (pctY - ballPreviewY) ** 2);
+          
+          // Check if cursor is ahead of ball on trajectory
+          const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
+          const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
+          
+          canReach = distToBallPreview <= (circleRadiusField + 2.5) || (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && tCursor <= movePct);
+        }
+        
+        if (!isRedZone && canReach) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
           setMouseFieldPct(null);
           return;
         }
-        // Red zone: treat as normal move, don't offer intercept
+        // Red zone or can't reach: treat as normal move, don't offer intercept
       }
       
       // Check if clicking near a loose ball position

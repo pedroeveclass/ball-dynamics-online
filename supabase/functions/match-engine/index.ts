@@ -184,8 +184,9 @@ function computeInterceptSuccess(
   successChance = Math.max(0.05, Math.min(0.95, successChance));
 
   const roll = Math.random();
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${roll < successChance}`);
-  return roll < successChance;
+  const success = roll < successChance;
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success}`);
+  return { success, chance: successChance };
 }
 
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>): {
