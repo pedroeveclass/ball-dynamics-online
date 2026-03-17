@@ -608,6 +608,30 @@ export default function MatchRoomPage() {
     prevPossClubRef.current = currentPoss ?? null;
   }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
 
+  // ── Contest visual effect from event logs ────────────────────
+  useEffect(() => {
+    if (events.length === 0) return;
+    const last = events[events.length - 1];
+    if (!last) return;
+    // Only trigger during/near resolution
+    const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
+    if (!isContest) return;
+    
+    // Find approximate position from interceptor or ball holder
+    const bhPart = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+    const effectX = bhPart?.field_x ?? 50;
+    const effectY = bhPart?.field_y ?? 50;
+    
+    let effectType: typeof contestEffect extends { type: infer T } | null ? T : never = 'intercept';
+    if (last.event_type === 'tackle') effectType = 'tackle_success';
+    else if (last.event_type === 'dribble') effectType = 'dribble';
+    else if (last.event_type === 'blocked') effectType = 'block';
+    else if (last.event_type === 'saved') effectType = 'tackle_success';
+    
+    setContestEffect({ type: effectType, x: effectX, y: effectY, label: last.title });
+    setTimeout(() => setContestEffect(null), 2500);
+  }, [events.length]);
+
   // Auto-show action menu for ball holder in phase 1
   // For loose ball (no ball_holder), skip phase 1 — handled by engine
   useEffect(() => {
