@@ -593,7 +593,7 @@ export default function MatchRoomPage() {
         // Ball is loose: compute inertia direction from previous trajectory
         if (carriedLooseBallPos && finalBallPos) {
           // Continuing loose ball — apply inertia: move ball further in same direction (decaying)
-          const INERTIA_DECAY = 0.35; // ball rolls ~35% of previous distance
+          const INERTIA_DECAY = 0.15; // ball rolls ~15% of previous distance
           if (ballInertiaDir) {
             const newX = clamp(finalBallPos.x + ballInertiaDir.dx * INERTIA_DECAY, 2, 98);
             const newY = clamp(finalBallPos.y + ballInertiaDir.dy * INERTIA_DECAY, 2, 98);
