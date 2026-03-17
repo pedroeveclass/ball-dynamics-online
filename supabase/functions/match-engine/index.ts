@@ -79,9 +79,7 @@ function computeDeviation(
     }
   }
 
-  // Clamp to field
-  actualX = Math.max(0, Math.min(100, actualX));
-  actualY = Math.max(0, Math.min(100, actualY));
+  // Don't clamp — allow ball to go out of bounds for set pieces
 
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
