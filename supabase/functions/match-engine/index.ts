@@ -761,14 +761,30 @@ Deno.serve(async (req) => {
 
               newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
               nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+            } else if (result.looseBallPos) {
+              // Shot blocked — ball deflects to random position
+              nextBallHolderParticipantId = null;
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'blocked',
+                title: result.description,
+                body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
+              });
             } else if (result.newBallHolderId) {
               nextBallHolderParticipantId = result.newBallHolderId;
               newPossessionClubId = result.newPossessionClubId || possClubId;
 
               await supabase.from('match_event_logs').insert({
-                match_id, event_type: result.possession_change ? 'possession_change' : 'pass_complete',
-                title: result.possession_change ? '🔄 Troca de posse - Bola dominada!' : '🤲 Bola dominada!',
+                match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'),
+                title: result.possession_change ? `🔄 Troca de posse` : result.description,
                 body: result.description,
+              });
+            } else if (result.event === 'dribble') {
+              // Tackle failed, dribble succeeded
+              nextBallHolderParticipantId = ballHolder.id;
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'dribble',
+                title: '🏃 Drible bem-sucedido!',
+                body: 'O desarme falhou e o jogador seguiu com a bola.',
               });
             } else if (isPassType(ballHolderAction.action_type)) {
               if (ballHolderAction.target_participant_id) {
@@ -809,11 +825,6 @@ Deno.serve(async (req) => {
               }
             } else if (ballHolderAction.action_type === 'move') {
               nextBallHolderParticipantId = ballHolder.id;
-              // Ball follows player on dribble — update ball position to match player
-              const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
-              if (bhMoveAction && bhMoveAction.target_x != null && bhMoveAction.target_y != null) {
-                // Ball position is player position (already updated above)
-              }
             }
           }
         } else {
