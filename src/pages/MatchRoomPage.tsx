@@ -1684,7 +1684,30 @@ export default function MatchRoomPage() {
 
   // Compute intercept zone path for ball trajectory
   const getBallTrajectoryAction = (): MatchAction | null => {
-    if (!activeTurn?.ball_holder_participant_id) return null;
+    if (!activeTurn?.ball_holder_participant_id) {
+      // Loose ball with inertia — create a virtual pass_low trajectory
+      if (isLooseBall && looseBallPos && ballInertiaDir) {
+        const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
+        if (inertiaLen >= 0.5) {
+          const INERTIA_DISPLAY = 0.15;
+          const endX = clamp(looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+          const endY = clamp(looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+          return {
+            id: '__inertia__',
+            match_id: matchId || '',
+            match_turn_id: activeTurn?.id || '',
+            participant_id: '__inertia_origin__',
+            controlled_by_type: 'system',
+            action_type: 'pass_low',
+            target_x: endX,
+            target_y: endY,
+            target_participant_id: null,
+            status: 'pending',
+          } as MatchAction;
+        }
+      }
+      return null;
+    }
     return turnActions.find(a => 
       a.participant_id === activeTurn.ball_holder_participant_id &&
       (isPassAction(a.action_type) || isShootAction(a.action_type) || a.action_type === 'move') &&
@@ -1693,7 +1716,12 @@ export default function MatchRoomPage() {
   };
 
   const ballTrajectoryAction = getBallTrajectoryAction();
-  const ballTrajectoryHolder = ballTrajectoryAction ? participants.find(p => p.id === ballTrajectoryAction.participant_id) : null;
+  // For inertia trajectories, create a virtual holder at the loose ball position
+  const ballTrajectoryHolder = ballTrajectoryAction
+    ? (ballTrajectoryAction.id === '__inertia__' && looseBallPos
+      ? { id: '__inertia_origin__', field_x: looseBallPos.x, field_y: looseBallPos.y, club_id: '' } as unknown as Participant
+      : participants.find(p => p.id === ballTrajectoryAction.participant_id) || null)
+    : null;
 
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
