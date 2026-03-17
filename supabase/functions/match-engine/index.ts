@@ -771,9 +771,10 @@ Deno.serve(async (req) => {
         }
 
         if (ballHolder) {
-          // Find the ball holder's BALL action (pass/shoot), not their move
+          // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
           const ballHolderAction = allActions
-            .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type) || a.action_type === 'move'));
+            .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+            || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
           if (ballHolderAction) {
             // For shoot_power with overGoal, skip goal check
