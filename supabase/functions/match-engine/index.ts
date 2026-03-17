@@ -1021,6 +1021,19 @@ Deno.serve(async (req) => {
             }
           }
         } else {
+          // ── LOOSE BALL HANDLING ──
+          // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
+          const { data: prevTurnData } = await supabase
+            .from('match_turns')
+            .select('ball_holder_participant_id')
+            .eq('match_id', match_id)
+            .eq('turn_number', match.current_turn_number - 1)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
+
           const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
 
           if (looseBallClaimer) {
@@ -1035,12 +1048,33 @@ Deno.serve(async (req) => {
             });
           } else {
             nextBallHolderParticipantId = null;
-            // Ball inertia: log that the ball continues rolling
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'ball_inertia',
-              title: '⚽ Bola continua rolando...',
-              body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-            });
+            if (wasAlreadyLoose) {
+              // Ball was already loose — inertia stops, ball is stationary
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'ball_stopped',
+                title: '⚽ Bola parada',
+                body: 'A bola perdeu a inércia e está parada no campo.',
+              });
+            } else {
+              // First turn loose — apply inertia
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'ball_inertia',
+                title: '⚽ Bola continua rolando...',
+                body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+              });
+            }
+          }
+        }
+
+        // ── Apply deferred ball holder move (after ball resolution) ──
+        if (bhHasBallAction && ballHolder) {
+          const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+          if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
+            await supabase.from('match_participants').update({
+              pos_x: Number(bhMoveAction.target_x),
+              pos_y: Number(bhMoveAction.target_y),
+            }).eq('id', ballHolder.id);
+            console.log(`[ENGINE] Deferred BH move applied: (${Number(bhMoveAction.target_x).toFixed(1)},${Number(bhMoveAction.target_y).toFixed(1)})`);
           }
         }
 
@@ -1050,6 +1084,44 @@ Deno.serve(async (req) => {
           const overriddenIds = allRawIds.filter(id => !usedIds.includes(id));
           if (usedIds.length > 0) await supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds);
           if (overriddenIds.length > 0) await supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds);
+        }
+
+        // ── Compute ball end position for out-of-bounds check ──
+        if (!ballEndPos) {
+          if (nextBallHolderParticipantId) {
+            const holder = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
+            if (holder) {
+              const moveAct = allActions.find((a: any) => a.participant_id === holder.id && (a.action_type === 'move' || a.action_type === 'receive'));
+              ballEndPos = {
+                x: Number(moveAct?.target_x ?? holder.pos_x ?? 50),
+                y: Number(moveAct?.target_y ?? holder.pos_y ?? 50),
+              };
+            }
+          } else if (ballHolder) {
+            // Loose ball — ball is at the pass/shot target
+            const bhAction = allActions.find((a: any) => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+            if (bhAction?.target_x != null && bhAction?.target_y != null) {
+              ballEndPos = { x: Number(bhAction.target_x), y: Number(bhAction.target_y) };
+            }
+          }
+        }
+
+        // ── Out-of-bounds detection — only if no goal scored and ball is loose ──
+        const goalScored = homeScore > match.home_score || awayScore > match.away_score;
+        if (ballEndPos && !goalScored && nextBallHolderParticipantId === null) {
+          const oob = detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match);
+          if (oob) {
+            const restart = await handleSetPiece(supabase, match_id, oob, participants || [], match, allActions);
+            if (restart) {
+              nextBallHolderParticipantId = restart.playerId;
+              newPossessionClubId = restart.clubId;
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: oob.type,
+                title: restart.title,
+                body: restart.body,
+              });
+            }
+          }
         }
 
         const newTurnNumber = match.current_turn_number + 1;

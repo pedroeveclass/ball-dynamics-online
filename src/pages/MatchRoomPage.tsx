@@ -1931,19 +1931,28 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Ball inertia trajectory (rendered as pass_low via ballTrajectoryAction virtual entry) ── */}
-              {/* Inertia label shown above the trajectory */}
+              {/* ── Ball inertia trajectory — green arrow + label (rendered like a real pass_low) ── */}
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
                 ballTrajectoryAction?.id === '__inertia__' &&
+                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                 const from = toSVG(looseBallPos.x, looseBallPos.y);
                 const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
-                  <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
-                    textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}
-                    pointerEvents="none">
-                    ⚽ Inércia
-                  </text>
+                  <g pointerEvents="none">
+                    {/* Solid green arrow — same as pass_low */}
+                    <line
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke="#22c55e" strokeWidth={3}
+                      strokeLinecap="round" opacity={0.8}
+                      markerEnd="url(#ah-green)"
+                    />
+                    {/* Label */}
+                    <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
+                      textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
+                      ⚽ Inércia
+                    </text>
+                  </g>
                 );
               })()}
 
