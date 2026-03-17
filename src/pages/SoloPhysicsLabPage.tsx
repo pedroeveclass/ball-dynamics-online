@@ -124,6 +124,7 @@ const GOAL_LINE_OVERFLOW_PCT = 0.12;
 const DEFAULT_ERROR_SCALE = 100;
 const SOLO_ATTACK_GOAL_SIDE: GoalSide = "right";
 const GOALKEEPER_RESTART_DELAY_MS = 700;
+const POST_ACTION_MOVE_RATIO = 0.2;
 const DRIBBLE_CONTEST_RADIUS = 7.5;
 const DRIBBLE_END_CONTEST_DIST = 6.5;
 const TACKLE_ACTION_RANGE = 3.1;
@@ -928,6 +929,7 @@ export default function SoloPhysicsLabPage() {
   const [ballFlightProgress, setBallFlightProgress] = useState(0);
   const [errorScalePct, setErrorScalePct] = useState(DEFAULT_ERROR_SCALE);
   const [lastResolution, setLastResolution] = useState<BallResolution>(DEFAULT_BALL_RESOLUTION);
+  const [postActionMoveAvailable, setPostActionMoveAvailable] = useState(false);
   const playerPosRef = useRef(playerPos);
   const dummyPosRef = useRef(dummyPos);
   const goalkeeperPosRef = useRef(goalkeeperPos);
@@ -972,7 +974,7 @@ export default function SoloPhysicsLabPage() {
         const dot = (prevVec.x * curVec.x + prevVec.y * curVec.y) / (prevLen * curLen);
         const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
         const normalizedAngle = angleDiff / Math.PI;
-        const multiplier = 1.2 - 0.4 * normalizedAngle;
+        const multiplier = 1.2 - 0.7 * normalizedAngle;
         range *= multiplier;
       }
     }
@@ -981,6 +983,8 @@ export default function SoloPhysicsLabPage() {
   };
 
   const idleMoveRange = useMemo(() => computeMaxMoveRange(), [attrs, lastMoveVector]);
+  const currentMoveRangeRatio = postActionMoveAvailable ? POST_ACTION_MOVE_RATIO : 1;
+  const displayedMoveRange = idleMoveRange * currentMoveRangeRatio;
 
   useEffect(() => {
     if (selectedAction === "tackle" && !dummyControlsBall) {
@@ -1012,6 +1016,48 @@ export default function SoloPhysicsLabPage() {
     () => (selectedAction === "move" ? 0 : getExecutionSpeedLoad(lastMoveVector, attrs)),
     [attrs, lastMoveVector, selectedAction],
   );
+  const movementDebug = useMemo(() => {
+    const speedAttr = Number(attrs.velocidade ?? 40);
+    const accelAttr = Number(attrs.aceleracao ?? 40);
+    const staminaAttr = Number(attrs.stamina ?? 40);
+    const strengthAttr = Number(attrs.forca ?? 40);
+    const speedNorm = normalizeAttr(speedAttr);
+    const accelNorm = normalizeAttr(accelAttr);
+    const staminaNorm = normalizeAttr(staminaAttr);
+    const strengthNorm = normalizeAttr(strengthAttr);
+    const baseSpeed = 8 + speedNorm * 17;
+    const accelFactor = 0.6 + accelNorm * 0.4;
+    const staminaFactor = 0.9 + staminaNorm * 0.1;
+    const strengthFactor = 1.0 + strengthNorm * 0.1;
+    const baseMoveRange = baseSpeed * accelFactor * staminaFactor * strengthFactor;
+    const lastStride = lastMoveVector ? getMovementDistance(lastMoveVector.x, lastMoveVector.y) : 0;
+    const previewVector =
+      selectedAction === "move" && previewTarget
+        ? {
+            x: previewTarget.x - playerPos.x,
+            y: previewTarget.y - playerPos.y,
+          }
+        : null;
+    const previewStride = previewVector ? getMovementDistance(previewVector.x, previewVector.y) : 0;
+    const previewMaxRange = previewVector ? computeMaxMoveRange(previewVector) : baseMoveRange;
+    const directionalMultiplier = baseMoveRange > 0 ? previewMaxRange / baseMoveRange : 1;
+
+    return {
+      speedAttr,
+      accelAttr,
+      speedNorm,
+      accelNorm,
+      baseSpeed,
+      accelFactor,
+      staminaFactor,
+      strengthFactor,
+      baseMoveRange,
+      lastStride,
+      previewStride,
+      previewMaxRange,
+      directionalMultiplier,
+    };
+  }, [attrs, computeMaxMoveRange, lastMoveVector, playerPos.x, playerPos.y, previewTarget, selectedAction]);
   const availableActions = useMemo(
     () =>
       (Object.keys(ACTION_LABELS) as SoloActionType[]).filter((action) => {
@@ -1027,10 +1073,10 @@ export default function SoloPhysicsLabPage() {
     return {
       cx: center.x,
       cy: center.y,
-      rx: (idleMoveRange / 100) * INNER_W,
-      ry: ((idleMoveRange / FIELD_Y_MOVEMENT_SCALE) / 100) * INNER_H,
+      rx: (displayedMoveRange / 100) * INNER_W,
+      ry: ((displayedMoveRange / FIELD_Y_MOVEMENT_SCALE) / 100) * INNER_H,
     };
-  }, [idleMoveRange, playerPos.x, playerPos.y]);
+  }, [displayedMoveRange, playerPos.x, playerPos.y]);
 
   const updateAttr = (key: keyof SoloAttrs, value: number[]) => {
     setAttrs((prev) => ({ ...prev, [key]: value[0] ?? prev[key] }));
@@ -1102,6 +1148,7 @@ export default function SoloPhysicsLabPage() {
     setBallFlightProgress(0);
     setErrorScalePct(DEFAULT_ERROR_SCALE);
     setLastResolution(DEFAULT_BALL_RESOLUTION);
+    setPostActionMoveAvailable(false);
   };
 
   const clearInertia = () => setLastMoveVector(null);
@@ -1112,6 +1159,7 @@ export default function SoloPhysicsLabPage() {
     setBallOwner("player");
     setBallFlight(null);
     setBallFlightProgress(0);
+    setPostActionMoveAvailable(false);
     setLastResolution({
       kind: "player_hold",
       label: "Jogador com a bola",
@@ -1126,6 +1174,7 @@ export default function SoloPhysicsLabPage() {
     setBallOwner("dummy");
     setBallFlight(null);
     setBallFlightProgress(0);
+    setPostActionMoveAvailable(false);
     setLastResolution({
       kind: "dummy_hold",
       label: "Boneco com a bola",
@@ -1148,6 +1197,7 @@ export default function SoloPhysicsLabPage() {
     setBallOwner("loose");
     setBallFlight(null);
     setBallFlightProgress(0);
+    setPostActionMoveAvailable(false);
     setLastResolution({
       kind: "loose",
       label: "Bola solta",
@@ -1315,7 +1365,7 @@ export default function SoloPhysicsLabPage() {
       const dx = finalX - playerPos.x;
       const dy = finalY - playerPos.y;
       const dist = getMovementDistance(dx, dy);
-      const maxRange = computeMaxMoveRange(dist > 0.1 ? { x: dx, y: dy } : undefined);
+      const maxRange = computeMaxMoveRange(dist > 0.1 ? { x: dx, y: dy } : undefined) * currentMoveRangeRatio;
 
       if (dist > maxRange) {
         const scale = maxRange / dist;
@@ -1367,6 +1417,9 @@ export default function SoloPhysicsLabPage() {
         } else {
           setLastMoveVector(null);
         }
+        if (postActionMoveAvailable) {
+          setPostActionMoveAvailable(false);
+        }
         return;
       }
 
@@ -1399,6 +1452,9 @@ export default function SoloPhysicsLabPage() {
         setLastMoveVector(null);
       }
       setCommittedAction(nextAction);
+      if (postActionMoveAvailable) {
+        setPostActionMoveAvailable(false);
+      }
 
       if (!ballFlight && (ballOwner === "dummy" || ballOwner === "loose")) {
         applyResolution(
@@ -1442,6 +1498,9 @@ export default function SoloPhysicsLabPage() {
         deviationDist: 0,
         overGoal: false,
       });
+      setPostActionMoveAvailable(true);
+      setSelectedAction("move");
+      setMouseFieldPct(null);
     } else {
       if (!playerControlsBall) {
         setLastResolution({
@@ -1493,6 +1552,9 @@ export default function SoloPhysicsLabPage() {
         detail: "Posicione o jogador para testar recepcao, dominio ou disputa.",
         owner: "loose",
       });
+      setPostActionMoveAvailable(true);
+      setSelectedAction("move");
+      setMouseFieldPct(null);
     }
   };
 
@@ -1504,6 +1566,9 @@ export default function SoloPhysicsLabPage() {
 
   const handleActionMenuSelect = (action: SoloActionType) => {
     setSelectedAction(action);
+    if (action !== "move" && postActionMoveAvailable) {
+      setPostActionMoveAvailable(false);
+    }
     setShowActionMenu(false);
     setMouseFieldPct(null);
   };
@@ -1694,6 +1759,11 @@ export default function SoloPhysicsLabPage() {
             <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-[11px] font-display text-emerald-50">
               Acao atual: <span className="font-bold">{ACTION_LABELS[selectedAction]}</span>
             </div>
+            {postActionMoveAvailable && (
+              <div className="rounded-lg border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] font-display text-sky-50">
+                Passo pos-acao disponivel: mova ate {Math.round(POST_ACTION_MOVE_RATIO * 100)}% do alcance.
+              </div>
+            )}
           </section>
 
           <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
@@ -1710,7 +1780,7 @@ export default function SoloPhysicsLabPage() {
                 </>
               )}
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Alcance base: {idleMoveRange.toFixed(1)}
+                Alcance atual: {displayedMoveRange.toFixed(1)}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
                 Ultimo vetor: {lastMoveVector ? `${lastMoveVector.x.toFixed(1)}, ${lastMoveVector.y.toFixed(1)}` : "parado"}
@@ -1752,6 +1822,34 @@ export default function SoloPhysicsLabPage() {
                   {ACTION_LABELS[selectedAction]}: {previewMeta.label}
                 </div>
               )}
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Telemetria</h2>
+            <div className="grid grid-cols-2 gap-2 text-[11px] font-display">
+              <div className="rounded bg-sky-500/10 px-2 py-1.5">Velocidade: {movementDebug.speedAttr.toFixed(0)}</div>
+              <div className="rounded bg-sky-500/10 px-2 py-1.5">Vel. norm.: {Math.round(movementDebug.speedNorm * 100)}%</div>
+              <div className="rounded bg-amber-500/10 px-2 py-1.5">Aceleracao: {movementDebug.accelAttr.toFixed(0)}</div>
+              <div className="rounded bg-amber-500/10 px-2 py-1.5">Accel. norm.: {Math.round(movementDebug.accelNorm * 100)}%</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">Base vel.: {movementDebug.baseSpeed.toFixed(2)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">Fator accel.: {movementDebug.accelFactor.toFixed(2)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">Fator stamina: {movementDebug.staminaFactor.toFixed(2)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">Fator forca: {movementDebug.strengthFactor.toFixed(2)}</div>
+              <div className="rounded bg-emerald-500/10 px-2 py-1.5 col-span-2">
+                Alcance final: {movementDebug.baseMoveRange.toFixed(2)}
+              </div>
+              <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
+                Passada em hover: {movementDebug.previewStride.toFixed(2)} / {movementDebug.previewMaxRange.toFixed(2)}
+              </div>
+              <div className="rounded bg-white/20 px-2 py-1.5">Inercia dir.: x{movementDebug.directionalMultiplier.toFixed(2)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">Ultima passada: {movementDebug.lastStride.toFixed(2)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
+                Carga de velocidade: {Math.round(actionExecutionSpeedLoad * 100)}%
+              </div>
+              <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
+                Passo pos-acao: {postActionMoveAvailable ? `${Math.round(POST_ACTION_MOVE_RATIO * 100)}% liberado` : "indisponivel"}
+              </div>
             </div>
           </section>
 
@@ -1895,8 +1993,8 @@ export default function SoloPhysicsLabPage() {
                 cy={moveEllipse.cy}
                 rx={moveEllipse.rx}
                 ry={moveEllipse.ry}
-                fill="rgba(34,197,94,0.08)"
-                stroke="rgba(34,197,94,0.45)"
+                fill={postActionMoveAvailable ? "rgba(56,189,248,0.08)" : "rgba(34,197,94,0.08)"}
+                stroke={postActionMoveAvailable ? "rgba(56,189,248,0.5)" : "rgba(34,197,94,0.45)"}
                 strokeWidth="1.5"
                 strokeDasharray="7,5"
               />
@@ -2044,8 +2142,16 @@ export default function SoloPhysicsLabPage() {
             })()}
 
             <div className="absolute left-3 bottom-3 rounded border border-[hsl(140,10%,22%)] bg-[hsl(140,10%,10%)]/92 px-3 py-2 text-[11px] font-display">
-              Clique no jogador para escolher a acao e depois clique no campo para aplicar <span className="font-bold">{ACTION_LABELS[selectedAction]}</span>.
-              Movimento com posse conduz a bola e so vira disputa de drible quando o trajeto entra na zona do boneco.
+              {postActionMoveAvailable ? (
+                <>
+                  Passo pos-acao liberado: clique no campo para mover ate <span className="font-bold">{Math.round(POST_ACTION_MOVE_RATIO * 100)}%</span> do alcance.
+                </>
+              ) : (
+                <>
+                  Clique no jogador para escolher a acao e depois clique no campo para aplicar <span className="font-bold">{ACTION_LABELS[selectedAction]}</span>.
+                  Movimento com posse conduz a bola e so vira disputa de drible quando o trajeto entra na zona do boneco.
+                </>
+              )}
             </div>
           </div>
         </main>
