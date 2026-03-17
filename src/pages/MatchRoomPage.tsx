@@ -173,6 +173,8 @@ export default function MatchRoomPage() {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('Processando todos os movimentos...');
+  // Server clock offset: serverTime = Date.now() + serverClockOffset
+  const serverClockOffsetRef = useRef(0);
 
   // Interactive drawing
   const [drawingAction, setDrawingAction] = useState<DrawingState | null>(null);
