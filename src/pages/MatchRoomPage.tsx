@@ -988,12 +988,22 @@ export default function MatchRoomPage() {
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
       const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
-      const ballPathAction = turnActions.find(action => {
-        if (!activeTurn?.ball_holder_participant_id) return false;
-        if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-        return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
-      });
       const ballHolderNow = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+      
+      // Allow tackling stationary ball carrier (no action or stayed still)
+      const ballPathAction = (() => {
+        if (!activeTurn?.ball_holder_participant_id) return null;
+        const bhAction = turnActions.find(action => {
+          if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
+          return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
+        });
+        // If ball holder has no action (stationary), treat as move to current position
+        if (!bhAction && ballHolderNow && ballHolderNow.field_x != null && ballHolderNow.field_y != null) {
+          return { action_type: 'move', target_x: ballHolderNow.field_x, target_y: ballHolderNow.field_y, participant_id: activeTurn.ball_holder_participant_id } as MatchAction;
+        }
+        return bhAction ?? null;
+      })();
+      
       const canContestCarrierMove = ballPathAction?.action_type === 'move' && drawingParticipant?.club_id !== ballHolderNow?.club_id;
       const canContestBallPath = ballPathAction?.action_type !== 'move';
       
