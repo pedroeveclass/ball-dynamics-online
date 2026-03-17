@@ -496,7 +496,7 @@ export default function MatchRoomPage() {
     }
     
     tickRef.current = setInterval(() => {
-      const remaining = Math.max(0, endsAt.getTime() - Date.now());
+      const remaining = Math.max(0, endsAt.getTime() - serverNow());
       setPhaseTimeLeft(Math.ceil(remaining / 1000));
     }, 100);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
