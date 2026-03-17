@@ -1049,10 +1049,11 @@ export default function MatchRoomPage() {
           
           // Player arrives at cursor position when movePct of their range is used
           // Ball arrives at tCursor when ball progress = tCursor
-          // Player can act if: they arrive at a trajectory point BEFORE or WITH the ball
-          // i.e. movePct >= tCursor (player covers their movement % before ball reaches that %)
-          // Also: if within intercept radius of trajectory and ahead of ball
-          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct >= tCursor);
+          // Player can act if: they arrive BEFORE or WITH the ball
+          // movePct = fraction of player's range used to reach cursor (lower = arrives sooner)
+          // tCursor = fraction of ball's trajectory at that point (lower = ball arrives sooner)
+          // Player arrives first if movePct <= tCursor (needs less % of range than ball needs of trajectory)
+          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
         }
         
         if (!isRedZone && canReach) {
