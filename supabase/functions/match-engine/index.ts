@@ -515,6 +515,131 @@ function findLooseBallClaimer(allActions: any[], participants: any[]): any | nul
   ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
   return ranked[0].participant;
 }
+// ─── Out of bounds detection ─────────────────────────────────
+interface OOBResult {
+  type: 'throw_in' | 'corner' | 'goal_kick';
+  awardedClubId: string;
+  exitX: number;
+  exitY: number;
+  side?: 'top' | 'bottom';
+}
+
+function detectOutOfBounds(
+  ballX: number, ballY: number,
+  lastTouchClubId: string,
+  match: { home_club_id: string; away_club_id: string }
+): OOBResult | null {
+  const oppositeClub = lastTouchClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+
+  // Sidelines: y <= 1 or y >= 99 → throw-in
+  if (ballY <= 1 || ballY >= 99) {
+    return { type: 'throw_in', awardedClubId: oppositeClub, exitX: ballX, exitY: ballY, side: ballY <= 1 ? 'top' : 'bottom' };
+  }
+
+  // Home end line (x <= 1): home defends left side
+  if (ballX <= 1) {
+    if (lastTouchClubId === match.home_club_id) {
+      return { type: 'corner', awardedClubId: match.away_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    } else {
+      return { type: 'goal_kick', awardedClubId: match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    }
+  }
+
+  // Away end line (x >= 99)
+  if (ballX >= 99) {
+    if (lastTouchClubId === match.away_club_id) {
+      return { type: 'corner', awardedClubId: match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    } else {
+      return { type: 'goal_kick', awardedClubId: match.away_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    }
+  }
+
+  return null;
+}
+
+async function handleSetPiece(
+  supabase: any,
+  matchId: string,
+  oob: OOBResult,
+  participants: any[],
+  match: { home_club_id: string; away_club_id: string },
+  allActions: any[]
+): Promise<{ playerId: string; clubId: string; title: string; body: string } | null> {
+  const teamPlayers = participants.filter((p: any) => p.club_id === oob.awardedClubId && p.role_type === 'player');
+  if (teamPlayers.length === 0) return null;
+
+  const isHomeTeam = oob.awardedClubId === match.home_club_id;
+
+  // Load slot positions for GK detection
+  const slotIds = teamPlayers.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id);
+  const { data: slots } = slotIds.length > 0
+    ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
+    : { data: [] };
+  const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+
+  const getSlotPos = (p: any) => slotMap.get(p.lineup_slot_id) || '';
+  const getPlayerFinalPos = (p: any) => {
+    const moveAct = allActions.find((ac: any) => ac.participant_id === p.id && (ac.action_type === 'move' || ac.action_type === 'receive'));
+    return { x: Number(moveAct?.target_x ?? p.pos_x ?? 50), y: Number(moveAct?.target_y ?? p.pos_y ?? 50) };
+  };
+
+  if (oob.type === 'throw_in') {
+    const outfield = teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK');
+    const candidates = outfield.length > 0 ? outfield : teamPlayers;
+
+    candidates.sort((a: any, b: any) => {
+      const posA = getPlayerFinalPos(a);
+      const posB = getPlayerFinalPos(b);
+      const distA = Math.sqrt((posA.x - oob.exitX) ** 2 + (posA.y - oob.exitY) ** 2);
+      const distB = Math.sqrt((posB.x - oob.exitX) ** 2 + (posB.y - oob.exitY) ** 2);
+      return distA - distB;
+    });
+
+    const chosen = candidates[0];
+    const restartY = oob.side === 'top' ? 1 : 99;
+    const restartX = Math.max(2, Math.min(98, oob.exitX));
+    await supabase.from('match_participants').update({ pos_x: restartX, pos_y: restartY }).eq('id', chosen.id);
+
+    return {
+      playerId: chosen.id, clubId: oob.awardedClubId,
+      title: '🏳️ Lateral!',
+      body: `Reposição pela lateral para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.`,
+    };
+  }
+
+  if (oob.type === 'corner') {
+    const forwards = teamPlayers.filter((p: any) => {
+      const pos = getSlotPos(p).toUpperCase();
+      return ['ST', 'CF', 'LW', 'RW', 'LM', 'RM', 'CAM'].includes(pos);
+    });
+    const chosen = forwards.length > 0 ? forwards[0] : teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK')[0] || teamPlayers[0];
+
+    const cornerX = isHomeTeam ? 99 : 1;
+    const cornerY = oob.side === 'top' ? 1 : 99;
+    await supabase.from('match_participants').update({ pos_x: cornerX, pos_y: cornerY }).eq('id', chosen.id);
+
+    return {
+      playerId: chosen.id, clubId: oob.awardedClubId,
+      title: '🚩 Escanteio!',
+      body: `Escanteio para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.`,
+    };
+  }
+
+  if (oob.type === 'goal_kick') {
+    const gk = teamPlayers.find((p: any) => getSlotPos(p).toUpperCase() === 'GK') || teamPlayers[0];
+    const gkX = isHomeTeam ? 6 : 94;
+    const gkY = Math.max(40, Math.min(60, oob.exitY));
+    await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
+
+    return {
+      playerId: gk.id, clubId: oob.awardedClubId,
+      title: '🥅 Tiro de Meta!',
+      body: `Tiro de meta para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.`,
+    };
+  }
+
+  return null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
