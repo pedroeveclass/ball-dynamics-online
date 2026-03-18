@@ -117,37 +117,84 @@ export default function ManagerChallengesPage() {
     finally { setSending(false); }
   };
 
+  // Default 4-4-2 formation positions for bot filling
+  const DEFAULT_442_POSITIONS = [
+    'GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST',
+  ];
+  const DEFAULT_442_COORDS: Array<{ x: number; y: number }> = [
+    { x: 5, y: 50 },
+    { x: 22, y: 15 }, { x: 22, y: 37 }, { x: 22, y: 63 }, { x: 22, y: 85 },
+    { x: 42, y: 15 }, { x: 42, y: 37 }, { x: 42, y: 63 }, { x: 42, y: 85 },
+    { x: 60, y: 35 }, { x: 60, y: 65 },
+  ];
+
   const handleAccept = async (challenge: Challenge) => {
     if (!club || !managerProfile) return;
     setActing(challenge.id);
     try {
+      // Try to get active lineups — if missing, we'll use null and fill with bots
       const [homeLineupRes, awayLineupRes] = await Promise.all([
-        supabase.from('lineups').select('id').eq('club_id', challenge.challenger_club_id).eq('is_active', true).limit(1).single(),
-        supabase.from('lineups').select('id').eq('club_id', challenge.challenged_club_id).eq('is_active', true).limit(1).single(),
+        supabase.from('lineups').select('id').eq('club_id', challenge.challenger_club_id).eq('is_active', true).limit(1).maybeSingle(),
+        supabase.from('lineups').select('id').eq('club_id', challenge.challenged_club_id).eq('is_active', true).limit(1).maybeSingle(),
       ]);
-      if (!homeLineupRes.data) { toast.error('O clube desafiante não tem escalação ativa.'); setActing(null); return; }
-      if (!awayLineupRes.data) { toast.error('Você precisa definir uma escalação ativa.'); setActing(null); return; }
+
+      const homeLineupId = homeLineupRes.data?.id || null;
+      const awayLineupId = awayLineupRes.data?.id || null;
 
       const { data: match, error: matchError } = await supabase.from('matches').insert({
         home_club_id: challenge.challenger_club_id, away_club_id: challenge.challenged_club_id,
-        home_lineup_id: homeLineupRes.data.id, away_lineup_id: awayLineupRes.data.id,
+        home_lineup_id: homeLineupId, away_lineup_id: awayLineupId,
         status: 'scheduled', current_phase: 'pre_match', scheduled_at: challenge.scheduled_at,
       }).select('id').single();
       if (matchError) throw matchError;
 
-      const { data: slots } = await supabase.from('lineup_slots')
-        .select('id, lineup_id, player_profile_id, slot_position, role_type')
-        .in('lineup_id', [homeLineupRes.data.id, awayLineupRes.data.id]);
+      // Load lineup slots for whatever lineups exist
+      const lineupIds = [homeLineupId, awayLineupId].filter(Boolean) as string[];
+      const { data: slots } = lineupIds.length > 0
+        ? await supabase.from('lineup_slots')
+            .select('id, lineup_id, player_profile_id, slot_position, role_type')
+            .in('lineup_id', lineupIds)
+        : { data: [] };
+
       const playerIds = (slots || []).filter(s => s.player_profile_id).map(s => s.player_profile_id!);
       const { data: players } = playerIds.length > 0 ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds) : { data: [] };
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-      const participants = (slots || []).map(slot => {
-        const clubId = slot.lineup_id === homeLineupRes.data!.id ? challenge.challenger_club_id : challenge.challenged_club_id;
+      // Create participants from lineup slots
+      const slotParticipants = (slots || []).map(slot => {
+        const clubId = homeLineupId && slot.lineup_id === homeLineupId ? challenge.challenger_club_id : challenge.challenged_club_id;
         const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
         return { match_id: match!.id, player_profile_id: slot.player_profile_id || null, club_id: clubId, lineup_slot_id: slot.id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId || null };
       });
-      if (participants.length > 0) await supabase.from('match_participants').insert(participants);
+
+      // Count players per club and fill to 11 with bots
+      const homeSlotCount = slotParticipants.filter(p => p.club_id === challenge.challenger_club_id).length;
+      const awaySlotCount = slotParticipants.filter(p => p.club_id === challenge.challenged_club_id).length;
+
+      const botParticipants: any[] = [];
+
+      // Fill home team bots
+      for (let i = homeSlotCount; i < 11; i++) {
+        const coords = DEFAULT_442_COORDS[i] || { x: 30, y: 50 };
+        botParticipants.push({
+          match_id: match!.id, player_profile_id: null, club_id: challenge.challenger_club_id,
+          lineup_slot_id: null, role_type: 'player', is_bot: true, is_ready: false, connected_user_id: null,
+          pos_x: coords.x, pos_y: coords.y,
+        });
+      }
+
+      // Fill away team bots (mirror x positions)
+      for (let i = awaySlotCount; i < 11; i++) {
+        const coords = DEFAULT_442_COORDS[i] || { x: 70, y: 50 };
+        botParticipants.push({
+          match_id: match!.id, player_profile_id: null, club_id: challenge.challenged_club_id,
+          lineup_slot_id: null, role_type: 'player', is_bot: true, is_ready: false, connected_user_id: null,
+          pos_x: 100 - coords.x, pos_y: coords.y,
+        });
+      }
+
+      const allParticipants = [...slotParticipants, ...botParticipants];
+      if (allParticipants.length > 0) await supabase.from('match_participants').insert(allParticipants);
 
       const { data: challengerMgr } = await supabase.from('manager_profiles').select('user_id').eq('id', challenge.challenger_manager_profile_id).single();
       const managerParticipants: any[] = [];
