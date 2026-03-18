@@ -1087,11 +1087,28 @@ Deno.serve(async (req) => {
         console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
         const { data: turnRows } = await supabase
           .from('match_turns')
-          .select('id')
+          .select('id, phase')
           .eq('match_id', match_id)
           .eq('turn_number', activeTurn.turn_number);
 
         const allTurnIds = (turnRows || []).map(t => t.id);
+
+        // ── Bot AI fallback: generate actions for inactive players ──
+        {
+          const { data: existingActions } = await supabase
+            .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds).eq('status', 'pending');
+          const submittedIds = new Set((existingActions || []).map((a: any) => a.participant_id));
+          const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
+
+          // Generate bot actions for each phase that had a turn
+          for (const turnRow of (turnRows || [])) {
+            await generateBotActions(
+              supabase, match_id, turnRow.id, participants || [],
+              submittedIds, activeTurn.ball_holder_participant_id,
+              possClubId, isLooseBall, turnRow.phase,
+            );
+          }
+        }
 
         const { data: rawActions } = await supabase
           .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
