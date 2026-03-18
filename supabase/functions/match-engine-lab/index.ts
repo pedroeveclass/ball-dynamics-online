@@ -526,7 +526,18 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
     const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
-    const { success, chance } = computeInterceptSuccess(context, bhAttrs, defAttrs);
+    // Determine ball height zone at intercept point
+    let ballHeightZone: 'green' | 'yellow' | 'red' = 'green';
+    const t = candidate.progress;
+    if (bhActionType === 'pass_high') {
+      if (t > 0.2 && t < 0.8) ballHeightZone = 'red';
+      else ballHeightZone = 'yellow';
+    } else if (bhActionType === 'pass_launch') {
+      if (t > 0.35 && t < 0.65) ballHeightZone = 'red';
+      else if (t > 0.05 && t < 0.95) ballHeightZone = 'yellow';
+    }
+    const defHeight = getPlayerHeight(candidate.participant);
+    const { success, chance } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight);
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
