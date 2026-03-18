@@ -1,9 +1,27 @@
+import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function PlayerProfilePage() {
   const { playerProfile } = useAuth();
+  const [clubName, setClubName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!playerProfile?.club_id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('clubs')
+        .select('name')
+        .eq('id', playerProfile.club_id)
+        .single();
+      if (data) setClubName(data.name);
+    })();
+  }, [playerProfile?.club_id]);
 
   if (!playerProfile) return <AppLayout><p className="text-muted-foreground">Carregando perfil...</p></AppLayout>;
 
@@ -12,7 +30,17 @@ export default function PlayerProfilePage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
-        <h1 className="font-display text-2xl font-bold">Perfil do Jogador</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-display text-2xl font-bold">Perfil do Jogador</h1>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" disabled className="opacity-50">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Em breve: criar mais jogadores</TooltipContent>
+          </Tooltip>
+        </div>
 
         <div className="stat-card space-y-4">
           <div className="flex items-center gap-4">
@@ -37,7 +65,7 @@ export default function PlayerProfilePage() {
             <div><span className="text-xs text-muted-foreground">Pé Dominante</span><p className="font-display font-bold">{p.dominant_foot === 'right' ? 'Direito' : p.dominant_foot === 'left' ? 'Esquerdo' : 'Ambos'}</p></div>
             <div><span className="text-xs text-muted-foreground">Arquétipo</span><p className="font-display font-bold">{p.archetype}</p></div>
             <div><span className="text-xs text-muted-foreground">Reputação</span><p className="font-display font-bold">{p.reputation}</p></div>
-            <div><span className="text-xs text-muted-foreground">Clube</span><p className="font-display font-bold">{p.club_id || 'Sem clube'}</p></div>
+            <div><span className="text-xs text-muted-foreground">Clube</span><p className="font-display font-bold">{clubName || (p.club_id ? 'Carregando...' : 'Sem clube')}</p></div>
             <div><span className="text-xs text-muted-foreground">Status</span><p className="font-display font-bold">{p.club_id ? 'Contratado' : 'Agente Livre'}</p></div>
           </div>
         </div>
