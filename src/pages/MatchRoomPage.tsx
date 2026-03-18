@@ -41,10 +41,16 @@ const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: str
 
 const DEFAULT_FORMATION = '4-4-2';
 
-function getFormationPositions(formation: string, isHome: boolean) {
+function getFormationPositions(formation: string, isHome: boolean, clampToOwnHalf = false) {
   const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS[DEFAULT_FORMATION];
-  if (isHome) return base;
-  return base.map(p => ({ ...p, x: 100 - p.x }));
+  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
+  if (clampToOwnHalf) {
+    positions = positions.map(p => ({
+      ...p,
+      x: isHome ? Math.min(p.x, 48) : Math.max(p.x, 52),
+    }));
+  }
+  return positions;
 }
 
 // ─── Types ────────────────────────────────────────────────────
