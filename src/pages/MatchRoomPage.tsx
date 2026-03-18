@@ -829,13 +829,13 @@ export default function MatchRoomPage() {
 
     const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
       const positions = getFormationPositions(formation, isHome);
-      // Sort so GK always gets index 0 (GK formation slot)
+      // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
       const sorted = [...list].sort((a, b) => {
         const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
         const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
         if (aIsGK && !bIsGK) return -1;
         if (!aIsGK && bIsGK) return 1;
-        return 0;
+        return a.id.localeCompare(b.id);
       });
       return sorted.map((p, i) => ({
         ...p,
