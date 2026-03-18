@@ -1,0 +1,1 @@
+ALTER TABLE public.player_profiles ADD COLUMN height text NOT NULL DEFAULT 'Médio';

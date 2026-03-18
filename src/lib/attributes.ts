@@ -1,4 +1,4 @@
-// Attribute generation based on position + body type
+// Attribute generation based on position + body type + height
 import type { TablesInsert } from '@/integrations/supabase/types';
 
 type AttrKeys = Omit<TablesInsert<'player_attributes'>, 'id' | 'player_profile_id' | 'created_at' | 'updated_at'>;
@@ -18,7 +18,7 @@ export const GK_ATTRS = [
 
 export const ALL_ATTRS = [...FIELD_ATTRS, ...GK_ATTRS] as const;
 
-// Body Type definitions - boosts applied on top of base
+// ── Field Player Body Types ──
 export const BODY_TYPES = [
   { value: 'All Around', label: 'All Around', description: 'Equilibrado em todos os atributos. Um jogador versátil.' },
   { value: 'Condutor', label: 'Condutor', description: 'Mais controle de bola, passe e técnica refinada.' },
@@ -28,7 +28,15 @@ export const BODY_TYPES = [
   { value: 'Cão de Guarda', label: 'Cão de Guarda', description: 'Mais marcação, desarme e posicionamento defensivo.' },
 ] as const;
 
+// ── GK-Specific Body Types ──
+export const GK_BODY_TYPES = [
+  { value: 'Goleiro Completo', label: 'Goleiro Completo', description: 'Equilibrado em todos os atributos de goleiro. Versátil e confiável.' },
+  { value: 'Goleiro Felino', label: 'Goleiro Felino', description: 'Ágil, reflexos rápidos, bom em saídas e duelos 1v1.' },
+  { value: 'Goleiro Muralha', label: 'Goleiro Muralha', description: 'Alto, dominante na área, forte em cruzamentos e defesa aérea.' },
+] as const;
+
 const bodyTypeBoosts: Record<string, Partial<Record<keyof AttrKeys, number>>> = {
+  // Field player body types
   'All Around': {
     velocidade: 3, forca: 3, drible: 3, passe_baixo: 3, acuracia_chute: 3, cabeceio: 3,
     marcacao: 3, visao_jogo: 3, resistencia: 3, controle_bola: 3,
@@ -53,6 +61,36 @@ const bodyTypeBoosts: Record<string, Partial<Record<keyof AttrKeys, number>>> = 
     marcacao: 7, desarme: 6, posicionamento_defensivo: 6, coragem: 5,
     antecipacao: 4, forca: 4, trabalho_equipe: 3,
   },
+  // GK body types
+  'Goleiro Completo': {
+    reflexo: 4, posicionamento_gol: 4, defesa_aerea: 3, pegada: 3, saida_gol: 3,
+    um_contra_um: 3, tempo_reacao: 3, comando_area: 3, distribuicao_curta: 3, distribuicao_longa: 3,
+  },
+  'Goleiro Felino': {
+    reflexo: 7, um_contra_um: 6, saida_gol: 5, agilidade: 5, tempo_reacao: 4,
+    aceleracao: 3, velocidade: 2,
+  },
+  'Goleiro Muralha': {
+    defesa_aerea: 7, comando_area: 6, pegada: 5, pulo: 5, forca: 4,
+    posicionamento_gol: 3, cabeceio: 2,
+  },
+};
+
+// ── Height Options ──
+export const HEIGHT_OPTIONS = [
+  { value: 'Muito Baixo', label: 'Muito Baixo (≤168cm)', description: 'Mais rápido e ágil, mas perde em cabeceio, pulo e força.' },
+  { value: 'Baixo', label: 'Baixo (169-174cm)', description: 'Ligeiramente mais veloz e ágil, pequena desvantagem aérea.' },
+  { value: 'Médio', label: 'Médio (175-180cm)', description: 'Equilibrado, sem bônus ou penalidades.' },
+  { value: 'Alto', label: 'Alto (181-187cm)', description: 'Melhor no jogo aéreo e força, um pouco menos ágil.' },
+  { value: 'Muito Alto', label: 'Muito Alto (≥188cm)', description: 'Dominante no ar e forte, mas perde velocidade e agilidade.' },
+] as const;
+
+const heightBoosts: Record<string, Partial<Record<keyof AttrKeys, number>>> = {
+  'Muito Baixo': { velocidade: 6, agilidade: 5, aceleracao: 4, cabeceio: -5, pulo: -4, forca: -3 },
+  'Baixo':       { velocidade: 3, agilidade: 3, cabeceio: -2, pulo: -2 },
+  'Médio':       {},
+  'Alto':        { cabeceio: 3, pulo: 3, forca: 2, velocidade: -2, agilidade: -2 },
+  'Muito Alto':  { cabeceio: 6, pulo: 5, forca: 4, velocidade: -5, agilidade: -4, aceleracao: -3 },
 };
 
 // Position base profiles
@@ -69,7 +107,7 @@ const positionProfiles: Record<string, Partial<Record<keyof AttrKeys, number>>> 
   'ST': { acuracia_chute: 8, forca_chute: 6, posicionamento_ofensivo: 8, cabeceio: 4, antecipacao: 4 },
 };
 
-// Age experience bonus: older players get more base points
+// Age experience bonus
 export function getAgeExperienceBonus(age: number): number {
   if (age <= 18) return 0;
   if (age === 19) return 2;
@@ -79,19 +117,16 @@ export function getAgeExperienceBonus(age: number): number {
   return 0;
 }
 
-export function generateBaseAttributes(position: string, bodyType: string, age: number): Record<string, number> {
+export function generateBaseAttributes(position: string, bodyType: string, age: number, height: string = 'Médio'): Record<string, number> {
   const isGK = position === 'GK';
-  const base = 35; // Lower novice base since player distributes 20 extra points
+  const base = 35;
   const gkBase = isGK ? 35 : 12;
 
   const attrs: Record<string, number> = {};
 
-  // Set field attribute bases
   for (const key of FIELD_ATTRS) {
-    attrs[key] = base + Math.floor(Math.random() * 3) - 1; // 34-36 range
+    attrs[key] = base + Math.floor(Math.random() * 3) - 1;
   }
-
-  // Set GK attribute bases
   for (const key of GK_ATTRS) {
     attrs[key] = gkBase + Math.floor(Math.random() * 3) - 1;
   }
@@ -112,7 +147,15 @@ export function generateBaseAttributes(position: string, bodyType: string, age: 
     }
   }
 
-  // Apply age experience bonus as a flat bump to all attributes
+  // Apply height boosts
+  const hBoosts = heightBoosts[height];
+  if (hBoosts) {
+    for (const [key, bonus] of Object.entries(hBoosts)) {
+      attrs[key] = Math.max(10, Math.min(65, (attrs[key] || 30) + (bonus || 0)));
+    }
+  }
+
+  // Apply age experience bonus
   const ageBonus = getAgeExperienceBonus(age);
   if (ageBonus > 0) {
     for (const key of Object.keys(attrs)) {
@@ -165,6 +208,41 @@ export function getTrainingGrowthRate(age: number): number {
   if (age <= 33) return 0.7;
   if (age <= 36) return 0.4;
   return 0.2;
+}
+
+// ── Attribute Quality Tiers ──
+export interface AttributeTier {
+  name: string;
+  label: string;
+  color: string; // tailwind text color class
+  bgColor: string; // tailwind bg color class
+  min: number;
+  max: number;
+  trainingMultiplier: number;
+}
+
+export const ATTRIBUTE_TIERS: AttributeTier[] = [
+  { name: 'star_quality', label: 'Qualidade Estrela ⭐', color: 'text-yellow-400', bgColor: 'bg-yellow-400/15', min: 95, max: 99, trainingMultiplier: 0.06 },
+  { name: 'supremo',      label: 'Supremo',             color: 'text-purple-400', bgColor: 'bg-purple-400/15', min: 90, max: 94.99, trainingMultiplier: 0.12 },
+  { name: 'excepcional',  label: 'Excepcional',         color: 'text-blue-400',   bgColor: 'bg-blue-400/15',   min: 85, max: 89.99, trainingMultiplier: 0.22 },
+  { name: 'excelente',    label: 'Excelente',           color: 'text-cyan-400',   bgColor: 'bg-cyan-400/15',   min: 80, max: 84.99, trainingMultiplier: 0.35 },
+  { name: 'bom',          label: 'Bom',                 color: 'text-emerald-400', bgColor: 'bg-emerald-400/15', min: 70, max: 79.99, trainingMultiplier: 0.5 },
+  { name: 'razoavel',     label: 'Razoável',            color: 'text-lime-400',   bgColor: 'bg-lime-400/15',   min: 60, max: 69.99, trainingMultiplier: 0.75 },
+  { name: 'mediano',      label: 'Mediano',             color: 'text-amber-400',  bgColor: 'bg-amber-400/15',  min: 50, max: 59.99, trainingMultiplier: 1.0 },
+  { name: 'fraco',        label: 'Fraco',               color: 'text-orange-400', bgColor: 'bg-orange-400/15', min: 40, max: 49.99, trainingMultiplier: 1.3 },
+  { name: 'ruim',         label: 'Ruim',                color: 'text-red-400',    bgColor: 'bg-red-400/15',    min: 30, max: 39.99, trainingMultiplier: 1.6 },
+  { name: 'pessimo',      label: 'Péssimo',             color: 'text-red-600',    bgColor: 'bg-red-600/15',    min: 10, max: 29.99, trainingMultiplier: 2.0 },
+];
+
+export function getAttributeTier(value: number): AttributeTier {
+  for (const tier of ATTRIBUTE_TIERS) {
+    if (value >= tier.min) return tier;
+  }
+  return ATTRIBUTE_TIERS[ATTRIBUTE_TIERS.length - 1];
+}
+
+export function getTrainingTierMultiplier(value: number): number {
+  return getAttributeTier(value).trainingMultiplier;
 }
 
 // Positions

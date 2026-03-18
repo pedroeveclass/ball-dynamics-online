@@ -971,6 +971,7 @@ export type Database = {
           energy_current: number
           energy_max: number
           full_name: string
+          height: string
           id: string
           last_trained_at: string | null
           money: number
@@ -991,6 +992,7 @@ export type Database = {
           energy_current?: number
           energy_max?: number
           full_name: string
+          height?: string
           id?: string
           last_trained_at?: string | null
           money?: number
@@ -1011,6 +1013,7 @@ export type Database = {
           energy_current?: number
           energy_max?: number
           full_name?: string
+          height?: string
           id?: string
           last_trained_at?: string | null
           money?: number
