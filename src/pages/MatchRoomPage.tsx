@@ -349,8 +349,8 @@ export default function MatchRoomPage() {
       const homeFmt = homeClubData.formation || DEFAULT_FORMATION;
       const awayFmt = awayClubData.formation || DEFAULT_FORMATION;
 
-      const homeWithPos = ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFmt, true, m.home_club_id);
-      const awayWithPos = ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFmt, false, m.away_club_id);
+      const homeWithPos = await ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFmt, true, m.home_club_id);
+      const awayWithPos = await ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFmt, false, m.away_club_id);
       const managersAndSpecs = enriched.filter(p => p.role_type !== 'player');
 
       setParticipants([...homeWithPos, ...awayWithPos, ...managersAndSpecs]);
