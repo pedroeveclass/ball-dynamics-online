@@ -308,7 +308,7 @@ export default function MatchRoomPage() {
           ...p,
           field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
           field_y: p.pos_y ?? positions[i]?.y ?? 50,
-          field_pos: p.slot_position || positions[i]?.pos || '?',
+          field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
           jersey_number: i + 1,
         }));
       };
