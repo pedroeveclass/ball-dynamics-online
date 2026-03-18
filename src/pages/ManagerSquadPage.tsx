@@ -3,6 +3,8 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
+import { EnergyBar } from '@/components/EnergyBar';
+import { PlayerCardDialog } from '@/components/PlayerCardDialog';
 import { Users } from 'lucide-react';
 
 interface SquadPlayer {
@@ -14,36 +16,33 @@ interface SquadPlayer {
   archetype: string;
   overall: number;
   weekly_salary: number;
+  energy_current: number;
+  energy_max: number;
 }
 
 export default function ManagerSquadPage() {
   const { club } = useAuth();
   const [players, setPlayers] = useState<SquadPlayer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!club) return;
-
     const fetchSquad = async () => {
-      // Query via contracts (source of truth) to get players with active contracts
       const { data: contracts } = await supabase
         .from('contracts')
         .select('player_profile_id, weekly_salary')
         .eq('club_id', club.id)
         .eq('status', 'active');
 
-      if (!contracts || contracts.length === 0) {
-        setPlayers([]);
-        setLoading(false);
-        return;
-      }
+      if (!contracts || contracts.length === 0) { setPlayers([]); setLoading(false); return; }
 
       const playerIds = contracts.map(c => c.player_profile_id);
       const salaryMap = new Map(contracts.map(c => [c.player_profile_id, c.weekly_salary]));
 
       const { data: playerData } = await supabase
         .from('player_profiles')
-        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary')
+        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max')
         .in('id', playerIds)
         .order('overall', { ascending: false });
 
@@ -53,12 +52,10 @@ export default function ManagerSquadPage() {
       })));
       setLoading(false);
     };
-
     fetchSquad();
   }, [club]);
 
   if (!club) return null;
-
   const totalWages = players.reduce((s, p) => s + p.weekly_salary, 0);
 
   return (
@@ -89,12 +86,17 @@ export default function ManagerSquadPage() {
                   <th className="py-2 pr-3">Posição</th>
                   <th className="py-2 pr-3">Tipo</th>
                   <th className="py-2 pr-3">Idade</th>
+                  <th className="py-2 pr-3">Energia</th>
                   <th className="py-2 pr-3 text-right">Salário/Sem</th>
                 </tr>
               </thead>
               <tbody>
                 {players.map(p => (
-                  <tr key={p.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={p.id}
+                    onClick={() => setSelectedPlayerId(p.id)}
+                    className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
+                  >
                     <td className="py-3 pr-3">
                       <span className="font-display text-lg font-extrabold text-tactical">{p.overall}</span>
                     </td>
@@ -107,6 +109,9 @@ export default function ManagerSquadPage() {
                     </td>
                     <td className="py-3 pr-3 text-muted-foreground">{p.archetype}</td>
                     <td className="py-3 pr-3 text-muted-foreground">{p.age}</td>
+                    <td className="py-3 pr-3 w-28">
+                      <EnergyBar current={p.energy_current} max={p.energy_max} />
+                    </td>
                     <td className="py-3 pr-3 text-right font-display font-bold">${p.weekly_salary.toLocaleString()}</td>
                   </tr>
                 ))}
@@ -115,6 +120,8 @@ export default function ManagerSquadPage() {
           </div>
         )}
       </div>
+
+      <PlayerCardDialog playerId={selectedPlayerId} onClose={() => setSelectedPlayerId(null)} clubName={club.name} />
     </ManagerLayout>
   );
 }
