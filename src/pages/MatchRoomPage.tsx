@@ -1751,7 +1751,7 @@ export default function MatchRoomPage() {
   const ballDisplayPos = getAnimatedBallPos();
 
   // ── Ball arc lift (visual only) for high passes, launches, and shots ──
-  const ballArcLift = useMemo(() => {
+  const ballArcLift = (() => {
     if (!animating || activeTurn?.phase !== 'resolution' || !ballHolder) return 0;
     const bhAllActions = turnActions
       .filter(a => a.participant_id === ballHolder.id)
@@ -1760,7 +1760,6 @@ export default function MatchRoomPage() {
     if (!ballAction) return 0;
 
     const actionType = ballAction.action_type;
-    // Arc height in SVG units — matches solo lab proportions
     let arcHeight = 0;
     if (actionType === 'pass_high') arcHeight = 30;
     else if (actionType === 'pass_launch') arcHeight = 45;
@@ -1768,9 +1767,8 @@ export default function MatchRoomPage() {
     else if (actionType === 'shoot_power') arcHeight = 9;
     else return 0;
 
-    // Use raw animProgress (0→1) for the parabolic arc
     return Math.sin(animProgress * Math.PI) * arcHeight;
-  }, [animating, activeTurn?.phase, ballHolder, turnActions, animProgress]);
+  })();
 
   // Arrow from drawing action
   const drawingFrom = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
