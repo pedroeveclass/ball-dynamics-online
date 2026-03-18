@@ -1369,8 +1369,8 @@ export default function MatchRoomPage() {
               setCarriedLooseBallPos(newPos);
               finalBallPosRef.current = newPos;
               setFinalBallPos(newPos);
-              // Inertia consumed — ball will stop next turn
-              setBallInertiaDir(null);
+              // Mark inertia as consumed — ball will stop next turn
+              inertiaConsumedRef.current = true;
               lastBallDirRef.current = null;
             }
           
