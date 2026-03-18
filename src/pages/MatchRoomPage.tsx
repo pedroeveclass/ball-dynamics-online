@@ -88,6 +88,7 @@ interface MatchAction {
   match_turn_id: string;
   participant_id: string;
   controlled_by_type: string;
+  controlled_by_user_id?: string | null;
   action_type: string;
   target_x: number | null;
   target_y: number | null;
@@ -96,6 +97,7 @@ interface MatchAction {
   created_at?: string;
   turn_phase?: string | null;
   turn_number?: number;
+  payload?: any;
 }
 
 interface PendingInterceptChoice {
