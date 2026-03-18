@@ -503,9 +503,15 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const result: Record<string, number> = {};
     const keys = ['drible','controle_bola','forca','agilidade','desarme','marcacao','antecipacao',
       'passe_baixo','passe_alto','visao_jogo','tomada_decisao','um_toque','acuracia_chute',
-      'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao'];
+      'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao',
+      'cabeceio','pulo','defesa_aerea'];
     for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
     return result;
+  };
+
+  const getPlayerHeight = (participant: any): string => {
+    if (!participant?.player_profile_id || !playerProfilesMap) return 'Médio';
+    return playerProfilesMap[participant.player_profile_id]?.height || 'Médio';
   };
 
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
