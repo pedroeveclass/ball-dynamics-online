@@ -1115,104 +1115,28 @@ Deno.serve(async (req) => {
               }
             } else if (isPassType(ballHolderAction.action_type)) {
               if (ballHolderAction.target_participant_id) {
-                nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-              } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
-                let closestDist = Infinity;
-                let closestId: string | null = null;
-                for (const p of (participants || [])) {
-                  if (p.id === ballHolder.id) continue;
-                  const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive'));
-                  const px = moveAction?.target_x ?? p.pos_x ?? 50;
-                  const py = moveAction?.target_y ?? p.pos_y ?? 50;
-                  const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
-                  if (dist < closestDist) {
-                    closestDist = dist;
-                    closestId = p.id;
-                  }
-                }
-                if (closestId && closestDist <= 8) {
-                  nextBallHolderParticipantId = closestId;
-                  const closestPlayer = (participants || []).find(p => p.id === closestId);
-                  if (closestPlayer && closestPlayer.club_id !== possClubId) {
-                    newPossessionClubId = closestPlayer.club_id;
-                    await supabase.from('match_event_logs').insert({
-                      match_id, event_type: 'possession_change',
-                      title: '🔄 Troca de posse',
-                      body: 'Passe interceptado pelo adversário mais próximo.',
-                    });
-                  }
+                // Only give ball if target submitted a 'receive' action
+                const receiverAction = allActions.find(a => a.participant_id === ballHolderAction.target_participant_id && a.action_type === 'receive');
+                if (receiverAction) {
+                  nextBallHolderParticipantId = ballHolderAction.target_participant_id;
                 } else {
                   nextBallHolderParticipantId = null;
                   await supabase.from('match_event_logs').insert({
                     match_id, event_type: 'loose_ball',
                     title: '⚽ Bola solta!',
-                    body: 'Passe para área vazia. Ninguém está com a bola.',
+                    body: 'O destinatário não dominou a bola.',
                   });
                 }
+              } else {
+                // Pass to empty space — always loose ball
+                nextBallHolderParticipantId = null;
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'loose_ball',
+                  title: '⚽ Bola solta!',
+                  body: 'Passe para área vazia. Ninguém dominou a bola.',
+                });
               }
-            } else if (ballHolderAction.action_type === 'move') {
-              nextBallHolderParticipantId = ballHolder.id;
             }
-          }
-        } else {
-          // ── LOOSE BALL HANDLING ──
-          // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
-          const { data: prevTurnData } = await supabase
-            .from('match_turns')
-            .select('ball_holder_participant_id')
-            .eq('match_id', match_id)
-            .eq('turn_number', match.current_turn_number - 1)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
-
-          const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
-
-          if (looseBallClaimer) {
-            nextBallHolderParticipantId = looseBallClaimer.id;
-            newPossessionClubId = looseBallClaimer.club_id;
-
-            await supabase.from('match_event_logs').insert({
-              match_id,
-              event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
-              title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
-              body: 'Quem chegou primeiro na bola solta ficou com a posse.',
-            });
-          } else {
-            nextBallHolderParticipantId = null;
-            if (wasAlreadyLoose) {
-              // Ball was already loose — inertia stops, ball is stationary
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'ball_stopped',
-                title: '⚽ Bola parada',
-                body: 'A bola perdeu a inércia e está parada no campo.',
-              });
-            } else {
-              // First turn loose — apply 15% inertia drift and persist new ball coords
-              // Find last ball action to get direction
-              const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
-              let inertiaBallX = ballEndPos?.x ?? 50;
-              let inertiaBallY = ballEndPos?.y ?? 50;
-              if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
-                const startX = Number(ballHolder.pos_x ?? 50);
-                const startY = Number(ballHolder.pos_y ?? 50);
-                const dirX = Number(prevBhAction.target_x) - startX;
-                const dirY = Number(prevBhAction.target_y) - startY;
-                inertiaBallX = Math.max(0, Math.min(100, Number(prevBhAction.target_x) + dirX * 0.15));
-                inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
-              }
-              ballEndPos = { x: inertiaBallX, y: inertiaBallY };
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'ball_inertia',
-                title: '⚽ Bola continua rolando...',
-                body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-                payload: { ball_x: inertiaBallX, ball_y: inertiaBallY },
-              });
-            }
-          }
-        }
 
         // ── Apply deferred ball holder move (after ball resolution) ──
         if (bhHasBallAction && ballHolder) {
