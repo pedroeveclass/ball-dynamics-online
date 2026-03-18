@@ -64,10 +64,24 @@ function computeDeviation(
   if (actionType === 'shoot_controlled' || actionType === 'shoot_power') {
     const goalX = targetX > 50 ? 100 : 0;
     const distFromGoal = Math.abs(startX - goalX);
-    if (distFromGoal > 25) {
+    // Block shots from defensive half entirely (make them miss badly)
+    if (distFromGoal > 50) {
+      difficultyMultiplier += 20; // Near-impossible from own half
+      console.log(`[ENGINE] Shot from defensive half blocked: distFromGoal=${distFromGoal.toFixed(1)}`);
+    } else if (distFromGoal > 25) {
       const extraPenalty = Math.pow((distFromGoal - 25) / 25, 1.5) * 5;
       difficultyMultiplier += extraPenalty;
       console.log(`[ENGINE] Shot distance penalty: distFromGoal=${distFromGoal.toFixed(1)} extraMult=${extraPenalty.toFixed(2)} totalMult=${difficultyMultiplier.toFixed(2)}`);
+    }
+  }
+
+  // Pass distance penalty — longer passes are less accurate
+  if (isPassType(actionType)) {
+    const maxPassDist = actionType === 'pass_low' ? 50 : actionType === 'pass_high' ? 60 : 70;
+    if (dist > maxPassDist) {
+      const overPct = (dist - maxPassDist) / maxPassDist;
+      difficultyMultiplier += overPct * 8;
+      console.log(`[ENGINE] Pass distance over limit: dist=${dist.toFixed(1)} max=${maxPassDist} penalty=${(overPct * 8).toFixed(2)}`);
     }
   }
 
