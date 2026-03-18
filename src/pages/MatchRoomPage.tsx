@@ -821,7 +821,15 @@ export default function MatchRoomPage() {
 
     const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
       const positions = getFormationPositions(formation, isHome);
-      return list.map((p, i) => ({
+      // Sort so GK always gets index 0 (GK formation slot)
+      const sorted = [...list].sort((a, b) => {
+        const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
+        const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
+        if (aIsGK && !bIsGK) return -1;
+        if (!aIsGK && bIsGK) return 1;
+        return 0;
+      });
+      return sorted.map((p, i) => ({
         ...p,
         field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
         field_y: p.pos_y ?? positions[i]?.y ?? 50,
