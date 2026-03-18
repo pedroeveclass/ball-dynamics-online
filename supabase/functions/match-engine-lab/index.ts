@@ -1273,7 +1273,7 @@ Deno.serve(async (req) => {
             await generateBotActions(
               supabase, match_id, turnRow.id, participants || [],
               submittedIds, activeTurn.ball_holder_participant_id,
-              possClubId, isLooseBall, turnRow.phase,
+              possClubId, isLooseBall, turnRow.phase, match,
             );
           }
         }
