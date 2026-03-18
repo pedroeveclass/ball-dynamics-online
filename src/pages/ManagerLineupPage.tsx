@@ -183,12 +183,13 @@ export default function ManagerLineupPage() {
 
     setSquad(players || []);
 
-    // Load existing active lineup
+    // Load latest active lineup
     const { data: lineup } = await supabase
       .from('lineups')
       .select('*')
       .eq('club_id', club.id)
       .eq('is_active', true)
+      .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
@@ -199,7 +200,8 @@ export default function ManagerLineupPage() {
       const { data: slotsData } = await supabase
         .from('lineup_slots')
         .select('*')
-        .eq('lineup_id', lineup.id);
+        .eq('lineup_id', lineup.id)
+        .order('sort_order', { ascending: true });
 
       if (slotsData) {
         const starters = slotsData.filter(s => s.role_type === 'starter').map(s => ({
@@ -309,55 +311,63 @@ export default function ManagerLineupPage() {
     if (!club) return;
     setSaving(true);
 
+    const now = new Date().toISOString();
+
     try {
-      let currentLineupId = lineupId;
-
-      if (!currentLineupId) {
-        // Deactivate any existing
-        await supabase.from('lineups').update({ is_active: false }).eq('club_id', club.id).eq('is_active', true);
-
-        const { data: newLineup, error } = await supabase
-          .from('lineups')
-          .insert({ club_id: club.id, formation, is_active: true })
-          .select()
-          .single();
-
-        if (error || !newLineup) throw error;
-        currentLineupId = newLineup.id;
-        setLineupId(currentLineupId);
-      } else {
-        await supabase.from('lineups').update({ formation, updated_at: new Date().toISOString() }).eq('id', currentLineupId);
-        await supabase.from('lineup_slots').delete().eq('lineup_id', currentLineupId);
-      }
-
       const slotsToInsert = [
         ...assignments.map((a, i) => ({
-          lineup_id: currentLineupId!,
           player_profile_id: a.player_profile_id,
           slot_position: a.slot_position,
-          role_type: 'starter',
+          role_type: 'starter' as const,
           sort_order: i,
         })),
         ...benchPlayers.map((id, i) => ({
-          lineup_id: currentLineupId!,
           player_profile_id: id,
           slot_position: `BENCH_${i + 1}`,
-          role_type: 'bench',
+          role_type: 'bench' as const,
           sort_order: i,
         })),
       ];
 
+      const { data: newLineup, error: lineupError } = await supabase
+        .from('lineups')
+        .insert({ club_id: club.id, formation, is_active: true, updated_at: now })
+        .select()
+        .single();
+
+      if (lineupError || !newLineup) throw lineupError ?? new Error('Falha ao criar nova versão da escalação.');
+
       if (slotsToInsert.length > 0) {
-        const { error } = await supabase.from('lineup_slots').insert(slotsToInsert);
-        if (error) throw error;
+        const { error: slotsError } = await supabase.from('lineup_slots').insert(
+          slotsToInsert.map((slot) => ({
+            lineup_id: newLineup.id,
+            ...slot,
+          }))
+        );
+
+        if (slotsError) {
+          await supabase.from('lineups').delete().eq('id', newLineup.id);
+          throw slotsError;
+        }
       }
 
-      toast({ title: 'Escalação salva!', description: 'A escalação foi salva com sucesso.' });
-    } catch (err) {
-      toast({ title: 'Erro ao salvar', description: 'Não foi possível salvar a escalação.', variant: 'destructive' });
-    }
+      const { error: cleanupError } = await supabase
+        .from('lineups')
+        .update({ is_active: false, updated_at: now })
+        .eq('club_id', club.id)
+        .eq('is_active', true)
+        .neq('id', newLineup.id);
 
-    setSaving(false);
+      if (cleanupError) throw cleanupError;
+
+      setLineupId(newLineup.id);
+      toast({ title: 'Escalação salva!', description: 'A nova formação foi salva sem alterar partidas já criadas.' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Não foi possível salvar a escalação.';
+      toast({ title: 'Erro ao salvar', description: message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!club) return null;
