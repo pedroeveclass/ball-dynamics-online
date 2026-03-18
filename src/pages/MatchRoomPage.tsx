@@ -2618,6 +2618,7 @@ export default function MatchRoomPage() {
                             icon = '🛡️';
                           }
                         }
+                      }
                     }
                     return (
                       <button
