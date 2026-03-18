@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const PHASE_DURATION_MS = 6000;
-const POSITIONING_PHASE_DURATION_MS = 15000;
+const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 type Phase = typeof PHASES[number];
