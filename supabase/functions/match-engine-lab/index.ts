@@ -1142,7 +1142,62 @@ Deno.serve(async (req) => {
           }
         } else {
           // ── LOOSE BALL HANDLING ──
-        if (bhHasBallAction && ballHolder) {
+          // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
+          const { data: prevTurnData } = await supabase
+            .from('match_turns')
+            .select('ball_holder_participant_id')
+            .eq('match_id', match_id)
+            .eq('turn_number', match.current_turn_number - 1)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
+
+          const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
+
+          if (looseBallClaimer) {
+            nextBallHolderParticipantId = looseBallClaimer.id;
+            newPossessionClubId = looseBallClaimer.club_id;
+
+            await supabase.from('match_event_logs').insert({
+              match_id,
+              event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
+              title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
+              body: 'Quem chegou primeiro na bola solta ficou com a posse.',
+            });
+          } else {
+            nextBallHolderParticipantId = null;
+            if (wasAlreadyLoose) {
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'ball_stopped',
+                title: '⚽ Bola parada',
+                body: 'A bola perdeu a inércia e está parada no campo.',
+              });
+            } else {
+              const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
+              let inertiaBallX = ballEndPos?.x ?? 50;
+              let inertiaBallY = ballEndPos?.y ?? 50;
+              if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
+                const startX = Number(ballHolder.pos_x ?? 50);
+                const startY = Number(ballHolder.pos_y ?? 50);
+                const dirX = Number(prevBhAction.target_x) - startX;
+                const dirY = Number(prevBhAction.target_y) - startY;
+                inertiaBallX = Math.max(0, Math.min(100, Number(prevBhAction.target_x) + dirX * 0.15));
+                inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
+              }
+              ballEndPos = { x: inertiaBallX, y: inertiaBallY };
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'ball_inertia',
+                title: '⚽ Bola continua rolando...',
+                body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+                payload: { ball_x: inertiaBallX, ball_y: inertiaBallY },
+              });
+            }
+          }
+        }
+
+        // ── Apply deferred ball holder move (after ball resolution) ──
           const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
           if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
             await supabase.from('match_participants').update({
