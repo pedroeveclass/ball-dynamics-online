@@ -1346,6 +1346,7 @@ Deno.serve(async (req) => {
         target_participant_id: target_participant_id || null,
         target_x: target_x ?? null,
         target_y: target_y ?? null,
+        payload: body.payload || null,
         status: 'pending',
       });
 
