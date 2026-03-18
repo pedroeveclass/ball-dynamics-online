@@ -1136,9 +1136,12 @@ Deno.serve(async (req) => {
                   body: 'Passe para área vazia. Ninguém dominou a bola.',
                 });
               }
+            } else if (ballHolderAction.action_type === 'move') {
+              nextBallHolderParticipantId = ballHolder.id;
             }
-
-        // ── Apply deferred ball holder move (after ball resolution) ──
+          }
+        } else {
+          // ── LOOSE BALL HANDLING ──
         if (bhHasBallAction && ballHolder) {
           const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
           if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
