@@ -50,7 +50,7 @@ function getFormationForFill(formation: string, isHome: boolean): Array<{ x: num
   return base.map(p => ({ ...p, x: 100 - p.x }));
 }
 
-// ─── Bot AI: generate fallback actions ─────────────────────────
+// ─── Bot AI: generate smart fallback actions ─────────────────
 async function generateBotActions(
   supabase: any,
   matchId: string,
@@ -61,6 +61,7 @@ async function generateBotActions(
   possClubId: string | null,
   isLooseBall: boolean,
   phase: string,
+  match?: any,
 ) {
   const botsToAct: any[] = [];
 
@@ -68,7 +69,6 @@ async function generateBotActions(
     if (p.role_type !== 'player') continue;
     if (submittedParticipantIds.has(p.id)) continue;
 
-    // Determine if this participant should act in this phase
     const isAttacker = p.club_id === possClubId;
     const isBH = p.id === ballHolderId;
 
@@ -81,24 +81,106 @@ async function generateBotActions(
 
   if (botsToAct.length === 0) return;
 
+  // Get formations for tactical positioning
+  const homeClubId = match?.home_club_id;
+  const awayClubId = match?.away_club_id;
+
+  // Helper: get ball position
+  const getBallPos = (): { x: number; y: number } => {
+    if (ballHolderId) {
+      const bh = participants.find((p: any) => p.id === ballHolderId);
+      if (bh) return { x: Number(bh.pos_x ?? 50), y: Number(bh.pos_y ?? 50) };
+    }
+    return { x: 50, y: 50 };
+  };
+
+  const ballPos = getBallPos();
+
+  // Helper: get shifted formation position based on ball position
+  const getShiftedFormationTarget = (bot: any, isHome: boolean): { x: number; y: number } => {
+    const posX = Number(bot.pos_x ?? 50);
+    const posY = Number(bot.pos_y ?? 50);
+    // Shift formation toward ball position
+    const shiftX = (ballPos.x - 50) * 0.25; // 25% shift toward ball horizontally
+    const shiftY = (ballPos.y - 50) * 0.15; // 15% shift vertically
+    return {
+      x: Math.max(2, Math.min(98, posX + shiftX)),
+      y: Math.max(2, Math.min(98, posY + shiftY)),
+    };
+  };
+
+  // Helper: find closest teammate ahead
+  const getForwardTeammate = (bot: any): any | null => {
+    const teammates = participants.filter(
+      (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
+    );
+    if (teammates.length === 0) return null;
+    const isHome = bot.club_id === homeClubId;
+    const forwardDir = isHome ? 1 : -1;
+    // Prefer teammates that are forward and not too far
+    const scored = teammates.map((t: any) => {
+      const tx = Number(t.pos_x ?? 50);
+      const ty = Number(t.pos_y ?? 50);
+      const bx = Number(bot.pos_x ?? 50);
+      const forwardness = (tx - bx) * forwardDir;
+      const dist = Math.sqrt((tx - bx) ** 2 + (ty - Number(bot.pos_y ?? 50)) ** 2);
+      return { ...t, score: forwardness * 0.6 - dist * 0.4, dist };
+    }).sort((a: any, b: any) => b.score - a.score);
+    return scored[0] || null;
+  };
+
+  // Helper: is near opponent goal
+  const isNearGoal = (bot: any): boolean => {
+    const x = Number(bot.pos_x ?? 50);
+    const isHome = bot.club_id === homeClubId;
+    return isHome ? x > 70 : x < 30;
+  };
+
+  // Helper: is in own half
+  const isInOwnHalf = (bot: any): boolean => {
+    const x = Number(bot.pos_x ?? 50);
+    const isHome = bot.club_id === homeClubId;
+    return isHome ? x < 50 : x > 50;
+  };
+
+  // Helper: get slot position from lineup
+  const getSlotPos = (bot: any): string => {
+    // Simple: use what we have
+    return bot.slot_position || '';
+  };
+
   const actions: any[] = [];
 
   for (const bot of botsToAct) {
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
     const isBH = bot.id === ballHolderId;
+    const isHome = bot.club_id === homeClubId;
+    const slotPos = getSlotPos(bot);
+    const isGK = slotPos === 'GK' || posX <= 7 || posX >= 93; // Rough GK detection
 
     if (isBH && phase === 'ball_holder') {
-      // Ball holder bot: pass to nearest teammate
-      const teammates = participants.filter(
-        (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
-      );
-      if (teammates.length > 0) {
-        // Find closest teammate ahead
-        const forward = teammates
-          .map((t: any) => ({ ...t, dist: Math.sqrt((Number(t.pos_x ?? 50) - posX) ** 2 + (Number(t.pos_y ?? 50) - posY) ** 2) }))
-          .sort((a: any, b: any) => a.dist - b.dist);
-        const target = forward[0];
+      // ── Ball holder bot decision making ──
+      if (isNearGoal(bot)) {
+        // Near goal: try to shoot
+        const goalX = isHome ? 100 : 0;
+        const goalY = 45 + Math.random() * 10; // Aim roughly at goal center
+        const distToGoal = Math.abs(posX - goalX);
+        if (distToGoal < 25) {
+          // Close enough to shoot
+          const shootType = Math.random() < 0.5 ? 'shoot_controlled' : 'shoot_power';
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: shootType,
+            target_x: goalX, target_y: goalY, status: 'pending',
+          });
+          continue;
+        }
+      }
+
+      // Find best passing target
+      const target = getForwardTeammate(bot);
+      if (target) {
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'pass_low',
@@ -106,54 +188,102 @@ async function generateBotActions(
           target_participant_id: target.id, status: 'pending',
         });
       } else {
-        // No teammates — just hold position
+        // No good target: dribble forward
+        const moveX = isHome ? Math.min(98, posX + 5 + Math.random() * 3) : Math.max(2, posX - 5 - Math.random() * 3);
+        const moveY = posY + (Math.random() - 0.5) * 6;
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
-          target_x: posX, target_y: posY, status: 'pending',
+          target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending',
+        });
+      }
+    } else if (phase === 'defending_response') {
+      // ── Defending bots ──
+      if (isGK && ballHolderId) {
+        // GK bot: position between ball and goal center
+        const goalX = isHome ? 5 : 95;
+        const goalY = 50;
+        const targetX = goalX + (ballPos.x - goalX) * 0.15;
+        const targetY = goalY + (ballPos.y - goalY) * 0.3;
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(15, Math.min(85, targetY)),
+          status: 'pending',
+        });
+      } else if (ballHolderId) {
+        // Defenders: press ball carrier if close, otherwise maintain formation shifted toward ball
+        const bhDist = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
+        if (bhDist < 15) {
+          // Close to ball: press toward ball carrier
+          const pressX = posX + (ballPos.x - posX) * 0.4;
+          const pressY = posY + (ballPos.y - posY) * 0.4;
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: Math.max(2, Math.min(98, pressX)), target_y: Math.max(2, Math.min(98, pressY)),
+            status: 'pending',
+          });
+        } else {
+          // Formation-aware: shift toward ball as a unit
+          const shifted = getShiftedFormationTarget(bot, isHome);
+          // Also compress defense line
+          const compressX = isHome ? Math.min(shifted.x, ballPos.x - 5) : Math.max(shifted.x, ballPos.x + 5);
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: Math.max(2, Math.min(98, compressX)), target_y: Math.max(2, Math.min(98, shifted.y)),
+            status: 'pending',
+          });
+        }
+      } else {
+        // Loose ball: move toward ball
+        const targetX = posX + (ballPos.x - posX) * 0.2 + (Math.random() - 0.5) * 3;
+        const targetY = posY + (ballPos.y - posY) * 0.2 + (Math.random() - 0.5) * 3;
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(2, Math.min(98, targetY)),
+          status: 'pending',
+        });
+      }
+    } else if (phase === 'attacking_support') {
+      // ── Attacking support bots ──
+      if (isGK) {
+        // GK stays back during attack
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: posX + (Math.random() - 0.5) * 2, target_y: posY + (Math.random() - 0.5) * 2,
+          status: 'pending',
+        });
+      } else {
+        // Move forward to provide passing options — shift formation toward ball
+        const shifted = getShiftedFormationTarget(bot, isHome);
+        const pushForwardX = isHome ? shifted.x + 3 : shifted.x - 3;
+        const spreadY = shifted.y + (Math.random() - 0.5) * 6;
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: Math.max(2, Math.min(98, pushForwardX)), target_y: Math.max(2, Math.min(98, spreadY)),
+          status: 'pending',
         });
       }
     } else {
-      // Non-ball-holder bot or positioning: move slightly toward ball or hold formation
-      let targetX = posX;
-      let targetY = posY;
-
-      if (isLooseBall) {
-        // Move toward ball area (center-ish) with some randomness
-        targetX = posX + (50 - posX) * 0.15 + (Math.random() - 0.5) * 4;
-        targetY = posY + (50 - posY) * 0.15 + (Math.random() - 0.5) * 4;
-      } else if (ballHolderId) {
-        const bh = participants.find((p: any) => p.id === ballHolderId);
-        if (bh) {
-          const bhX = Number(bh.pos_x ?? 50);
-          const bhY = Number(bh.pos_y ?? 50);
-          const isAttacker = bot.club_id === possClubId;
-          if (isAttacker) {
-            // Move toward ball holder to offer support
-            targetX = posX + (bhX - posX) * 0.1 + (Math.random() - 0.5) * 3;
-            targetY = posY + (bhY - posY) * 0.1 + (Math.random() - 0.5) * 3;
-          } else {
-            // Defender: move toward ball holder to mark
-            targetX = posX + (bhX - posX) * 0.12 + (Math.random() - 0.5) * 3;
-            targetY = posY + (bhY - posY) * 0.12 + (Math.random() - 0.5) * 3;
-          }
-        }
-      }
-
-      targetX = Math.max(1, Math.min(99, targetX));
-      targetY = Math.max(1, Math.min(99, targetY));
-
+      // Positioning phases or fallback: shift formation toward ball
+      const shifted = getShiftedFormationTarget(bot, isHome);
       actions.push({
         match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
         controlled_by_type: 'bot', action_type: 'move',
-        target_x: targetX, target_y: targetY, status: 'pending',
+        target_x: Math.max(1, Math.min(99, shifted.x)), target_y: Math.max(1, Math.min(99, shifted.y)),
+        status: 'pending',
       });
     }
   }
 
   if (actions.length > 0) {
     await supabase.from('match_actions').insert(actions);
-    console.log(`[ENGINE] Bot AI generated ${actions.length} fallback actions for phase ${phase}`);
+    console.log(`[ENGINE] Bot AI generated ${actions.length} tactical actions for phase ${phase}`);
   }
 }
 type Phase = typeof PHASES[number];
@@ -298,6 +428,8 @@ function computeInterceptSuccess(
   context: InterceptContext,
   attackerAttrs: Record<string, number>,
   defenderAttrs: Record<string, number>,
+  ballHeightZone?: 'green' | 'yellow' | 'red',
+  defenderHeight?: string,
 ): { success: boolean; chance: number } {
   let attackerSkill: number;
   let defenderSkill: number;
@@ -331,15 +463,34 @@ function computeInterceptSuccess(
   }
 
   let successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
+
+  // ── Ball height zone modifier (Phase 4) ──
+  if (ballHeightZone === 'yellow') {
+    // Yellow zone: height-related attributes matter
+    const heightBonus = (normalizeAttr(defenderAttrs.cabeceio ?? 40) * 0.3 +
+      normalizeAttr(defenderAttrs.pulo ?? 40) * 0.3 +
+      normalizeAttr(defenderAttrs.defesa_aerea ?? 40) * 0.2 +
+      normalizeAttr(defenderAttrs.forca ?? 40) * 0.2);
+    
+    // Player height modifier
+    const heightMods: Record<string, number> = {
+      'Muito Baixo': -0.15, 'Baixo': -0.08, 'Médio': 0, 'Alto': 0.10, 'Muito Alto': 0.15,
+    };
+    const heightMod = heightMods[defenderHeight || 'Médio'] ?? 0;
+    
+    successChance *= (0.7 + heightBonus * 0.6 + heightMod);
+    console.log(`[ENGINE] Yellow zone: heightBonus=${heightBonus.toFixed(2)} heightMod=${heightMod} adjusted chance`);
+  }
+
   successChance = Math.max(0.05, Math.min(0.95, successChance));
 
   const roll = Math.random();
   const success = roll < successChance;
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success}`);
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} zone=${ballHeightZone || 'green'}`);
   return { success, chance: successChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -352,9 +503,15 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const result: Record<string, number> = {};
     const keys = ['drible','controle_bola','forca','agilidade','desarme','marcacao','antecipacao',
       'passe_baixo','passe_alto','visao_jogo','tomada_decisao','um_toque','acuracia_chute',
-      'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao'];
+      'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao',
+      'cabeceio','pulo','defesa_aerea'];
     for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
     return result;
+  };
+
+  const getPlayerHeight = (participant: any): string => {
+    if (!participant?.player_profile_id || !playerProfilesMap) return 'Médio';
+    return playerProfilesMap[participant.player_profile_id]?.height || 'Médio';
   };
 
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
@@ -369,7 +526,18 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
     const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
-    const { success, chance } = computeInterceptSuccess(context, bhAttrs, defAttrs);
+    // Determine ball height zone at intercept point
+    let ballHeightZone: 'green' | 'yellow' | 'red' = 'green';
+    const t = candidate.progress;
+    if (bhActionType === 'pass_high') {
+      if (t > 0.2 && t < 0.8) ballHeightZone = 'red';
+      else ballHeightZone = 'yellow';
+    } else if (bhActionType === 'pass_launch') {
+      if (t > 0.35 && t < 0.65) ballHeightZone = 'red';
+      else if (t > 0.05 && t < 0.95) ballHeightZone = 'yellow';
+    }
+    const defHeight = getPlayerHeight(candidate.participant);
+    const { success, chance } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight);
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
@@ -1105,7 +1273,7 @@ Deno.serve(async (req) => {
             await generateBotActions(
               supabase, match_id, turnRow.id, participants || [],
               submittedIds, activeTurn.ball_holder_participant_id,
-              possClubId, isLooseBall, turnRow.phase,
+              possClubId, isLooseBall, turnRow.phase, match,
             );
           }
         }
@@ -1674,7 +1842,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const { participant_id, action_type, target_participant_id, target_x, target_y } = body;
+      const { participant_id, action_type, target_participant_id, target_x, target_y, payload: actionPayload } = body;
 
       let activeTurn: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -1729,6 +1897,7 @@ Deno.serve(async (req) => {
         target_x: target_x ?? null,
         target_y: target_y ?? null,
         status: 'pending',
+        payload: actionPayload || null,
       });
 
       return new Response(JSON.stringify({ status: 'action_submitted', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -931,7 +931,7 @@ export default function MatchRoomPage() {
     } catch (e) { console.error('Engine call failed:', e); return {}; }
   };
 
-  const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string) => {
+  const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
     if (!matchId || !pid) return;
     setSubmittingAction(true);
@@ -941,6 +941,7 @@ export default function MatchRoomPage() {
         participant_id: pid, action_type: actionType,
         target_x: targetX, target_y: targetY,
         target_participant_id: targetParticipantId,
+        ...(payload ? { payload } : {}),
       });
       if (!response.ok && !result?.error) {
         throw new Error('Erro ao enviar ação');
@@ -997,6 +998,17 @@ export default function MatchRoomPage() {
       setPendingInterceptChoice(null);
       return;
     }
+    // One-touch actions: if player has a pendingInterceptChoice (they clicked on a trajectory),
+    // pass/shoot actions become one-touch — they need a target, so enter drawing mode with the
+    // intercept position as the starting point for the action
+    if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId &&
+        (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch' || actionType === 'shoot_controlled' || actionType === 'shoot_power')) {
+      // Store the one-touch context — the drawing will submit with one_touch payload
+      setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
+      setShowActionMenu(null);
+      // Keep pendingInterceptChoice alive so we know this is a one-touch
+      return;
+    }
     setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
     setShowActionMenu(null);
     setPendingInterceptChoice(null);
@@ -1012,13 +1024,17 @@ export default function MatchRoomPage() {
       return Math.sqrt(dx * dx + dy * dy) < 5;
     });
 
+    // Determine if this is a one-touch action (player intercepting trajectory + choosing pass/shoot)
+    const isOneTouch = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId;
+    const oneTouchPayload = isOneTouch ? { one_touch: true, intercept_x: pendingInterceptChoice!.targetX, intercept_y: pendingInterceptChoice!.targetY } : undefined;
+
     if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62), undefined, oneTouchPayload);
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id, oneTouchPayload);
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
       const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
@@ -1485,7 +1501,7 @@ export default function MatchRoomPage() {
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
-      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? ['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action'] : ['no_action', 'move'];
       if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
       return [];
     }
@@ -1493,7 +1509,7 @@ export default function MatchRoomPage() {
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
-    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action'] : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
   };
@@ -2605,7 +2621,6 @@ export default function MatchRoomPage() {
                         } else if (isShootAction(bhAction.action_type) && isOpponent) {
                           const isGK = menuPlayer.field_pos === 'GK';
                           if (isGK) {
-                            // GK can only DEFENDER if inside the penalty box
                             const gkX = menuPlayer.field_x ?? 50;
                             const gkY = menuPlayer.field_y ?? 50;
                             const isHome = menuPlayer.club_id === match?.home_club_id;
@@ -2625,6 +2640,18 @@ export default function MatchRoomPage() {
                           }
                         }
                       }
+                    }
+                    // One-touch labels: when there's a pendingInterceptChoice, pass/shoot options are "de primeira"
+                    const isOneTouchOption = pendingInterceptChoice?.participantId === showActionMenu &&
+                      (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
+                    if (isOneTouchOption) {
+                      const baseLabel = ACTION_LABELS[a] || a;
+                      label = `${baseLabel} (1ª)`;
+                      if (a === 'pass_low') icon = '⚡➡';
+                      else if (a === 'pass_high') icon = '⚡⤴';
+                      else if (a === 'pass_launch') icon = '⚡🚀';
+                      else if (a === 'shoot_controlled') icon = '⚡🎯';
+                      else if (a === 'shoot_power') icon = '⚡💥';
                     }
                     return (
                       <button
