@@ -1024,13 +1024,17 @@ export default function MatchRoomPage() {
       return Math.sqrt(dx * dx + dy * dy) < 5;
     });
 
+    // Determine if this is a one-touch action (player intercepting trajectory + choosing pass/shoot)
+    const isOneTouch = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId;
+    const oneTouchPayload = isOneTouch ? { one_touch: true, intercept_x: pendingInterceptChoice!.targetX, intercept_y: pendingInterceptChoice!.targetY } : undefined;
+
     if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62), undefined, oneTouchPayload);
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id);
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id, oneTouchPayload);
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
       const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
