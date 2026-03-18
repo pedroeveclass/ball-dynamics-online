@@ -1543,6 +1543,24 @@ export default function MatchRoomPage() {
     y: ((svgY - PAD) / INNER_H) * 100,
   });
 
+  // Max pass/cross distance limits (% of field)
+  const MAX_PASS_DISTANCE: Record<string, number> = {
+    pass_low: 50,
+    pass_high: 60,
+    pass_launch: 70,
+  };
+
+  const clampPassDistance = (fromX: number, fromY: number, toX: number, toY: number, actionType: string): { x: number; y: number } => {
+    const maxDist = MAX_PASS_DISTANCE[actionType];
+    if (!maxDist) return { x: toX, y: toY };
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= maxDist) return { x: toX, y: toY };
+    const scale = maxDist / dist;
+    return { x: fromX + dx * scale, y: fromY + dy * scale };
+  };
+
   const getDrawingBounds = (type: DrawingState['type']) => {
     if (type === 'move') return { min: 0, max: 100 };
     return { min: -8, max: 108 };
