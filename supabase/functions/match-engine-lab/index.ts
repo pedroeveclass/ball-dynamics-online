@@ -1444,13 +1444,51 @@ Deno.serve(async (req) => {
         }
 
         const newTurnNumber = match.current_turn_number + 1;
-        const MAX_TURNS = 40;
 
         await supabase.from('match_turns')
           .update({ status: 'resolved', resolved_at: new Date().toISOString() })
           .eq('id', activeTurn.id);
 
-        if (newTurnNumber > MAX_TURNS) {
+        // ── Halftime check ──
+        if (newTurnNumber === TURNS_PER_HALF + 1 && match.current_turn_number <= TURNS_PER_HALF) {
+          const matchMinute = computeMatchMinute(match.current_turn_number);
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'halftime',
+            title: `⏸ Intervalo! ${homeScore} – ${awayScore}`,
+            body: `Fim do primeiro tempo (${matchMinute}'). Intervalo de 5 minutos.`,
+          });
+
+          // Create a halftime pause turn
+          const halftimeEnd = new Date(Date.now() + HALFTIME_PAUSE_MS).toISOString();
+          const halftimeStart = new Date().toISOString();
+
+          // Swap possession for second half kickoff
+          const secondHalfPossession = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+          const secondHalfKicker = await pickCenterKickoffPlayer(supabase, match_id, secondHalfPossession, participants || []);
+
+          await supabase.from('matches').update({
+            current_turn_number: newTurnNumber,
+            current_phase: 'positioning_attack',
+            possession_club_id: secondHalfPossession,
+            home_score: homeScore, away_score: awayScore,
+          }).eq('id', match_id);
+
+          await supabase.from('match_turns').insert({
+            match_id, turn_number: newTurnNumber,
+            phase: 'positioning_attack',
+            possession_club_id: secondHalfPossession,
+            ball_holder_participant_id: secondHalfKicker,
+            started_at: halftimeStart, ends_at: halftimeEnd,
+            status: 'active',
+          });
+
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'second_half',
+            title: '⚽ Segundo tempo!',
+            body: 'Posicionamento para o início do segundo tempo.',
+          });
+        } else if (newTurnNumber > MAX_TURNS) {
+          const matchMinute = computeMatchMinute(match.current_turn_number);
           await supabase.from('matches').update({
             status: 'finished', finished_at: new Date().toISOString(),
             home_score: homeScore, away_score: awayScore,
@@ -1459,7 +1497,7 @@ Deno.serve(async (req) => {
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'final_whistle',
             title: `🏁 Apito final! ${homeScore} – ${awayScore}`,
-            body: 'Partida encerrada.',
+            body: `Partida encerrada aos ${matchMinute}'.`,
           });
         } else {
           const nextPhaseStart = new Date().toISOString();
@@ -1472,7 +1510,6 @@ Deno.serve(async (req) => {
           // OOB set piece restarts also get positioning
           const hadSetPiece = ballEndPos && !goalScored && nextBallHolderParticipantId !== null && !isNextLooseBall && (
             detectOutOfBounds(
-              // use original ball end pos before set piece handler modified things
               ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match
             ) !== null
           );
