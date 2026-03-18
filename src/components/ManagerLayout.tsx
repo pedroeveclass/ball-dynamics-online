@@ -1,10 +1,11 @@
 import { ReactNode } from 'react';
 import { ManagerSidebar } from '@/components/ManagerSidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { LogOut } from 'lucide-react';
+import { Bell, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { UserAvatar } from '@/components/UserAvatar';
 
 export function ManagerLayout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
@@ -26,14 +27,18 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
               <span className="font-display text-lg font-bold tracking-tight text-foreground">FOOTBALL IDENTITY</span>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-tactical flex items-center justify-center">
-                  <span className="text-tactical-foreground font-display text-sm font-bold">
-                    {profile?.username?.[0]?.toUpperCase() || '?'}
-                  </span>
-                </div>
+              <Link to="/notifications" className="relative p-2 rounded-md hover:bg-muted transition-colors">
+                <Bell className="h-5 w-5 text-muted-foreground" />
+              </Link>
+              <Link to="/account/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
+                <UserAvatar
+                  avatarUrl={(profile as any)?.avatar_url}
+                  username={profile?.username}
+                  bgClass="bg-tactical"
+                  fgClass="text-tactical-foreground"
+                />
                 <span className="text-sm font-medium hidden sm:inline">{profile?.username || 'Manager'}</span>
-              </div>
+              </Link>
               <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive">
                 <LogOut className="h-4 w-4" />
               </Button>
