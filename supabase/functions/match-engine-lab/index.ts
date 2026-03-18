@@ -8,7 +8,154 @@ const corsHeaders = {
 const PHASE_DURATION_MS = 6000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
+const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
+const MAX_TURNS = 124;
+const TURNS_PER_HALF = 62;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
+
+// ─── Match minute calculation ────────────────────────────────
+function computeMatchMinute(turnNumber: number): number {
+  if (turnNumber <= TURNS_PER_HALF) {
+    return Math.floor((turnNumber / TURNS_PER_HALF) * 45);
+  }
+  return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
+}
+
+// ─── Formation positions for bot fill ─────────────────────────
+const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
+  '4-4-2': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 42, y: 15, pos: 'LM' }, { x: 42, y: 37, pos: 'CM' }, { x: 42, y: 63, pos: 'CM' }, { x: 42, y: 85, pos: 'RM' },
+    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
+  ],
+  '4-3-3': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 40, y: 25, pos: 'CM' }, { x: 40, y: 50, pos: 'CM' }, { x: 40, y: 75, pos: 'CM' },
+    { x: 60, y: 15, pos: 'LW' }, { x: 62, y: 50, pos: 'ST' }, { x: 60, y: 85, pos: 'RW' },
+  ],
+  '4-2-3-1': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 36, y: 35, pos: 'CDM' }, { x: 36, y: 65, pos: 'CDM' },
+    { x: 50, y: 15, pos: 'LM' }, { x: 50, y: 50, pos: 'CAM' }, { x: 50, y: 85, pos: 'RM' },
+    { x: 63, y: 50, pos: 'ST' },
+  ],
+};
+
+function getFormationForFill(formation: string, isHome: boolean): Array<{ x: number; y: number; pos: string }> {
+  const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
+  if (isHome) return base;
+  return base.map(p => ({ ...p, x: 100 - p.x }));
+}
+
+// ─── Bot AI: generate fallback actions ─────────────────────────
+async function generateBotActions(
+  supabase: any,
+  matchId: string,
+  turnId: string,
+  participants: any[],
+  submittedParticipantIds: Set<string>,
+  ballHolderId: string | null,
+  possClubId: string | null,
+  isLooseBall: boolean,
+  phase: string,
+) {
+  const botsToAct: any[] = [];
+
+  for (const p of participants) {
+    if (p.role_type !== 'player') continue;
+    if (submittedParticipantIds.has(p.id)) continue;
+
+    // Determine if this participant should act in this phase
+    const isAttacker = p.club_id === possClubId;
+    const isBH = p.id === ballHolderId;
+
+    if (phase === 'ball_holder' && isBH) botsToAct.push(p);
+    else if (phase === 'attacking_support' && isAttacker) botsToAct.push(p);
+    else if (phase === 'defending_response' && !isAttacker) botsToAct.push(p);
+    else if (phase === 'positioning_attack' && isAttacker && !isBH) botsToAct.push(p);
+    else if (phase === 'positioning_defense' && !isAttacker) botsToAct.push(p);
+  }
+
+  if (botsToAct.length === 0) return;
+
+  const actions: any[] = [];
+
+  for (const bot of botsToAct) {
+    const posX = Number(bot.pos_x ?? 50);
+    const posY = Number(bot.pos_y ?? 50);
+    const isBH = bot.id === ballHolderId;
+
+    if (isBH && phase === 'ball_holder') {
+      // Ball holder bot: pass to nearest teammate
+      const teammates = participants.filter(
+        (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
+      );
+      if (teammates.length > 0) {
+        // Find closest teammate ahead
+        const forward = teammates
+          .map((t: any) => ({ ...t, dist: Math.sqrt((Number(t.pos_x ?? 50) - posX) ** 2 + (Number(t.pos_y ?? 50) - posY) ** 2) }))
+          .sort((a: any, b: any) => a.dist - b.dist);
+        const target = forward[0];
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'pass_low',
+          target_x: Number(target.pos_x ?? 50), target_y: Number(target.pos_y ?? 50),
+          target_participant_id: target.id, status: 'pending',
+        });
+      } else {
+        // No teammates — just hold position
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: posX, target_y: posY, status: 'pending',
+        });
+      }
+    } else {
+      // Non-ball-holder bot or positioning: move slightly toward ball or hold formation
+      let targetX = posX;
+      let targetY = posY;
+
+      if (isLooseBall) {
+        // Move toward ball area (center-ish) with some randomness
+        targetX = posX + (50 - posX) * 0.15 + (Math.random() - 0.5) * 4;
+        targetY = posY + (50 - posY) * 0.15 + (Math.random() - 0.5) * 4;
+      } else if (ballHolderId) {
+        const bh = participants.find((p: any) => p.id === ballHolderId);
+        if (bh) {
+          const bhX = Number(bh.pos_x ?? 50);
+          const bhY = Number(bh.pos_y ?? 50);
+          const isAttacker = bot.club_id === possClubId;
+          if (isAttacker) {
+            // Move toward ball holder to offer support
+            targetX = posX + (bhX - posX) * 0.1 + (Math.random() - 0.5) * 3;
+            targetY = posY + (bhY - posY) * 0.1 + (Math.random() - 0.5) * 3;
+          } else {
+            // Defender: move toward ball holder to mark
+            targetX = posX + (bhX - posX) * 0.12 + (Math.random() - 0.5) * 3;
+            targetY = posY + (bhY - posY) * 0.12 + (Math.random() - 0.5) * 3;
+          }
+        }
+      }
+
+      targetX = Math.max(1, Math.min(99, targetX));
+      targetY = Math.max(1, Math.min(99, targetY));
+
+      actions.push({
+        match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+        controlled_by_type: 'bot', action_type: 'move',
+        target_x: targetX, target_y: targetY, status: 'pending',
+      });
+    }
+  }
+
+  if (actions.length > 0) {
+    await supabase.from('match_actions').insert(actions);
+    console.log(`[ENGINE] Bot AI generated ${actions.length} fallback actions for phase ${phase}`);
+  }
+}
 type Phase = typeof PHASES[number];
 
 function isPositioningPhase(phase: string): boolean {
@@ -695,6 +842,47 @@ Deno.serve(async (req) => {
       const started: string[] = [];
 
       for (const m of (dueMatches || [])) {
+        // ── Bot auto-fill: ensure 11 players per side ──
+        const { data: existingParts } = await supabase
+          .from('match_participants')
+          .select('id, club_id, role_type')
+          .eq('match_id', m.id)
+          .eq('role_type', 'player');
+
+        const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id);
+        const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id);
+        const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+
+        if (!isTestMatch) {
+          // Get club formations
+          const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.home_club_id).maybeSingle();
+          const { data: awaySettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.away_club_id).maybeSingle();
+          const homeFormation = homeSettings?.default_formation || '4-4-2';
+          const awayFormation = awaySettings?.default_formation || '4-4-2';
+
+          const fillBots = async (clubId: string, currentCount: number, formation: string, isHome: boolean) => {
+            if (currentCount >= 11) return;
+            const positions = getFormationForFill(formation, isHome);
+            const botsToInsert: any[] = [];
+            for (let i = currentCount; i < 11; i++) {
+              const pos = positions[i] || { x: isHome ? 30 : 70, y: 50, pos: 'CM' };
+              botsToInsert.push({
+                match_id: m.id, club_id: clubId, role_type: 'player',
+                is_bot: true, pos_x: pos.x, pos_y: pos.y,
+              });
+            }
+            if (botsToInsert.length > 0) {
+              await supabase.from('match_participants').insert(botsToInsert);
+              console.log(`[ENGINE] Filled ${botsToInsert.length} bots for club ${clubId.slice(0,8)}`);
+            }
+          };
+
+          await Promise.all([
+            fillBots(m.home_club_id, homeParts.length, homeFormation, true),
+            fillBots(m.away_club_id, awayParts.length, awayFormation, false),
+          ]);
+        }
+
         const possessionClubId = m.home_club_id;
         const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
@@ -899,11 +1087,28 @@ Deno.serve(async (req) => {
         console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
         const { data: turnRows } = await supabase
           .from('match_turns')
-          .select('id')
+          .select('id, phase')
           .eq('match_id', match_id)
           .eq('turn_number', activeTurn.turn_number);
 
         const allTurnIds = (turnRows || []).map(t => t.id);
+
+        // ── Bot AI fallback: generate actions for inactive players ──
+        {
+          const { data: existingActions } = await supabase
+            .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds).eq('status', 'pending');
+          const submittedIds = new Set((existingActions || []).map((a: any) => a.participant_id));
+          const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
+
+          // Generate bot actions for each phase that had a turn
+          for (const turnRow of (turnRows || [])) {
+            await generateBotActions(
+              supabase, match_id, turnRow.id, participants || [],
+              submittedIds, activeTurn.ball_holder_participant_id,
+              possClubId, isLooseBall, turnRow.phase,
+            );
+          }
+        }
 
         const { data: rawActions } = await supabase
           .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
@@ -1256,13 +1461,51 @@ Deno.serve(async (req) => {
         }
 
         const newTurnNumber = match.current_turn_number + 1;
-        const MAX_TURNS = 40;
 
         await supabase.from('match_turns')
           .update({ status: 'resolved', resolved_at: new Date().toISOString() })
           .eq('id', activeTurn.id);
 
-        if (newTurnNumber > MAX_TURNS) {
+        // ── Halftime check ──
+        if (newTurnNumber === TURNS_PER_HALF + 1 && match.current_turn_number <= TURNS_PER_HALF) {
+          const matchMinute = computeMatchMinute(match.current_turn_number);
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'halftime',
+            title: `⏸ Intervalo! ${homeScore} – ${awayScore}`,
+            body: `Fim do primeiro tempo (${matchMinute}'). Intervalo de 5 minutos.`,
+          });
+
+          // Create a halftime pause turn
+          const halftimeEnd = new Date(Date.now() + HALFTIME_PAUSE_MS).toISOString();
+          const halftimeStart = new Date().toISOString();
+
+          // Swap possession for second half kickoff
+          const secondHalfPossession = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+          const secondHalfKicker = await pickCenterKickoffPlayer(supabase, match_id, secondHalfPossession, participants || []);
+
+          await supabase.from('matches').update({
+            current_turn_number: newTurnNumber,
+            current_phase: 'positioning_attack',
+            possession_club_id: secondHalfPossession,
+            home_score: homeScore, away_score: awayScore,
+          }).eq('id', match_id);
+
+          await supabase.from('match_turns').insert({
+            match_id, turn_number: newTurnNumber,
+            phase: 'positioning_attack',
+            possession_club_id: secondHalfPossession,
+            ball_holder_participant_id: secondHalfKicker,
+            started_at: halftimeStart, ends_at: halftimeEnd,
+            status: 'active',
+          });
+
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'second_half',
+            title: '⚽ Segundo tempo!',
+            body: 'Posicionamento para o início do segundo tempo.',
+          });
+        } else if (newTurnNumber > MAX_TURNS) {
+          const matchMinute = computeMatchMinute(match.current_turn_number);
           await supabase.from('matches').update({
             status: 'finished', finished_at: new Date().toISOString(),
             home_score: homeScore, away_score: awayScore,
@@ -1271,7 +1514,7 @@ Deno.serve(async (req) => {
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'final_whistle',
             title: `🏁 Apito final! ${homeScore} – ${awayScore}`,
-            body: 'Partida encerrada.',
+            body: `Partida encerrada aos ${matchMinute}'.`,
           });
         } else {
           const nextPhaseStart = new Date().toISOString();
@@ -1284,7 +1527,6 @@ Deno.serve(async (req) => {
           // OOB set piece restarts also get positioning
           const hadSetPiece = ballEndPos && !goalScored && nextBallHolderParticipantId !== null && !isNextLooseBall && (
             detectOutOfBounds(
-              // use original ball end pos before set piece handler modified things
               ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match
             ) !== null
           );
