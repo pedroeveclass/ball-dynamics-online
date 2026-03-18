@@ -300,8 +300,11 @@ export default function MatchRoomPage() {
 
       const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
 
+      // Clamp to own half during kickoff (turn 0 or 1)
+      const isKickoffStart = (m.current_turn_number ?? 0) <= 1;
+
       const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
-        const positions = getFormationPositions(formation, isHome);
+        const positions = getFormationPositions(formation, isHome, isKickoffStart);
         // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
         const sorted = [...list].sort((a, b) => {
           const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
@@ -310,19 +313,24 @@ export default function MatchRoomPage() {
           if (!aIsGK && bIsGK) return 1;
           return a.id.localeCompare(b.id);
         });
-        return sorted.map((p, i) => ({
-          ...p,
-          field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
-          field_y: p.pos_y ?? positions[i]?.y ?? 50,
-          field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
-          jersey_number: i + 1,
-        }));
+        return sorted.map((p, i) => {
+          let fx = p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70);
+          // Clamp DB positions too during kickoff
+          if (isKickoffStart) fx = isHome ? Math.min(fx, 48) : Math.max(fx, 52);
+          return {
+            ...p,
+            field_x: fx,
+            field_y: p.pos_y ?? positions[i]?.y ?? 50,
+            field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
+            jersey_number: i + 1,
+          };
+        });
       };
 
       const ensureEleven = async (list: Participant[], formation: string, isHome: boolean, clubId: string): Promise<Participant[]> => {
         const positioned = assignPositions(list, formation, isHome);
         if (isTestMatch) return positioned;
-        const positions = getFormationPositions(formation, isHome);
+        const positions = getFormationPositions(formation, isHome, isKickoffStart);
         const botsToInsert: any[] = [];
         for (let i = positioned.length; i < 11; i++) {
           const coords = positions[i] || { x: isHome ? 30 : 70, y: 50 };
