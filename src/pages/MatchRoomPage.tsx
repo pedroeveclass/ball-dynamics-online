@@ -2343,6 +2343,47 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
+                // One-touch: show move line (player → intercept) + ball action arrow (intercept → target)
+                const isOneTouchDraw = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId &&
+                  drawingAction.type !== 'move';
+
+                if (isOneTouchDraw) {
+                  // Move line: player → intercept point
+                  const playerPos = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
+                  const interceptPos = toSVG(pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY);
+                  // Ball action: intercept → target
+                  let targetFieldX: number, targetFieldY: number;
+                  if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+                    const goalTarget = getShootTarget(drawingFrom);
+                    targetFieldX = goalTarget.x;
+                    targetFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
+                  } else {
+                    targetFieldX = mouseFieldPct.x;
+                    targetFieldY = mouseFieldPct.y;
+                  }
+                  const targetPos = toSVG(targetFieldX, targetFieldY);
+                  const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+                  const ballColor = isShoot ? '#f59e0b' : '#22c55e';
+                  return (
+                    <g>
+                      {/* Movement line */}
+                      <line x1={playerPos.x} y1={playerPos.y} x2={interceptPos.x} y2={interceptPos.y}
+                        stroke="#1a1a2e" strokeWidth={2} strokeLinecap="round" opacity={0.85}
+                        markerEnd="url(#ah-black)" />
+                      {/* Ball action arrow from intercept */}
+                      <line x1={interceptPos.x} y1={interceptPos.y} x2={targetPos.x} y2={targetPos.y}
+                        stroke={ballColor} strokeWidth={3} strokeLinecap="round" opacity={0.85}
+                        markerEnd="url(#ah-green)" />
+                      {/* Label */}
+                      <text x={(interceptPos.x + targetPos.x) / 2} y={(interceptPos.y + targetPos.y) / 2 - 6}
+                        textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.8)"
+                        fontFamily="'Barlow Condensed', sans-serif">
+                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1ª)
+                      </text>
+                    </g>
+                  );
+                }
+
                 // Move arrows start from player center; pass/shoot arrows start from ball position
                 const isBallHolderAction = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
                 const isBallAction = drawingAction.type !== 'move';
