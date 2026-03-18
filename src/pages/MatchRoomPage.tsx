@@ -2550,23 +2550,28 @@ export default function MatchRoomPage() {
               {ballDisplayPos && (() => {
                 const { x, y } = toSVG(ballDisplayPos.x, ballDisplayPos.y);
                 const r = 5.5;
+                // Shadow stays on ground, shrinks/fades as ball lifts
+                const shadowScale = ballArcLift > 0 ? Math.max(0.4, 1 - ballArcLift / 60) : 1;
+                const shadowOpacity = ballArcLift > 0 ? Math.max(0.1, 0.3 - ballArcLift / 150) : 0.3;
                 return (
                   <g pointerEvents="none">
-                    {/* Shadow */}
-                    <ellipse cx={x + 0.8} cy={y + 2.5} rx={r * 0.9} ry={r * 0.35} fill="rgba(0,0,0,0.3)" />
-                    {/* Ball body */}
-                    <circle cx={x} cy={y} r={r} fill="#f5f5f5" stroke="#2a2a2a" strokeWidth="0.7" />
-                    {/* Soccer ball pentagon pattern */}
-                    <polygon points={`${x},${y - r * 0.45} ${x + r * 0.43},${y - r * 0.14} ${x + r * 0.26},${y + r * 0.36} ${x - r * 0.26},${y + r * 0.36} ${x - r * 0.43},${y - r * 0.14}`}
-                      fill="#2a2a2a" opacity="0.75" />
-                    {/* Side patches */}
-                    <circle cx={x - r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
-                    <circle cx={x + r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
-                    <circle cx={x - r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
-                    <circle cx={x + r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
-                    <circle cx={x} cy={y + r * 0.65} r={r * 0.15} fill="#2a2a2a" opacity="0.4" />
-                    {/* Highlight */}
-                    <circle cx={x - r * 0.25} cy={y - r * 0.3} r={r * 0.22} fill="rgba(255,255,255,0.4)" />
+                    {/* Shadow (stays on ground) */}
+                    <ellipse cx={x + 0.8} cy={y + 2.5} rx={r * 0.9 * shadowScale} ry={r * 0.35 * shadowScale} fill={`rgba(0,0,0,${shadowOpacity})`} />
+                    {/* Ball body (lifts with arc) */}
+                    <g transform={`translate(0 ${-ballArcLift})`}>
+                      <circle cx={x} cy={y} r={r} fill="#f5f5f5" stroke="#2a2a2a" strokeWidth="0.7" />
+                      {/* Soccer ball pentagon pattern */}
+                      <polygon points={`${x},${y - r * 0.45} ${x + r * 0.43},${y - r * 0.14} ${x + r * 0.26},${y + r * 0.36} ${x - r * 0.26},${y + r * 0.36} ${x - r * 0.43},${y - r * 0.14}`}
+                        fill="#2a2a2a" opacity="0.75" />
+                      {/* Side patches */}
+                      <circle cx={x - r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
+                      <circle cx={x + r * 0.55} cy={y - r * 0.4} r={r * 0.18} fill="#2a2a2a" opacity="0.5" />
+                      <circle cx={x - r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
+                      <circle cx={x + r * 0.6} cy={y + r * 0.3} r={r * 0.16} fill="#2a2a2a" opacity="0.45" />
+                      <circle cx={x} cy={y + r * 0.65} r={r * 0.15} fill="#2a2a2a" opacity="0.4" />
+                      {/* Highlight */}
+                      <circle cx={x - r * 0.25} cy={y - r * 0.3} r={r * 0.22} fill="rgba(255,255,255,0.4)" />
+                    </g>
                   </g>
                 );
               })()}
