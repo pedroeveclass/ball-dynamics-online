@@ -4,9 +4,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -25,6 +30,10 @@ interface Challenge {
   challenged_club?: { name: string; short_name: string; primary_color: string; secondary_color: string };
 }
 
+interface ClubOption {
+  id: string; name: string; short_name: string; primary_color: string; secondary_color: string; reputation: number;
+}
+
 const STATUS_INFO: Record<string, { label: string; className: string }> = {
   proposed: { label: 'Aguardando', className: 'bg-warning/20 text-warning border-warning/30' },
   accepted: { label: 'Aceito', className: 'bg-pitch/20 text-pitch border-pitch/30' },
@@ -41,287 +50,170 @@ export default function ManagerChallengesPage() {
   const [acting, setActing] = useState<string | null>(null);
   const [creatingTarget, setCreatingTarget] = useState<'match' | 'lab' | null>(null);
 
+  // Inline challenge creation
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [clubs, setClubs] = useState<ClubOption[]>([]);
+  const [awayClubId, setAwayClubId] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [hasLineup, setHasLineup] = useState(false);
+
   const loadChallenges = useCallback(async () => {
     if (!club) return;
-    const { data } = await supabase
-      .from('match_challenges')
-      .select('*')
-      .order('created_at', { ascending: false });
-
+    const { data } = await supabase.from('match_challenges').select('*').order('created_at', { ascending: false });
     if (!data) { setLoading(false); return; }
-
-    // Enrich with club info
     const clubIds = [...new Set(data.flatMap(c => [c.challenger_club_id, c.challenged_club_id]))];
-    const { data: clubsData } = await supabase
-      .from('clubs')
-      .select('id, name, short_name, primary_color, secondary_color')
-      .in('id', clubIds);
-
+    const { data: clubsData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', clubIds);
     const clubMap = new Map((clubsData || []).map(c => [c.id, c]));
-
-    const enriched = data.map(c => ({
-      ...c,
-      challenger_club: clubMap.get(c.challenger_club_id),
-      challenged_club: clubMap.get(c.challenged_club_id),
-    }));
-
-    setChallenges(enriched);
+    setChallenges(data.map(c => ({ ...c, challenger_club: clubMap.get(c.challenger_club_id), challenged_club: clubMap.get(c.challenged_club_id) })));
     setLoading(false);
   }, [club]);
 
   useEffect(() => { loadChallenges(); }, [loadChallenges]);
 
+  const openCreateDialog = async () => {
+    if (!club) return;
+    const [clubsRes, lineupRes] = await Promise.all([
+      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, reputation').neq('id', club.id),
+      supabase.from('lineups').select('id').eq('club_id', club.id).eq('is_active', true).limit(1),
+    ]);
+    setClubs(clubsRes.data || []);
+    setHasLineup((lineupRes.data || []).length > 0);
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(20, 0, 0, 0);
+    setScheduledAt(tomorrow.toISOString().slice(0, 16));
+    setAwayClubId(''); setMessage('');
+    setShowCreateDialog(true);
+  };
+
+  const handleSendChallenge = async () => {
+    if (!club || !awayClubId || !scheduledAt || !managerProfile) return;
+    setSending(true);
+    try {
+      const { data: awayClubData } = await supabase.from('clubs').select('manager_profile_id').eq('id', awayClubId).single();
+      if (!awayClubData?.manager_profile_id) { toast.error('Clube adversário sem manager.'); setSending(false); return; }
+      const { data: awayMgrData } = await supabase.from('manager_profiles').select('user_id').eq('id', awayClubData.manager_profile_id).single();
+
+      await supabase.from('match_challenges').insert({
+        challenger_club_id: club.id, challenged_club_id: awayClubId,
+        challenger_manager_profile_id: managerProfile.id,
+        challenged_manager_profile_id: awayClubData.manager_profile_id,
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        message: message.trim() || null, status: 'proposed',
+      });
+
+      if (awayMgrData?.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: awayMgrData.user_id, title: '⚔️ Convite de Amistoso',
+          body: `${club.name} quer jogar um amistoso contra você em ${new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`,
+          type: 'match_challenge',
+        });
+      }
+
+      toast.success('Convite enviado!');
+      setShowCreateDialog(false);
+      loadChallenges();
+    } catch (err: any) { toast.error(err.message || 'Erro ao enviar convite'); }
+    finally { setSending(false); }
+  };
+
   const handleAccept = async (challenge: Challenge) => {
     if (!club || !managerProfile) return;
     setActing(challenge.id);
     try {
-      // Get both active lineups
       const [homeLineupRes, awayLineupRes] = await Promise.all([
         supabase.from('lineups').select('id').eq('club_id', challenge.challenger_club_id).eq('is_active', true).limit(1).single(),
         supabase.from('lineups').select('id').eq('club_id', challenge.challenged_club_id).eq('is_active', true).limit(1).single(),
       ]);
+      if (!homeLineupRes.data) { toast.error('O clube desafiante não tem escalação ativa.'); setActing(null); return; }
+      if (!awayLineupRes.data) { toast.error('Você precisa definir uma escalação ativa.'); setActing(null); return; }
 
-      if (!homeLineupRes.data) {
-        toast.error('O clube desafiante não tem escalação ativa.');
-        setActing(null);
-        return;
-      }
-      if (!awayLineupRes.data) {
-        toast.error('Você precisa definir uma escalação ativa antes de aceitar.');
-        setActing(null);
-        return;
-      }
-
-      // Create the match
-      const { data: match, error: matchError } = await supabase
-        .from('matches')
-        .insert({
-          home_club_id: challenge.challenger_club_id,
-          away_club_id: challenge.challenged_club_id,
-          home_lineup_id: homeLineupRes.data.id,
-          away_lineup_id: awayLineupRes.data.id,
-          status: 'scheduled',
-          current_phase: 'pre_match',
-          scheduled_at: challenge.scheduled_at,
-        })
-        .select('id')
-        .single();
-
+      const { data: match, error: matchError } = await supabase.from('matches').insert({
+        home_club_id: challenge.challenger_club_id, away_club_id: challenge.challenged_club_id,
+        home_lineup_id: homeLineupRes.data.id, away_lineup_id: awayLineupRes.data.id,
+        status: 'scheduled', current_phase: 'pre_match', scheduled_at: challenge.scheduled_at,
+      }).select('id').single();
       if (matchError) throw matchError;
 
-      // Get lineup slots for both lineups
-      const { data: slots } = await supabase
-        .from('lineup_slots')
+      const { data: slots } = await supabase.from('lineup_slots')
         .select('id, lineup_id, player_profile_id, slot_position, role_type')
         .in('lineup_id', [homeLineupRes.data.id, awayLineupRes.data.id]);
-
-      // Get player user_ids
       const playerIds = (slots || []).filter(s => s.player_profile_id).map(s => s.player_profile_id!);
-      const { data: players } = playerIds.length > 0
-        ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds)
-        : { data: [] };
+      const { data: players } = playerIds.length > 0 ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds) : { data: [] };
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-      // Create player participants
       const participants = (slots || []).map(slot => {
-        const clubId = slot.lineup_id === homeLineupRes.data!.id
-          ? challenge.challenger_club_id
-          : challenge.challenged_club_id;
+        const clubId = slot.lineup_id === homeLineupRes.data!.id ? challenge.challenger_club_id : challenge.challenged_club_id;
         const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
-        return {
-          match_id: match!.id,
-          player_profile_id: slot.player_profile_id || null,
-          club_id: clubId,
-          lineup_slot_id: slot.id,
-          role_type: 'player',
-          is_bot: !userId,
-          is_ready: false,
-          connected_user_id: userId || null,
-        };
+        return { match_id: match!.id, player_profile_id: slot.player_profile_id || null, club_id: clubId, lineup_slot_id: slot.id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId || null };
       });
+      if (participants.length > 0) await supabase.from('match_participants').insert(participants);
 
-      if (participants.length > 0) {
-        const { error: partError } = await supabase.from('match_participants').insert(participants);
-        if (partError) throw partError;
-      }
-
-      // Add manager participants
-      const { data: challengerMgr } = await supabase
-        .from('manager_profiles')
-        .select('user_id')
-        .eq('id', challenge.challenger_manager_profile_id)
-        .single();
-
-      const managerParticipants = [];
-      if (challengerMgr?.user_id) {
-        managerParticipants.push({
-          match_id: match!.id,
-          club_id: challenge.challenger_club_id,
-          role_type: 'manager',
-          is_bot: false,
-          is_ready: false,
-          connected_user_id: challengerMgr.user_id,
-        });
-      }
-      managerParticipants.push({
-        match_id: match!.id,
-        club_id: challenge.challenged_club_id,
-        role_type: 'manager',
-        is_bot: false,
-        is_ready: false,
-        connected_user_id: (await supabase.auth.getUser()).data.user?.id || null,
-      });
-
+      const { data: challengerMgr } = await supabase.from('manager_profiles').select('user_id').eq('id', challenge.challenger_manager_profile_id).single();
+      const managerParticipants: any[] = [];
+      if (challengerMgr?.user_id) managerParticipants.push({ match_id: match!.id, club_id: challenge.challenger_club_id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: challengerMgr.user_id });
+      managerParticipants.push({ match_id: match!.id, club_id: challenge.challenged_club_id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: (await supabase.auth.getUser()).data.user?.id || null });
       await supabase.from('match_participants').insert(managerParticipants);
 
-      // Log event
-      await supabase.from('match_event_logs').insert({
-        match_id: match!.id,
-        event_type: 'system',
-        title: '⚔️ Amistoso agendado',
-        body: `${challenge.challenger_club?.name} vs ${challenge.challenged_club?.name} — ${format(new Date(challenge.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
-      });
+      await supabase.from('match_event_logs').insert({ match_id: match!.id, event_type: 'system', title: '⚔️ Amistoso agendado', body: `${challenge.challenger_club?.name} vs ${challenge.challenged_club?.name}` });
+      await supabase.from('match_challenges').update({ status: 'accepted', match_id: match!.id }).eq('id', challenge.id);
 
-      // Update challenge status and link match
-      await supabase
-        .from('match_challenges')
-        .update({ status: 'accepted', match_id: match!.id })
-        .eq('id', challenge.id);
-
-      // Notify challenger
       if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({
-          user_id: challengerMgr.user_id,
-          title: '✅ Convite aceito!',
-          body: `${challenge.challenged_club?.name} aceitou o amistoso. A partida está agendada!`,
-          type: 'match_challenge_accepted',
-        });
+        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso.`, type: 'match_challenge_accepted' });
       }
-
-      toast.success('Amistoso aceito! Partida criada.');
+      toast.success('Amistoso aceito!');
       loadChallenges();
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao aceitar convite');
-    } finally {
-      setActing(null);
-    }
+    } catch (err: any) { toast.error(err.message || 'Erro ao aceitar'); }
+    finally { setActing(null); }
   };
 
-  const handleReject = async (challenge: Challenge) => {
-    setActing(challenge.id);
+  const handleReject = async (c: Challenge) => {
+    setActing(c.id);
     try {
-      await supabase.from('match_challenges').update({ status: 'rejected' }).eq('id', challenge.id);
-
-      // Notify challenger
-      const { data: challengerMgr } = await supabase
-        .from('manager_profiles')
-        .select('user_id')
-        .eq('id', challenge.challenger_manager_profile_id)
-        .single();
-
-      if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({
-          user_id: challengerMgr.user_id,
-          title: '❌ Convite recusado',
-          body: `${challenge.challenged_club?.name} recusou o convite de amistoso.`,
-          type: 'match_challenge_rejected',
-        });
-      }
-
+      await supabase.from('match_challenges').update({ status: 'rejected' }).eq('id', c.id);
+      const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', c.challenger_manager_profile_id).single();
+      if (mgr?.user_id) await supabase.from('notifications').insert({ user_id: mgr.user_id, title: '❌ Convite recusado', body: `${c.challenged_club?.name} recusou o amistoso.`, type: 'match_challenge_rejected' });
       toast.success('Convite recusado.');
       loadChallenges();
-    } catch (err: any) {
-      toast.error(err.message || 'Erro');
-    } finally {
-      setActing(null);
-    }
+    } catch (err: any) { toast.error(err.message || 'Erro'); }
+    finally { setActing(null); }
   };
 
-  const handleCancel = async (challenge: Challenge) => {
-    setActing(challenge.id);
-    try {
-      await supabase.from('match_challenges').update({ status: 'cancelled' }).eq('id', challenge.id);
-      toast.success('Convite cancelado.');
-      loadChallenges();
-    } catch (err: any) {
-      toast.error(err.message || 'Erro');
-    } finally {
-      setActing(null);
-    }
+  const handleCancel = async (c: Challenge) => {
+    setActing(c.id);
+    try { await supabase.from('match_challenges').update({ status: 'cancelled' }).eq('id', c.id); toast.success('Cancelado.'); loadChallenges(); }
+    catch (err: any) { toast.error(err.message || 'Erro'); }
+    finally { setActing(null); }
   };
 
   const handleCreateTestMatch = async (target: 'match' | 'lab') => {
     if (!club || !managerProfile) return;
     setCreatingTarget(target);
     try {
-      // Find a random opponent club
-      const { data: otherClubs } = await supabase
-        .from('clubs').select('id').neq('id', club.id);
-
-      if (!otherClubs?.length) {
-        toast.error('Nenhum clube adversário encontrado para teste.');
-        return;
-      }
-
+      const { data: otherClubs } = await supabase.from('clubs').select('id').neq('id', club.id);
+      if (!otherClubs?.length) { toast.error('Nenhum clube adversário encontrado.'); return; }
       const opponentId = otherClubs[Math.floor(Math.random() * otherClubs.length)].id;
-      const now = new Date().toISOString();
-
-      // Create match scheduled for now (auto-starts)
-      const { data: match, error: matchError } = await supabase
-        .from('matches')
-        .insert({
-          home_club_id: club.id,
-          away_club_id: opponentId,
-          status: 'scheduled',
-          scheduled_at: now,
-          current_phase: 'pre_match',
-        })
-        .select('id')
-        .single();
-
-      if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
-
+      const { data: match, error: matchError } = await supabase.from('matches').insert({
+        home_club_id: club.id, away_club_id: opponentId, status: 'scheduled', scheduled_at: new Date().toISOString(), current_phase: 'pre_match',
+      }).select('id').single();
+      if (matchError || !match) throw matchError || new Error('Falha');
       const userId = (await supabase.auth.getUser()).data.user?.id;
-
-      // Create 4 participants: Home GK + CB, Away ST + ST
-      const testParticipants = [
+      await supabase.from('match_participants').insert([
         { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 5, pos_y: 50 },
         { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 25, pos_y: 50 },
         { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 70, pos_y: 35 },
         { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 70, pos_y: 65 },
-        // Manager participant
         { match_id: match.id, club_id: club.id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: userId },
-      ];
-
-      await supabase.from('match_participants').insert(testParticipants);
-
-      // Log event
-      await supabase.from('match_event_logs').insert({
-        match_id: match.id,
-        event_type: 'system',
-        title: '🧪 Partida de teste criada',
-        body: '2v2 — GK + CB vs ST + ST',
-      });
-
-      if (target === 'lab') {
-        toast.success('Laboratorio criado!');
-        navigate(`/match-lab/${match.id}`);
-      } else {
-        toast.success('Partida de teste criada!');
-        navigate(`/match/${match.id}`);
-      }
-    } catch (err: any) {
-      toast.error(err.message || (target === 'lab' ? 'Erro ao criar laboratorio' : 'Erro ao criar partida de teste'));
-    } finally {
-      setCreatingTarget(null);
-    }
+      ]);
+      await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '2v2 — GK + CB vs ST + ST' });
+      if (target === 'lab') { toast.success('Laboratório criado!'); navigate(`/match-lab/${match.id}`); }
+      else { toast.success('Partida de teste criada!'); navigate(`/match/${match.id}`); }
+    } catch (err: any) { toast.error(err.message || 'Erro'); }
+    finally { setCreatingTarget(null); }
   };
 
-  const isMyChallengeReceived = (c: Challenge) => c.challenged_club_id === club?.id;
-  const isMyChallengeOut = (c: Challenge) => c.challenger_club_id === club?.id;
-
-  const received = challenges.filter(isMyChallengeReceived);
-  const sent = challenges.filter(isMyChallengeOut);
+  const received = challenges.filter(c => c.challenged_club_id === club?.id);
+  const sent = challenges.filter(c => c.challenger_club_id === club?.id);
 
   if (loading) return <ManagerLayout><p className="text-muted-foreground">Carregando...</p></ManagerLayout>;
 
@@ -333,155 +225,139 @@ export default function ManagerChallengesPage() {
             <Swords className="h-6 w-6 text-tactical" /> Amistosos
           </h1>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => navigate('/match-lab/solo')}
-              className="font-display text-xs border-tactical/40 text-tactical hover:bg-tactical/10">
-              <FlaskConical className="h-4 w-4 mr-1" />
-              Laboratorio Solo
+            <Button size="sm" variant="outline" onClick={() => navigate('/match-lab/solo')} className="font-display text-xs border-tactical/40 text-tactical hover:bg-tactical/10">
+              <FlaskConical className="h-4 w-4 mr-1" /> Lab Solo
             </Button>
-            <Button size="sm" variant="outline" onClick={() => handleCreateTestMatch('match')} disabled={creatingTarget !== null}
-              className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
-              <FlaskConical className="h-4 w-4 mr-1" />
-              {creatingTarget === 'match' ? 'Criando...' : 'Partida Teste 2v2'}
+            <Button size="sm" variant="outline" onClick={() => handleCreateTestMatch('match')} disabled={creatingTarget !== null} className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
+              <FlaskConical className="h-4 w-4 mr-1" /> {creatingTarget === 'match' ? 'Criando...' : 'Teste 2v2'}
             </Button>
-            <Link to="/manager/match/create">
-              <Button size="sm" className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-                <Plus className="h-4 w-4 mr-1" /> Enviar Convite
-              </Button>
-            </Link>
+            <Button size="sm" onClick={openCreateDialog} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+              <Plus className="h-4 w-4 mr-1" /> Enviar Convite
+            </Button>
           </div>
         </div>
 
-        {/* Received */}
         <section>
-          <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">
-            Convites Recebidos ({received.length})
-          </h2>
-          {received.length === 0 && (
-            <div className="stat-card text-center py-8">
-              <p className="text-muted-foreground text-sm">Nenhum convite recebido ainda.</p>
-            </div>
-          )}
+          <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Convites Recebidos ({received.length})</h2>
+          {received.length === 0 && <div className="stat-card text-center py-8"><p className="text-muted-foreground text-sm">Nenhum convite recebido.</p></div>}
           <div className="space-y-3">
             {received.map(c => (
-              <ChallengeCard
-                key={c.id}
-                challenge={c}
-                direction="received"
-                isActing={acting === c.id}
-                onAccept={() => handleAccept(c)}
-                onReject={() => handleReject(c)}
-                onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)}
-              />
+              <ChallengeCard key={c.id} challenge={c} direction="received" isActing={acting === c.id}
+                onAccept={() => handleAccept(c)} onReject={() => handleReject(c)} onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)} />
             ))}
           </div>
         </section>
 
-        {/* Sent */}
         <section>
-          <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">
-            Convites Enviados ({sent.length})
-          </h2>
-          {sent.length === 0 && (
-            <div className="stat-card text-center py-8">
-              <p className="text-muted-foreground text-sm">Nenhum convite enviado ainda.</p>
-            </div>
-          )}
+          <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Convites Enviados ({sent.length})</h2>
+          {sent.length === 0 && <div className="stat-card text-center py-8"><p className="text-muted-foreground text-sm">Nenhum convite enviado.</p></div>}
           <div className="space-y-3">
             {sent.map(c => (
-              <ChallengeCard
-                key={c.id}
-                challenge={c}
-                direction="sent"
-                isActing={acting === c.id}
-                onCancel={() => handleCancel(c)}
-                onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)}
-              />
+              <ChallengeCard key={c.id} challenge={c} direction="sent" isActing={acting === c.id}
+                onCancel={() => handleCancel(c)} onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)} />
             ))}
           </div>
         </section>
       </div>
+
+      {/* Create Challenge Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2"><Swords className="h-5 w-5 text-tactical" /> Convidar para Amistoso</DialogTitle>
+            <DialogDescription>Escolha o adversário, data e envie o convite.</DialogDescription>
+          </DialogHeader>
+
+          {!hasLineup && (
+            <div className="stat-card border-destructive/30 bg-destructive/5 flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+              <div><p className="font-display font-bold text-sm">Escalação necessária</p><p className="text-xs text-muted-foreground">Defina uma escalação ativa primeiro.</p></div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Seu Clube</p>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded flex items-center justify-center text-xs font-display font-bold" style={{ backgroundColor: club?.primary_color, color: club?.secondary_color }}>{club?.short_name}</div>
+                <span className="font-display font-bold">{club?.name}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Adversário</Label>
+              <Select value={awayClubId} onValueChange={setAwayClubId}>
+                <SelectTrigger><SelectValue placeholder="Escolha o clube adversário" /></SelectTrigger>
+                <SelectContent>
+                  {clubs.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-4 h-4 rounded-sm inline-block" style={{ backgroundColor: c.primary_color }} />
+                        {c.name} <span className="text-muted-foreground text-xs">Rep: {c.reputation}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Data e Hora</Label>
+              <Input type="datetime-local" value={scheduledAt} min={new Date().toISOString().slice(0, 16)} onChange={e => setScheduledAt(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Mensagem (opcional)</Label>
+              <Textarea placeholder="Mensagem para o adversário..." value={message} onChange={e => setMessage(e.target.value)} rows={2} className="resize-none" />
+            </div>
+
+            <Button onClick={handleSendChallenge} disabled={sending || !awayClubId || !scheduledAt || !hasLineup} className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+              <Send className="h-4 w-4 mr-2" /> {sending ? 'Enviando...' : 'ENVIAR CONVITE'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ManagerLayout>
   );
 }
 
-function ChallengeCard({
-  challenge: c,
-  direction,
-  isActing,
-  onAccept,
-  onReject,
-  onCancel,
-  onViewMatch,
-}: {
-  challenge: Challenge;
-  direction: 'received' | 'sent';
-  isActing: boolean;
-  onAccept?: () => void;
-  onReject?: () => void;
-  onCancel?: () => void;
-  onViewMatch?: () => void;
+function ChallengeCard({ challenge: c, direction, isActing, onAccept, onReject, onCancel, onViewMatch }: {
+  challenge: Challenge; direction: 'received' | 'sent'; isActing: boolean;
+  onAccept?: () => void; onReject?: () => void; onCancel?: () => void; onViewMatch?: () => void;
 }) {
   const statusInfo = STATUS_INFO[c.status] || { label: c.status, className: 'bg-muted text-muted-foreground' };
   const opponent = direction === 'received' ? c.challenger_club : c.challenged_club;
-  const scheduled = new Date(c.scheduled_at);
 
   return (
     <div className="stat-card space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           {opponent && (
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center font-display font-bold text-sm shrink-0"
-              style={{ backgroundColor: opponent.primary_color, color: opponent.secondary_color }}
-            >
-              {opponent.short_name}
-            </div>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center font-display font-bold text-sm shrink-0"
+              style={{ backgroundColor: opponent.primary_color, color: opponent.secondary_color }}>{opponent.short_name}</div>
           )}
           <div>
             <p className="font-display font-bold text-sm">{opponent?.name || '—'}</p>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
               <CalendarClock className="h-3 w-3" />
-              {format(scheduled, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              {format(new Date(c.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
             </div>
           </div>
         </div>
-        <Badge variant="outline" className={`text-xs shrink-0 ${statusInfo.className}`}>
-          {statusInfo.label}
-        </Badge>
+        <Badge variant="outline" className={`text-xs shrink-0 ${statusInfo.className}`}>{statusInfo.label}</Badge>
       </div>
-
-      {c.message && (
-        <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">{c.message}</p>
-      )}
-
+      {c.message && <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">{c.message}</p>}
       <div className="flex items-center gap-2">
-        {/* Received: pending → accept/reject */}
         {direction === 'received' && c.status === 'proposed' && (
           <>
-            <Button size="sm" disabled={isActing} onClick={onAccept}
-              className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" /> Aceitar
-            </Button>
-            <Button size="sm" variant="outline" disabled={isActing} onClick={onReject}
-              className="text-xs font-display border-destructive/40 text-destructive hover:bg-destructive/10">
-              <XCircle className="h-3 w-3 mr-1" /> Recusar
-            </Button>
+            <Button size="sm" disabled={isActing} onClick={onAccept} className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs"><CheckCircle2 className="h-3 w-3 mr-1" /> Aceitar</Button>
+            <Button size="sm" variant="outline" disabled={isActing} onClick={onReject} className="text-xs font-display border-destructive/40 text-destructive hover:bg-destructive/10"><XCircle className="h-3 w-3 mr-1" /> Recusar</Button>
           </>
         )}
-        {/* Sent: pending → cancel */}
         {direction === 'sent' && c.status === 'proposed' && (
-          <Button size="sm" variant="outline" disabled={isActing} onClick={onCancel}
-            className="text-xs font-display border-muted text-muted-foreground hover:bg-muted/50">
-            <Ban className="h-3 w-3 mr-1" /> Cancelar
-          </Button>
+          <Button size="sm" variant="outline" disabled={isActing} onClick={onCancel} className="text-xs font-display"><Ban className="h-3 w-3 mr-1" /> Cancelar</Button>
         )}
-        {/* View match if exists */}
-        {c.match_id && (
-          <Button size="sm" variant="outline" onClick={onViewMatch}
-            className="text-xs font-display ml-auto">
-            <Swords className="h-3 w-3 mr-1" /> Ver Partida
-          </Button>
-        )}
+        {c.match_id && <Button size="sm" variant="outline" onClick={onViewMatch} className="text-xs font-display ml-auto"><Swords className="h-3 w-3 mr-1" /> Ver Partida</Button>}
       </div>
     </div>
   );

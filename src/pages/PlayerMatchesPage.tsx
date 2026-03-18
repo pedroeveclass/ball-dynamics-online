@@ -4,7 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Swords, CalendarClock, Bot, User, Play, Radio } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -13,32 +14,19 @@ interface MatchEntry {
   match_id: string;
   is_bot: boolean;
   match: {
-    id: string;
-    status: string;
-    home_score: number;
-    away_score: number;
-    scheduled_at: string;
-    started_at: string | null;
-    home_club_id: string;
-    away_club_id: string;
-    current_phase: string | null;
-    current_turn_number: number;
+    id: string; status: string; home_score: number; away_score: number;
+    scheduled_at: string; started_at: string | null;
+    home_club_id: string; away_club_id: string;
+    current_phase: string | null; current_turn_number: number;
   };
   home_club?: { name: string; short_name: string; primary_color: string; secondary_color: string };
   away_club?: { name: string; short_name: string; primary_color: string; secondary_color: string };
 }
 
 const STATUS_INFO: Record<string, { label: string; className: string }> = {
-  scheduled: { label: 'Agendada',   className: 'bg-secondary text-secondary-foreground' },
-  live:      { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
-  finished:  { label: 'Encerrada',  className: 'bg-muted text-muted-foreground border-border' },
-};
-
-const PHASE_LABELS: Record<string, string> = {
-  ball_holder: 'Portador',
-  attacking_support: 'Apoio',
-  defending_response: 'Defesa',
-  resolution: 'Resolução',
+  scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
+  live: { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
+  finished: { label: 'Encerrada', className: 'bg-muted text-muted-foreground border-border' },
 };
 
 export default function PlayerMatchesPage() {
@@ -48,60 +36,33 @@ export default function PlayerMatchesPage() {
 
   const loadMatches = useCallback(async () => {
     if (!user) return;
-
-    const { data: parts } = await supabase
-      .from('match_participants')
-      .select('match_id, is_bot')
-      .eq('connected_user_id', user.id)
-      .eq('role_type', 'player');
-
+    const { data: parts } = await supabase.from('match_participants').select('match_id, is_bot').eq('connected_user_id', user.id).eq('role_type', 'player');
     if (!parts || parts.length === 0) { setLoading(false); return; }
-
     const matchIds = [...new Set(parts.map(p => p.match_id))];
-
-    const { data: matchData } = await supabase
-      .from('matches')
+    const { data: matchData } = await supabase.from('matches')
       .select('id, status, home_score, away_score, scheduled_at, started_at, home_club_id, away_club_id, current_phase, current_turn_number')
-      .in('id', matchIds)
-      .order('scheduled_at', { ascending: false });
-
+      .in('id', matchIds).order('scheduled_at', { ascending: false });
     if (!matchData) { setLoading(false); return; }
-
     const clubIds = [...new Set(matchData.flatMap(m => [m.home_club_id, m.away_club_id]))];
-    const { data: clubData } = await supabase
-      .from('clubs')
-      .select('id, name, short_name, primary_color, secondary_color')
-      .in('id', clubIds);
+    const { data: clubData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', clubIds);
     const clubMap = new Map((clubData || []).map(c => [c.id, c]));
     const partMap = new Map(parts.map(p => [p.match_id, p]));
-
-    const enriched: MatchEntry[] = matchData.map(m => ({
-      match_id: m.id,
-      is_bot: partMap.get(m.id)?.is_bot ?? true,
-      match: m,
-      home_club: clubMap.get(m.home_club_id),
-      away_club: clubMap.get(m.away_club_id),
-    }));
-
-    setMatches(enriched);
+    setMatches(matchData.map(m => ({
+      match_id: m.id, is_bot: partMap.get(m.id)?.is_bot ?? true, match: m,
+      home_club: clubMap.get(m.home_club_id), away_club: clubMap.get(m.away_club_id),
+    })));
     setLoading(false);
   }, [user]);
 
   useEffect(() => { loadMatches(); }, [loadMatches]);
 
-  const liveMatches     = matches.filter(m => m.match.status === 'live');
-  const upcomingMatches = matches.filter(m => m.match.status === 'scheduled');
-  const pastMatches     = matches.filter(m => m.match.status === 'finished');
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+  const liveOrSoon = matches.filter(m => m.match.status === 'live' || (m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now <= oneHour));
+  const upcoming = matches.filter(m => m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now > oneHour);
+  const past = matches.filter(m => m.match.status === 'finished');
 
-  if (loading) {
-    return (
-      <AppLayout>
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="stat-card h-20 animate-pulse bg-muted" />)}
-        </div>
-      </AppLayout>
-    );
-  }
+  if (loading) return <AppLayout><div className="space-y-3">{[1,2,3].map(i => <div key={i} className="stat-card h-20 animate-pulse bg-muted" />)}</div></AppLayout>;
 
   return (
     <AppLayout>
@@ -114,38 +75,36 @@ export default function PlayerMatchesPage() {
           <div className="stat-card text-center py-12">
             <Swords className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-display font-bold text-muted-foreground">Nenhuma partida ainda</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Quando seu clube for escalado em uma partida, ela aparecerá aqui.
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">Quando seu clube for escalado em uma partida, ela aparecerá aqui.</p>
           </div>
         )}
 
-        {liveMatches.length > 0 && (
-          <MatchSection title="🔴 Ao Vivo" matches={liveMatches} />
+        {liveOrSoon.length > 0 && (
+          <section>
+            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">🔴 Ao Vivo / Em Breve</h2>
+            <div className="space-y-3">{liveOrSoon.map(e => <MatchCard key={e.match_id} entry={e} />)}</div>
+          </section>
         )}
-        {upcomingMatches.length > 0 && (
-          <MatchSection title="Próximas Partidas" matches={upcomingMatches} />
+
+        {upcoming.length > 0 && (
+          <section>
+            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Próximas Partidas</h2>
+            <div className="space-y-3">{upcoming.map(e => <MatchCard key={e.match_id} entry={e} />)}</div>
+          </section>
         )}
-        {pastMatches.length > 0 && (
-          <MatchSection title="Partidas Encerradas" matches={pastMatches} />
+
+        {past.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-2 font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide hover:text-foreground transition-colors">
+              <ChevronDown className="h-4 w-4" /> Partidas Encerradas ({past.length})
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="space-y-3">{past.map(e => <MatchCard key={e.match_id} entry={e} />)}</div>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
     </AppLayout>
-  );
-}
-
-function MatchSection({ title, matches }: { title: string; matches: MatchEntry[] }) {
-  return (
-    <section>
-      <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">
-        {title}
-      </h2>
-      <div className="space-y-3">
-        {matches.map(entry => (
-          <MatchCard key={entry.match_id} entry={entry} />
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -161,47 +120,28 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
           <ClubMini club={home_club} />
           <div className="text-center shrink-0">
             <div className="font-display text-lg font-extrabold">
-              {m.status === 'finished' || isLive
-                ? `${m.home_score} – ${m.away_score}`
-                : <span className="text-muted-foreground text-sm">vs</span>
-              }
+              {m.status === 'finished' || isLive ? `${m.home_score} – ${m.away_score}` : <span className="text-muted-foreground text-sm">vs</span>}
             </div>
-            {isLive && m.current_phase && (
-              <p className="text-[10px] text-pitch font-display">{PHASE_LABELS[m.current_phase] || m.current_phase}</p>
-            )}
           </div>
           <ClubMini club={away_club} />
         </div>
-        <Badge variant="outline" className={`text-xs shrink-0 ${statusInfo.className}`}>
-          {statusInfo.label}
-        </Badge>
+        <Badge variant="outline" className={`text-xs shrink-0 ${statusInfo.className}`}>{statusInfo.label}</Badge>
       </div>
-
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <CalendarClock className="h-3 w-3" />
             {format(new Date(m.scheduled_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
           </div>
-          {isLive && m.current_turn_number > 0 && (
-            <span className="text-xs text-pitch font-display">Turno {m.current_turn_number}</span>
-          )}
           {is_bot ? (
-            <span className="flex items-center gap-1 text-xs text-amber-500">
-              <Bot className="h-3 w-3" /> Bot
-            </span>
+            <span className="flex items-center gap-1 text-xs text-amber-500"><Bot className="h-3 w-3" /> Bot</span>
           ) : (
-            <span className="flex items-center gap-1 text-xs text-pitch">
-              <User className="h-3 w-3" /> Você
-            </span>
+            <span className="flex items-center gap-1 text-xs text-pitch"><User className="h-3 w-3" /> Você</span>
           )}
         </div>
         <Link to={`/match/${m.id}`}>
-          <Button
-            size="sm"
-            variant={isLive ? 'default' : 'outline'}
-            className={`text-xs font-display ${isLive ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}
-          >
+          <Button size="sm" variant={isLive ? 'default' : 'outline'}
+            className={`text-xs font-display ${isLive ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}>
             {isLive ? <Radio className="h-3 w-3 mr-1 animate-pulse" /> : <Play className="h-3 w-3 mr-1" />}
             {isLive ? 'Entrar' : m.status === 'finished' ? 'Ver' : 'Acompanhar'}
           </Button>
@@ -215,10 +155,8 @@ function ClubMini({ club }: { club?: { name: string; short_name: string; primary
   if (!club) return <div className="w-8 h-8 rounded bg-muted animate-pulse shrink-0" />;
   return (
     <div className="flex items-center gap-1.5 min-w-0">
-      <div
-        className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
-        style={{ backgroundColor: club.primary_color, color: club.secondary_color }}
-      >
+      <div className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
+        style={{ backgroundColor: club.primary_color, color: club.secondary_color }}>
         {club.short_name}
       </div>
       <span className="font-display font-bold text-sm truncate hidden sm:block">{club.name}</span>
