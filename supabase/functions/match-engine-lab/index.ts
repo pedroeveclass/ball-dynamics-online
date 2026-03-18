@@ -8,7 +8,154 @@ const corsHeaders = {
 const PHASE_DURATION_MS = 6000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
+const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
+const MAX_TURNS = 124;
+const TURNS_PER_HALF = 62;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
+
+// ─── Match minute calculation ────────────────────────────────
+function computeMatchMinute(turnNumber: number): number {
+  if (turnNumber <= TURNS_PER_HALF) {
+    return Math.floor((turnNumber / TURNS_PER_HALF) * 45);
+  }
+  return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
+}
+
+// ─── Formation positions for bot fill ─────────────────────────
+const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
+  '4-4-2': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 42, y: 15, pos: 'LM' }, { x: 42, y: 37, pos: 'CM' }, { x: 42, y: 63, pos: 'CM' }, { x: 42, y: 85, pos: 'RM' },
+    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
+  ],
+  '4-3-3': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 40, y: 25, pos: 'CM' }, { x: 40, y: 50, pos: 'CM' }, { x: 40, y: 75, pos: 'CM' },
+    { x: 60, y: 15, pos: 'LW' }, { x: 62, y: 50, pos: 'ST' }, { x: 60, y: 85, pos: 'RW' },
+  ],
+  '4-2-3-1': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 36, y: 35, pos: 'CDM' }, { x: 36, y: 65, pos: 'CDM' },
+    { x: 50, y: 15, pos: 'LM' }, { x: 50, y: 50, pos: 'CAM' }, { x: 50, y: 85, pos: 'RM' },
+    { x: 63, y: 50, pos: 'ST' },
+  ],
+};
+
+function getFormationForFill(formation: string, isHome: boolean): Array<{ x: number; y: number; pos: string }> {
+  const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
+  if (isHome) return base;
+  return base.map(p => ({ ...p, x: 100 - p.x }));
+}
+
+// ─── Bot AI: generate fallback actions ─────────────────────────
+async function generateBotActions(
+  supabase: any,
+  matchId: string,
+  turnId: string,
+  participants: any[],
+  submittedParticipantIds: Set<string>,
+  ballHolderId: string | null,
+  possClubId: string | null,
+  isLooseBall: boolean,
+  phase: string,
+) {
+  const botsToAct: any[] = [];
+
+  for (const p of participants) {
+    if (p.role_type !== 'player') continue;
+    if (submittedParticipantIds.has(p.id)) continue;
+
+    // Determine if this participant should act in this phase
+    const isAttacker = p.club_id === possClubId;
+    const isBH = p.id === ballHolderId;
+
+    if (phase === 'ball_holder' && isBH) botsToAct.push(p);
+    else if (phase === 'attacking_support' && isAttacker) botsToAct.push(p);
+    else if (phase === 'defending_response' && !isAttacker) botsToAct.push(p);
+    else if (phase === 'positioning_attack' && isAttacker && !isBH) botsToAct.push(p);
+    else if (phase === 'positioning_defense' && !isAttacker) botsToAct.push(p);
+  }
+
+  if (botsToAct.length === 0) return;
+
+  const actions: any[] = [];
+
+  for (const bot of botsToAct) {
+    const posX = Number(bot.pos_x ?? 50);
+    const posY = Number(bot.pos_y ?? 50);
+    const isBH = bot.id === ballHolderId;
+
+    if (isBH && phase === 'ball_holder') {
+      // Ball holder bot: pass to nearest teammate
+      const teammates = participants.filter(
+        (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
+      );
+      if (teammates.length > 0) {
+        // Find closest teammate ahead
+        const forward = teammates
+          .map((t: any) => ({ ...t, dist: Math.sqrt((Number(t.pos_x ?? 50) - posX) ** 2 + (Number(t.pos_y ?? 50) - posY) ** 2) }))
+          .sort((a: any, b: any) => a.dist - b.dist);
+        const target = forward[0];
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'pass_low',
+          target_x: Number(target.pos_x ?? 50), target_y: Number(target.pos_y ?? 50),
+          target_participant_id: target.id, status: 'pending',
+        });
+      } else {
+        // No teammates — just hold position
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: posX, target_y: posY, status: 'pending',
+        });
+      }
+    } else {
+      // Non-ball-holder bot or positioning: move slightly toward ball or hold formation
+      let targetX = posX;
+      let targetY = posY;
+
+      if (isLooseBall) {
+        // Move toward ball area (center-ish) with some randomness
+        targetX = posX + (50 - posX) * 0.15 + (Math.random() - 0.5) * 4;
+        targetY = posY + (50 - posY) * 0.15 + (Math.random() - 0.5) * 4;
+      } else if (ballHolderId) {
+        const bh = participants.find((p: any) => p.id === ballHolderId);
+        if (bh) {
+          const bhX = Number(bh.pos_x ?? 50);
+          const bhY = Number(bh.pos_y ?? 50);
+          const isAttacker = bot.club_id === possClubId;
+          if (isAttacker) {
+            // Move toward ball holder to offer support
+            targetX = posX + (bhX - posX) * 0.1 + (Math.random() - 0.5) * 3;
+            targetY = posY + (bhY - posY) * 0.1 + (Math.random() - 0.5) * 3;
+          } else {
+            // Defender: move toward ball holder to mark
+            targetX = posX + (bhX - posX) * 0.12 + (Math.random() - 0.5) * 3;
+            targetY = posY + (bhY - posY) * 0.12 + (Math.random() - 0.5) * 3;
+          }
+        }
+      }
+
+      targetX = Math.max(1, Math.min(99, targetX));
+      targetY = Math.max(1, Math.min(99, targetY));
+
+      actions.push({
+        match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+        controlled_by_type: 'bot', action_type: 'move',
+        target_x: targetX, target_y: targetY, status: 'pending',
+      });
+    }
+  }
+
+  if (actions.length > 0) {
+    await supabase.from('match_actions').insert(actions);
+    console.log(`[ENGINE] Bot AI generated ${actions.length} fallback actions for phase ${phase}`);
+  }
+}
 type Phase = typeof PHASES[number];
 
 function isPositioningPhase(phase: string): boolean {
