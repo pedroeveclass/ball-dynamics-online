@@ -2467,11 +2467,9 @@ export default function MatchRoomPage() {
 
                 return (
                   <g key={p.id}
-                    onClick={(e) => { e.stopPropagation(); handlePlayerClick(p.id); }}
+                    onClick={(e) => { if (!drawingAction) e.stopPropagation(); handlePlayerClick(p.id); }}
                     style={{ cursor: isControllable ? 'pointer' : 'default' }}
                   >
-                    {/* Invisible larger hit area for easier clicking */}
-                    <circle cx={x} cy={y} r={R + 8} fill="transparent" stroke="none" />
                     {/* Possession change pulse */}
                     {isPulsingNewCarrier && (
                       <>
