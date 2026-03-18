@@ -24,12 +24,13 @@ import ManagerStadiumPage from "./pages/ManagerStadiumPage";
 import ManagerMarketPage from "./pages/ManagerMarketPage";
 import ManagerSquadPage from "./pages/ManagerSquadPage";
 import ManagerLineupPage from "./pages/ManagerLineupPage";
-import ManagerMatchCreatePage from "./pages/ManagerMatchCreatePage";
 import ManagerChallengesPage from "./pages/ManagerChallengesPage";
 import PlayerMatchesPage from "./pages/PlayerMatchesPage";
 import MatchRoomPage from "./pages/MatchRoomPage";
 import SoloPhysicsLabPage from "./pages/SoloPhysicsLabPage";
 import LeaguePage from "./pages/LeaguePage";
+import AccountProfilePage from "./pages/AccountProfilePage";
+import NotificationsPage from "./pages/NotificationsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,11 +62,12 @@ const App = () => (
             <Route path="/manager/market" element={<ManagerRoute><ManagerMarketPage /></ManagerRoute>} />
             <Route path="/manager/squad" element={<ManagerRoute><ManagerSquadPage /></ManagerRoute>} />
             <Route path="/manager/lineup" element={<ManagerRoute><ManagerLineupPage /></ManagerRoute>} />
-            <Route path="/manager/match/create" element={<ManagerRoute><ManagerMatchCreatePage /></ManagerRoute>} />
             <Route path="/manager/challenges" element={<ManagerRoute><ManagerChallengesPage /></ManagerRoute>} />
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
             <Route path="/match-lab/solo" element={<ProtectedRoute><SoloPhysicsLabPage /></ProtectedRoute>} />
             <Route path="/league" element={<LeaguePage />} />
+            <Route path="/account/profile" element={<ProtectedRoute><AccountProfilePage /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

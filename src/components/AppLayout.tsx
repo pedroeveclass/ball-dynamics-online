@@ -30,7 +30,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <span className="font-display text-lg font-bold tracking-tight text-foreground">FOOTBALL IDENTITY</span>
             </div>
             <div className="flex items-center gap-4">
-              <Link to="/player" className="relative p-2 rounded-md hover:bg-muted transition-colors">
+              <Link to="/notifications" className="relative p-2 rounded-md hover:bg-muted transition-colors">
                 <Bell className="h-5 w-5 text-muted-foreground" />
               </Link>
               <div className="flex items-center gap-2">
