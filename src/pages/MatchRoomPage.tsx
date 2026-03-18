@@ -2621,7 +2621,6 @@ export default function MatchRoomPage() {
                         } else if (isShootAction(bhAction.action_type) && isOpponent) {
                           const isGK = menuPlayer.field_pos === 'GK';
                           if (isGK) {
-                            // GK can only DEFENDER if inside the penalty box
                             const gkX = menuPlayer.field_x ?? 50;
                             const gkY = menuPlayer.field_y ?? 50;
                             const isHome = menuPlayer.club_id === match?.home_club_id;
@@ -2641,6 +2640,18 @@ export default function MatchRoomPage() {
                           }
                         }
                       }
+                    }
+                    // One-touch labels: when there's a pendingInterceptChoice, pass/shoot options are "de primeira"
+                    const isOneTouchOption = pendingInterceptChoice?.participantId === showActionMenu &&
+                      (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
+                    if (isOneTouchOption) {
+                      const baseLabel = ACTION_LABELS[a] || a;
+                      label = `${baseLabel} (1ª)`;
+                      if (a === 'pass_low') icon = '⚡➡';
+                      else if (a === 'pass_high') icon = '⚡⤴';
+                      else if (a === 'pass_launch') icon = '⚡🚀';
+                      else if (a === 'shoot_controlled') icon = '⚡🎯';
+                      else if (a === 'shoot_power') icon = '⚡💥';
                     }
                     return (
                       <button
