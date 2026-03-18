@@ -2599,14 +2599,25 @@ export default function MatchRoomPage() {
                         } else if (isShootAction(bhAction.action_type) && isOpponent) {
                           const isGK = menuPlayer.field_pos === 'GK';
                           if (isGK) {
-                            label = 'DEFENDER';
-                            icon = '🧤';
+                            // GK can only DEFENDER if inside the penalty box
+                            const gkX = menuPlayer.field_x ?? 50;
+                            const gkY = menuPlayer.field_y ?? 50;
+                            const isHome = menuPlayer.club_id === match?.home_club_id;
+                            const inBox = isHome
+                              ? (gkX <= 18 && gkY >= 20 && gkY <= 80)
+                              : (gkX >= 82 && gkY >= 20 && gkY <= 80);
+                            if (inBox) {
+                              label = 'DEFENDER';
+                              icon = '🧤';
+                            } else {
+                              label = 'BLOQUEAR';
+                              icon = '🛡️';
+                            }
                           } else {
                             label = 'BLOQUEAR';
                             icon = '🛡️';
                           }
                         }
-                      }
                     }
                     return (
                       <button
