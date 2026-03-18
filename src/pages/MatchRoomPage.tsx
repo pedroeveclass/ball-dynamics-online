@@ -997,6 +997,17 @@ export default function MatchRoomPage() {
       setPendingInterceptChoice(null);
       return;
     }
+    // One-touch actions: if player has a pendingInterceptChoice (they clicked on a trajectory),
+    // pass/shoot actions become one-touch — they need a target, so enter drawing mode with the
+    // intercept position as the starting point for the action
+    if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId &&
+        (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch' || actionType === 'shoot_controlled' || actionType === 'shoot_power')) {
+      // Store the one-touch context — the drawing will submit with one_touch payload
+      setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
+      setShowActionMenu(null);
+      // Keep pendingInterceptChoice alive so we know this is a one-touch
+      return;
+    }
     setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
     setShowActionMenu(null);
     setPendingInterceptChoice(null);
