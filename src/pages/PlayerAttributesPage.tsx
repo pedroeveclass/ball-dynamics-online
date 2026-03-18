@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier } from '@/lib/attributes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -28,7 +28,6 @@ export default function PlayerAttributesPage() {
   const [history, setHistory] = useState<TrainingRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
-  // Calculate weekly evolution per attribute
   const weeklyEvolution = (() => {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -75,6 +74,9 @@ export default function PlayerAttributesPage() {
     setTraining(attrKey);
     const currentVal = Number((attrs as any)[attrKey]) || 0;
 
+    // Tier-based training multiplier
+    const tierMultiplier = getTrainingTierMultiplier(currentVal);
+
     const baseGrowth = growthRate;
     const roll = Math.random();
     let growth: number;
@@ -85,10 +87,11 @@ export default function PlayerAttributesPage() {
     } else {
       growth = baseGrowth + 0.79 + Math.random() * 0.20;
     }
+    // Apply tier multiplier
+    growth = growth * tierMultiplier;
     growth = Math.round(growth * 100) / 100;
     const newVal = Math.min(99, Math.round((currentVal + growth) * 100) / 100);
 
-    // Update attribute
     const { error: attrError } = await supabase
       .from('player_attributes')
       .update({ [attrKey]: newVal })
@@ -100,7 +103,6 @@ export default function PlayerAttributesPage() {
       return;
     }
 
-    // Save training history
     await supabase.from('training_history').insert({
       player_profile_id: playerProfile.id,
       attribute_key: attrKey,
@@ -109,14 +111,12 @@ export default function PlayerAttributesPage() {
       growth,
     });
 
-    // Deduct energy and update last_trained_at
     const newEnergy = playerProfile.energy_current - ENERGY_COST;
     await supabase
       .from('player_profiles')
       .update({ energy_current: newEnergy, last_trained_at: new Date().toISOString() })
       .eq('id', playerProfile.id);
 
-    // Recalculate overall
     const updatedAttrs = { ...attrs, [attrKey]: newVal } as any;
     const attrRecord: Record<string, number> = {};
     for (const k of [...FIELD_ATTRS, ...GK_ATTRS]) {
@@ -128,7 +128,9 @@ export default function PlayerAttributesPage() {
     await fetchAttrs();
     await fetchHistory();
     await refreshPlayerProfile();
-    toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${growth.toFixed(2)}!`);
+
+    const tier = getAttributeTier(newVal);
+    toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${growth.toFixed(2)}! (${tier.label})`);
     setTraining(null);
   };
 
@@ -139,13 +141,17 @@ export default function PlayerAttributesPage() {
         {keys.map(key => {
           const value = Number((attrs as any)[key]) || 0;
           const evo = weeklyEvolution[key];
+          const tier = getAttributeTier(value);
+          const tierMult = getTrainingTierMultiplier(value);
+          const effectiveGrowthMin = (growthRate * tierMult).toFixed(2);
+          const effectiveGrowthMax = ((growthRate + 0.99) * tierMult).toFixed(2);
           return (
             <Popover key={key}>
               <PopoverTrigger asChild>
                 <button className="w-full text-left hover:bg-muted/50 rounded-md p-1 transition-colors cursor-pointer" disabled={training === key}>
                   <div className="flex items-center gap-2">
                     <div className="flex-1">
-                      <AttributeBar label={ATTR_LABELS[key] || key} value={value} />
+                      <AttributeBar label={ATTR_LABELS[key] || key} value={value} showTier />
                     </div>
                     {evo && evo > 0 && (
                       <span className="flex items-center text-xs text-pitch font-display font-bold gap-0.5 shrink-0">
@@ -156,16 +162,27 @@ export default function PlayerAttributesPage() {
                   </div>
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-64">
+              <PopoverContent className="w-72">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Dumbbell className="h-4 w-4 text-tactical" />
                     <span className="font-display font-bold text-sm">Treinar {ATTR_LABELS[key] || key}</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${tier.bgColor} ${tier.color}`}>
+                      {tier.label}
+                    </span>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Atual: <span className="font-bold text-foreground">{value.toFixed(2)}</span> → Ganho estimado: <span className="font-bold text-pitch">~{growthRate.toFixed(2)} - {(growthRate + 0.99).toFixed(2)}</span>
+                    Atual: <span className="font-bold text-foreground">{value.toFixed(2)}</span> → Ganho estimado: <span className="font-bold text-pitch">~{effectiveGrowthMin} - {effectiveGrowthMax}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">Custo: {ENERGY_COST} energia</p>
+                  {tierMult < 1 && (
+                    <p className="text-xs text-warning">Crescimento reduzido pelo nível do atributo ({Math.round(tierMult * 100)}%)</p>
+                  )}
+                  {tierMult > 1 && (
+                    <p className="text-xs text-pitch">Bônus de crescimento por atributo baixo ({Math.round(tierMult * 100)}%)</p>
+                  )}
                   {playerProfile.age >= 30 && (
                     <p className="text-xs text-warning">Crescimento reduzido pela idade ({Math.round(growthRate * 100)}%)</p>
                   )}
@@ -213,11 +230,10 @@ export default function PlayerAttributesPage() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia.
+          Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia. Atributos mais altos crescem mais devagar.
           {Object.keys(weeklyEvolution).length > 0 && <span className="text-pitch"> Setas verdes indicam evolução na última semana.</span>}
         </p>
 
-        {/* Training History */}
         {showHistory && (
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-3">
