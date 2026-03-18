@@ -428,6 +428,8 @@ function computeInterceptSuccess(
   context: InterceptContext,
   attackerAttrs: Record<string, number>,
   defenderAttrs: Record<string, number>,
+  ballHeightZone?: 'green' | 'yellow' | 'red',
+  defenderHeight?: string,
 ): { success: boolean; chance: number } {
   let attackerSkill: number;
   let defenderSkill: number;
@@ -461,11 +463,30 @@ function computeInterceptSuccess(
   }
 
   let successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
+
+  // ── Ball height zone modifier (Phase 4) ──
+  if (ballHeightZone === 'yellow') {
+    // Yellow zone: height-related attributes matter
+    const heightBonus = (normalizeAttr(defenderAttrs.cabeceio ?? 40) * 0.3 +
+      normalizeAttr(defenderAttrs.pulo ?? 40) * 0.3 +
+      normalizeAttr(defenderAttrs.defesa_aerea ?? 40) * 0.2 +
+      normalizeAttr(defenderAttrs.forca ?? 40) * 0.2);
+    
+    // Player height modifier
+    const heightMods: Record<string, number> = {
+      'Muito Baixo': -0.15, 'Baixo': -0.08, 'Médio': 0, 'Alto': 0.10, 'Muito Alto': 0.15,
+    };
+    const heightMod = heightMods[defenderHeight || 'Médio'] ?? 0;
+    
+    successChance *= (0.7 + heightBonus * 0.6 + heightMod);
+    console.log(`[ENGINE] Yellow zone: heightBonus=${heightBonus.toFixed(2)} heightMod=${heightMod} adjusted chance`);
+  }
+
   successChance = Math.max(0.05, Math.min(0.95, successChance));
 
   const roll = Math.random();
   const success = roll < successChance;
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success}`);
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} zone=${ballHeightZone || 'green'}`);
   return { success, chance: successChance };
 }
 
