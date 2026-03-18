@@ -1729,6 +1729,7 @@ Deno.serve(async (req) => {
         target_x: target_x ?? null,
         target_y: target_y ?? null,
         status: 'pending',
+        payload: actionPayload || null,
       });
 
       return new Response(JSON.stringify({ status: 'action_submitted', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
