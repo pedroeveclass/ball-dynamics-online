@@ -605,14 +605,18 @@ export default function MatchRoomPage() {
 
     if (activeTurn?.ball_holder_participant_id == null) {
       if (carriedLooseBallPos) {
-        // Ball was ALREADY loose — inertia only lasts ONE turn, stop it
-        setBallInertiaDir(null);
-        // Keep carriedLooseBallPos where it is (ball stays put)
+        // Ball was ALREADY loose — check if inertia was consumed
+        if (inertiaConsumedRef.current) {
+          // Inertia already applied last turn — clear it, ball stays put
+          setBallInertiaDir(null);
+        }
+        // If not consumed yet, keep ballInertiaDir alive for arrow/animation
       } else {
         // Ball JUST became loose — use ref for position (avoids race condition with state)
         const pos = finalBallPosRef.current || finalBallPos;
         if (pos) {
           setCarriedLooseBallPos(pos);
+          inertiaConsumedRef.current = false;
           // Use stored direction from animation end
           if (lastBallDirRef.current) {
             setBallInertiaDir(lastBallDirRef.current);
@@ -623,6 +627,7 @@ export default function MatchRoomPage() {
       setCarriedLooseBallPos(null);
       setBallInertiaDir(null);
       lastBallDirRef.current = null;
+      inertiaConsumedRef.current = false;
     }
 
     setFinalBallPos(null);
