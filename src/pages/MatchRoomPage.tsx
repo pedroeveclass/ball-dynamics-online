@@ -313,23 +313,35 @@ export default function MatchRoomPage() {
         }));
       };
 
-      const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
+      const ensureEleven = async (list: Participant[], formation: string, isHome: boolean, clubId: string): Promise<Participant[]> => {
         const positioned = assignPositions(list, formation, isHome);
         if (isTestMatch) return positioned;
         const positions = getFormationPositions(formation, isHome);
+        const botsToInsert: any[] = [];
         for (let i = positioned.length; i < 11; i++) {
-          positioned.push({
-            id: `virtual-${isHome ? 'home' : 'away'}-${i}`,
+          const coords = positions[i] || { x: isHome ? 30 : 70, y: 50 };
+          botsToInsert.push({
             match_id: matchId!,
             player_profile_id: null, club_id: clubId,
             lineup_slot_id: null, role_type: 'player',
-            is_bot: true, connected_user_id: null,
-            pos_x: null, pos_y: null,
-            field_x: positions[i]?.x ?? (isHome ? 30 : 70),
-            field_y: positions[i]?.y ?? 50,
-            field_pos: positions[i]?.pos ?? '?',
-            jersey_number: i + 1,
+            is_bot: true, is_ready: false, connected_user_id: null,
+            pos_x: coords.x, pos_y: coords.y,
           });
+        }
+        // Persist bots to DB so match engine can use them
+        if (botsToInsert.length > 0) {
+          const { data: inserted } = await supabase.from('match_participants').insert(botsToInsert).select('*');
+          for (const bot of (inserted || [])) {
+            const idx = positioned.length;
+            const pos = positions[idx] || { x: isHome ? 30 : 70, y: 50, pos: '?' };
+            positioned.push({
+              ...bot,
+              field_x: bot.pos_x ?? pos.x,
+              field_y: bot.pos_y ?? pos.y,
+              field_pos: pos.pos ?? '?',
+              jersey_number: idx + 1,
+            });
+          }
         }
         return positioned;
       };
