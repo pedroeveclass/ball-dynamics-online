@@ -2775,12 +2775,25 @@ export default function MatchRoomPage() {
   );
 }
 
+// ─── Match minute calculation ─────────────────────────────────
+const TURNS_PER_HALF = 62;
+
+function computeMatchMinute(turnNumber: number): number {
+  if (turnNumber <= TURNS_PER_HALF) {
+    return Math.floor((turnNumber / TURNS_PER_HALF) * 45);
+  }
+  return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
+}
+
 // ─── TurnWheel (animated clock) ───────────────────────────────
 function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
 }) {
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
+  const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
+  const matchMinute = computeMatchMinute(turnNumber);
+  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1º Tempo' : '2º Tempo';
 
   const phases = isPositioning
     ? [
@@ -2837,9 +2850,18 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="flex items-center justify-between w-full px-2">
-        <span className="text-[10px] font-display text-muted-foreground uppercase tracking-widest">Turno</span>
-        <span className="font-display font-bold text-sm text-foreground">{turnNumber || '—'}</span>
+        <span className="text-[10px] font-display text-muted-foreground uppercase tracking-widest">{halfLabel}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-display font-bold text-sm text-foreground">{matchMinute}'</span>
+          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
+        </div>
       </div>
+
+      {isHalftime && (
+        <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 mb-1">
+          <span className="text-[10px] font-display font-bold text-warning">⏸ INTERVALO</span>
+        </div>
+      )}
 
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
         {quadrants.map((q, i) => {
