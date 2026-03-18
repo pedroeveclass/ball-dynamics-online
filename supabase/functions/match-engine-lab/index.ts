@@ -1198,6 +1198,7 @@ Deno.serve(async (req) => {
         }
 
         // ── Apply deferred ball holder move (after ball resolution) ──
+        if (bhHasBallAction && ballHolder) {
           const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
           if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
             await supabase.from('match_participants').update({
