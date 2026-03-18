@@ -296,13 +296,13 @@ export default function MatchRoomPage() {
 
       const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
         const positions = getFormationPositions(formation, isHome);
-        // Sort so GK always gets index 0 (GK formation slot)
+        // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
         const sorted = [...list].sort((a, b) => {
           const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
           const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
           if (aIsGK && !bIsGK) return -1;
           if (!aIsGK && bIsGK) return 1;
-          return 0;
+          return a.id.localeCompare(b.id);
         });
         return sorted.map((p, i) => ({
           ...p,
@@ -829,13 +829,13 @@ export default function MatchRoomPage() {
 
     const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
       const positions = getFormationPositions(formation, isHome);
-      // Sort so GK always gets index 0 (GK formation slot)
+      // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
       const sorted = [...list].sort((a, b) => {
         const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
         const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
         if (aIsGK && !bIsGK) return -1;
         if (!aIsGK && bIsGK) return 1;
-        return 0;
+        return a.id.localeCompare(b.id);
       });
       return sorted.map((p, i) => ({
         ...p,
@@ -1028,15 +1028,40 @@ export default function MatchRoomPage() {
 
     // Determine if this is a one-touch action (player intercepting trajectory + choosing pass/shoot)
     const isOneTouch = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId;
-    const oneTouchPayload = isOneTouch ? { one_touch: true, intercept_x: pendingInterceptChoice!.targetX, intercept_y: pendingInterceptChoice!.targetY } : undefined;
 
-    if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+    if (isOneTouch) {
+      // One-touch: submit a 'receive' action with a one_touch_next payload
+      // The player first moves to intercept, and if they win the ball contest,
+      // the pass/shot executes automatically in the next turn's phase 1
+      const oneTouchNextPayload = {
+        one_touch: true,
+        intercept_x: pendingInterceptChoice!.targetX,
+        intercept_y: pendingInterceptChoice!.targetY,
+        next_action_type: drawingAction.type,
+        next_target_x: drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power'
+          ? (() => { const s = participants.find(p => p.id === drawingAction.fromParticipantId); return s ? getShootTarget(s).x : pctX; })()
+          : pctX,
+        next_target_y: drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power'
+          ? clamp(pctY, 38, 62)
+          : pctY,
+        next_target_participant_id: nearPlayer?.id || null,
+      };
+      submitAction('receive', drawingAction.fromParticipantId, pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY, undefined, oneTouchNextPayload);
+    } else if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62), undefined, oneTouchPayload);
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id, oneTouchPayload);
+      // Apply pass distance clamping
+      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+      let finalPctX = pctX, finalPctY = pctY;
+      if (fromP && fromP.field_x != null && fromP.field_y != null) {
+        const clamped = clampPassDistance(fromP.field_x, fromP.field_y, pctX, pctY, drawingAction.type);
+        finalPctX = clamped.x;
+        finalPctY = clamped.y;
+      }
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, finalPctX, finalPctY, nearPlayer?.id);
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
       const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
@@ -1492,6 +1517,16 @@ export default function MatchRoomPage() {
     const isAttacking = p.club_id === currentPossClubId;
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
+    // Check if player is in attacking half (can shoot)
+    const isHomeTeam = p.club_id === match.home_club_id;
+    const playerX = p.field_x ?? p.pos_x ?? 50;
+    const inAttackingHalf = isHomeTeam ? playerX >= 45 : playerX <= 55; // slight margin
+
+    const filterShots = (actions: string[]) => {
+      if (inAttackingHalf) return actions;
+      return actions.filter(a => a !== 'shoot_controlled' && a !== 'shoot_power');
+    };
+
     // Positioning turn: move only, ball holder can't move
     if (isPositioningTurn) {
       if (isBH) return []; // Ball holder (kicker) can't reposition
@@ -1503,15 +1538,15 @@ export default function MatchRoomPage() {
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
-      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? ['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action'] : ['no_action', 'move'];
+      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots(['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
       if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
       return [];
     }
 
-    if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
+    if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
-    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action'] : ['no_action', 'move'];
+    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots(['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
   };
@@ -1532,6 +1567,24 @@ export default function MatchRoomPage() {
     x: ((svgX - PAD) / INNER_W) * 100,
     y: ((svgY - PAD) / INNER_H) * 100,
   });
+
+  // Max pass/cross distance limits (% of field)
+  const MAX_PASS_DISTANCE: Record<string, number> = {
+    pass_low: 50,
+    pass_high: 60,
+    pass_launch: 70,
+  };
+
+  const clampPassDistance = (fromX: number, fromY: number, toX: number, toY: number, actionType: string): { x: number; y: number } => {
+    const maxDist = MAX_PASS_DISTANCE[actionType];
+    if (!maxDist) return { x: toX, y: toY };
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= maxDist) return { x: toX, y: toY };
+    const scale = maxDist / dist;
+    return { x: fromX + dx * scale, y: fromY + dy * scale };
+  };
 
   const getDrawingBounds = (type: DrawingState['type']) => {
     if (type === 'move') return { min: 0, max: 100 };
@@ -1581,6 +1634,19 @@ export default function MatchRoomPage() {
             finalY = fromP.field_y + dy * scale;
           }
         }
+      }
+    }
+
+    // Clamp pass distance for pass-type drawing actions
+    if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
+      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+      if (fromP && fromP.field_x != null && fromP.field_y != null) {
+        // For one-touch, origin is the intercept point
+        const originX = pendingInterceptChoice?.participantId === drawingAction.fromParticipantId ? pendingInterceptChoice.targetX : fromP.field_x;
+        const originY = pendingInterceptChoice?.participantId === drawingAction.fromParticipantId ? pendingInterceptChoice.targetY : fromP.field_y;
+        const clamped = clampPassDistance(originX, originY, finalX, finalY, drawingAction.type);
+        finalX = clamped.x;
+        finalY = clamped.y;
       }
     }
 
@@ -2277,6 +2343,47 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
+                // One-touch: show move line (player → intercept) + ball action arrow (intercept → target)
+                const isOneTouchDraw = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId &&
+                  drawingAction.type !== 'move';
+
+                if (isOneTouchDraw) {
+                  // Move line: player → intercept point
+                  const playerPos = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
+                  const interceptPos = toSVG(pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY);
+                  // Ball action: intercept → target
+                  let targetFieldX: number, targetFieldY: number;
+                  if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+                    const goalTarget = getShootTarget(drawingFrom);
+                    targetFieldX = goalTarget.x;
+                    targetFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
+                  } else {
+                    targetFieldX = mouseFieldPct.x;
+                    targetFieldY = mouseFieldPct.y;
+                  }
+                  const targetPos = toSVG(targetFieldX, targetFieldY);
+                  const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+                  const ballColor = isShoot ? '#f59e0b' : '#22c55e';
+                  return (
+                    <g>
+                      {/* Movement line */}
+                      <line x1={playerPos.x} y1={playerPos.y} x2={interceptPos.x} y2={interceptPos.y}
+                        stroke="#1a1a2e" strokeWidth={2} strokeLinecap="round" opacity={0.85}
+                        markerEnd="url(#ah-black)" />
+                      {/* Ball action arrow from intercept */}
+                      <line x1={interceptPos.x} y1={interceptPos.y} x2={targetPos.x} y2={targetPos.y}
+                        stroke={ballColor} strokeWidth={3} strokeLinecap="round" opacity={0.85}
+                        markerEnd="url(#ah-green)" />
+                      {/* Label */}
+                      <text x={(interceptPos.x + targetPos.x) / 2} y={(interceptPos.y + targetPos.y) / 2 - 6}
+                        textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.8)"
+                        fontFamily="'Barlow Condensed', sans-serif">
+                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1ª)
+                      </text>
+                    </g>
+                  );
+                }
+
                 // Move arrows start from player center; pass/shoot arrows start from ball position
                 const isBallHolderAction = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
                 const isBallAction = drawingAction.type !== 'move';
