@@ -842,6 +842,47 @@ Deno.serve(async (req) => {
       const started: string[] = [];
 
       for (const m of (dueMatches || [])) {
+        // ── Bot auto-fill: ensure 11 players per side ──
+        const { data: existingParts } = await supabase
+          .from('match_participants')
+          .select('id, club_id, role_type')
+          .eq('match_id', m.id)
+          .eq('role_type', 'player');
+
+        const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id);
+        const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id);
+        const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+
+        if (!isTestMatch) {
+          // Get club formations
+          const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.home_club_id).maybeSingle();
+          const { data: awaySettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.away_club_id).maybeSingle();
+          const homeFormation = homeSettings?.default_formation || '4-4-2';
+          const awayFormation = awaySettings?.default_formation || '4-4-2';
+
+          const fillBots = async (clubId: string, currentCount: number, formation: string, isHome: boolean) => {
+            if (currentCount >= 11) return;
+            const positions = getFormationForFill(formation, isHome);
+            const botsToInsert: any[] = [];
+            for (let i = currentCount; i < 11; i++) {
+              const pos = positions[i] || { x: isHome ? 30 : 70, y: 50, pos: 'CM' };
+              botsToInsert.push({
+                match_id: m.id, club_id: clubId, role_type: 'player',
+                is_bot: true, pos_x: pos.x, pos_y: pos.y,
+              });
+            }
+            if (botsToInsert.length > 0) {
+              await supabase.from('match_participants').insert(botsToInsert);
+              console.log(`[ENGINE] Filled ${botsToInsert.length} bots for club ${clubId.slice(0,8)}`);
+            }
+          };
+
+          await Promise.all([
+            fillBots(m.home_club_id, homeParts.length, homeFormation, true),
+            fillBots(m.away_club_id, awayParts.length, awayFormation, false),
+          ]);
+        }
+
         const possessionClubId = m.home_club_id;
         const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
