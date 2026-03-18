@@ -1178,14 +1178,14 @@ Deno.serve(async (req) => {
             home_score: homeScore, away_score: awayScore,
           }).eq('id', match_id);
 
-          await supabase.from('match_turns').insert({
+          const { data: newTurnData } = await supabase.from('match_turns').insert({
             match_id, turn_number: newTurnNumber,
             phase: nextPhase,
             possession_club_id: newPossessionClubId,
             ball_holder_participant_id: nextBallHolderParticipantId,
             started_at: nextPhaseStart, ends_at: nextPhaseEnd,
             status: 'active',
-          });
+          }).select('id').single();
 
           if (isNextLooseBall) {
             await supabase.from('match_event_logs').insert({
@@ -1193,6 +1193,39 @@ Deno.serve(async (req) => {
               title: '⚽ Bola solta — Fase 1 pulada',
               body: 'Todos os jogadores se movimentam para disputar a bola.',
             });
+          }
+
+          // ── One-touch auto-action: if the new ball holder had a one_touch payload, auto-submit their next action ──
+          if (nextBallHolderParticipantId && newTurnData?.id) {
+            const oneTouchAction = allActions.find(a =>
+              a.participant_id === nextBallHolderParticipantId &&
+              a.action_type === 'receive' &&
+              a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch === true
+            );
+            if (oneTouchAction) {
+              const otPayload = oneTouchAction.payload as any;
+              if (otPayload.next_action_type) {
+                await supabase.from('match_actions').insert({
+                  match_id,
+                  match_turn_id: newTurnData.id,
+                  participant_id: nextBallHolderParticipantId,
+                  controlled_by_type: oneTouchAction.controlled_by_type || 'player',
+                  controlled_by_user_id: oneTouchAction.controlled_by_user_id || null,
+                  action_type: otPayload.next_action_type,
+                  target_x: otPayload.next_target_x ?? null,
+                  target_y: otPayload.next_target_y ?? null,
+                  target_participant_id: otPayload.next_target_participant_id || null,
+                  payload: { one_touch_executed: true },
+                  status: 'pending',
+                });
+                console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type} submitted for turn ${newTurnNumber}`);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'one_touch',
+                  title: '⚡ Toque único!',
+                  body: `Jogada de primeira: ${otPayload.next_action_type}`,
+                });
+              }
+            }
           }
         }
       } else if (activeTurn.phase === 'ball_holder' && isLooseBall) {
