@@ -41,10 +41,16 @@ const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: str
 
 const DEFAULT_FORMATION = '4-4-2';
 
-function getFormationPositions(formation: string, isHome: boolean) {
+function getFormationPositions(formation: string, isHome: boolean, clampToOwnHalf = false) {
   const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS[DEFAULT_FORMATION];
-  if (isHome) return base;
-  return base.map(p => ({ ...p, x: 100 - p.x }));
+  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
+  if (clampToOwnHalf) {
+    positions = positions.map(p => ({
+      ...p,
+      x: isHome ? Math.min(p.x, 48) : Math.max(p.x, 52),
+    }));
+  }
+  return positions;
 }
 
 // ─── Types ────────────────────────────────────────────────────
@@ -294,8 +300,11 @@ export default function MatchRoomPage() {
 
       const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
 
+      // Clamp to own half during kickoff (turn 0 or 1)
+      const isKickoffStart = (m.current_turn_number ?? 0) <= 1;
+
       const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
-        const positions = getFormationPositions(formation, isHome);
+        const positions = getFormationPositions(formation, isHome, isKickoffStart);
         // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
         const sorted = [...list].sort((a, b) => {
           const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
@@ -304,19 +313,24 @@ export default function MatchRoomPage() {
           if (!aIsGK && bIsGK) return 1;
           return a.id.localeCompare(b.id);
         });
-        return sorted.map((p, i) => ({
-          ...p,
-          field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
-          field_y: p.pos_y ?? positions[i]?.y ?? 50,
-          field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
-          jersey_number: i + 1,
-        }));
+        return sorted.map((p, i) => {
+          let fx = p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70);
+          // Clamp DB positions too during kickoff
+          if (isKickoffStart) fx = isHome ? Math.min(fx, 48) : Math.max(fx, 52);
+          return {
+            ...p,
+            field_x: fx,
+            field_y: p.pos_y ?? positions[i]?.y ?? 50,
+            field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
+            jersey_number: i + 1,
+          };
+        });
       };
 
       const ensureEleven = async (list: Participant[], formation: string, isHome: boolean, clubId: string): Promise<Participant[]> => {
         const positioned = assignPositions(list, formation, isHome);
         if (isTestMatch) return positioned;
-        const positions = getFormationPositions(formation, isHome);
+        const positions = getFormationPositions(formation, isHome, isKickoffStart);
         const botsToInsert: any[] = [];
         for (let i = positioned.length; i < 11; i++) {
           const coords = positions[i] || { x: isHome ? 30 : 70, y: 50 };
@@ -838,10 +852,10 @@ export default function MatchRoomPage() {
     const homeParts = enriched.filter(p => p.club_id === matchData.home_club_id && p.role_type === 'player');
     const awayParts = enriched.filter(p => p.club_id === matchData.away_club_id && p.role_type === 'player');
     const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+    const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
 
     const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
-      const positions = getFormationPositions(formation, isHome);
-      // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
+      const positions = getFormationPositions(formation, isHome, isKickoffStart);
       const sorted = [...list].sort((a, b) => {
         const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
         const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
@@ -849,19 +863,23 @@ export default function MatchRoomPage() {
         if (!aIsGK && bIsGK) return 1;
         return a.id.localeCompare(b.id);
       });
-      return sorted.map((p, i) => ({
-        ...p,
-        field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
-        field_y: p.pos_y ?? positions[i]?.y ?? 50,
-        field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
-        jersey_number: i + 1,
-      }));
+      return sorted.map((p, i) => {
+        let fx = p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70);
+        if (isKickoffStart) fx = isHome ? Math.min(fx, 48) : Math.max(fx, 52);
+        return {
+          ...p,
+          field_x: fx,
+          field_y: p.pos_y ?? positions[i]?.y ?? 50,
+          field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
+          jersey_number: i + 1,
+        };
+      });
     };
 
     const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
       const positioned = assignPositions(list, formation, isHome);
       if (isTestMatch) return positioned;
-      const positions = getFormationPositions(formation, isHome);
+      const positions = getFormationPositions(formation, isHome, isKickoffStart);
       for (let i = positioned.length; i < 11; i++) {
         positioned.push({
           id: `virtual-${isHome ? 'home' : 'away'}-${i}`,

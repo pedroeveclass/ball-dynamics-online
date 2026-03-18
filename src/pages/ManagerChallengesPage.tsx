@@ -125,7 +125,7 @@ export default function ManagerChallengesPage() {
     { x: 5, y: 50 },
     { x: 22, y: 15 }, { x: 22, y: 37 }, { x: 22, y: 63 }, { x: 22, y: 85 },
     { x: 42, y: 15 }, { x: 42, y: 37 }, { x: 42, y: 63 }, { x: 42, y: 85 },
-    { x: 60, y: 35 }, { x: 60, y: 65 },
+    { x: 48, y: 35 }, { x: 48, y: 65 },
   ];
 
   const handleAccept = async (challenge: Challenge) => {
