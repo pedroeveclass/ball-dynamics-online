@@ -1190,11 +1190,25 @@ Deno.serve(async (req) => {
                 body: 'A bola perdeu a inércia e está parada no campo.',
               });
             } else {
-              // First turn loose — apply inertia
+              // First turn loose — apply 15% inertia drift and persist new ball coords
+              // Find last ball action to get direction
+              const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
+              let inertiaBallX = ballEndPos?.x ?? 50;
+              let inertiaBallY = ballEndPos?.y ?? 50;
+              if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
+                const startX = Number(ballHolder.pos_x ?? 50);
+                const startY = Number(ballHolder.pos_y ?? 50);
+                const dirX = Number(prevBhAction.target_x) - startX;
+                const dirY = Number(prevBhAction.target_y) - startY;
+                inertiaBallX = Math.max(0, Math.min(100, Number(prevBhAction.target_x) + dirX * 0.15));
+                inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
+              }
+              ballEndPos = { x: inertiaBallX, y: inertiaBallY };
               await supabase.from('match_event_logs').insert({
                 match_id, event_type: 'ball_inertia',
                 title: '⚽ Bola continua rolando...',
                 body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+                payload: { ball_x: inertiaBallX, ball_y: inertiaBallY },
               });
             }
           }
