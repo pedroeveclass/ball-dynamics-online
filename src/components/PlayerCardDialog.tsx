@@ -46,7 +46,7 @@ function AttributeSection({ title, keys, attrs }: { title: string; keys: readonl
       <h3 className="font-display text-sm font-bold">{title}</h3>
       <div className="space-y-2">
         {keys.map((key) => (
-          <AttributeBar key={key} label={ATTR_LABELS[key] || key} value={Number(attrs[key as keyof Tables<'player_attributes'>] ?? 0)} />
+          <AttributeBar key={key} label={ATTR_LABELS[key] || key} value={Number(attrs[key as keyof Tables<'player_attributes'>] ?? 0)} showTier />
         ))}
       </div>
     </div>

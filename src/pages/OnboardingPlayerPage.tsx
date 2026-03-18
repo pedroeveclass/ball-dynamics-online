@@ -5,13 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { generateBaseAttributes, calculateOverall, POSITIONS, BODY_TYPES, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS } from '@/lib/attributes';
+import { generateBaseAttributes, calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS } from '@/lib/attributes';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
 
-const STEPS = ['Identidade', 'Posição', 'Tipo Físico', 'Atributos', 'Revisão'];
-const STEP_ICONS = [User, MapPin, Shield, Dumbbell, Eye];
+const STEPS = ['Identidade', 'Posição', 'Tamanho', 'Tipo Físico', 'Atributos', 'Revisão'];
+const STEP_ICONS = [User, MapPin, Ruler, Shield, Dumbbell, Eye];
 
 export default function OnboardingPlayerPage() {
   const { user, refreshPlayerProfile } = useAuth();
@@ -22,16 +22,20 @@ export default function OnboardingPlayerPage() {
   const [fullName, setFullName] = useState('');
   const [dominantFoot, setDominantFoot] = useState<'right' | 'left'>('right');
   const [primaryPosition, setPrimaryPosition] = useState('');
+  const [height, setHeight] = useState('Médio');
   const [bodyType, setBodyType] = useState('');
 
   // Attribute distribution
   const [extraPoints, setExtraPoints] = useState<Record<string, number>>({});
   const TOTAL_DISTRIBUTE = 40;
 
+  const isGK = primaryPosition === 'GK';
+  const availableBodyTypes = isGK ? GK_BODY_TYPES : BODY_TYPES;
+
   const baseAttrs = useMemo(() => {
     if (!primaryPosition || !bodyType) return null;
-    return generateBaseAttributes(primaryPosition, bodyType, 18);
-  }, [primaryPosition, bodyType]);
+    return generateBaseAttributes(primaryPosition, bodyType, 18, height);
+  }, [primaryPosition, bodyType, height]);
 
   const spentPoints = Object.values(extraPoints).reduce((a, b) => a + b, 0);
   const remainingPoints = TOTAL_DISTRIBUTE - spentPoints;
@@ -58,8 +62,9 @@ export default function OnboardingPlayerPage() {
   const canNext = () => {
     if (step === 0) return fullName.trim().length >= 2;
     if (step === 1) return !!primaryPosition;
-    if (step === 2) return !!bodyType;
-    if (step === 3) return remainingPoints === 0;
+    if (step === 2) return !!height;
+    if (step === 3) return !!bodyType;
+    if (step === 4) return remainingPoints === 0;
     return true;
   };
 
@@ -80,6 +85,7 @@ export default function OnboardingPlayerPage() {
           primary_position: primaryPosition,
           secondary_position: null,
           archetype: bodyType,
+          height,
           overall,
           reputation: 50,
           money: 5000,
@@ -124,9 +130,9 @@ export default function OnboardingPlayerPage() {
   };
 
   const posLabel = POSITIONS.find(p => p.value === primaryPosition)?.label || '';
-  const bodyLabel = BODY_TYPES.find(b => b.value === bodyType)?.label || '';
+  const bodyLabel = [...BODY_TYPES, ...GK_BODY_TYPES].find(b => b.value === bodyType)?.label || '';
+  const heightLabel = HEIGHT_OPTIONS.find(h => h.value === height)?.label || height;
 
-  const isGK = primaryPosition === 'GK';
   const distributableAttrs = isGK ? [...GK_ATTRS, ...FIELD_ATTRS] : [...FIELD_ATTRS, ...GK_ATTRS];
 
   return (
@@ -217,12 +223,39 @@ export default function OnboardingPlayerPage() {
             </div>
           )}
 
-          {/* Step 2: Body Type */}
+          {/* Step 2: Height */}
           {step === 2 && (
             <div className="space-y-4">
-              <Label>Tipo Físico</Label>
+              <Label>Tamanho do Jogador</Label>
+              <p className="text-xs text-muted-foreground">O tamanho impacta diretamente nos atributos físicos e aéreos.</p>
               <div className="space-y-2">
-                {BODY_TYPES.map(bt => (
+                {HEIGHT_OPTIONS.map(h => (
+                  <button
+                    key={h.value}
+                    onClick={() => { setHeight(h.value); setExtraPoints({}); }}
+                    className={`w-full px-4 py-4 rounded-md border text-left transition-colors ${
+                      height === h.value
+                        ? 'border-tactical bg-tactical/10'
+                        : 'border-border hover:border-tactical/40'
+                    }`}
+                  >
+                    <span className={`font-display text-lg font-bold ${height === h.value ? 'text-tactical' : 'text-foreground'}`}>
+                      {h.label}
+                    </span>
+                    <p className="text-xs text-muted-foreground mt-1">{h.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Body Type */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <Label>Tipo Físico</Label>
+              {isGK && <p className="text-xs text-muted-foreground">Tipos físicos específicos para goleiro.</p>}
+              <div className="space-y-2">
+                {availableBodyTypes.map(bt => (
                   <button
                     key={bt.value}
                     onClick={() => { setBodyType(bt.value); setExtraPoints({}); }}
@@ -242,8 +275,8 @@ export default function OnboardingPlayerPage() {
             </div>
           )}
 
-          {/* Step 3: Distribute Points */}
-          {step === 3 && baseAttrs && finalAttrs && (() => {
+          {/* Step 4: Distribute Points */}
+          {step === 4 && baseAttrs && finalAttrs && (() => {
             const physicalKeys = ['velocidade','aceleracao','agilidade','forca','equilibrio','resistencia','pulo','stamina'] as const;
             const technicalKeys = ['drible','controle_bola','marcacao','desarme','um_toque','curva','passe_baixo','passe_alto'] as const;
             const mentalKeys = ['visao_jogo','tomada_decisao','antecipacao','trabalho_equipe','coragem','posicionamento_ofensivo','posicionamento_defensivo'] as const;
@@ -303,8 +336,8 @@ export default function OnboardingPlayerPage() {
             );
           })()}
 
-          {/* Step 4: Review */}
-          {step === 4 && (
+          {/* Step 5: Review */}
+          {step === 5 && (
             <div className="space-y-4">
               <h2 className="font-display text-xl font-bold text-foreground">Confirmar Criação</h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -312,7 +345,8 @@ export default function OnboardingPlayerPage() {
                 <div className="stat-card"><span className="text-muted-foreground text-xs">Idade</span><p className="font-display font-bold">18 anos</p></div>
                 <div className="stat-card"><span className="text-muted-foreground text-xs">Pé</span><p className="font-display font-bold">{dominantFoot === 'right' ? 'Direito' : 'Esquerdo'}</p></div>
                 <div className="stat-card"><span className="text-muted-foreground text-xs">Posição</span><p className="font-display font-bold">{posLabel}</p></div>
-                <div className="stat-card col-span-2"><span className="text-muted-foreground text-xs">Tipo Físico</span><p className="font-display font-bold">{bodyLabel}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">Tamanho</span><p className="font-display font-bold">{heightLabel}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">Tipo Físico</span><p className="font-display font-bold">{bodyLabel}</p></div>
               </div>
               {finalAttrs && (
                 <div className="stat-card">
@@ -332,7 +366,7 @@ export default function OnboardingPlayerPage() {
               </Button>
             ) : <div />}
 
-            {step < 4 ? (
+            {step < 5 ? (
               <Button onClick={() => setStep(s => s + 1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
                 Próximo <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
