@@ -1485,7 +1485,7 @@ export default function MatchRoomPage() {
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
-      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? ['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action'] : ['no_action', 'move'];
       if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
       return [];
     }
@@ -1493,7 +1493,7 @@ export default function MatchRoomPage() {
     if (phase === 'ball_holder' && isBH) return ['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
-    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? ['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action'] : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
     return [];
   };
