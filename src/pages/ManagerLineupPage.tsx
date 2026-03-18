@@ -251,10 +251,58 @@ export default function ManagerLineupPage() {
     setBenchPlayers(prev => prev.filter(id => id !== playerId));
   };
 
+  // Map slot positions to a generalized role for equivalence matching
+  const getPositionRole = (slotPos: string): string => {
+    if (slotPos === 'GK') return 'GK';
+    if (['LB', 'LWB'].includes(slotPos)) return 'LB';
+    if (['RB', 'RWB'].includes(slotPos)) return 'RB';
+    if (slotPos.startsWith('CB')) return 'CB';
+    if (['CDM', 'CDM1', 'CDM2'].includes(slotPos)) return 'CDM';
+    if (slotPos.startsWith('CM') || slotPos === 'CAM') return 'CM';
+    if (['LM', 'LW'].includes(slotPos)) return 'LM';
+    if (['RM', 'RW'].includes(slotPos)) return 'RM';
+    if (slotPos.startsWith('ST')) return 'ST';
+    return slotPos;
+  };
+
   const handleFormationChange = (newFormation: string) => {
+    const newSlots = FORMATIONS[newFormation] || FORMATIONS['4-4-2'];
+    const oldAssignments = [...assignments];
+    const newAssignments: SlotAssignment[] = [];
+    const usedPlayerIds = new Set<string>();
+
+    // First pass: match by exact slot position name
+    for (const slot of newSlots) {
+      const match = oldAssignments.find(a => a.slot_position === slot.position && !usedPlayerIds.has(a.player_profile_id));
+      if (match) {
+        newAssignments.push({ ...match, slot_position: slot.position });
+        usedPlayerIds.add(match.player_profile_id);
+      }
+    }
+
+    // Second pass: match by equivalent role
+    for (const slot of newSlots) {
+      if (newAssignments.find(a => a.slot_position === slot.position)) continue;
+      const slotRole = getPositionRole(slot.position);
+      const match = oldAssignments.find(a => !usedPlayerIds.has(a.player_profile_id) && getPositionRole(a.slot_position) === slotRole);
+      if (match) {
+        newAssignments.push({ slot_position: slot.position, player_profile_id: match.player_profile_id, role_type: 'starter' });
+        usedPlayerIds.add(match.player_profile_id);
+      }
+    }
+
+    // Third pass: remaining unmatched players go to empty slots (keep them on the field)
+    const remainingPlayers = oldAssignments.filter(a => !usedPlayerIds.has(a.player_profile_id));
+    for (const player of remainingPlayers) {
+      const emptySlot = newSlots.find(s => !newAssignments.find(a => a.slot_position === s.position));
+      if (emptySlot) {
+        newAssignments.push({ slot_position: emptySlot.position, player_profile_id: player.player_profile_id, role_type: 'starter' });
+      }
+    }
+
     setFormation(newFormation);
-    setAssignments([]);
-    setBenchPlayers([]);
+    setAssignments(newAssignments);
+    // Keep bench players as-is
   };
 
   const saveLineup = async () => {
