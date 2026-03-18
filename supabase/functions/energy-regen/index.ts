@@ -16,8 +16,7 @@ Deno.serve(async (req) => {
     // Fetch all players with energy below max
     const { data: players, error } = await supabase
       .from('player_profiles')
-      .select('id, energy_current, energy_max')
-      .lt('energy_current', supabase.rpc ? 100000 : 100000); // just get all
+      .select('id, energy_current, energy_max');
 
     if (error) throw error;
 
