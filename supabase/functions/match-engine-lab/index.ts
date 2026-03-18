@@ -1674,7 +1674,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const { participant_id, action_type, target_participant_id, target_x, target_y } = body;
+      const { participant_id, action_type, target_participant_id, target_x, target_y, payload: actionPayload } = body;
 
       let activeTurn: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
