@@ -931,7 +931,7 @@ export default function MatchRoomPage() {
     } catch (e) { console.error('Engine call failed:', e); return {}; }
   };
 
-  const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string) => {
+  const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
     if (!matchId || !pid) return;
     setSubmittingAction(true);
@@ -941,6 +941,7 @@ export default function MatchRoomPage() {
         participant_id: pid, action_type: actionType,
         target_x: targetX, target_y: targetY,
         target_participant_id: targetParticipantId,
+        ...(payload ? { payload } : {}),
       });
       if (!response.ok && !result?.error) {
         throw new Error('Erro ao enviar ação');
