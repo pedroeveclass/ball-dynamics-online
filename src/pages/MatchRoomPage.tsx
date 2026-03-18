@@ -1028,15 +1028,40 @@ export default function MatchRoomPage() {
 
     // Determine if this is a one-touch action (player intercepting trajectory + choosing pass/shoot)
     const isOneTouch = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId;
-    const oneTouchPayload = isOneTouch ? { one_touch: true, intercept_x: pendingInterceptChoice!.targetX, intercept_y: pendingInterceptChoice!.targetY } : undefined;
 
-    if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+    if (isOneTouch) {
+      // One-touch: submit a 'receive' action with a one_touch_next payload
+      // The player first moves to intercept, and if they win the ball contest,
+      // the pass/shot executes automatically in the next turn's phase 1
+      const oneTouchNextPayload = {
+        one_touch: true,
+        intercept_x: pendingInterceptChoice!.targetX,
+        intercept_y: pendingInterceptChoice!.targetY,
+        next_action_type: drawingAction.type,
+        next_target_x: drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power'
+          ? (() => { const s = participants.find(p => p.id === drawingAction.fromParticipantId); return s ? getShootTarget(s).x : pctX; })()
+          : pctX,
+        next_target_y: drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power'
+          ? clamp(pctY, 38, 62)
+          : pctY,
+        next_target_participant_id: nearPlayer?.id || null,
+      };
+      submitAction('receive', drawingAction.fromParticipantId, pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY, undefined, oneTouchNextPayload);
+    } else if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62), undefined, oneTouchPayload);
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
     } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, pctX, pctY, nearPlayer?.id, oneTouchPayload);
+      // Apply pass distance clamping
+      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+      let finalPctX = pctX, finalPctY = pctY;
+      if (fromP && fromP.field_x != null && fromP.field_y != null) {
+        const clamped = clampPassDistance(fromP.field_x, fromP.field_y, pctX, pctY, drawingAction.type);
+        finalPctX = clamped.x;
+        finalPctY = clamped.y;
+      }
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, finalPctX, finalPctY, nearPlayer?.id);
     } else {
       // Move action - check if clicking near a ball trajectory for domination / steal
       const drawingParticipant = participants.find(p => p.id === drawingAction.fromParticipantId);
