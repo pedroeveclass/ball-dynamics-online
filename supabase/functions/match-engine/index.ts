@@ -60,6 +60,17 @@ function computeDeviation(
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
   }
 
+  // Distance-from-goal penalty for shots — makes long-range shots very inaccurate
+  if (actionType === 'shoot_controlled' || actionType === 'shoot_power') {
+    const goalX = targetX > 50 ? 100 : 0;
+    const distFromGoal = Math.abs(startX - goalX);
+    if (distFromGoal > 25) {
+      const extraPenalty = Math.pow((distFromGoal - 25) / 25, 1.5) * 5;
+      difficultyMultiplier += extraPenalty;
+      console.log(`[ENGINE] Shot distance penalty: distFromGoal=${distFromGoal.toFixed(1)} extraMult=${extraPenalty.toFixed(2)} totalMult=${difficultyMultiplier.toFixed(2)}`);
+    }
+  }
+
   const baseDifficulty = (dist / 100) * difficultyMultiplier;
   // Harsh exponential curve: 99 = zero deviation, <50 = harsh, <40 = always large
   const skillCurve = Math.pow(1 - skillFactor, 3.5);
@@ -1346,6 +1357,7 @@ Deno.serve(async (req) => {
         target_participant_id: target_participant_id || null,
         target_x: target_x ?? null,
         target_y: target_y ?? null,
+        payload: body.payload || null,
         status: 'pending',
       });
 

@@ -88,6 +88,7 @@ interface MatchAction {
   match_turn_id: string;
   participant_id: string;
   controlled_by_type: string;
+  controlled_by_user_id?: string | null;
   action_type: string;
   target_x: number | null;
   target_y: number | null;
@@ -96,6 +97,7 @@ interface MatchAction {
   created_at?: string;
   turn_phase?: string | null;
   turn_number?: number;
+  payload?: any;
 }
 
 interface PendingInterceptChoice {
@@ -306,7 +308,7 @@ export default function MatchRoomPage() {
           ...p,
           field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
           field_y: p.pos_y ?? positions[i]?.y ?? 50,
-          field_pos: p.slot_position || positions[i]?.pos || '?',
+          field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
           jersey_number: i + 1,
         }));
       };
@@ -839,7 +841,7 @@ export default function MatchRoomPage() {
         ...p,
         field_x: p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70),
         field_y: p.pos_y ?? positions[i]?.y ?? 50,
-        field_pos: p.slot_position || positions[i]?.pos || '?',
+        field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
         jersey_number: i + 1,
       }));
     };
