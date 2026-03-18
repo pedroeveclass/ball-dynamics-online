@@ -1612,6 +1612,19 @@ export default function MatchRoomPage() {
       }
     }
 
+    // Clamp pass distance for pass-type drawing actions
+    if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
+      const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
+      if (fromP && fromP.field_x != null && fromP.field_y != null) {
+        // For one-touch, origin is the intercept point
+        const originX = pendingInterceptChoice?.participantId === drawingAction.fromParticipantId ? pendingInterceptChoice.targetX : fromP.field_x;
+        const originY = pendingInterceptChoice?.participantId === drawingAction.fromParticipantId ? pendingInterceptChoice.targetY : fromP.field_y;
+        const clamped = clampPassDistance(originX, originY, finalX, finalY, drawingAction.type);
+        finalX = clamped.x;
+        finalY = clamped.y;
+      }
+    }
+
     setMouseFieldPct({ x: finalX, y: finalY });
   };
 
