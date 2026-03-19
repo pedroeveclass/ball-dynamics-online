@@ -135,17 +135,17 @@ interface TurnMeta {
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
-  defending_response: 'Defesa', resolution: 'Motion', pre_match: 'PrÃ©-jogo',
+  defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
   processing: 'Pausa',
-  positioning_attack: 'Posicionar âš½', positioning_defense: 'Posicionar ðŸ›¡ï¸',
+  positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
 };
 
 const ACTION_LABELS: Record<string, string> = {
   move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
-  pass_launch: 'LANÃ‡AMENTO', shoot: 'CHUTAR',
+  pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
   shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
   press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
-  block_lane: 'BLOQUEAR', no_action: 'SEM AÃ‡ÃƒO', receive: 'DOMINAR BOLA',
+  block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
 const PHASE_DURATION = 6;
@@ -189,10 +189,10 @@ interface DrawingState {
 function formatScheduledDate(dateStr: string): string {
   try {
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Data invÃ¡lida';
+    if (isNaN(d.getTime())) return 'Data inválida';
     return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   } catch {
-    return 'Data invÃ¡lida';
+    return 'Data inválida';
   }
 }
 
@@ -1159,23 +1159,23 @@ export default function MatchRoomPage() {
         ...(payload ? { payload } : {}),
       });
       if (!response.ok && !result?.error) {
-        throw new Error('Erro ao enviar aÃ§Ã£o');
+        throw new Error('Erro ao enviar ação');
       }
       if (result.error) {
         if (result.recoverable || result.error === 'No active turn') {
-          console.warn('[SUBMIT] No active turn â€” phase transition in progress, retrying...');
+          console.warn('[SUBMIT] No active turn - phase transition in progress, retrying...');
           await loadLiveSnapshot();
-          toast.info('Turno em transiÃ§Ã£o, tente novamente');
+          toast.info('Turno em transicao, tente novamente');
         } else {
           toast.error(String(result.error));
         }
       }
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
-        toast.success(`âœ… ${ACTION_LABELS[actionType] || actionType}`);
+        toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
 
       }
-    } catch { toast.error('Erro ao enviar aÃ§Ã£o'); }
+    } catch { toast.error('Erro ao enviar ação'); }
     finally { setSubmittingAction(false); }
   };
 
@@ -2246,7 +2246,7 @@ export default function MatchRoomPage() {
           {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">3v3</Badge>}
           {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
           {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
-          {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">ðŸ“ POSICIONAMENTO</Badge>}
+          {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">POSICIONAMENTO</Badge>}
         </div>
 
         <div className="flex items-center gap-4">
@@ -2448,7 +2448,7 @@ export default function MatchRoomPage() {
                     {/* Label */}
                     <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
                       textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
-                      âš½ InÃ©rcia
+                      ⚽ Inercia
                     </text>
                   </g>
                 );
@@ -2471,7 +2471,7 @@ export default function MatchRoomPage() {
                 const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
-                const controlLabel = action.controlled_by_type === 'bot' ? 'ðŸ¤–' : action.controlled_by_type === 'manager' ? 'ðŸ“‹' : 'ðŸ‘¤';
+                const controlLabel = action.controlled_by_type === 'bot' ? 'BOT' : action.controlled_by_type === 'manager' ? 'MGR' : 'PLR';
                 const opacity = animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8;
                 const dashArray = action.controlled_by_type === 'bot' ? '4,3' : 'none';
 
@@ -2842,7 +2842,7 @@ export default function MatchRoomPage() {
                       <text x={previewSvg.x} y={previewSvg.y - 9} textAnchor="middle"
                         fontSize="6" fill="rgba(255,255,255,0.7)"
                         fontFamily="'Barlow Condensed', sans-serif" fontWeight="700">
-                        âš½ {Math.round(movePct * 100)}%
+                        Bola {Math.round(movePct * 100)}%
                       </text>
                     </g>
                   );
@@ -2987,15 +2987,15 @@ export default function MatchRoomPage() {
                     // Context-aware label for 'receive' action
                     let label = ACTION_LABELS[a];
                     let icon = '';
-                    if (a === 'move') icon = 'â†—';
-                    else if (a === 'pass_low') icon = 'âž¡';
-                    else if (a === 'pass_high') icon = 'â¤´';
-                    else if (a === 'pass_launch') icon = 'ðŸš€';
-                    else if (a === 'shoot_controlled') icon = 'ðŸŽ¯';
-                    else if (a === 'shoot_power') icon = 'ðŸ’¥';
-                    else if (a === 'no_action') icon = 'âŠ˜';
+                    if (a === 'move') icon = '↗';
+                    else if (a === 'pass_low') icon = '➡';
+                    else if (a === 'pass_high') icon = '⤴';
+                    else if (a === 'pass_launch') icon = '🚀';
+                    else if (a === 'shoot_controlled') icon = '🎯';
+                    else if (a === 'shoot_power') icon = '💥';
+                    else if (a === 'no_action') icon = '⊘';
                     else if (a === 'receive') {
-                      icon = 'ðŸ¤²';
+                      icon = '🤲';
                       // Determine context
                       const menuPlayer = participants.find(p => p.id === showActionMenu);
                       const bhAction = ballTrajectoryAction;
@@ -3004,7 +3004,7 @@ export default function MatchRoomPage() {
                         const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
                         if (bhAction.action_type === 'move' && isOpponent) {
                           label = 'DESARME';
-                          icon = 'ðŸ¦µ';
+                          icon = '🦵';
                         } else if (isShootAction(bhAction.action_type) && isOpponent) {
                           const isGK = menuPlayer.field_pos === 'GK';
                           if (isGK) {
@@ -3016,29 +3016,29 @@ export default function MatchRoomPage() {
                               : (gkX >= 82 && gkY >= 20 && gkY <= 80);
                             if (inBox) {
                               label = 'DEFENDER';
-                              icon = 'ðŸ§¤';
+                              icon = '🧤';
                             } else {
                               label = 'BLOQUEAR';
-                              icon = 'ðŸ›¡ï¸';
+                              icon = '🛡️';
                             }
                           } else {
                             label = 'BLOQUEAR';
-                            icon = 'ðŸ›¡ï¸';
+                            icon = '🛡️';
                           }
                         }
                       }
                     }
-                    // One-touch labels: when there's a pendingInterceptChoice, pass/shoot options are "de primeira"
+                    // One-touch labels
                     const isOneTouchOption = pendingInterceptChoice?.participantId === showActionMenu &&
                       (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
                     if (isOneTouchOption) {
                       const baseLabel = ACTION_LABELS[a] || a;
-                      label = `${baseLabel} (1Âª)`;
-                      if (a === 'pass_low') icon = 'âš¡âž¡';
-                      else if (a === 'pass_high') icon = 'âš¡â¤´';
-                      else if (a === 'pass_launch') icon = 'âš¡ðŸš€';
-                      else if (a === 'shoot_controlled') icon = 'âš¡ðŸŽ¯';
-                      else if (a === 'shoot_power') icon = 'âš¡ðŸ’¥';
+                      label = `${baseLabel} (1a)`;
+                      if (a === 'pass_low') icon = '⚡➡';
+                      else if (a === 'pass_high') icon = '⚡⤴';
+                      else if (a === 'pass_launch') icon = '⚡🚀';
+                      else if (a === 'shoot_controlled') icon = '⚡🎯';
+                      else if (a === 'shoot_power') icon = '⚡💥';
                     }
                     return (
                       <button
@@ -3059,7 +3059,7 @@ export default function MatchRoomPage() {
             {/* Pass/Shot quality indicator */}
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
-              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'MÃ©dia' : 'Ruim';
+              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Media' : 'Ruim';
               const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
               const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
               return (
@@ -3108,8 +3108,8 @@ export default function MatchRoomPage() {
 
             {/* Intercept zone hint */}
             {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
-              <div className="absolute bottom-2 right-2 bg-[hsl(220,20%,10%)]/80 border border-blue-500/30 rounded px-3 py-1 z-30">
-                <span className="text-[9px] font-display text-blue-400">ðŸ’¡ Mova para a zona azul para DOMINAR BOLA</span>
+              <div className="absolute bottom-2 right-2 bg-background/80 border border-blue-500/30 rounded px-3 py-1 z-30">
+                <span className="text-[9px] font-display text-blue-400">Mova para a zona azul para DOMINAR BOLA</span>
               </div>
             )}
 
@@ -3260,14 +3260,14 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
   const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
   const matchMinute = computeMatchMinute(turnNumber);
-  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1Âº Tempo' : '2Âº Tempo';
+  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1o Tempo' : '2o Tempo';
 
   const phases = isPositioning
     ? [
-        { key: 'positioning_attack', label: 'âš½' },
-        { key: 'positioning_defense', label: 'ðŸ›¡' },
-        { key: '_skip1', label: 'â€”' },
-        { key: '_skip2', label: 'â€”' },
+        { key: 'positioning_attack', label: 'ATK' },
+        { key: 'positioning_defense', label: 'DEF' },
+        { key: '_skip1', label: '-' },
+        { key: '_skip2', label: '-' },
       ]
     : [
         { key: 'ball_holder', label: '1' },
