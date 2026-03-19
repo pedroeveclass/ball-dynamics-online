@@ -935,12 +935,22 @@ export default function MatchRoomPage() {
       setAnimating(false);
       setAnimProgress(0);
     }
+    // Track if this turn follows a positioning turn (dead ball)
+    if (activeTurn?.phase === 'ball_holder') {
+      // prevTurnWasPositioningRef is already set from the previous phase
+    } else if (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense') {
+      prevTurnWasPositioningRef.current = true;
+    } else {
+      prevTurnWasPositioningRef.current = false;
+    }
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Positioning turn detection
   const isPositioningTurn = activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense';
   const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
   const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
+  // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
+  const isDeadBall = activeTurn?.phase === 'ball_holder' && prevTurnWasPositioningRef.current;
 
   // â”€â”€ Possession change detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
