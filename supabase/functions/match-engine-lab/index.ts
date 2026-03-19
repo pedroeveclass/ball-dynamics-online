@@ -271,7 +271,27 @@ async function generateBotActions(
       }
     } else if (phase === 'attacking_support') {
       // ── Attacking support bots ──
-      if (isGK) {
+      if (isLooseBall) {
+        // Loose ball: try to dominate if close, otherwise move toward ball
+        const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
+        if (distToBall < 10) {
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'receive',
+            target_x: ballPos.x, target_y: ballPos.y,
+            status: 'pending',
+          });
+        } else {
+          const targetX = posX + (ballPos.x - posX) * 0.35 + (Math.random() - 0.5) * 2;
+          const targetY = posY + (ballPos.y - posY) * 0.35 + (Math.random() - 0.5) * 2;
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(2, Math.min(98, targetY)),
+            status: 'pending',
+          });
+        }
+      } else if (isGK) {
         // GK stays back during attack
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
