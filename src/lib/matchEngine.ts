@@ -60,11 +60,14 @@ export async function invokeConfiguredMatchEngine<T = Record<string, unknown>>(
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  const callFunction = async (functionName: string) => {
+  const callFunction = async (
+    functionName: string,
+    requestBody: Record<string, unknown> = body,
+  ) => {
     const response = await fetch(buildFunctionUrl(functionName), {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
 
     let result: T = {} as T;
@@ -85,6 +88,20 @@ export async function invokeConfiguredMatchEngine<T = Record<string, unknown>>(
   if (payload.response.status === 404 && fallbackFunction && fallbackFunction !== resolvedFunction) {
     resolvedFunction = fallbackFunction;
     payload = await callFunction(resolvedFunction);
+  }
+
+  const action = body.action;
+  const error = (payload.result as { error?: unknown })?.error;
+  if (
+    payload.response.status === 400 &&
+    error === "Unknown action" &&
+    action === "process_due_matches"
+  ) {
+    const legacyBody =
+      typeof body.match_id === "string" && body.match_id
+        ? { action: "tick", match_id: body.match_id }
+        : { action: "auto_start" };
+    payload = await callFunction(resolvedFunction, legacyBody);
   }
 
   if (resolvedFunctionRef) {

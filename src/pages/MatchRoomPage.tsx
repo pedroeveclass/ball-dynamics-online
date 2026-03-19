@@ -155,8 +155,9 @@ const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
 const LIVE_EVENT_LIMIT = 60;
 const TURN_ACTION_RECONCILE_DELAY_MS = 300;
+const CLIENT_MATCH_PROCESSOR_RETRY_MS = 1500;
 const ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK =
-  import.meta.env.DEV && import.meta.env.VITE_ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK === 'true';
+  import.meta.env.VITE_ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK !== 'false';
 const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
 const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -425,6 +426,8 @@ export default function MatchRoomPage() {
   const scheduledMatchStartInFlightRef = useRef(false);
   const realtimeHasSubscribedRef = useRef(false);
   const realtimeNeedsRecoveryRef = useRef(false);
+  const phaseProcessorInFlightRef = useRef(false);
+  const phaseProcessorLastAttemptRef = useRef<{ turnId: string | null; at: number }>({ turnId: null, at: 0 });
 
   // ── Load match data ──────────────────────────────────────────
   const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
@@ -727,7 +730,7 @@ export default function MatchRoomPage() {
 
     scheduledMatchStartInFlightRef.current = true;
     try {
-      await invokeMatchEngine({ action: 'process_due_matches', match_id: matchId });
+      await invokeMatchEngine({ action: 'auto_start', match_id: matchId });
     } catch (error) {
       console.error('Scheduled match start recovery failed:', error);
     } finally {
@@ -753,6 +756,8 @@ export default function MatchRoomPage() {
     scheduledMatchStartInFlightRef.current = false;
     realtimeHasSubscribedRef.current = false;
     realtimeNeedsRecoveryRef.current = false;
+    phaseProcessorInFlightRef.current = false;
+    phaseProcessorLastAttemptRef.current = { turnId: null, at: 0 };
     if (turnActionsFetchTimerRef.current) {
       clearTimeout(turnActionsFetchTimerRef.current);
       turnActionsFetchTimerRef.current = null;
@@ -1163,24 +1168,41 @@ export default function MatchRoomPage() {
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
   useEffect(() => {
-    if (!ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK) return;
+    if (!ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK || !matchId) return;
     if (match?.status !== 'live' || !activeTurn || phaseTimeLeft > 0) return;
 
     let cancelled = false;
+    const triggerProcessing = async () => {
+      const currentTurnId = activeTurnRef.current?.id;
+      if (!currentTurnId || cancelled || phaseProcessorInFlightRef.current) return;
 
-    (async () => {
+      const now = Date.now();
+      const lastAttempt = phaseProcessorLastAttemptRef.current;
+      if (lastAttempt.turnId === currentTurnId && now - lastAttempt.at < CLIENT_MATCH_PROCESSOR_RETRY_MS) {
+        return;
+      }
+
+      phaseProcessorLastAttemptRef.current = { turnId: currentTurnId, at: now };
+      phaseProcessorInFlightRef.current = true;
       try {
-        await invokeMatchEngine({ action: 'process_due_matches' });
+        await invokeMatchEngine({ action: 'process_due_matches', match_id: matchId });
       } catch (error) {
         console.error('Client fallback processor failed:', error);
-        if (!cancelled) toast.error('Erro ao sincronizar a partida');
+      } finally {
+        phaseProcessorInFlightRef.current = false;
       }
-    })();
+    };
+
+    void triggerProcessing();
+    const interval = setInterval(() => {
+      void triggerProcessing();
+    }, CLIENT_MATCH_PROCESSOR_RETRY_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
-  }, [activeTurn?.id, invokeMatchEngine, match?.status, phaseTimeLeft]);
+  }, [activeTurn?.id, invokeMatchEngine, match?.status, matchId, phaseTimeLeft]);
 
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
