@@ -1175,7 +1175,7 @@ export default function MatchRoomPage() {
         toast.success(`âœ… ${ACTION_LABELS[actionType] || actionType}`);
 
       }
-    } catch { toast.error('Erro ao enviar aÃ§Ã£o'); }
+    } catch { toast.error('Erro ao enviar ação'); }
     finally { setSubmittingAction(false); }
   };
 
