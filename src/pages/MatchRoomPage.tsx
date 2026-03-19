@@ -1407,6 +1407,22 @@ export default function MatchRoomPage() {
           const isHome = moveFrom.club_id === match?.home_club_id;
           if (isHome) mx = Math.min(mx, 49);
           else mx = Math.max(mx, 51);
+          // Center circle restriction for opponents (defending team during kickoff)
+          const possClubId = activeTurn?.possession_club_id;
+          const isDefending = moveFrom.club_id !== possClubId;
+          if (isDefending) {
+            const CENTER_CIRCLE_RADIUS = 9.15; // ~9.15% of field (matches real proportion)
+            const distToCenter = Math.sqrt((mx - 50) * (mx - 50) + (my - 50) * (my - 50));
+            if (distToCenter < CENTER_CIRCLE_RADIUS) {
+              // Push out of center circle
+              const angle = Math.atan2(my - 50, mx - 50);
+              mx = 50 + Math.cos(angle) * CENTER_CIRCLE_RADIUS;
+              my = 50 + Math.sin(angle) * CENTER_CIRCLE_RADIUS;
+              // Re-apply half restriction
+              if (isHome) mx = Math.min(mx, 49);
+              else mx = Math.max(mx, 51);
+            }
+          }
         }
       } else if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
         const dx = pctX - moveFrom.field_x;
