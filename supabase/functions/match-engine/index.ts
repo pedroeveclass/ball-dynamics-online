@@ -1035,6 +1035,7 @@ Deno.serve(async (req) => {
                 await supabase.from('match_event_logs').insert({ match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number}` });
                 newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
                 nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+                nextSetPieceType = 'kickoff';
               } else {
                 nextBallHolderParticipantId = null;
                 ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
