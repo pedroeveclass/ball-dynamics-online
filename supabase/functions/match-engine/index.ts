@@ -1334,4 +1334,48 @@ Deno.serve(async (req) => {
   }
 });
 
+// ─── Offside detection ────────────────────────────────────────
+function checkOffside(
+  receiverParticipant: any,
+  passerParticipant: any,
+  participants: any[],
+  possClubId: string,
+  match: { home_club_id: string; away_club_id: string },
+): boolean {
+  if (!receiverParticipant || !passerParticipant) return false;
+  if (receiverParticipant.club_id !== possClubId) return false;
+
+  const isHomeAttacking = possClubId === match.home_club_id;
+  const receiverX = Number(receiverParticipant.pos_x ?? 50);
+  const passerX = Number(passerParticipant.pos_x ?? 50);
+
+  // Ball must be played forward
+  if (isHomeAttacking && receiverX <= passerX) return false;
+  if (!isHomeAttacking && receiverX >= passerX) return false;
+
+  // Receiver must be in opponent's half
+  if (isHomeAttacking && receiverX < 50) return false;
+  if (!isHomeAttacking && receiverX > 50) return false;
+
+  const defenders = participants.filter(p => p.club_id !== possClubId && p.role_type === 'player');
+
+  let sortedX: number[];
+  if (isHomeAttacking) {
+    // Away defenders sorted by x descending (closest to their goal at x=100)
+    sortedX = defenders.map(d => Number(d.pos_x ?? 50)).sort((a, b) => b - a);
+  } else {
+    // Home defenders sorted by x ascending (closest to their goal at x=0)
+    sortedX = defenders.map(d => Number(d.pos_x ?? 50)).sort((a, b) => a - b);
+  }
+
+  if (sortedX.length < 2) return false;
+  const penultimateX = sortedX[1];
+
+  const isOffside = isHomeAttacking ? receiverX > penultimateX : receiverX < penultimateX;
+  if (isOffside) {
+    console.log(`[ENGINE] 🚩 OFFSIDE! receiverX=${receiverX.toFixed(1)} penultimateDefX=${penultimateX.toFixed(1)} passerX=${passerX.toFixed(1)}`);
+  }
+  return isOffside;
+}
+
 
