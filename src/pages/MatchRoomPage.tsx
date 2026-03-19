@@ -3004,7 +3004,7 @@ export default function MatchRoomPage() {
                         const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
                         if (bhAction.action_type === 'move' && isOpponent) {
                           label = 'DESARME';
-                          icon = 'ðŸ¦µ';
+                          icon = '🦵';
                         } else if (isShootAction(bhAction.action_type) && isOpponent) {
                           const isGK = menuPlayer.field_pos === 'GK';
                           if (isGK) {
@@ -3016,29 +3016,29 @@ export default function MatchRoomPage() {
                               : (gkX >= 82 && gkY >= 20 && gkY <= 80);
                             if (inBox) {
                               label = 'DEFENDER';
-                              icon = 'ðŸ§¤';
+                              icon = '🧤';
                             } else {
                               label = 'BLOQUEAR';
-                              icon = 'ðŸ›¡ï¸';
+                              icon = '🛡️';
                             }
                           } else {
                             label = 'BLOQUEAR';
-                            icon = 'ðŸ›¡ï¸';
+                            icon = '🛡️';
                           }
                         }
                       }
                     }
-                    // One-touch labels: when there's a pendingInterceptChoice, pass/shoot options are "de primeira"
+                    // One-touch labels
                     const isOneTouchOption = pendingInterceptChoice?.participantId === showActionMenu &&
                       (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
                     if (isOneTouchOption) {
                       const baseLabel = ACTION_LABELS[a] || a;
-                      label = `${baseLabel} (1Âª)`;
-                      if (a === 'pass_low') icon = 'âš¡âž¡';
-                      else if (a === 'pass_high') icon = 'âš¡â¤´';
-                      else if (a === 'pass_launch') icon = 'âš¡ðŸš€';
-                      else if (a === 'shoot_controlled') icon = 'âš¡ðŸŽ¯';
-                      else if (a === 'shoot_power') icon = 'âš¡ðŸ’¥';
+                      label = `${baseLabel} (1a)`;
+                      if (a === 'pass_low') icon = '⚡➡';
+                      else if (a === 'pass_high') icon = '⚡⤴';
+                      else if (a === 'pass_launch') icon = '⚡🚀';
+                      else if (a === 'shoot_controlled') icon = '⚡🎯';
+                      else if (a === 'shoot_power') icon = '⚡💥';
                     }
                     return (
                       <button
