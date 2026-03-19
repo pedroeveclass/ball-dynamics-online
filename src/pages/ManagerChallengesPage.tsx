@@ -117,16 +117,35 @@ export default function ManagerChallengesPage() {
     finally { setSending(false); }
   };
 
-  // Default 4-4-2 formation positions for bot filling
-  const DEFAULT_442_POSITIONS = [
-    'GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST',
+  const FRIENDLY_3V3_COORDS: Array<{ x: number; y: number; pos: 'GK' | 'CB' | 'ST' }> = [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 25, y: 50, pos: 'CB' },
+    { x: 45, y: 50, pos: 'ST' },
   ];
-  const DEFAULT_442_COORDS: Array<{ x: number; y: number }> = [
-    { x: 5, y: 50 },
-    { x: 22, y: 15 }, { x: 22, y: 37 }, { x: 22, y: 63 }, { x: 22, y: 85 },
-    { x: 42, y: 15 }, { x: 42, y: 37 }, { x: 42, y: 63 }, { x: 42, y: 85 },
-    { x: 48, y: 35 }, { x: 48, y: 65 },
-  ];
+
+  const getFriendlySlotRole = (slotPosition?: string | null): 'GK' | 'CB' | 'ST' | null => {
+    if (!slotPosition) return null;
+    if (slotPosition === 'GK') return 'GK';
+    if (slotPosition.startsWith('CB')) return 'CB';
+    if (slotPosition.startsWith('ST')) return 'ST';
+    return null;
+  };
+
+  const pickFriendlySlots = <T extends { id: string; slot_position: string | null }>(clubSlots: T[]) => {
+    const picked: T[] = [];
+    const usedSlotIds = new Set<string>();
+
+    for (const targetRole of ['GK', 'CB', 'ST'] as const) {
+      const match = clubSlots.find(slot =>
+        !usedSlotIds.has(slot.id) && getFriendlySlotRole(slot.slot_position) === targetRole,
+      );
+      if (!match) continue;
+      picked.push(match);
+      usedSlotIds.add(match.id);
+    }
+
+    return picked;
+  };
 
   const handleAccept = async (challenge: Challenge) => {
     if (!club || !managerProfile) return;
@@ -154,28 +173,34 @@ export default function ManagerChallengesPage() {
         ? await supabase.from('lineup_slots')
             .select('id, lineup_id, player_profile_id, slot_position, role_type')
             .in('lineup_id', lineupIds)
+            .eq('role_type', 'starter')
         : { data: [] };
 
-      const playerIds = (slots || []).filter(s => s.player_profile_id).map(s => s.player_profile_id!);
+      const starterSlots = slots || [];
+      const homeStarterSlots = homeLineupId ? starterSlots.filter(slot => slot.lineup_id === homeLineupId) : [];
+      const awayStarterSlots = awayLineupId ? starterSlots.filter(slot => slot.lineup_id === awayLineupId) : [];
+      const homeFriendlySlots = pickFriendlySlots(homeStarterSlots);
+      const awayFriendlySlots = pickFriendlySlots(awayStarterSlots);
+      const friendlySlots = [...homeFriendlySlots, ...awayFriendlySlots];
+
+      const playerIds = friendlySlots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
       const { data: players } = playerIds.length > 0 ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds) : { data: [] };
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
       // Create participants from lineup slots
-      const slotParticipants = (slots || []).map(slot => {
+      const slotParticipants = friendlySlots.map(slot => {
         const clubId = homeLineupId && slot.lineup_id === homeLineupId ? challenge.challenger_club_id : challenge.challenged_club_id;
         const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
         return { match_id: match!.id, player_profile_id: slot.player_profile_id || null, club_id: clubId, lineup_slot_id: slot.id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId || null };
       });
 
-      // Count players per club and fill to 11 with bots
-      const homeSlotCount = slotParticipants.filter(p => p.club_id === challenge.challenger_club_id).length;
-      const awaySlotCount = slotParticipants.filter(p => p.club_id === challenge.challenged_club_id).length;
-
       const botParticipants: any[] = [];
+      const homeFilledRoles = new Set(homeFriendlySlots.map(slot => getFriendlySlotRole(slot.slot_position)).filter(Boolean));
+      const awayFilledRoles = new Set(awayFriendlySlots.map(slot => getFriendlySlotRole(slot.slot_position)).filter(Boolean));
 
-      // Fill home team bots
-      for (let i = homeSlotCount; i < 11; i++) {
-        const coords = DEFAULT_442_COORDS[i] || { x: 30, y: 50 };
+      // Fill home team bots by missing role
+      for (const coords of FRIENDLY_3V3_COORDS) {
+        if (homeFilledRoles.has(coords.pos)) continue;
         botParticipants.push({
           match_id: match!.id, player_profile_id: null, club_id: challenge.challenger_club_id,
           lineup_slot_id: null, role_type: 'player', is_bot: true, is_ready: false, connected_user_id: null,
@@ -183,9 +208,9 @@ export default function ManagerChallengesPage() {
         });
       }
 
-      // Fill away team bots (mirror x positions)
-      for (let i = awaySlotCount; i < 11; i++) {
-        const coords = DEFAULT_442_COORDS[i] || { x: 70, y: 50 };
+      // Fill away team bots by missing role (mirror x positions)
+      for (const coords of FRIENDLY_3V3_COORDS) {
+        if (awayFilledRoles.has(coords.pos)) continue;
         botParticipants.push({
           match_id: match!.id, player_profile_id: null, club_id: challenge.challenged_club_id,
           lineup_slot_id: null, role_type: 'player', is_bot: true, is_ready: false, connected_user_id: null,
@@ -248,11 +273,13 @@ export default function ManagerChallengesPage() {
       await supabase.from('match_participants').insert([
         { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 5, pos_y: 50 },
         { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 25, pos_y: 50 },
-        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 70, pos_y: 35 },
-        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 70, pos_y: 65 },
+        { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 45, pos_y: 50 },
+        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 95, pos_y: 50 },
+        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 75, pos_y: 50 },
+        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 55, pos_y: 50 },
         { match_id: match.id, club_id: club.id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: userId },
       ]);
-      await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '2v2 — GK + CB vs ST + ST' });
+      await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '3v3 — GK + CB + ST vs GK + CB + ST' });
       if (target === 'lab') { toast.success('Laboratório criado!'); navigate(`/match-lab/${match.id}`); }
       else { toast.success('Partida de teste criada!'); navigate(`/match/${match.id}`); }
     } catch (err: any) { toast.error(err.message || 'Erro'); }
@@ -276,7 +303,7 @@ export default function ManagerChallengesPage() {
               <FlaskConical className="h-4 w-4 mr-1" /> Lab Solo
             </Button>
             <Button size="sm" variant="outline" onClick={() => handleCreateTestMatch('match')} disabled={creatingTarget !== null} className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
-              <FlaskConical className="h-4 w-4 mr-1" /> {creatingTarget === 'match' ? 'Criando...' : 'Teste 2v2'}
+              <FlaskConical className="h-4 w-4 mr-1" /> {creatingTarget === 'match' ? 'Criando...' : 'Teste 3v3'}
             </Button>
             <Button size="sm" onClick={openCreateDialog} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
               <Plus className="h-4 w-4 mr-1" /> Enviar Convite

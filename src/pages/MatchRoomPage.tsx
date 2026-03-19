@@ -32,10 +32,12 @@ const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: str
   'test-home': [
     { x: 5, y: 50, pos: 'GK' },
     { x: 25, y: 50, pos: 'CB' },
+    { x: 45, y: 50, pos: 'ST' },
   ],
   'test-away': [
-    { x: 70, y: 35, pos: 'ST' },
-    { x: 70, y: 65, pos: 'ST' },
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 25, y: 50, pos: 'CB' },
+    { x: 45, y: 50, pos: 'ST' },
   ],
 };
 
@@ -298,7 +300,7 @@ export default function MatchRoomPage() {
       const homeParts = enriched.filter(p => p.club_id === m.home_club_id && p.role_type === 'player');
       const awayParts = enriched.filter(p => p.club_id === m.away_club_id && p.role_type === 'player');
 
-      const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+      const isTestMatch = homeParts.length <= 3 && awayParts.length <= 3;
 
       // Clamp to own half during kickoff (turn 0 or 1)
       const isKickoffStart = (m.current_turn_number ?? 0) <= 1;
@@ -307,6 +309,11 @@ export default function MatchRoomPage() {
         const positions = getFormationPositions(formation, isHome, isKickoffStart);
         // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
         const sorted = [...list].sort((a, b) => {
+          const aSortOrder = a.lineup_slot_id ? slotMap.get(a.lineup_slot_id)?.sort_order ?? null : null;
+          const bSortOrder = b.lineup_slot_id ? slotMap.get(b.lineup_slot_id)?.sort_order ?? null : null;
+          if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+          if (aSortOrder != null && bSortOrder == null) return -1;
+          if (aSortOrder == null && bSortOrder != null) return 1;
           const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
           const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
           if (aIsGK && !bIsGK) return -1;
@@ -851,12 +858,17 @@ export default function MatchRoomPage() {
 
     const homeParts = enriched.filter(p => p.club_id === matchData.home_club_id && p.role_type === 'player');
     const awayParts = enriched.filter(p => p.club_id === matchData.away_club_id && p.role_type === 'player');
-    const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+    const isTestMatch = homeParts.length <= 3 && awayParts.length <= 3;
     const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
 
     const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
       const positions = getFormationPositions(formation, isHome, isKickoffStart);
       const sorted = [...list].sort((a, b) => {
+        const aSortOrder = a.lineup_slot_id ? slotMap.get(a.lineup_slot_id)?.sort_order ?? null : null;
+        const bSortOrder = b.lineup_slot_id ? slotMap.get(b.lineup_slot_id)?.sort_order ?? null : null;
+        if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        if (aSortOrder != null && bSortOrder == null) return -1;
+        if (aSortOrder == null && bSortOrder != null) return 1;
         const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
         const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
         if (aIsGK && !bIsGK) return -1;
@@ -1533,7 +1545,7 @@ export default function MatchRoomPage() {
   const awayPlayers = participants.filter(p => p.club_id === match.away_club_id && p.role_type === 'player');
 
   const possClubId = activeTurn?.possession_club_id ?? match.possession_club_id;
-  const isTestMatch = homePlayers.length <= 4 && awayPlayers.length <= 4;
+  const isTestMatch = homePlayers.length <= 3 && awayPlayers.length <= 3;
   const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
   // Get actions for current phase
@@ -2033,7 +2045,7 @@ export default function MatchRoomPage() {
             {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
             {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
           </Badge>
-          {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">TESTE 2v2</Badge>}
+          {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">3v3</Badge>}
           {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
           {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
           {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">📍 POSICIONAMENTO</Badge>}
