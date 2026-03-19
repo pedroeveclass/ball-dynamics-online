@@ -991,9 +991,14 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 
 async function invokeTickForMatch(functionUrl: string, matchId: string) {
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
   const response = await fetch(functionUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': anonKey,
+      'Authorization': `Bearer ${anonKey}`,
+    },
     body: JSON.stringify({ action: 'tick', match_id: matchId }),
   });
   const result = await response.json().catch(() => null);
