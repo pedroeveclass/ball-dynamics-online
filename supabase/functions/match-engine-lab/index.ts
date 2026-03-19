@@ -1286,10 +1286,16 @@ Deno.serve(async (req) => {
           .eq('status', 'pending')
           .order('created_at', { ascending: false });
 
-        // Dedup: keep latest action per participant
+        // Dedup: keep highest-priority action per participant (human > bot)
+        const priorityByCtrl: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+        const sortedMoveRaw = [...(rawActions || [])].filter(a => a.action_type === 'move').sort((a, b) => {
+          const pa = priorityByCtrl[a.controlled_by_type] ?? 0;
+          const pb = priorityByCtrl[b.controlled_by_type] ?? 0;
+          if (pa !== pb) return pb - pa;
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
         const seen = new Set<string>();
-        const moveActions = (rawActions || []).filter(a => {
-          if (a.action_type !== 'move') return false;
+        const moveActions = sortedMoveRaw.filter(a => {
           if (seen.has(a.participant_id)) return false;
           seen.add(a.participant_id);
           return true;
