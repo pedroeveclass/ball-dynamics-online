@@ -987,30 +987,8 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
-async function claimActiveTurnForProcessing(supabase: any, matchId: string) {
-  const processingToken = crypto.randomUUID();
-  const { data, error } = await supabase.rpc('claim_match_turn_for_processing', {
-    p_match_id: matchId,
-    p_processing_token: processingToken,
-    p_now: new Date().toISOString(),
-  });
-  if (error) throw error;
 
-  const claimedTurn = Array.isArray(data) ? data[0] : data;
-  if (!claimedTurn) return null;
 
-  return { claimedTurn, processingToken };
-}
-
-async function releaseTurnProcessing(supabase: any, turnId: string, processingToken: string) {
-  const { error } = await supabase.rpc('release_match_turn_processing', {
-    p_turn_id: turnId,
-    p_processing_token: processingToken,
-  });
-  if (error) {
-    console.error('[ENGINE] Failed to release turn processing lock', { turnId, error });
-  }
-}
 
 async function invokeTickForMatch(functionUrl: string, matchId: string) {
   const response = await fetch(functionUrl, {
@@ -1245,19 +1223,6 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const turnClaim = await claimActiveTurnForProcessing(supabase, match_id);
-      if (!turnClaim) {
-        return jsonResponse({ status: 'busy', server_now: now.getTime() });
-      }
-
-      activeTurn = turnClaim.claimedTurn;
-      const lockedEndsAt = new Date(activeTurn.ends_at);
-      if (lockedEndsAt > now) {
-        await releaseTurnProcessing(supabase, activeTurn.id, turnClaim.processingToken);
-        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: lockedEndsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      try {
         // ── POSITIONING PHASES ──
         if (isPositioningPhase(activeTurn.phase)) {
         const { data: participants } = await supabase
@@ -2086,9 +2051,6 @@ Deno.serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      } finally {
-        await releaseTurnProcessing(supabase, activeTurn.id, turnClaim.processingToken);
-      }
     }
 
     // ─── SUBMIT HUMAN ACTION ───
