@@ -144,7 +144,7 @@ function computeInterceptSuccess(
   context: InterceptContext,
   attackerAttrs: Record<string, number>,
   defenderAttrs: Record<string, number>,
-): { success: boolean; chance: number } {
+): { success: boolean; chance: number; foul: boolean } {
   let attackerSkill: number;
   let defenderSkill: number;
 
@@ -180,8 +180,18 @@ function computeInterceptSuccess(
   successChance = Math.max(0.05, Math.min(0.95, successChance));
   const roll = Math.random();
   const success = roll < successChance;
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success}`);
-  return { success, chance: successChance };
+
+  // Foul check: only for tackles that FAIL
+  let foul = false;
+  if (context.type === 'tackle' && !success) {
+    const tackleSkill = (normalizeAttr(defenderAttrs.desarme ?? 40) + normalizeAttr(defenderAttrs.marcacao ?? 40)) / 2;
+    const foulChance = (1 - tackleSkill) * 0.35;
+    foul = Math.random() < foulChance;
+    if (foul) console.log(`[ENGINE] ⚠️ FOUL! tackleSkill=${tackleSkill.toFixed(2)} foulChance=${(foulChance*100).toFixed(0)}%`);
+  }
+
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} foul=${foul}`);
+  return { success, chance: successChance, foul };
 }
 
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>): {
