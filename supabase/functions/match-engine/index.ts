@@ -972,6 +972,7 @@ Deno.serve(async (req) => {
       let nextBallHolderParticipantId = ballHolder?.id || null;
       let ballEndPos: { x: number; y: number } | null = null;
       const lastTouchClubId = possClubId;
+      let nextSetPieceType: string | null = null;
 
       const getAttrs = (part: any) => {
         const raw = part?.player_profile_id ? attrByProfile[part.player_profile_id] : null;
