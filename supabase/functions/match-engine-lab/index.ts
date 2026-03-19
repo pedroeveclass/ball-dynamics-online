@@ -1017,6 +1017,19 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
   const started: string[] = [];
 
   for (const m of (dueMatches || [])) {
+    const possessionClubId = m.home_club_id;
+    const { data: claimedMatch } = await supabase.from('matches').update({
+      status: 'live',
+      started_at: now,
+      current_phase: 'positioning_attack',
+      current_turn_number: 1,
+      possession_club_id: possessionClubId,
+    }).eq('id', m.id).eq('status', 'scheduled').lte('scheduled_at', now).select('id').maybeSingle();
+
+    if (!claimedMatch) {
+      continue;
+    }
+
     const { data: existingParts } = await supabase
       .from('match_participants')
       .select('id, club_id, role_type')
@@ -1060,16 +1073,8 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       ]);
     }
 
-    const possessionClubId = m.home_club_id;
-    const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
-    await supabase.from('matches').update({
-      status: 'live',
-      started_at: now,
-      current_phase: 'positioning_attack',
-      current_turn_number: 1,
-      possession_club_id: possessionClubId,
-    }).eq('id', m.id);
+    const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
     const phaseEnd = new Date(Date.now() + POSITIONING_PHASE_DURATION_MS).toISOString();
     await supabase.from('match_turns').insert({

@@ -355,6 +355,15 @@ export default function MatchRoomPage() {
       serverClockOffsetRef.current = serverTimestamp - Date.now();
     }
   }, []);
+  const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return invokeConfiguredMatchEngine({
+      body,
+      accessToken: session?.access_token,
+      onServerNow: updateServerOffset,
+      resolvedFunctionRef: resolvedMatchEngineRef,
+    });
+  }, [updateServerOffset]);
 
   // Interactive drawing
   const [drawingAction, setDrawingAction] = useState<DrawingState | null>(null);
@@ -413,6 +422,9 @@ export default function MatchRoomPage() {
   const turnActionsFetchQueuedRef = useRef(false);
   const turnActionsFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveSnapshotInFlightRef = useRef(false);
+  const scheduledMatchStartInFlightRef = useRef(false);
+  const realtimeHasSubscribedRef = useRef(false);
+  const realtimeNeedsRecoveryRef = useRef(false);
 
   // ── Load match data ──────────────────────────────────────────
   const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
@@ -710,6 +722,20 @@ export default function MatchRoomPage() {
     }
   }, [applyParticipantRows, matchId, scheduleTurnActionsReconcile]);
 
+  const ensureScheduledMatchStarted = useCallback(async () => {
+    if (!matchId || scheduledMatchStartInFlightRef.current) return;
+
+    scheduledMatchStartInFlightRef.current = true;
+    try {
+      await invokeMatchEngine({ action: 'process_due_matches', match_id: matchId });
+    } catch (error) {
+      console.error('Scheduled match start recovery failed:', error);
+    } finally {
+      scheduledMatchStartInFlightRef.current = false;
+      await loadLiveSnapshot();
+    }
+  }, [invokeMatchEngine, loadLiveSnapshot, matchId]);
+
   useEffect(() => {
     if (!matchId) return;
 
@@ -724,6 +750,9 @@ export default function MatchRoomPage() {
     turnActionsRef.current = [];
     turnActionsFetchInFlightRef.current = false;
     turnActionsFetchQueuedRef.current = false;
+    scheduledMatchStartInFlightRef.current = false;
+    realtimeHasSubscribedRef.current = false;
+    realtimeNeedsRecoveryRef.current = false;
     if (turnActionsFetchTimerRef.current) {
       clearTimeout(turnActionsFetchTimerRef.current);
       turnActionsFetchTimerRef.current = null;
@@ -860,14 +889,14 @@ export default function MatchRoomPage() {
 
       if (!triggered && now >= countdownEnd) {
         triggered = true;
-        void loadLiveSnapshot();
+        void ensureScheduledMatchStarted();
       }
     };
 
     update();
     const interval = setInterval(update, 200);
     return () => clearInterval(interval);
-  }, [loadLiveSnapshot, match?.status, match?.scheduled_at, serverNow]);
+  }, [ensureScheduledMatchStarted, match?.status, match?.scheduled_at, serverNow]);
 
   // ── Phase countdown timer ────────────────────────────────────
   useEffect(() => {
@@ -1036,6 +1065,8 @@ export default function MatchRoomPage() {
   }, [activeTurn?.id, activeTurn?.phase, isPositioningTurn, match?.status, phaseTimeLeft]);
   useEffect(() => {
     if (!matchId) return;
+    realtimeHasSubscribedRef.current = false;
+    realtimeNeedsRecoveryRef.current = false;
     const channel = supabase.channel(`match-room-${matchId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `id=eq.${matchId}` }, (payload: any) => {
         const nextMatch = payload.new as MatchData;
@@ -1106,25 +1137,30 @@ export default function MatchRoomPage() {
         if (effectiveMatch) applyParticipantRows(nextRows, effectiveMatch);
       })
       .subscribe((status: string) => {
-        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          void loadLiveSnapshot();
+        if (status === 'SUBSCRIBED') {
+          if (realtimeHasSubscribedRef.current) {
+            if (realtimeNeedsRecoveryRef.current) {
+              realtimeNeedsRecoveryRef.current = false;
+              void loadLiveSnapshot();
+            }
+            return;
+          }
+          realtimeHasSubscribedRef.current = true;
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          realtimeNeedsRecoveryRef.current = true;
         }
       });
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      realtimeHasSubscribedRef.current = false;
+      realtimeNeedsRecoveryRef.current = false;
+      supabase.removeChannel(channel);
+    };
   }, [applyIncomingTurnAction, applyParticipantRows, appendEventLog, loadLiveSnapshot, matchId, scheduleTurnActionsReconcile, setTurnActionsState]);
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
-
-  // ── Helpers ──────────────────────────────────────────────────
-  const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return invokeConfiguredMatchEngine({
-      body,
-      accessToken: session?.access_token,
-      onServerNow: updateServerOffset,
-      resolvedFunctionRef: resolvedMatchEngineRef,
-    });
-  }, [updateServerOffset]);
 
   useEffect(() => {
     if (!ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK) return;
