@@ -1163,9 +1163,9 @@ export default function MatchRoomPage() {
       }
       if (result.error) {
         if (result.recoverable || result.error === 'No active turn') {
-          console.warn('[SUBMIT] No active turn â€” phase transition in progress, retrying...');
+          console.warn('[SUBMIT] No active turn - phase transition in progress, retrying...');
           await loadLiveSnapshot();
-          toast.info('Turno em transiÃ§Ã£o, tente novamente');
+          toast.info('Turno em transicao, tente novamente');
         } else {
           toast.error(String(result.error));
         }
