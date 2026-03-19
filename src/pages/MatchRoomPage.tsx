@@ -3059,7 +3059,7 @@ export default function MatchRoomPage() {
             {/* Pass/Shot quality indicator */}
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
-              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'MÃ©dia' : 'Ruim';
+              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Media' : 'Ruim'; 'MÃ©dia' : 'Ruim';
               const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
               const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
               return (
