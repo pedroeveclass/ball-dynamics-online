@@ -2341,16 +2341,29 @@ export default function MatchRoomPage() {
               {isPositioningTurn && (() => {
                 const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
                 const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
-                if (!isKickoff || !drawingAction) return null;
-                const drawingPlayer = participants.find(p => p.id === drawingAction.fromParticipantId);
-                if (!drawingPlayer) return null;
-                const isHome = drawingPlayer.club_id === match.home_club_id;
-                // Shade the opponent's half
-                const shadeX = isHome ? toSVG(50, 0).x : PAD;
-                const shadeW = isHome ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
+                if (!isKickoff) return null;
+                const centerSvg = toSVG(50, 50);
+                const CENTER_CIRCLE_RADIUS_PCT = 9.15;
+                const circleRadiusSvgX = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_W;
+                const circleRadiusSvgY = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_H;
+                const possClubId = activeTurn?.possession_club_id;
+                const drawingPlayer = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
+                const isDrawingDefender = drawingPlayer && drawingPlayer.club_id !== possClubId;
                 return (
-                  <rect x={shadeX} y={PAD} width={shadeW} height={INNER_H}
-                    fill="rgba(239,68,68,0.12)" stroke="rgba(239,68,68,0.3)" strokeWidth="1" strokeDasharray="6,4" />
+                  <>
+                    <ellipse cx={centerSvg.x} cy={centerSvg.y} rx={circleRadiusSvgX} ry={circleRadiusSvgY}
+                      fill={isDrawingDefender ? "rgba(239,68,68,0.10)" : "none"}
+                      stroke="rgba(239,68,68,0.4)" strokeWidth="1.5" strokeDasharray="6,4" />
+                    {drawingAction && drawingPlayer && (() => {
+                      const isHome = drawingPlayer.club_id === match.home_club_id;
+                      const shadeX = isHome ? toSVG(50, 0).x : PAD;
+                      const shadeW = isHome ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
+                      return (
+                        <rect x={shadeX} y={PAD} width={shadeW} height={INNER_H}
+                          fill="rgba(239,68,68,0.12)" stroke="rgba(239,68,68,0.3)" strokeWidth="1" strokeDasharray="6,4" />
+                      );
+                    })()}
+                  </>
                 );
               })()}
 
