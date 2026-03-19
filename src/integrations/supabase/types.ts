@@ -647,6 +647,7 @@ export type Database = {
           phase: string
           possession_club_id: string | null
           resolved_at: string | null
+          set_piece_type: string | null
           started_at: string
           status: string
           turn_number: number
@@ -660,6 +661,7 @@ export type Database = {
           phase?: string
           possession_club_id?: string | null
           resolved_at?: string | null
+          set_piece_type?: string | null
           started_at?: string
           status?: string
           turn_number?: number
@@ -673,6 +675,7 @@ export type Database = {
           phase?: string
           possession_club_id?: string | null
           resolved_at?: string | null
+          set_piece_type?: string | null
           started_at?: string
           status?: string
           turn_number?: number
