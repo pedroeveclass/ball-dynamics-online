@@ -1104,6 +1104,33 @@ Deno.serve(async (req) => {
               nextBallHolderParticipantId = ballHolder.id;
             }
           }
+
+          // ── Offside check for completed passes ──
+          if (ballHolderAction && isPassType(ballHolderAction.action_type) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
+            const receiver = (participants || []).find(p => p.id === nextBallHolderParticipantId);
+            if (receiver && receiver.club_id === possClubId && checkOffside(receiver, ballHolder, participants || [], possClubId || '', match)) {
+              const defClub = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+              const defPlayersForFK = (participants || []).filter(p => p.club_id === defClub && p.role_type === 'player');
+              const offsideX = Number(receiver.pos_x ?? 50);
+              const offsideY = Number(receiver.pos_y ?? 50);
+              defPlayersForFK.sort((a: any, b: any) => {
+                const dA = Math.sqrt((Number(a.pos_x ?? 50) - offsideX) ** 2 + (Number(a.pos_y ?? 50) - offsideY) ** 2);
+                const dB = Math.sqrt((Number(b.pos_x ?? 50) - offsideX) ** 2 + (Number(b.pos_y ?? 50) - offsideY) ** 2);
+                return dA - dB;
+              });
+              const fkTaker = defPlayersForFK[0];
+              if (fkTaker) {
+                await supabase.from('match_participants').update({ pos_x: offsideX, pos_y: offsideY }).eq('id', fkTaker.id);
+                nextBallHolderParticipantId = fkTaker.id;
+              } else {
+                nextBallHolderParticipantId = null;
+              }
+              newPossessionClubId = defClub;
+              nextSetPieceType = 'free_kick';
+              ballEndPos = { x: offsideX, y: offsideY };
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'offside', title: '🚩 Impedimento!', body: 'Jogador em posição irregular. Tiro livre indireto.' });
+            }
+          }
         } else {
           // LOOSE BALL
           const { data: prevTurnData } = await supabase.from('match_turns').select('ball_holder_participant_id').eq('match_id', match_id).eq('turn_number', match.current_turn_number - 1).order('created_at', { ascending: false }).limit(1).maybeSingle();
