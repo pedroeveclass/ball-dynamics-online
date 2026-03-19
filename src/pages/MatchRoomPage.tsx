@@ -380,6 +380,7 @@ export default function MatchRoomPage() {
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
+  const prevTurnWasPositioningRef = useRef<boolean>(false);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
