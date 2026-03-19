@@ -1159,7 +1159,7 @@ export default function MatchRoomPage() {
         ...(payload ? { payload } : {}),
       });
       if (!response.ok && !result?.error) {
-        throw new Error('Erro ao enviar aÃ§Ã£o');
+        throw new Error('Erro ao enviar ação');
       }
       if (result.error) {
         if (result.recoverable || result.error === 'No active turn') {
