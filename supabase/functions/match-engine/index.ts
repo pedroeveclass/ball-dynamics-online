@@ -799,6 +799,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       started_at: now,
       ends_at: phaseEnd,
       status: 'active',
+      set_piece_type: 'kickoff',
     });
 
     await supabase.from('match_event_logs').insert({
