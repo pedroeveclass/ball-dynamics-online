@@ -201,6 +201,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   looseBallPos?: { x: number; y: number };
   failedContestParticipantId?: string;
   failedContestLog?: string;
+  foul?: boolean;
+  foulPosition?: { x: number; y: number };
 } {
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
@@ -222,7 +224,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
     const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
-    const { success, chance } = computeInterceptSuccess(context, bhAttrs, defAttrs);
+    const { success, chance, foul } = computeInterceptSuccess(context, bhAttrs, defAttrs);
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
@@ -238,6 +240,9 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     } else {
       if (context.type === 'tackle') {
+        if (foul) {
+          return { success: false, event: 'foul', description: `🟡 Falta! (Desarme: ${chancePct})`, possession_change: false, goal: false, foul: true, foulPosition: { x: candidate.interceptX ?? 50, y: candidate.interceptY ?? 50 }, failedContestParticipantId: candidate.participant.id, failedContestLog: `🟡 Falta cometida! (${chancePct})` };
+        }
         return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `🦵 Desarme falhou! (${chancePct})` };
       } else if (context.type === 'block_shot') {
         console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
