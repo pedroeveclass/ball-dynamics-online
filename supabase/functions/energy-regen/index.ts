@@ -24,8 +24,8 @@ Deno.serve(async (req) => {
     let updated = 0;
 
     for (const p of needsRegen) {
-      // Random 15-35% of max energy
-      const regenPct = 0.15 + Math.random() * 0.20;
+      // Random 25-30% de energia máxima
+      const regenPct = 0.25 + Math.random() * 0.10;
       const regenAmount = Math.floor(p.energy_max * regenPct);
       const newEnergy = Math.min(p.energy_max, p.energy_current + regenAmount);
 
