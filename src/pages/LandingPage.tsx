@@ -50,7 +50,11 @@ export default function LandingPage() {
               </Button>
             </Link>
             <Link to="/league">
-              <Button size="lg" variant="outline" className="border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/10 font-display text-lg px-8">
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground hover:border-warning/60 hover:bg-warning hover:text-warning-foreground font-display text-lg px-8"
+              >
                 VER LIGAS
               </Button>
             </Link>
