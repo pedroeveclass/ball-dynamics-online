@@ -236,8 +236,30 @@ async function generateBotActions(
             status: 'pending',
           });
         }
+      } else if (isLooseBall) {
+        // Loose ball: move toward ball AND try to dominate it
+        const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
+        if (distToBall < 8) {
+          // Close enough: submit a 'receive' action to dominate the ball
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'receive',
+            target_x: ballPos.x, target_y: ballPos.y,
+            status: 'pending',
+          });
+        } else {
+          // Far away: move toward ball
+          const targetX = posX + (ballPos.x - posX) * 0.4 + (Math.random() - 0.5) * 2;
+          const targetY = posY + (ballPos.y - posY) * 0.4 + (Math.random() - 0.5) * 2;
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(2, Math.min(98, targetY)),
+            status: 'pending',
+          });
+        }
       } else {
-        // Loose ball: move toward ball
+        // No ball holder but not flagged as loose ball — move toward ball area
         const targetX = posX + (ballPos.x - posX) * 0.2 + (Math.random() - 0.5) * 3;
         const targetY = posY + (ballPos.y - posY) * 0.2 + (Math.random() - 0.5) * 3;
         actions.push({
