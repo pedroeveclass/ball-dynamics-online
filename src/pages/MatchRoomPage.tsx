@@ -1172,7 +1172,7 @@ export default function MatchRoomPage() {
       }
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
-        toast.success(`âœ… ${ACTION_LABELS[actionType] || actionType}`);
+        toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
 
       }
     } catch { toast.error('Erro ao enviar ação'); }
