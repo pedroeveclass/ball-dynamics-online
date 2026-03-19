@@ -1197,7 +1197,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'process_due_matches') {
-      const result = await processDueMatches(supabase, req.url, match_id);
+      const functionUrl = `${supabaseUrl}/functions/v1/match-engine-lab`;
+      const result = await processDueMatches(supabase, functionUrl, match_id);
       return jsonResponse({ ...result, server_now: Date.now() });
     }
     if (action === 'tick' && match_id) {
