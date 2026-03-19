@@ -1181,6 +1181,49 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ── Goal from pass/move ending in goal area ──
+        if (nextBallHolderParticipantId === null && ballEndPos) {
+          const inHomeGoal = ballEndPos.x <= 1 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
+          const inAwayGoal = ballEndPos.x >= 99 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
+          if (inHomeGoal || inAwayGoal) {
+            const bhPassAction = ballHolder ? allActions.find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type) || a.action_type === 'move')) : null;
+            const isOverGoal = bhPassAction?.payload && typeof bhPassAction.payload === 'object' && (bhPassAction.payload as any).over_goal;
+            if (!isOverGoal) {
+              if (inAwayGoal) {
+                if (possClubId === match.home_club_id) homeScore++; else awayScore++;
+              } else {
+                if (possClubId === match.away_club_id) awayScore++; else homeScore++;
+              }
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Bola no fundo da rede!` });
+              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+              nextSetPieceType = 'kickoff';
+            }
+          }
+        }
+
+        // Goal from dribble/move into goal area
+        if (ballHolder && nextBallHolderParticipantId === ballHolder.id) {
+          const bhMoveAct = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+          if (bhMoveAct?.target_x != null && bhMoveAct?.target_y != null) {
+            const moveEndX = Number(bhMoveAct.target_x);
+            const moveEndY = Number(bhMoveAct.target_y);
+            const inHGoal = moveEndX <= 2 && moveEndY >= 38 && moveEndY <= 62;
+            const inAGoal = moveEndX >= 98 && moveEndY >= 38 && moveEndY <= 62;
+            if (inHGoal || inAGoal) {
+              if (inAGoal) {
+                if (possClubId === match.home_club_id) homeScore++; else awayScore++;
+              } else {
+                if (possClubId === match.away_club_id) awayScore++; else homeScore++;
+              }
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!` });
+              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+              nextSetPieceType = 'kickoff';
+            }
+          }
+        }
+
         // OOB
         const goalScored = homeScore > match.home_score || awayScore > match.away_score;
         if (ballEndPos && !goalScored && nextBallHolderParticipantId === null) {
