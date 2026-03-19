@@ -987,30 +987,8 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
-async function claimActiveTurnForProcessing(supabase: any, matchId: string) {
-  const processingToken = crypto.randomUUID();
-  const { data, error } = await supabase.rpc('claim_match_turn_for_processing', {
-    p_match_id: matchId,
-    p_processing_token: processingToken,
-    p_now: new Date().toISOString(),
-  });
-  if (error) throw error;
 
-  const claimedTurn = Array.isArray(data) ? data[0] : data;
-  if (!claimedTurn) return null;
 
-  return { claimedTurn, processingToken };
-}
-
-async function releaseTurnProcessing(supabase: any, turnId: string, processingToken: string) {
-  const { error } = await supabase.rpc('release_match_turn_processing', {
-    p_turn_id: turnId,
-    p_processing_token: processingToken,
-  });
-  if (error) {
-    console.error('[ENGINE] Failed to release turn processing lock', { turnId, error });
-  }
-}
 
 async function invokeTickForMatch(functionUrl: string, matchId: string) {
   const response = await fetch(functionUrl, {
