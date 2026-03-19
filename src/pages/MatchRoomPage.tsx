@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Bot, User, Eye, ChevronDown, ChevronRight, Square, LogOut } from 'lucide-react';
 
-// â”€â”€â”€ Formation layouts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Formation layouts ─────────────────────────────────────────
 const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
   '4-4-2': [
     { x: 5, y: 50, pos: 'GK' },
@@ -55,7 +55,7 @@ function getFormationPositions(formation: string, isHome: boolean, clampToOwnHal
   return positions;
 }
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ────────────────────────────────────────────────────
 interface MatchData {
   id: string; status: string; home_score: number; away_score: number;
   current_phase: string | null; current_turn_number: number;
@@ -132,7 +132,7 @@ interface TurnMeta {
   turn_number: number | null;
 }
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constants ────────────────────────────────────────────────
 const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
   defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
@@ -179,7 +179,7 @@ const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, 
   return Math.hypot(px - cx, py - cy);
 };
 
-// â”€â”€â”€ Drawing state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
   type: 'move' | 'pass_low' | 'pass_high' | 'pass_launch' | 'shoot_controlled' | 'shoot_power';
   fromParticipantId: string;
@@ -196,7 +196,7 @@ function formatScheduledDate(dateStr: string): string {
   }
 }
 
-// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main Component ───────────────────────────────────────────
 function dedupeAndSortTurnActions(actions: MatchAction[]): MatchAction[] {
   const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
   const dedupedByParticipantAndPhase = new Map<string, MatchAction>();
@@ -347,7 +347,7 @@ export default function MatchRoomPage() {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('Processando todos os movimientos...');
-  // Server clock offset: serverTime â‰ˆ Date.now() + serverClockOffset
+  // Server clock offset: serverTime ≈ Date.now() + serverClockOffset
   const serverClockOffsetRef = useRef(0);
   const serverNow = useCallback(() => Date.now() + serverClockOffsetRef.current, []);
   const updateServerOffset = useCallback((serverTimestamp: number) => {
@@ -414,7 +414,7 @@ export default function MatchRoomPage() {
   const turnActionsFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveSnapshotInFlightRef = useRef(false);
 
-  // â”€â”€ Load match data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Load match data ──────────────────────────────────────────
   const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
   const currentTurnNumberRef = useRef<number | null>(currentTurnNumber);
 
@@ -766,7 +766,7 @@ export default function MatchRoomPage() {
     [persistedSubmittedIds, submittedActions]
   );
 
-  // â”€â”€ Determine user role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Determine user role ─────────────────────────────────────
   useEffect(() => {
     if (!user || !match) return;
     const playerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'player');
@@ -834,7 +834,7 @@ export default function MatchRoomPage() {
     return range;
   }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase]);
 
-  // â”€â”€ Pre-match countdown / auto-start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
     if (!match || match.status !== 'scheduled') return;
 
@@ -869,7 +869,7 @@ export default function MatchRoomPage() {
     return () => clearInterval(interval);
   }, [loadLiveSnapshot, match?.status, match?.scheduled_at, serverNow]);
 
-  // â”€â”€ Phase countdown timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Phase countdown timer ────────────────────────────────────
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
     if (!activeTurn || match?.status !== 'live') return;
@@ -896,14 +896,14 @@ export default function MatchRoomPage() {
 
     if (activeTurn?.ball_holder_participant_id == null) {
       if (carriedLooseBallPos) {
-        // Ball was ALREADY loose â€” check if inertia was consumed
+        // Ball was ALREADY loose — check if inertia was consumed
         if (inertiaConsumedRef.current) {
-          // Inertia already applied last turn â€” clear it, ball stays put
+          // Inertia already applied last turn — clear it, ball stays put
           setBallInertiaDir(null);
         }
         // If not consumed yet, keep ballInertiaDir alive for arrow/animation
       } else {
-        // Ball JUST became loose â€” use ref for position (avoids race condition with state)
+        // Ball JUST became loose — use ref for position (avoids race condition with state)
         const pos = finalBallPosRef.current || finalBallPos;
         if (pos) {
           setCarriedLooseBallPos(pos);
@@ -922,7 +922,7 @@ export default function MatchRoomPage() {
     }
 
     setFinalBallPos(null);
-    // Don't clear finalBallPosRef here â€” it's consumed above
+    // Don't clear finalBallPosRef here — it's consumed above
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
 
@@ -952,7 +952,7 @@ export default function MatchRoomPage() {
   // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
   const isDeadBall = activeTurn?.phase === 'ball_holder' && prevTurnWasPositioningRef.current;
 
-  // â”€â”€ Possession change detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Possession change detection ────────────────────────────
   useEffect(() => {
     if (!activeTurn) return;
     const currentPoss = activeTurn.possession_club_id;
@@ -966,7 +966,7 @@ export default function MatchRoomPage() {
     prevPossClubRef.current = currentPoss ?? null;
   }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
 
-  // â”€â”€ Contest visual effect from event logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Contest visual effect from event logs ────────────────────
   useEffect(() => {
     if (events.length === 0) return;
     const last = events[events.length - 1];
@@ -991,7 +991,7 @@ export default function MatchRoomPage() {
   }, [events.length]);
 
   // Auto-show action menu for ball holder in phase 1
-  // For loose ball (no ball_holder), skip phase 1 â€” handled by engine
+  // For loose ball (no ball_holder), skip phase 1 — handled by engine
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
     
@@ -1014,7 +1014,7 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn]);
 
-  // â”€â”€ Engine tick â€” process once per phase end with explicit pause â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
     if (match?.status !== 'live' || !activeTurn) {
       setIsPhaseProcessing(false);
@@ -1115,7 +1115,7 @@ export default function MatchRoomPage() {
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
-  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Helpers ──────────────────────────────────────────────────
   const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
     const { data: { session } } = await supabase.auth.getSession();
     return invokeConfiguredMatchEngine({
@@ -1214,11 +1214,11 @@ export default function MatchRoomPage() {
       return;
     }
     // One-touch actions: if player has a pendingInterceptChoice (they clicked on a trajectory),
-    // pass/shoot actions become one-touch â€” they need a target, so enter drawing mode with the
+    // pass/shoot actions become one-touch — they need a target, so enter drawing mode with the
     // intercept position as the starting point for the action
     if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId &&
         (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch' || actionType === 'shoot_controlled' || actionType === 'shoot_power')) {
-      // Store the one-touch context â€” the drawing will submit with one_touch payload
+      // Store the one-touch context — the drawing will submit with one_touch payload
       setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
       setShowActionMenu(null);
       // Keep pendingInterceptChoice alive so we know this is a one-touch
@@ -1495,12 +1495,12 @@ export default function MatchRoomPage() {
     }
   };
 
-  // â”€â”€â”€ All submitted actions are always visible â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── All submitted actions are always visible ───────────────
   const visibleActions = useMemo(() => {
     return turnActions;
   }, [turnActions]);
 
-  // â”€â”€â”€ Animation for phase 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Animation for phase 4 ─────────────────────────────────
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
@@ -1565,11 +1565,11 @@ export default function MatchRoomPage() {
                 if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
                   newDirections[p.id] = { x: ddx, y: ddy };
                 } else {
-                  delete newDirections[p.id]; // Stayed still â€” reset inertia
+                  delete newDirections[p.id]; // Stayed still — reset inertia
                 }
               }
             } else {
-              // Player didn't move at all â€” reset inertia completely
+              // Player didn't move at all — reset inertia completely
               delete newDirections[p.id];
             }
           }
@@ -1636,7 +1636,7 @@ export default function MatchRoomPage() {
               setCarriedLooseBallPos(newPos);
               finalBallPosRef.current = newPos;
               setFinalBallPos(newPos);
-              // Mark inertia as consumed â€” ball will stop next turn
+              // Mark inertia as consumed — ball will stop next turn
               inertiaConsumedRef.current = true;
               lastBallDirRef.current = null;
             }
@@ -1661,7 +1661,7 @@ export default function MatchRoomPage() {
     };
   }, [activeTurn?.phase, activeTurn?.id]);
 
-  // â”€â”€ Compute animated positions (physics-based easing) â”€â”€â”€â”€â”€â”€â”€
+  // ── Compute animated positions (physics-based easing) ───────
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
     // If we have final locked positions (post-animation), use them
     if (finalPositions[p.id] && !animating) {
@@ -1685,7 +1685,7 @@ export default function MatchRoomPage() {
     }
 
     // Physics-based easing: slow start (acceleration), fast mid, slight decel at end
-    // Simulates inertia â€” player needs to accelerate and can't change direction instantly
+    // Simulates inertia — player needs to accelerate and can't change direction instantly
     const raw = animProgress;
     // Multi-segment ease: slow acceleration phase (0-0.3), cruise (0.3-0.8), slight decel (0.8-1)
     let t: number;
@@ -1709,7 +1709,7 @@ export default function MatchRoomPage() {
     };
   };
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1777,7 +1777,7 @@ export default function MatchRoomPage() {
     return [];
   };
 
-  // â”€â”€â”€ Field constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Field constants ───────────────────────────────────────
   const FIELD_W = 900;
   const FIELD_H = 580;
   const PAD = 20;
@@ -2005,7 +2005,7 @@ export default function MatchRoomPage() {
         };
       }
 
-      // Ball sticks to player during dribbling â€” use player's animated position
+      // Ball sticks to player during dribbling — use player's animated position
       const playerAnimPos = getAnimatedPos(ballHolder);
       return {
         x: playerAnimPos.x + 1.2,
@@ -2058,7 +2058,7 @@ export default function MatchRoomPage() {
 
   const ballDisplayPos = getAnimatedBallPos();
 
-  // â”€â”€ Ball arc lift (visual only) for high passes, launches, and shots â”€â”€
+  // ── Ball arc lift (visual only) for high passes, launches, and shots ──
   const ballArcLift = (() => {
     if (!animating || activeTurn?.phase !== 'resolution' || !ballHolder) return 0;
     const bhAllActions = turnActions
@@ -2196,7 +2196,7 @@ export default function MatchRoomPage() {
   // Compute intercept zone path for ball trajectory
   const getBallTrajectoryAction = (): MatchAction | null => {
     if (!activeTurn?.ball_holder_participant_id) {
-      // Loose ball with inertia â€” create a virtual pass_low trajectory
+      // Loose ball with inertia — create a virtual pass_low trajectory
       if (isLooseBall && looseBallPos && ballInertiaDir) {
         const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
         if (inertiaLen >= 0.5) {
@@ -2236,7 +2236,7 @@ export default function MatchRoomPage() {
 
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
-      {/* â”€â”€ Top scoreboard bar â”€â”€ */}
+      {/* ── Top scoreboard bar ── */}
       <div className="bg-[hsl(140,20%,8%)] border-b border-[hsl(140,10%,20%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
@@ -2281,10 +2281,10 @@ export default function MatchRoomPage() {
         </div>
       </div>
 
-      {/* â”€â”€ Main layout â”€â”€ */}
+      {/* ── Main layout ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* â”€â”€ Field area (dominant) â”€â”€ */}
+        {/* ── Field area (dominant) ── */}
         <div className="flex-1 flex items-center justify-center p-2 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)' }}>
           <div className="relative w-full" style={{ maxWidth: 960 }}>
             <svg
@@ -2307,7 +2307,7 @@ export default function MatchRoomPage() {
                   <feGaussianBlur stdDeviation="4" result="b" />
                   <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
                 </filter>
-                {/* Arrow markers â€” smaller (ball-sized) */}
+                {/* Arrow markers — smaller (ball-sized) */}
                 <marker id="ah-black" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#1a1a2e" /></marker>
                 <marker id="ah-green" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#22c55e" /></marker>
                 <marker id="ah-yellow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#f59e0b" /></marker>
@@ -2351,7 +2351,7 @@ export default function MatchRoomPage() {
                 ))}
               </g>
 
-              {/* â”€â”€ Kickoff half-field overlay during positioning â”€â”€ */}
+              {/* ── Kickoff half-field overlay during positioning ── */}
               {isPositioningTurn && (() => {
                 const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
                 const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
@@ -2381,7 +2381,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* â”€â”€ Intercept zone visualization â”€â”€ */}
+              {/* ── Intercept zone visualization ── */}
               {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
@@ -2413,7 +2413,7 @@ export default function MatchRoomPage() {
                 })()
               )}
 
-              {/* â”€â”€ Loose ball intercept zone (circle around loose ball) â”€â”€ */}
+              {/* ── Loose ball intercept zone (circle around loose ball) ── */}
               {isLooseBall && looseBallPos && !animating &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                 const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
@@ -2429,7 +2429,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* â”€â”€ Ball inertia trajectory â€” green arrow + label (rendered like a real pass_low) â”€â”€ */}
+              {/* ── Ball inertia trajectory — green arrow + label (rendered like a real pass_low) ── */}
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
                 ballTrajectoryAction?.id === '__inertia__' &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
@@ -2438,7 +2438,7 @@ export default function MatchRoomPage() {
                 const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
                   <g pointerEvents="none">
-                    {/* Solid green arrow â€” same as pass_low */}
+                    {/* Solid green arrow — same as pass_low */}
                     <line
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                       stroke="#22c55e" strokeWidth={3}
@@ -2454,7 +2454,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* (Fixed markers removed â€” live preview replaces them) */}
+              {/* (Fixed markers removed — live preview replaces them) */}
 
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
@@ -2481,7 +2481,7 @@ export default function MatchRoomPage() {
                   const dy = to.y - from.y;
 
                   if (action.action_type === 'pass_high') {
-                    // Yellow (20%) â†’ Red (60%) â†’ Yellow (20%), tip green
+                    // Yellow (20%) → Red (60%) → Yellow (20%), tip green
                     const seg = [
                       { t0: 0, t1: 0.2, color: '#f59e0b' },
                       { t0: 0.2, t1: 0.8, color: '#ef4444' },
@@ -2500,7 +2500,7 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'pass_launch') {
-                    // Yellow (35%) â†’ Red (30%) â†’ Yellow (35%), tip green
+                    // Yellow (35%) → Red (30%) → Yellow (35%), tip green
                     const seg = [
                       { t0: 0, t1: 0.35, color: '#f59e0b' },
                       { t0: 0.35, t1: 0.65, color: '#ef4444' },
@@ -2519,7 +2519,7 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'shoot_power') {
-                    // Yellowâ†’Red segments based on quality
+                    // Yellow→Red segments based on quality
                     if (color === '#ef4444') {
                       // Full red = terrible
                       return [(
@@ -2532,7 +2532,7 @@ export default function MatchRoomPage() {
                         />
                       )];
                     }
-                    // Check if it's a borderline case â€” yellowâ†’red at end
+                    // Check if it's a borderline case — yellow→red at end
                     const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
                     const attrs = playerAttrsMap[action.participant_id];
                     const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
@@ -2567,7 +2567,7 @@ export default function MatchRoomPage() {
                     )];
                   }
 
-                  // pass_low, shoot_controlled, move, receive â€” single solid line
+                  // pass_low, shoot_controlled, move, receive — single solid line
                   return [(
                     <line key="single"
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
@@ -2596,15 +2596,15 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
-                // One-touch: show move line (player â†’ intercept) + ball action arrow (intercept â†’ target)
+                // One-touch: show move line (player → intercept) + ball action arrow (intercept → target)
                 const isOneTouchDraw = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId &&
                   drawingAction.type !== 'move';
 
                 if (isOneTouchDraw) {
-                  // Move line: player â†’ intercept point
+                  // Move line: player → intercept point
                   const playerPos = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                   const interceptPos = toSVG(pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY);
-                  // Ball action: intercept â†’ target
+                  // Ball action: intercept → target
                   let targetFieldX: number, targetFieldY: number;
                   if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
                     const goalTarget = getShootTarget(drawingFrom);
@@ -2631,7 +2631,7 @@ export default function MatchRoomPage() {
                       <text x={(interceptPos.x + targetPos.x) / 2} y={(interceptPos.y + targetPos.y) / 2 - 6}
                         textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.8)"
                         fontFamily="'Barlow Condensed', sans-serif">
-                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1Âª)
+                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1ª)
                       </text>
                     </g>
                   );
@@ -2718,7 +2718,7 @@ export default function MatchRoomPage() {
                     />
                   );
                 }
-                // Shots: preview only green/yellow (no red â€” surprise)
+                // Shots: preview only green/yellow (no red — surprise)
                 const color = getArrowQuality(fromFieldX, fromFieldY, toFieldX, toFieldY, drawingAction.type, drawingAction.fromParticipantId);
                 const previewColor = drawingAction.type === 'shoot_controlled' ? '#22c55e' :
                   (color === '#ef4444' ? '#f59e0b' : color); // cap at yellow for shots
@@ -2789,7 +2789,7 @@ export default function MatchRoomPage() {
                     // Once reachable at a point, everything from that point to END is also reachable
                     canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
                   } else {
-                    // Stationary ball holder â€” if within reach, can tackle
+                    // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
                     canReachBall = distToBH <= (circleRadiusField + INTERCEPT_RADIUS + 2);
                   }
@@ -2805,7 +2805,7 @@ export default function MatchRoomPage() {
                     {/* Outer glow around active player (all actions) */}
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke={glowColor} strokeWidth="2" filter="url(#pulse-glow)" />
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke={glowStroke} strokeWidth="4" />
-                    {/* Action circle at cursor (only for MOVE) â€” green=can't reach, purple=can reach */}
+                    {/* Action circle at cursor (only for MOVE) — green=can't reach, purple=can reach */}
                     {isMove && (
                       <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill={circleColor} stroke={circleStroke} strokeWidth="1.2" />
                     )}
@@ -3087,7 +3087,7 @@ export default function MatchRoomPage() {
               return (
                 <div className="absolute top-2 right-2 bg-[hsl(220,20%,8%)]/90 border border-[hsl(140,10%,25%)] rounded-lg px-3 py-1.5 z-30 flex items-center gap-2">
                   {isHalftime ? (
-                    <span className="text-[12px] font-display font-bold text-warning animate-pulse">â¸ INTERVALO</span>
+                    <span className="text-[12px] font-display font-bold text-warning animate-pulse">⏸ INTERVALO</span>
                   ) : (
                     <>
                       <span className="text-[10px] font-display text-muted-foreground uppercase">{half}</span>
@@ -3101,7 +3101,7 @@ export default function MatchRoomPage() {
             {(animating || isPhaseProcessing) && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
                 <span className="text-[11px] font-display font-bold text-tactical animate-pulse">
-                  {isPhaseProcessing ? `â¸ ${processingLabel}` : 'âš¡ MOTION â€” Resolvendo jogada...'}
+                  {isPhaseProcessing ? `⏸ ${processingLabel}` : '⚡ MOTION — Resolvendo jogada...'}
                 </span>
               </div>
             )}
@@ -3119,11 +3119,11 @@ export default function MatchRoomPage() {
                 <p className="font-display text-lg text-white/80">
                   {(() => {
                     const scheduledDate = new Date(match.scheduled_at);
-                    if (isNaN(scheduledDate.getTime())) return 'Aguardando inÃ­cio...';
+                    if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
                     const now = serverNow();
                     const countdownStart = scheduledDate.getTime();
                     const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
-                    if (now < countdownStart) return `ComeÃ§a: ${formatScheduledDate(match.scheduled_at)}`;
+                    if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
                     if (now < countdownEnd) return `Preparar... ${preMatchCountdownLeft}s`;
                     return 'Iniciando partida...';
                   })()}
@@ -3133,7 +3133,7 @@ export default function MatchRoomPage() {
             {isFinished && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
                 <p className="font-display font-extrabold text-xl text-white">
-                  â± ENCERRADA â€” {match.home_score} Ã— {match.away_score}
+                  ⏱ ENCERRADA — {match.home_score} × {match.away_score}
                 </p>
               </div>
             )}
@@ -3145,12 +3145,12 @@ export default function MatchRoomPage() {
               onClick={() => { setDrawingAction(null); setMouseFieldPct(null); }}
               className="absolute top-3 left-3 bg-destructive/80 text-white text-[10px] font-display px-2 py-1 rounded hover:bg-destructive"
             >
-              âœ• Cancelar
+              ✕ Cancelar
             </button>
           )}
         </div>
 
-        {/* â”€â”€ Right sidebar â”€â”€ */}
+        {/* ── Right sidebar ── */}
         <div className="w-72 shrink-0 bg-[hsl(140,10%,10%)] border-l border-[hsl(140,10%,18%)] flex flex-col overflow-hidden">
 
           {/* Turn Wheel */}
@@ -3242,7 +3242,7 @@ export default function MatchRoomPage() {
   );
 }
 
-// â”€â”€â”€ Match minute calculation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Match minute calculation ─────────────────────────────────
 const TURNS_PER_HALF = 62;
 
 function computeMatchMinute(turnNumber: number): number {
@@ -3252,7 +3252,7 @@ function computeMatchMinute(turnNumber: number): number {
   return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
 }
 
-// â”€â”€â”€ TurnWheel (animated clock) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── TurnWheel (animated clock) ───────────────────────────────
 function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
@@ -3320,13 +3320,13 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         <span className="text-[10px] font-display text-muted-foreground uppercase tracking-widest">{halfLabel}</span>
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-sm text-foreground">{matchMinute}'</span>
-          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || 'â€”'}</span>
+          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
         </div>
       </div>
 
       {isHalftime && (
         <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 mb-1">
-          <span className="text-[10px] font-display font-bold text-warning">â¸ INTERVALO</span>
+          <span className="text-[10px] font-display font-bold text-warning">⏸ INTERVALO</span>
         </div>
       )}
 
@@ -3353,7 +3353,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
                     fontSize="14" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
                     fill={isSkipped ? 'hsl(var(--muted-foreground) / 0.3)' : isActive ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
                   >
-                    {isSkipped ? 'â€”' : phases[i].label}
+                    {isSkipped ? '—' : phases[i].label}
                   </text>
                 );
               })()}
@@ -3414,7 +3414,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         <div className="flex items-center gap-1.5 mt-1">
           <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
           <span className="text-[9px] font-display text-muted-foreground">
-            {isLooseBall ? 'âš½ BOLA SOLTA' : `âš½ ${possessionClub.short_name}`}
+            {isLooseBall ? '⚽ BOLA SOLTA' : `⚽ ${possessionClub.short_name}`}
           </span>
         </div>
       )}
@@ -3422,7 +3422,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   );
 }
 
-// â”€â”€â”€ AccordionSection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AccordionSection ─────────────────────────────────────────
 function AccordionSection({ title, badge, color, open, onToggle, children, className }: {
   title: string; badge?: string; color?: string;
   open: boolean; onToggle: () => void;
@@ -3443,7 +3443,7 @@ function AccordionSection({ title, badge, color, open, onToggle, children, class
   );
 }
 
-// â”€â”€â”€ TeamList â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── TeamList ─────────────────────────────────────────────────
 function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submittedIds }: {
   players: Participant[]; ballHolderId: string | null; myId: string | null;
   selectedId: string | null; onSelect: (id: string) => void; submittedIds: Set<string>;
@@ -3463,15 +3463,15 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
           <span className="font-display w-5 shrink-0">{p.jersey_number || '?'}</span>
           <span className="font-display w-6 text-muted-foreground shrink-0">{p.field_pos || '?'}</span>
           <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
-          {ballHolderId === p.id && <span className="text-[8px]">âš½</span>}
-          {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">âœ“</span>}
+          {ballHolderId === p.id && <span className="text-[8px]">⚽</span>}
+          {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">✓</span>}
         </button>
       ))}
     </div>
   );
 }
 
-// â”€â”€â”€ ClubBadgeInline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── ClubBadgeInline ──────────────────────────────────────────
 function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boolean }) {
   if (!club) return <div className="w-7 h-7 rounded bg-muted animate-pulse" />;
   return (
