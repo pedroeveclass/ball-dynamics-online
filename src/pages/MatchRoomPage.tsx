@@ -1827,6 +1827,13 @@ export default function MatchRoomPage() {
     }
 
     // Dead ball (kickoff/set piece): ball holder can only pass or shoot, no dribble/carry
+    const setPieceType = activeTurn.set_piece_type;
+    if (phase === 'ball_holder' && isBH && setPieceType) {
+      // Throw-in: only passes (no shoot, no move)
+      if (setPieceType === 'throw_in') return ['pass_low', 'pass_high', 'pass_launch'];
+      // Other set pieces (kickoff, corner, goal_kick, free_kick): passes + shoots (no move)
+      return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
+    }
     if (phase === 'ball_holder' && isBH && isDeadBall) return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
