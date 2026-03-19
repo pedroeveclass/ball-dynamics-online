@@ -2987,15 +2987,15 @@ export default function MatchRoomPage() {
                     // Context-aware label for 'receive' action
                     let label = ACTION_LABELS[a];
                     let icon = '';
-                    if (a === 'move') icon = 'â†—';
-                    else if (a === 'pass_low') icon = 'âž¡';
-                    else if (a === 'pass_high') icon = 'â¤´';
-                    else if (a === 'pass_launch') icon = 'ðŸš€';
-                    else if (a === 'shoot_controlled') icon = 'ðŸŽ¯';
-                    else if (a === 'shoot_power') icon = 'ðŸ’¥';
-                    else if (a === 'no_action') icon = 'âŠ˜';
+                    if (a === 'move') icon = '↗';
+                    else if (a === 'pass_low') icon = '➡';
+                    else if (a === 'pass_high') icon = '⤴';
+                    else if (a === 'pass_launch') icon = '🚀';
+                    else if (a === 'shoot_controlled') icon = '🎯';
+                    else if (a === 'shoot_power') icon = '💥';
+                    else if (a === 'no_action') icon = '⊘';
                     else if (a === 'receive') {
-                      icon = 'ðŸ¤²';
+                      icon = '🤲';
                       // Determine context
                       const menuPlayer = participants.find(p => p.id === showActionMenu);
                       const bhAction = ballTrajectoryAction;
