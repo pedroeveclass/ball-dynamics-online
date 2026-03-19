@@ -3260,14 +3260,14 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
   const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
   const matchMinute = computeMatchMinute(turnNumber);
-  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1Âº Tempo' : '2Âº Tempo';
+  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1o Tempo' : '2o Tempo';
 
   const phases = isPositioning
     ? [
-        { key: 'positioning_attack', label: 'âš½' },
-        { key: 'positioning_defense', label: 'ðŸ›¡' },
-        { key: '_skip1', label: 'â€”' },
-        { key: '_skip2', label: 'â€”' },
+        { key: 'positioning_attack', label: 'ATK' },
+        { key: 'positioning_defense', label: 'DEF' },
+        { key: '_skip1', label: '-' },
+        { key: '_skip2', label: '-' },
       ]
     : [
         { key: 'ball_holder', label: '1' },
