@@ -991,9 +991,14 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 
 async function invokeTickForMatch(functionUrl: string, matchId: string) {
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
   const response = await fetch(functionUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': anonKey,
+      'Authorization': `Bearer ${anonKey}`,
+    },
     body: JSON.stringify({ action: 'tick', match_id: matchId }),
   });
   const result = await response.json().catch(() => null);
@@ -1197,7 +1202,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'process_due_matches') {
-      const result = await processDueMatches(supabase, req.url, match_id);
+      const functionUrl = `${supabaseUrl}/functions/v1/match-engine-lab`;
+      const result = await processDueMatches(supabase, functionUrl, match_id);
       return jsonResponse({ ...result, server_now: Date.now() });
     }
     if (action === 'tick' && match_id) {
