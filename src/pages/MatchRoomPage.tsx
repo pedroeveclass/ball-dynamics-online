@@ -1751,6 +1751,8 @@ export default function MatchRoomPage() {
       return [];
     }
 
+    // Dead ball (kickoff/set piece): ball holder can only pass or shoot, no dribble/carry
+    if (phase === 'ball_holder' && isBH && isDeadBall) return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
