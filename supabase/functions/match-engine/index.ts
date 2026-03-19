@@ -1233,6 +1233,7 @@ Deno.serve(async (req) => {
             if (restart) {
               nextBallHolderParticipantId = restart.playerId;
               newPossessionClubId = restart.clubId;
+              nextSetPieceType = oob.type;
               await supabase.from('match_event_logs').insert({ match_id, event_type: oob.type, title: restart.title, body: restart.body });
             }
           }
