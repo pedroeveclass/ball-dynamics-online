@@ -84,6 +84,7 @@ interface MatchTurn {
   id: string; turn_number: number; phase: string;
   possession_club_id: string | null; ball_holder_participant_id: string | null;
   started_at: string; ends_at: string; status: string;
+  set_piece_type?: string | null;
 }
 
 interface EventLog {
