@@ -2471,7 +2471,7 @@ export default function MatchRoomPage() {
                 const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
-                const controlLabel = action.controlled_by_type === 'bot' ? 'BOT' : action.controlled_by_type === 'manager' ? 'MGR' : 'PLR'; 'ðŸ¤–' : action.controlled_by_type === 'manager' ? 'ðŸ“‹' : 'ðŸ‘¤';
+                const controlLabel = action.controlled_by_type === 'bot' ? 'BOT' : action.controlled_by_type === 'manager' ? 'MGR' : 'PLR';
                 const opacity = animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8;
                 const dashArray = action.controlled_by_type === 'bot' ? '4,3' : 'none';
 
