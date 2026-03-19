@@ -2448,7 +2448,7 @@ export default function MatchRoomPage() {
                     {/* Label */}
                     <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
                       textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
-                      âš½ InÃ©rcia
+                      ⚽ Inercia
                     </text>
                   </g>
                 );
