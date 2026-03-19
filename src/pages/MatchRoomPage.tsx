@@ -654,7 +654,7 @@ export default function MatchRoomPage() {
     ];
 
     if (botsToInsert.length > 0) {
-      const { data: insertedBots } = await supabase.from('match_participants').insert(botsToInsert).select('*');
+      const { data: insertedBots } = await supabase.from('match_participants').insert(botsToInsert as any).select('*');
       nextParticipantRows = [...nextParticipantRows, ...(((insertedBots || []) as Participant[]))];
     }
 
