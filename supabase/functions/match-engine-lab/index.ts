@@ -2073,9 +2073,6 @@ Deno.serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      } finally {
-        await releaseTurnProcessing(supabase, activeTurn.id, turnClaim.processingToken);
-      }
     }
 
     // ─── SUBMIT HUMAN ACTION ───
