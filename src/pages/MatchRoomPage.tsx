@@ -1359,6 +1359,7 @@ export default function MatchRoomPage() {
       const canContestBallPath = ballPathAction?.action_type !== 'move';
       
       // Check interception / domination of ball trajectory
+      // When the action circle is purple (canReachBall), clicking anywhere in the circle should trigger intercept
       if (
         drawingParticipant &&
         ballPathAction &&
@@ -1366,10 +1367,8 @@ export default function MatchRoomPage() {
         ballHolderNow.field_y != null &&
         ballPathAction.target_x != null &&
         ballPathAction.target_y != null &&
-        (canContestBallPath || canContestCarrierMove) &&
-        pointToSegmentDistance(pctX, pctY, ballHolderNow.field_x, ballHolderNow.field_y, ballPathAction.target_x, ballPathAction.target_y) <= INTERCEPT_RADIUS
+        (canContestBallPath || canContestCarrierMove)
       ) {
-        // Check if click falls in red (uninterceptable altitude) zone
         const _tdx = ballPathAction.target_x - ballHolderNow.field_x;
         const _tdy = ballPathAction.target_y - ballHolderNow.field_y;
         const _tlen2 = _tdx * _tdx + _tdy * _tdy;
@@ -1378,7 +1377,9 @@ export default function MatchRoomPage() {
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
         // Check reachability: can the player's action circle reach the ball BEFORE or AT the same time?
-        let canReach = true;
+        let canReach = false;
+        let interceptTargetX = pctX;
+        let interceptTargetY = pctY;
         if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
           const mdx = pctX - drawingParticipant.field_x;
           const mdy = pctY - drawingParticipant.field_y;
@@ -1393,28 +1394,51 @@ export default function MatchRoomPage() {
           
           const circleRadiusField = 9 / INNER_W * 100;
           
-          // Core logic: find the earliest point on trajectory where player can arrive before ball
-          // tCursor = where along trajectory (0-1) the cursor's closest projection is
           const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
           const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
           
-          // Player arrives at cursor position when movePct of their range is used
-          // Ball arrives at tCursor when ball progress = tCursor
-          // Player can act if: they arrive BEFORE or WITH the ball
-          // movePct = fraction of player's range used to reach cursor (lower = arrives sooner)
-          // tCursor = fraction of ball's trajectory at that point (lower = ball arrives sooner)
-          // Player arrives first if movePct <= tCursor (needs less % of range than ball needs of trajectory)
-          canReach = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
+          // Direct click on trajectory line
+          const directHit = distToTraj <= INTERCEPT_RADIUS && movePct <= tCursor;
+          
+          // Purple circle check: if the action circle overlaps the trajectory at ANY reachable point,
+          // clicking anywhere in the circle should work. Find the closest point on trajectory to the player.
+          let circleOverlap = false;
+          if (!directHit && moveDist <= maxRange) {
+            // Player's circle at cursor position overlaps trajectory
+            if (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor) {
+              circleOverlap = true;
+            }
+            // Also: if player can reach trajectory at any point, snap to closest trajectory point
+            if (!circleOverlap) {
+              const playerX = drawingParticipant.field_x;
+              const playerY = drawingParticipant.field_y;
+              const tPlayer = _tlen2 > 0 ? clamp(((playerX - bfx) * _tdx + (playerY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
+              const closestOnTrajX = bfx + _tdx * tPlayer;
+              const closestOnTrajY = bfy + _tdy * tPlayer;
+              const distPlayerToTraj = Math.sqrt((playerX - closestOnTrajX) ** 2 + (playerY - closestOnTrajY) ** 2);
+              if (distPlayerToTraj <= maxRange + INTERCEPT_RADIUS) {
+                // Can reach: check if arrival is before ball
+                const moveToTraj = distPlayerToTraj;
+                const movePctToTraj = maxRange > 0 ? Math.min(1, moveToTraj / maxRange) : 0;
+                if (movePctToTraj <= tPlayer) {
+                  circleOverlap = true;
+                  interceptTargetX = closestOnTrajX;
+                  interceptTargetY = closestOnTrajY;
+                }
+              }
+            }
+          }
+          
+          canReach = directHit || circleOverlap;
         }
         
         if (!isRedZone && canReach) {
-          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: interceptTargetX, targetY: interceptTargetY });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
           setMouseFieldPct(null);
           return;
         }
-        // Red zone or can't reach: treat as normal move, don't offer intercept
       }
       
       // Check if clicking near a loose ball position or its inertia trajectory

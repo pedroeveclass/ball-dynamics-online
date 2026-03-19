@@ -236,8 +236,30 @@ async function generateBotActions(
             status: 'pending',
           });
         }
+      } else if (isLooseBall) {
+        // Loose ball: move toward ball AND try to dominate it
+        const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
+        if (distToBall < 8) {
+          // Close enough: submit a 'receive' action to dominate the ball
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'receive',
+            target_x: ballPos.x, target_y: ballPos.y,
+            status: 'pending',
+          });
+        } else {
+          // Far away: move toward ball
+          const targetX = posX + (ballPos.x - posX) * 0.4 + (Math.random() - 0.5) * 2;
+          const targetY = posY + (ballPos.y - posY) * 0.4 + (Math.random() - 0.5) * 2;
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(2, Math.min(98, targetY)),
+            status: 'pending',
+          });
+        }
       } else {
-        // Loose ball: move toward ball
+        // No ball holder but not flagged as loose ball — move toward ball area
         const targetX = posX + (ballPos.x - posX) * 0.2 + (Math.random() - 0.5) * 3;
         const targetY = posY + (ballPos.y - posY) * 0.2 + (Math.random() - 0.5) * 3;
         actions.push({
@@ -249,7 +271,27 @@ async function generateBotActions(
       }
     } else if (phase === 'attacking_support') {
       // ── Attacking support bots ──
-      if (isGK) {
+      if (isLooseBall) {
+        // Loose ball: try to dominate if close, otherwise move toward ball
+        const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
+        if (distToBall < 10) {
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'receive',
+            target_x: ballPos.x, target_y: ballPos.y,
+            status: 'pending',
+          });
+        } else {
+          const targetX = posX + (ballPos.x - posX) * 0.35 + (Math.random() - 0.5) * 2;
+          const targetY = posY + (ballPos.y - posY) * 0.35 + (Math.random() - 0.5) * 2;
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(2, Math.min(98, targetY)),
+            status: 'pending',
+          });
+        }
+      } else if (isGK) {
         // GK stays back during attack
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -1244,10 +1286,16 @@ Deno.serve(async (req) => {
           .eq('status', 'pending')
           .order('created_at', { ascending: false });
 
-        // Dedup: keep latest action per participant
+        // Dedup: keep highest-priority action per participant (human > bot)
+        const priorityByCtrl: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+        const sortedMoveRaw = [...(rawActions || [])].filter(a => a.action_type === 'move').sort((a, b) => {
+          const pa = priorityByCtrl[a.controlled_by_type] ?? 0;
+          const pb = priorityByCtrl[b.controlled_by_type] ?? 0;
+          if (pa !== pb) return pb - pa;
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
         const seen = new Set<string>();
-        const moveActions = (rawActions || []).filter(a => {
-          if (a.action_type !== 'move') return false;
+        const moveActions = sortedMoveRaw.filter(a => {
           if (seen.has(a.participant_id)) return false;
           seen.add(a.participant_id);
           return true;
@@ -1433,31 +1481,44 @@ Deno.serve(async (req) => {
 
         // Dedup: keep latest action per participant, BUT allow ball holder to have
         // BOTH a pass/shoot (from phase 1) AND a move (from phase 2)
-        const seenParticipants = new Map<string, string[]>(); // participantId -> action_types kept
-        const allActions = (rawActions || []).filter(a => {
+        // CRITICAL: human actions (player/manager) ALWAYS override bot actions
+        const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+        const seenParticipants = new Map<string, { types: string[]; actions: any[] }>();
+        const allActions: any[] = [];
+        
+        // Sort: human actions first (higher priority), then by created_at desc
+        const sortedRaw = [...(rawActions || [])].sort((a, b) => {
+          const pa = priorityByController[a.controlled_by_type] ?? 0;
+          const pb = priorityByController[b.controlled_by_type] ?? 0;
+          if (pa !== pb) return pb - pa; // higher priority first
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
+        
+        for (const a of sortedRaw) {
           const existing = seenParticipants.get(a.participant_id);
           const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
           if (isBH) {
-            // Ball holder can have both a ball action (pass/shoot) AND a move
             const isBallAction = isPassType(a.action_type) || isShootType(a.action_type);
             const isMoveAction = a.action_type === 'move';
             if (existing) {
-              const hasBallAction = existing.some(t => isPassType(t) || isShootType(t));
-              const hasMoveAction = existing.some(t => t === 'move');
-              if (isBallAction && hasBallAction) return false; // Already has a ball action
-              if (isMoveAction && hasMoveAction) return false; // Already has a move
-              if (!isBallAction && !isMoveAction) return false; // Unknown dupe
-              existing.push(a.action_type);
-              return true;
+              const hasBallAction = existing.types.some(t => isPassType(t) || isShootType(t));
+              const hasMoveAction = existing.types.some(t => t === 'move');
+              if (isBallAction && hasBallAction) continue;
+              if (isMoveAction && hasMoveAction) continue;
+              if (!isBallAction && !isMoveAction) continue;
+              existing.types.push(a.action_type);
+              existing.actions.push(a);
+              allActions.push(a);
+              continue;
             }
-            seenParticipants.set(a.participant_id, [a.action_type]);
-            return true;
+            seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
+            allActions.push(a);
+          } else {
+            if (existing) continue; // Already have a higher-priority action
+            seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
+            allActions.push(a);
           }
-          // Non-ball-holder: only one action
-          if (existing) return false;
-          seenParticipants.set(a.participant_id, [a.action_type]);
-          return true;
-        });
+        }
 
         // ── Load player attributes for physics ──
         const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
