@@ -189,10 +189,10 @@ interface DrawingState {
 function formatScheduledDate(dateStr: string): string {
   try {
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Data invÃ¡lida';
+    if (isNaN(d.getTime())) return 'Data inválida';
     return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   } catch {
-    return 'Data invÃ¡lida';
+    return 'Data inválida';
   }
 }
 
