@@ -1050,7 +1050,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         }
         if (botsToInsert.length > 0) {
           await supabase.from('match_participants').insert(botsToInsert);
-          console.log([ENGINE] Filled  bots for club );
+          console.log(`[ENGINE] Filled ${botsToInsert.length} bots for club`);
         }
       };
 

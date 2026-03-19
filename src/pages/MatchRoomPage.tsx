@@ -380,6 +380,7 @@ export default function MatchRoomPage() {
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
+  const prevTurnWasPositioningRef = useRef<boolean>(false);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -654,7 +655,7 @@ export default function MatchRoomPage() {
     ];
 
     if (botsToInsert.length > 0) {
-      const { data: insertedBots } = await supabase.from('match_participants').insert(botsToInsert).select('*');
+      const { data: insertedBots } = await supabase.from('match_participants').insert(botsToInsert as any).select('*');
       nextParticipantRows = [...nextParticipantRows, ...(((insertedBots || []) as Participant[]))];
     }
 
@@ -934,12 +935,22 @@ export default function MatchRoomPage() {
       setAnimating(false);
       setAnimProgress(0);
     }
+    // Track if this turn follows a positioning turn (dead ball)
+    if (activeTurn?.phase === 'ball_holder') {
+      // prevTurnWasPositioningRef is already set from the previous phase
+    } else if (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense') {
+      prevTurnWasPositioningRef.current = true;
+    } else {
+      prevTurnWasPositioningRef.current = false;
+    }
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Positioning turn detection
   const isPositioningTurn = activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense';
   const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
   const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
+  // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
+  const isDeadBall = activeTurn?.phase === 'ball_holder' && prevTurnWasPositioningRef.current;
 
   // â”€â”€ Possession change detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
@@ -1396,6 +1407,22 @@ export default function MatchRoomPage() {
           const isHome = moveFrom.club_id === match?.home_club_id;
           if (isHome) mx = Math.min(mx, 49);
           else mx = Math.max(mx, 51);
+          // Center circle restriction for opponents (defending team during kickoff)
+          const possClubId = activeTurn?.possession_club_id;
+          const isDefending = moveFrom.club_id !== possClubId;
+          if (isDefending) {
+            const CENTER_CIRCLE_RADIUS = 9.15; // ~9.15% of field (matches real proportion)
+            const distToCenter = Math.sqrt((mx - 50) * (mx - 50) + (my - 50) * (my - 50));
+            if (distToCenter < CENTER_CIRCLE_RADIUS) {
+              // Push out of center circle
+              const angle = Math.atan2(my - 50, mx - 50);
+              mx = 50 + Math.cos(angle) * CENTER_CIRCLE_RADIUS;
+              my = 50 + Math.sin(angle) * CENTER_CIRCLE_RADIUS;
+              // Re-apply half restriction
+              if (isHome) mx = Math.min(mx, 49);
+              else mx = Math.max(mx, 51);
+            }
+          }
         }
       } else if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
         const dx = pctX - moveFrom.field_x;
@@ -1740,6 +1767,8 @@ export default function MatchRoomPage() {
       return [];
     }
 
+    // Dead ball (kickoff/set piece): ball holder can only pass or shoot, no dribble/carry
+    if (phase === 'ball_holder' && isBH && isDeadBall) return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
@@ -1815,6 +1844,20 @@ export default function MatchRoomPage() {
             const isHome = fromP.club_id === match?.home_club_id;
             if (isHome) finalX = Math.min(finalX, 49);
             else finalX = Math.max(finalX, 51);
+            // Center circle restriction for defending team
+            const possClubId = activeTurn?.possession_club_id;
+            const isDefending = fromP.club_id !== possClubId;
+            if (isDefending) {
+              const CENTER_CIRCLE_RADIUS = 9.15;
+              const distToCenter = Math.sqrt((finalX - 50) * (finalX - 50) + (finalY - 50) * (finalY - 50));
+              if (distToCenter < CENTER_CIRCLE_RADIUS) {
+                const angle = Math.atan2(finalY - 50, finalX - 50);
+                finalX = 50 + Math.cos(angle) * CENTER_CIRCLE_RADIUS;
+                finalY = 50 + Math.sin(angle) * CENTER_CIRCLE_RADIUS;
+                if (isHome) finalX = Math.min(finalX, 49);
+                else finalX = Math.max(finalX, 51);
+              }
+            }
           }
         }
       } else {
@@ -2312,16 +2355,29 @@ export default function MatchRoomPage() {
               {isPositioningTurn && (() => {
                 const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
                 const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
-                if (!isKickoff || !drawingAction) return null;
-                const drawingPlayer = participants.find(p => p.id === drawingAction.fromParticipantId);
-                if (!drawingPlayer) return null;
-                const isHome = drawingPlayer.club_id === match.home_club_id;
-                // Shade the opponent's half
-                const shadeX = isHome ? toSVG(50, 0).x : PAD;
-                const shadeW = isHome ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
+                if (!isKickoff) return null;
+                const centerSvg = toSVG(50, 50);
+                const CENTER_CIRCLE_RADIUS_PCT = 9.15;
+                const circleRadiusSvgX = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_W;
+                const circleRadiusSvgY = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_H;
+                const possClubId = activeTurn?.possession_club_id;
+                const drawingPlayer = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
+                const isDrawingDefender = drawingPlayer && drawingPlayer.club_id !== possClubId;
                 return (
-                  <rect x={shadeX} y={PAD} width={shadeW} height={INNER_H}
-                    fill="rgba(239,68,68,0.12)" stroke="rgba(239,68,68,0.3)" strokeWidth="1" strokeDasharray="6,4" />
+                  <>
+                    <ellipse cx={centerSvg.x} cy={centerSvg.y} rx={circleRadiusSvgX} ry={circleRadiusSvgY}
+                      fill={isDrawingDefender ? "rgba(239,68,68,0.10)" : "none"}
+                      stroke="rgba(239,68,68,0.4)" strokeWidth="1.5" strokeDasharray="6,4" />
+                    {drawingAction && drawingPlayer && (() => {
+                      const isHome = drawingPlayer.club_id === match.home_club_id;
+                      const shadeX = isHome ? toSVG(50, 0).x : PAD;
+                      const shadeW = isHome ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
+                      return (
+                        <rect x={shadeX} y={PAD} width={shadeW} height={INNER_H}
+                          fill="rgba(239,68,68,0.12)" stroke="rgba(239,68,68,0.3)" strokeWidth="1" strokeDasharray="6,4" />
+                      );
+                    })()}
+                  </>
                 );
               })()}
 
