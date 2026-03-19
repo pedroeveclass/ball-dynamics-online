@@ -1048,6 +1048,15 @@ Deno.serve(async (req) => {
               nextBallHolderParticipantId = result.newBallHolderId;
               newPossessionClubId = result.newPossessionClubId || possClubId;
               await supabase.from('match_event_logs').insert({ match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'), title: result.possession_change ? `🔄 Troca de posse` : result.description, body: result.description });
+            } else if (result.foul && result.foulPosition) {
+              // Foul: ball holder keeps ball at foul position for free kick
+              nextBallHolderParticipantId = ballHolder.id;
+              await supabase.from('match_participants').update({ pos_x: result.foulPosition.x, pos_y: result.foulPosition.y }).eq('id', ballHolder.id);
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.' });
+              nextSetPieceType = 'free_kick';
+              if (result.failedContestLog) {
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.' });
+              }
             } else if (result.event === 'dribble') {
               nextBallHolderParticipantId = ballHolder.id;
               await supabase.from('match_event_logs').insert({ match_id, event_type: 'dribble', title: result.description, body: 'O desarme falhou e o jogador seguiu com a bola.' });
