@@ -1285,7 +1285,7 @@ Deno.serve(async (req) => {
           const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
 
           await supabase.from('matches').update({ current_turn_number: newTurnNumber, current_phase: nextPhase, possession_club_id: newPossessionClubId, home_score: homeScore, away_score: awayScore }).eq('id', match_id);
-          const { data: newTurnData } = await supabase.from('match_turns').insert({ match_id, turn_number: newTurnNumber, phase: nextPhase, possession_club_id: newPossessionClubId, ball_holder_participant_id: nextBallHolderParticipantId, started_at: nextPhaseStart, ends_at: nextPhaseEnd, status: 'active' }).select('id').single();
+          const { data: newTurnData } = await supabase.from('match_turns').insert({ match_id, turn_number: newTurnNumber, phase: nextPhase, possession_club_id: newPossessionClubId, ball_holder_participant_id: nextBallHolderParticipantId, started_at: nextPhaseStart, ends_at: nextPhaseEnd, status: 'active', set_piece_type: nextSetPieceType || null }).select('id').single();
 
           if (isNextLooseBall) {
             await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball_phase', title: '⚽ Bola solta — Fase 1 pulada', body: 'Todos os jogadores se movimentam para disputar a bola.' });
