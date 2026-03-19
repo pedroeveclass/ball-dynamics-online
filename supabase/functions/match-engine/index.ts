@@ -1262,6 +1262,7 @@ Deno.serve(async (req) => {
             ball_holder_participant_id: nextBallHolderParticipantId,
             started_at: new Date().toISOString(), ends_at: halftimeEnd,
             status: 'active',
+            set_piece_type: 'kickoff',
           });
 
           await supabase.from('match_event_logs').insert({
