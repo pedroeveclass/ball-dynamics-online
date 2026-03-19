@@ -135,17 +135,17 @@ interface TurnMeta {
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
-  defending_response: 'Defesa', resolution: 'Motion', pre_match: 'PrÃ©-jogo',
+  defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
   processing: 'Pausa',
-  positioning_attack: 'Posicionar âš½', positioning_defense: 'Posicionar ðŸ›¡ï¸',
+  positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
 };
 
 const ACTION_LABELS: Record<string, string> = {
   move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
-  pass_launch: 'LANÃ‡AMENTO', shoot: 'CHUTAR',
+  pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
   shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
   press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
-  block_lane: 'BLOQUEAR', no_action: 'SEM AÃ‡ÃƒO', receive: 'DOMINAR BOLA',
+  block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
 const PHASE_DURATION = 6;
