@@ -1245,19 +1245,6 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const turnClaim = await claimActiveTurnForProcessing(supabase, match_id);
-      if (!turnClaim) {
-        return jsonResponse({ status: 'busy', server_now: now.getTime() });
-      }
-
-      activeTurn = turnClaim.claimedTurn;
-      const lockedEndsAt = new Date(activeTurn.ends_at);
-      if (lockedEndsAt > now) {
-        await releaseTurnProcessing(supabase, activeTurn.id, turnClaim.processingToken);
-        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: lockedEndsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      try {
         // ── POSITIONING PHASES ──
         if (isPositioningPhase(activeTurn.phase)) {
         const { data: participants } = await supabase
