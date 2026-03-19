@@ -1844,6 +1844,20 @@ export default function MatchRoomPage() {
             const isHome = fromP.club_id === match?.home_club_id;
             if (isHome) finalX = Math.min(finalX, 49);
             else finalX = Math.max(finalX, 51);
+            // Center circle restriction for defending team
+            const possClubId = activeTurn?.possession_club_id;
+            const isDefending = fromP.club_id !== possClubId;
+            if (isDefending) {
+              const CENTER_CIRCLE_RADIUS = 9.15;
+              const distToCenter = Math.sqrt((finalX - 50) * (finalX - 50) + (finalY - 50) * (finalY - 50));
+              if (distToCenter < CENTER_CIRCLE_RADIUS) {
+                const angle = Math.atan2(finalY - 50, finalX - 50);
+                finalX = 50 + Math.cos(angle) * CENTER_CIRCLE_RADIUS;
+                finalY = 50 + Math.sin(angle) * CENTER_CIRCLE_RADIUS;
+                if (isHome) finalX = Math.min(finalX, 49);
+                else finalX = Math.max(finalX, 51);
+              }
+            }
           }
         }
       } else {
