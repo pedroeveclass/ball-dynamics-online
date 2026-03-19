@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +15,7 @@ type Phase = typeof PHASES[number];
 const TURNS_PER_HALF = 62;
 const TOTAL_TURNS = TURNS_PER_HALF * 2; // 124 turns total
 
-// ─── Accuracy deviation ─────────────────────────────────────────
+// â”€â”€â”€ Accuracy deviation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function normalizeAttr(val: number): number {
   return Math.max(0, Math.min(1, (val - 10) / 89));
 }
@@ -100,7 +100,7 @@ function computeDeviation(
   return { actualX, actualY, deviationDist, overGoal };
 }
 
-// ─── Height-based interception zones ─────────────────────────────
+// â”€â”€â”€ Height-based interception zones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getInterceptableRanges(actionType: string): Array<[number, number]> {
   switch (actionType) {
     case 'pass_low': return [[0, 1]];
@@ -121,7 +121,7 @@ function isShootType(action: string): boolean {
   return action === 'shoot' || action === 'shoot_controlled' || action === 'shoot_power';
 }
 
-// ─── Skill-based interception probability ────────────────────
+// â”€â”€â”€ Skill-based interception probability â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface InterceptContext {
   type: 'tackle' | 'receive_pass' | 'block_shot' | 'gk_save';
   baseChance: number;
@@ -216,33 +216,33 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
-      if (context.type === 'tackle') return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      if (context.type === 'tackle') return { success: false, event: 'tackle', description: `ðŸ¦µ Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       if (context.type === 'block_shot') {
         const blockX = candidate.interceptX ?? 50;
         const blockY = candidate.interceptY ?? 50;
         const deflectAngle = Math.random() * 2 * Math.PI;
         const deflectDist = 3 + Math.random() * 5;
-        return { success: false, event: 'blocked', description: `🛡️ Bloqueio! (${chancePct})`, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: Math.max(0, Math.min(100, blockX + Math.cos(deflectAngle) * deflectDist)), y: Math.max(0, Math.min(100, blockY + Math.sin(deflectAngle) * deflectDist)) } };
+        return { success: false, event: 'blocked', description: `ðŸ›¡ï¸ Bloqueio! (${chancePct})`, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: Math.max(0, Math.min(100, blockX + Math.cos(deflectAngle) * deflectDist)), y: Math.max(0, Math.min(100, blockY + Math.sin(deflectAngle) * deflectDist)) } };
       }
-      if (context.type === 'gk_save') return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
-      return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      if (context.type === 'gk_save') return { success: false, event: 'saved', description: `ðŸ§¤ Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      return { success: false, event: 'intercepted', description: `ðŸ¤² Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     } else {
       if (context.type === 'tackle') {
-        return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `🦵 Desarme falhou! (${chancePct})` };
+        return { success: true, event: 'dribble', description: `ðŸƒ Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `ðŸ¦µ Desarme falhou! (${chancePct})` };
       } else if (context.type === 'block_shot') {
-        console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
+        console.log(`[ENGINE] ðŸ’¨ Bloqueio falhou! (${chancePct}) Chute continua.`);
       } else if (context.type === 'gk_save') {
-        console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
+        console.log(`[ENGINE] ðŸ§¤ Goleiro nÃ£o segurou! (${chancePct})`);
       } else {
-        console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
+        console.log(`[ENGINE] âŒ Falhou o domÃ­nio! (${chancePct}) Bola continua.`);
       }
     }
   }
 
-  if (isShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
-  if (isPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
-  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
-  return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
+  if (isShootType(action)) return { success: true, event: 'goal', description: 'âš½ GOL!', possession_change: false, goal: true };
+  if (isPassType(action)) return { success: true, event: 'pass_complete', description: 'âœ… Passe completo', possession_change: false, goal: false };
+  if (action === 'move') return { success: true, event: 'move', description: 'ðŸ”„ ConduÃ§Ã£o', possession_change: false, goal: false };
+  return { success: true, event: 'no_action', description: 'ðŸ”„ Sem aÃ§Ã£o', possession_change: false, goal: false };
 }
 
 function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[]): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
@@ -309,7 +309,7 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
   return chosen.id;
 }
 
-// ─── Physics helpers ───────────────────────────────────────────
+// â”€â”€â”€ Physics helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const NUM_SUBSTEPS = 10;
 interface Vec2 { x: number; y: number; }
 function vecLen(v: Vec2): number { return Math.sqrt(v.x * v.x + v.y * v.y); }
@@ -417,7 +417,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[]): any | nul
   return ranked[0].participant;
 }
 
-// ─── Out of bounds detection ─────────────────────────────────
+// â”€â”€â”€ Out of bounds detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface OOBResult { type: 'throw_in' | 'corner' | 'goal_kick'; awardedClubId: string; exitX: number; exitY: number; side?: 'top' | 'bottom'; }
 
 function detectOutOfBounds(ballX: number, ballY: number, lastTouchClubId: string, match: { home_club_id: string; away_club_id: string }): OOBResult | null {
@@ -463,7 +463,7 @@ async function handleSetPiece(
     const restartY = oob.side === 'top' ? 1 : 99;
     const restartX = Math.max(2, Math.min(98, oob.exitX));
     await supabase.from('match_participants').update({ pos_x: restartX, pos_y: restartY }).eq('id', chosen.id);
-    return { playerId: chosen.id, clubId: oob.awardedClubId, title: '🏳️ Lateral!', body: `Reposição pela lateral para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.` };
+    return { playerId: chosen.id, clubId: oob.awardedClubId, title: 'ðŸ³ï¸ Lateral!', body: `ReposiÃ§Ã£o pela lateral para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.` };
   }
 
   if (oob.type === 'corner') {
@@ -472,7 +472,7 @@ async function handleSetPiece(
     const cornerX = isHomeTeam ? 99 : 1;
     const cornerY = oob.side === 'top' ? 1 : 99;
     await supabase.from('match_participants').update({ pos_x: cornerX, pos_y: cornerY }).eq('id', chosen.id);
-    return { playerId: chosen.id, clubId: oob.awardedClubId, title: '🚩 Escanteio!', body: `Escanteio para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.` };
+    return { playerId: chosen.id, clubId: oob.awardedClubId, title: 'ðŸš© Escanteio!', body: `Escanteio para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.` };
   }
 
   if (oob.type === 'goal_kick') {
@@ -480,12 +480,12 @@ async function handleSetPiece(
     const gkX = isHomeTeam ? 6 : 94;
     const gkY = Math.max(40, Math.min(60, oob.exitY));
     await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
-    return { playerId: gk.id, clubId: oob.awardedClubId, title: '🥅 Tiro de Meta!', body: `Tiro de meta para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.` };
+    return { playerId: gk.id, clubId: oob.awardedClubId, title: 'ðŸ¥… Tiro de Meta!', body: `Tiro de meta para o ${isHomeTeam ? 'time da casa' : 'time visitante'}.` };
   }
   return null;
 }
 
-// ─── Bot AI: generate actions for bots that haven't acted ─────
+// â”€â”€â”€ Bot AI: generate actions for bots that haven't acted â”€â”€â”€â”€â”€
 async function generateBotActions(
   supabase: any,
   matchId: string,
@@ -701,6 +701,148 @@ async function generateBotActions(
   }
 }
 
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+async function claimActiveTurnForProcessing(supabase: any, matchId: string) {
+  const processingToken = crypto.randomUUID();
+  const { data, error } = await supabase.rpc('claim_match_turn_for_processing', {
+    p_match_id: matchId,
+    p_processing_token: processingToken,
+    p_now: new Date().toISOString(),
+  });
+  if (error) throw error;
+
+  const claimedTurn = Array.isArray(data) ? data[0] : data;
+  if (!claimedTurn) return null;
+
+  return { claimedTurn, processingToken };
+}
+
+async function releaseTurnProcessing(supabase: any, turnId: string, processingToken: string) {
+  const { error } = await supabase.rpc('release_match_turn_processing', {
+    p_turn_id: turnId,
+    p_processing_token: processingToken,
+  });
+  if (error) {
+    console.error('[ENGINE] Failed to release turn processing lock', { turnId, error });
+  }
+}
+
+async function invokeTickForMatch(functionUrl: string, matchId: string) {
+  const response = await fetch(functionUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'tick', match_id: matchId }),
+  });
+  const result = await response.json().catch(() => null);
+  return { response, result };
+}
+
+async function autoStartDueMatches(supabase: any, matchId?: string | null) {
+  const now = new Date().toISOString();
+  let query = supabase
+    .from('matches')
+    .select('id, home_club_id, away_club_id, home_lineup_id, away_lineup_id')
+    .eq('status', 'scheduled')
+    .lte('scheduled_at', now);
+
+  if (matchId) {
+    query = query.eq('id', matchId);
+  }
+
+  const { data: dueMatches } = await query;
+  const started: string[] = [];
+
+  for (const m of (dueMatches || [])) {
+    const possessionClubId = m.home_club_id;
+    const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
+    await supabase.from('matches').update({
+      status: 'live',
+      started_at: now,
+      current_phase: 'ball_holder',
+      current_turn_number: 1,
+      possession_club_id: possessionClubId,
+    }).eq('id', m.id);
+
+    const phaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+    await supabase.from('match_turns').insert({
+      match_id: m.id,
+      turn_number: 1,
+      phase: 'ball_holder',
+      possession_club_id: possessionClubId,
+      ball_holder_participant_id: ballHolderParticipantId,
+      started_at: now,
+      ends_at: phaseEnd,
+      status: 'active',
+    });
+
+    await supabase.from('match_event_logs').insert({
+      match_id: m.id,
+      event_type: 'kickoff',
+      title: 'Partida iniciada!',
+      body: 'Time da casa comeca com a bola no meio-campo.',
+    });
+    started.push(m.id);
+  }
+
+  return started;
+}
+
+async function processDueMatches(supabase: any, functionUrl: string, matchId?: string | null) {
+  const started = await autoStartDueMatches(supabase, matchId);
+  const now = new Date().toISOString();
+  let query = supabase
+    .from('match_turns')
+    .select('match_id')
+    .eq('status', 'active')
+    .lte('ends_at', now);
+
+  if (matchId) {
+    query = query.eq('match_id', matchId);
+  }
+
+  const { data: dueTurns } = await query;
+  const dueMatchIds = [...new Set((dueTurns || []).map((turn: any) => turn.match_id).filter(Boolean))];
+
+  let advanced = 0;
+  let busy = 0;
+  let failed = 0;
+
+  for (const dueMatchId of dueMatchIds) {
+    try {
+      const { response, result } = await invokeTickForMatch(functionUrl, dueMatchId);
+      if (result?.status === 'busy') {
+        busy += 1;
+        continue;
+      }
+      if (result?.status === 'waiting') {
+        continue;
+      }
+      if (response.ok) {
+        advanced += 1;
+      } else {
+        failed += 1;
+        console.error('[ENGINE] process_due_matches failed', { matchId: dueMatchId, result });
+      }
+    } catch (error) {
+      failed += 1;
+      console.error('[ENGINE] process_due_matches tick error', { matchId: dueMatchId, error });
+    }
+  }
+
+  return {
+    started,
+    started_count: started.length,
+    advanced,
+    busy,
+    failed,
+  };
+}
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -715,56 +857,59 @@ Deno.serve(async (req) => {
     const { match_id, action } = body;
     const forceTick = body.force === true;
 
-    // ─── FINISH MATCH ───
+    // â”€â”€â”€ FINISH MATCH â”€â”€â”€
     if (action === 'finish_match' && match_id) {
       const { data: match } = await supabase.from('matches').select('*').eq('id', match_id).single();
       if (!match) return new Response(JSON.stringify({ error: 'Match not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       await supabase.from('match_turns').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('match_id', match_id).eq('status', 'active');
       await supabase.from('matches').update({ status: 'finished', finished_at: new Date().toISOString() }).eq('id', match_id);
-      await supabase.from('match_event_logs').insert({ match_id, event_type: 'final_whistle', title: `🏁 Apito final! ${match.home_score} – ${match.away_score}`, body: 'Partida encerrada manualmente.' });
+      await supabase.from('match_event_logs').insert({ match_id, event_type: 'final_whistle', title: `ðŸ Apito final! ${match.home_score} â€“ ${match.away_score}`, body: 'Partida encerrada manualmente.' });
       return new Response(JSON.stringify({ status: 'finished', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // ─── AUTO-START ───
+    // â”€â”€â”€ AUTO-START â”€â”€â”€
     if (action === 'auto_start' || !action) {
-      const now = new Date().toISOString();
-      const { data: dueMatches } = await supabase.from('matches').select('id, home_club_id, away_club_id, home_lineup_id, away_lineup_id').eq('status', 'scheduled').lte('scheduled_at', now);
-      const started: string[] = [];
-
-      for (const m of (dueMatches || [])) {
-        const possessionClubId = m.home_club_id;
-        const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
-        await supabase.from('matches').update({ status: 'live', started_at: now, current_phase: 'ball_holder', current_turn_number: 1, possession_club_id: possessionClubId }).eq('id', m.id);
-        const phaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
-        await supabase.from('match_turns').insert({ match_id: m.id, turn_number: 1, phase: 'ball_holder', possession_club_id: possessionClubId, ball_holder_participant_id: ballHolderParticipantId, started_at: now, ends_at: phaseEnd, status: 'active' });
-        await supabase.from('match_event_logs').insert({ match_id: m.id, event_type: 'kickoff', title: '⚽ Partida iniciada!', body: 'Time da casa começa com a bola no meio-campo.' });
-        started.push(m.id);
-      }
-
-      if (!match_id) return new Response(JSON.stringify({ started, server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const started = await autoStartDueMatches(supabase, match_id);
+      return jsonResponse({ started, started_count: started.length, server_now: Date.now() });
     }
 
-    // ─── TICK ───
+    if (action === 'process_due_matches') {
+      const result = await processDueMatches(supabase, req.url, match_id);
+      return jsonResponse({ ...result, server_now: Date.now() });
+    }
     if (action === 'tick' && match_id) {
       const { data: match } = await supabase.from('matches').select('*').eq('id', match_id).eq('status', 'live').single();
       if (!match) return new Response(JSON.stringify({ error: 'Match not found or not live' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-      const { data: activeTurn } = await supabase.from('match_turns').select('*').eq('match_id', match_id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).single();
+      let { data: activeTurn } = await supabase.from('match_turns').select('*').eq('match_id', match_id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).single();
       if (!activeTurn) return new Response(JSON.stringify({ error: 'No active turn' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const now = new Date();
       const endsAt = new Date(activeTurn.ends_at);
       if (!forceTick && now < endsAt) return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-      const { data: participants } = await supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
-      const possClubId = activeTurn.possession_club_id;
+      const turnClaim = await claimActiveTurnForProcessing(supabase, match_id);
+      if (!turnClaim) {
+        return jsonResponse({ status: 'busy', server_now: now.getTime() });
+      }
+
+      activeTurn = turnClaim.claimedTurn;
+      const lockedEndsAt = new Date(activeTurn.ends_at);
+      if (lockedEndsAt > now) {
+        await releaseTurnProcessing(supabase, activeTurn.id, turnClaim.processingToken);
+        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: lockedEndsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      try {
+        const { data: participants } = await supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+        const possClubId = activeTurn.possession_club_id;
       const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
       const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
       const ballHolder = activeTurn.ball_holder_participant_id ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id) : null;
       const isLooseBall = !activeTurn.ball_holder_participant_id;
 
-      // ── Load attributes for bot AI + physics ──
+      // â”€â”€ Load attributes for bot AI + physics â”€â”€
       const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
       let attrByProfile: Record<string, any> = {};
       if (profileIds.length > 0) {
@@ -772,7 +917,7 @@ Deno.serve(async (req) => {
         for (const row of (attrRows || [])) attrByProfile[row.player_profile_id] = row;
       }
 
-      // ── Enrich participants with slot positions for GK detection ──
+      // â”€â”€ Enrich participants with slot positions for GK detection â”€â”€
       const slotIds = (participants || []).filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
       if (slotIds.length > 0) {
         const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
@@ -784,7 +929,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ── Generate bot actions BEFORE phase transition ──
+      // â”€â”€ Generate bot actions BEFORE phase transition â”€â”€
       // Get existing actions to know which participants already acted
       const { data: existingActions } = await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
       const existingActionPids = new Set((existingActions || []).map(a => a.participant_id));
@@ -799,7 +944,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      // ── RESOLUTION ──
+      // â”€â”€ RESOLUTION â”€â”€
       let newPossessionClubId = possClubId;
       let homeScore = match.home_score;
       let awayScore = match.away_score;
@@ -865,13 +1010,13 @@ Deno.serve(async (req) => {
 
               if (isOnTarget) {
                 if (possClubId === match.home_club_id) homeScore++; else awayScore++;
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number}` });
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'goal', title: `âš½ GOL! ${homeScore} â€“ ${awayScore}`, body: `Turno ${match.current_turn_number}` });
                 newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
                 nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
               } else {
                 nextBallHolderParticipantId = null;
                 ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'shot_missed', title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!', body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.' });
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'shot_missed', title: isOverGoal ? 'ðŸ’¨ Chute por cima do gol!' : 'ðŸ’¨ Chute para fora!', body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.' });
               }
             } else if (result.looseBallPos) {
               nextBallHolderParticipantId = null;
@@ -879,12 +1024,12 @@ Deno.serve(async (req) => {
             } else if (result.newBallHolderId) {
               nextBallHolderParticipantId = result.newBallHolderId;
               newPossessionClubId = result.newPossessionClubId || possClubId;
-              await supabase.from('match_event_logs').insert({ match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'), title: result.possession_change ? `🔄 Troca de posse` : result.description, body: result.description });
+              await supabase.from('match_event_logs').insert({ match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'), title: result.possession_change ? `ðŸ”„ Troca de posse` : result.description, body: result.description });
             } else if (result.event === 'dribble') {
               nextBallHolderParticipantId = ballHolder.id;
               await supabase.from('match_event_logs').insert({ match_id, event_type: 'dribble', title: result.description, body: 'O desarme falhou e o jogador seguiu com a bola.' });
               if (result.failedContestLog) {
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'tackle_failed', title: result.failedContestLog, body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.' });
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'tackle_failed', title: result.failedContestLog, body: 'O defensor perdeu o equilÃ­brio e terÃ¡ penalidade de velocidade.' });
               }
               if (result.failedContestParticipantId) {
                 const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
@@ -916,11 +1061,11 @@ Deno.serve(async (req) => {
                   const closestPlayer = (participants || []).find(p => p.id === closestId);
                   if (closestPlayer && closestPlayer.club_id !== possClubId) {
                     newPossessionClubId = closestPlayer.club_id;
-                    await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
+                    await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: 'ðŸ”„ Troca de posse', body: 'Passe interceptado pelo adversÃ¡rio mais prÃ³ximo.' });
                   }
                 } else {
                   nextBallHolderParticipantId = null;
-                  await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Passe para área vazia. Ninguém está com a bola.' });
+                  await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: 'âš½ Bola solta!', body: 'Passe para Ã¡rea vazia. NinguÃ©m estÃ¡ com a bola.' });
                 }
               }
             } else if (ballHolderAction.action_type === 'move') {
@@ -936,13 +1081,13 @@ Deno.serve(async (req) => {
           if (looseBallClaimer) {
             nextBallHolderParticipantId = looseBallClaimer.id;
             newPossessionClubId = looseBallClaimer.club_id;
-            await supabase.from('match_event_logs').insert({ match_id, event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change', title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!', body: 'Quem chegou primeiro na bola solta ficou com a posse.' });
+            await supabase.from('match_event_logs').insert({ match_id, event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change', title: looseBallClaimer.club_id === possClubId ? 'ðŸ¤² Bola recuperada!' : 'ðŸ”„ Bola roubada!', body: 'Quem chegou primeiro na bola solta ficou com a posse.' });
           } else {
             nextBallHolderParticipantId = null;
             if (wasAlreadyLoose) {
-              await supabase.from('match_event_logs').insert({ match_id, event_type: 'ball_stopped', title: '⚽ Bola parada', body: 'A bola perdeu a inércia e está parada no campo.' });
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'ball_stopped', title: 'âš½ Bola parada', body: 'A bola perdeu a inÃ©rcia e estÃ¡ parada no campo.' });
             } else {
-              await supabase.from('match_event_logs').insert({ match_id, event_type: 'ball_inertia', title: '⚽ Bola continua rolando...', body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.' });
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'ball_inertia', title: 'âš½ Bola continua rolando...', body: 'NinguÃ©m alcanÃ§ou a bola. Ela continua na mesma direÃ§Ã£o por inÃ©rcia.' });
             }
           }
         }
@@ -995,7 +1140,7 @@ Deno.serve(async (req) => {
 
         await supabase.from('match_turns').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', activeTurn.id);
 
-        // ── Check halftime ──
+        // â”€â”€ Check halftime â”€â”€
         if (match.current_turn_number === TURNS_PER_HALF && newTurnNumber === TURNS_PER_HALF + 1) {
           // Halftime! Create a positioning phase with halftime pause
           const halftimeEnd = new Date(Date.now() + HALFTIME_PAUSE_MS).toISOString();
@@ -1018,17 +1163,17 @@ Deno.serve(async (req) => {
 
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'halftime',
-            title: `⏸ Intervalo! ${homeScore} – ${awayScore}`,
+            title: `â¸ Intervalo! ${homeScore} â€“ ${awayScore}`,
             body: 'Fim do primeiro tempo. Intervalo de 5 minutos.',
           });
 
           return new Response(JSON.stringify({ status: 'halftime', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        // ── Check end of match ──
+        // â”€â”€ Check end of match â”€â”€
         if (newTurnNumber > TOTAL_TURNS) {
           await supabase.from('matches').update({ status: 'finished', finished_at: new Date().toISOString(), home_score: homeScore, away_score: awayScore }).eq('id', match_id);
-          await supabase.from('match_event_logs').insert({ match_id, event_type: 'final_whistle', title: `🏁 Apito final! ${homeScore} – ${awayScore}`, body: 'Partida encerrada.' });
+          await supabase.from('match_event_logs').insert({ match_id, event_type: 'final_whistle', title: `ðŸ Apito final! ${homeScore} â€“ ${awayScore}`, body: 'Partida encerrada.' });
         } else {
           const nextPhaseStart = new Date().toISOString();
           const isNextLooseBall = nextBallHolderParticipantId === null;
@@ -1039,7 +1184,7 @@ Deno.serve(async (req) => {
           const { data: newTurnData } = await supabase.from('match_turns').insert({ match_id, turn_number: newTurnNumber, phase: nextPhase, possession_club_id: newPossessionClubId, ball_holder_participant_id: nextBallHolderParticipantId, started_at: nextPhaseStart, ends_at: nextPhaseEnd, status: 'active' }).select('id').single();
 
           if (isNextLooseBall) {
-            await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball_phase', title: '⚽ Bola solta — Fase 1 pulada', body: 'Todos os jogadores se movimentam para disputar a bola.' });
+            await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball_phase', title: 'âš½ Bola solta â€” Fase 1 pulada', body: 'Todos os jogadores se movimentam para disputar a bola.' });
           }
 
           // One-touch auto-action
@@ -1065,7 +1210,7 @@ Deno.serve(async (req) => {
                   status: 'pending',
                 });
                 console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type}`);
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque único!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: 'âš¡ Toque Ãºnico!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
               }
             }
           }
@@ -1077,7 +1222,7 @@ Deno.serve(async (req) => {
         await supabase.from('matches').update({ current_phase: 'attacking_support' }).eq('id', match_id);
         await supabase.from('match_turns').insert({ match_id, turn_number: activeTurn.turn_number, phase: 'attacking_support', possession_club_id: possClubId, ball_holder_participant_id: null, started_at: nextPhaseStart, ends_at: nextPhaseEnd, status: 'active' });
       } else {
-        // ── Early deviation at ball_holder → attacking_support ──
+        // â”€â”€ Early deviation at ball_holder â†’ attacking_support â”€â”€
         if (activeTurn.phase === 'ball_holder' && ballHolder) {
           const { data: bhActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('participant_id', ballHolder.id).eq('status', 'pending').order('created_at', { ascending: false }).limit(1);
           const bhAction = bhActions?.[0];
@@ -1095,7 +1240,7 @@ Deno.serve(async (req) => {
               payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal },
             }).eq('id', bhAction.id);
             if (deviation.overGoal) {
-              await supabase.from('match_event_logs').insert({ match_id, event_type: 'shot_over', title: '💨 Chute para fora!', body: 'A bola foi por cima do gol.' });
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'shot_over', title: 'ðŸ’¨ Chute para fora!', body: 'A bola foi por cima do gol.' });
             }
           }
         }
@@ -1112,9 +1257,12 @@ Deno.serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      } finally {
+        await releaseTurnProcessing(supabase, activeTurn.id, turnClaim.processingToken);
+      }
     }
 
-    // ─── SUBMIT HUMAN ACTION ───
+    // â”€â”€â”€ SUBMIT HUMAN ACTION â”€â”€â”€
     if (action === 'submit_action' && match_id) {
       const authHeader = req.headers.get('Authorization');
       if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -1165,3 +1313,5 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
+
+

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+﻿import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { getInitialMatchEngineFunction, invokeConfiguredMatchEngine } from '@/lib/matchEngine';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Bot, User, Eye, ChevronDown, ChevronRight, Square, LogOut } from 'lucide-react';
 
-// ─── Formation layouts ─────────────────────────────────────────
+// â”€â”€â”€ Formation layouts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
   '4-4-2': [
     { x: 5, y: 50, pos: 'GK' },
@@ -55,7 +55,7 @@ function getFormationPositions(formation: string, isHome: boolean, clampToOwnHal
   return positions;
 }
 
-// ─── Types ────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface MatchData {
   id: string; status: string; home_score: number; away_score: number;
   current_phase: string | null; current_turn_number: number;
@@ -114,20 +114,38 @@ interface PendingInterceptChoice {
   targetY: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────
+interface PlayerProfileSummary {
+  id: string;
+  full_name: string | null;
+  primary_position: string | null;
+  overall: number | null;
+}
+
+interface LineupSlotSummary {
+  id: string;
+  slot_position: string | null;
+  sort_order: number | null;
+}
+
+interface TurnMeta {
+  phase: string | null;
+  turn_number: number | null;
+}
+
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
-  defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
+  defending_response: 'Defesa', resolution: 'Motion', pre_match: 'PrÃ©-jogo',
   processing: 'Pausa',
-  positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
+  positioning_attack: 'Posicionar âš½', positioning_defense: 'Posicionar ðŸ›¡ï¸',
 };
 
 const ACTION_LABELS: Record<string, string> = {
   move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
-  pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
+  pass_launch: 'LANÃ‡AMENTO', shoot: 'CHUTAR',
   shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
   press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
-  block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
+  block_lane: 'BLOQUEAR', no_action: 'SEM AÃ‡ÃƒO', receive: 'DOMINAR BOLA',
 };
 
 const PHASE_DURATION = 6;
@@ -135,10 +153,22 @@ const POSITIONING_PHASE_DURATION = 10;
 const RESOLUTION_PHASE_DURATION = 3;
 const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
+const LIVE_EVENT_LIMIT = 60;
+const TURN_ACTION_RECONCILE_DELAY_MS = 300;
+const ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK === 'true';
 const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
 const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const normalizeAttr = (val: number) => Math.max(0, Math.min(1, (val - 10) / 89));
+const ACTION_PHASE_ORDER: Record<string, number> = {
+  positioning_attack: -2,
+  positioning_defense: -1,
+  ball_holder: 0,
+  attacking_support: 1,
+  defending_response: 2,
+  resolution: 3,
+};
 const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
   const dx = bx - ax;
   const dy = by - ay;
@@ -149,7 +179,7 @@ const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, 
   return Math.hypot(px - cx, py - cy);
 };
 
-// ─── Drawing state ────────────────────────────────────────────
+// â”€â”€â”€ Drawing state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface DrawingState {
   type: 'move' | 'pass_low' | 'pass_high' | 'pass_launch' | 'shoot_controlled' | 'shoot_power';
   fromParticipantId: string;
@@ -159,14 +189,143 @@ interface DrawingState {
 function formatScheduledDate(dateStr: string): string {
   try {
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Data inválida';
+    if (isNaN(d.getTime())) return 'Data invÃ¡lida';
     return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   } catch {
-    return 'Data inválida';
+    return 'Data invÃ¡lida';
   }
 }
 
-// ─── Main Component ───────────────────────────────────────────
+// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function dedupeAndSortTurnActions(actions: MatchAction[]): MatchAction[] {
+  const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+  const dedupedByParticipantAndPhase = new Map<string, MatchAction>();
+
+  for (const action of actions) {
+    const key = `${action.turn_phase ?? 'unknown'}:${action.participant_id}`;
+    const existing = dedupedByParticipantAndPhase.get(key);
+
+    if (!existing) {
+      dedupedByParticipantAndPhase.set(key, action);
+      continue;
+    }
+
+    const existingPriority = priorityByController[existing.controlled_by_type] ?? 0;
+    const nextPriority = priorityByController[action.controlled_by_type] ?? 0;
+    const existingCreatedAt = new Date(existing.created_at || 0).getTime();
+    const nextCreatedAt = new Date(action.created_at || 0).getTime();
+
+    if (nextPriority > existingPriority || (nextPriority === existingPriority && nextCreatedAt >= existingCreatedAt)) {
+      dedupedByParticipantAndPhase.set(key, action);
+    }
+  }
+
+  return Array.from(dedupedByParticipantAndPhase.values()).sort((a, b) => {
+    const phaseDiff = (ACTION_PHASE_ORDER[a.turn_phase || 'resolution'] ?? 99) - (ACTION_PHASE_ORDER[b.turn_phase || 'resolution'] ?? 99);
+    if (phaseDiff !== 0) return phaseDiff;
+    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+  });
+}
+
+function buildParticipantLayout(
+  parts: Participant[],
+  matchData: MatchData,
+  homeClub: ClubInfo | null,
+  awayClub: ClubInfo | null,
+  playerMap: Map<string, PlayerProfileSummary>,
+  slotMap: Map<string, LineupSlotSummary>,
+  matchId: string,
+): Participant[] {
+  const enriched: Participant[] = parts.map(participant => ({
+    ...participant,
+    player_name: participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.full_name ?? undefined : undefined,
+    overall: participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.overall ?? undefined : undefined,
+    slot_position: participant.lineup_slot_id ? slotMap.get(participant.lineup_slot_id)?.slot_position ?? undefined : undefined,
+  }));
+
+  const homeParts = enriched.filter(participant => participant.club_id === matchData.home_club_id && participant.role_type === 'player');
+  const awayParts = enriched.filter(participant => participant.club_id === matchData.away_club_id && participant.role_type === 'player');
+  const isTestMatch = homeParts.length <= 3 && awayParts.length <= 3;
+  const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
+
+  const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
+    const positions = getFormationPositions(formation, isHome, isKickoffStart);
+    const sorted = [...list].sort((a, b) => {
+      const aSortOrder = a.lineup_slot_id ? slotMap.get(a.lineup_slot_id)?.sort_order ?? null : null;
+      const bSortOrder = b.lineup_slot_id ? slotMap.get(b.lineup_slot_id)?.sort_order ?? null : null;
+      if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+      if (aSortOrder != null && bSortOrder == null) return -1;
+      if (aSortOrder == null && bSortOrder != null) return 1;
+      const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
+      const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
+      if (aIsGK && !bIsGK) return -1;
+      if (!aIsGK && bIsGK) return 1;
+      return a.id.localeCompare(b.id);
+    });
+
+    return sorted.map((participant, index) => {
+      let fieldX = participant.pos_x ?? positions[index]?.x ?? (isHome ? 30 : 70);
+      if (isKickoffStart) fieldX = isHome ? Math.min(fieldX, 48) : Math.max(fieldX, 52);
+      return {
+        ...participant,
+        field_x: fieldX,
+        field_y: participant.pos_y ?? positions[index]?.y ?? 50,
+        field_pos: participant.slot_position
+          || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined)
+          || positions[index]?.pos
+          || '?',
+        jersey_number: index + 1,
+      };
+    });
+  };
+
+  const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
+    const positioned = assignPositions(list, formation, isHome);
+    if (isTestMatch) return positioned;
+    const positions = getFormationPositions(formation, isHome, isKickoffStart);
+    for (let index = positioned.length; index < 11; index++) {
+      positioned.push({
+        id: `virtual-${isHome ? 'home' : 'away'}-${index}`,
+        match_id: matchId,
+        player_profile_id: null,
+        club_id: clubId,
+        lineup_slot_id: null,
+        role_type: 'player',
+        is_bot: true,
+        connected_user_id: null,
+        pos_x: null,
+        pos_y: null,
+        field_x: positions[index]?.x ?? (isHome ? 30 : 70),
+        field_y: positions[index]?.y ?? 50,
+        field_pos: positions[index]?.pos ?? '?',
+        jersey_number: index + 1,
+      });
+    }
+    return positioned;
+  };
+
+  const homeFormation = homeClub?.formation || DEFAULT_FORMATION;
+  const awayFormation = awayClub?.formation || DEFAULT_FORMATION;
+  const homeWithPos = ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFormation, true, matchData.home_club_id);
+  const awayWithPos = ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFormation, false, matchData.away_club_id);
+  const managersAndSpecs = enriched.filter(participant => participant.role_type !== 'player');
+
+  return [...homeWithPos, ...awayWithPos, ...managersAndSpecs];
+}
+
+function buildParticipantAttrsMap(parts: Participant[], attrRows: any[]) {
+  const attrsByProfile = new Map((attrRows || []).map(row => [row.player_profile_id, row]));
+  const nextMap: Record<string, any> = {};
+
+  for (const participant of parts) {
+    if (!participant.player_profile_id) continue;
+    const attrs = attrsByProfile.get(participant.player_profile_id);
+    if (attrs) nextMap[participant.id] = attrs;
+  }
+
+  return nextMap;
+}
+
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -188,7 +347,7 @@ export default function MatchRoomPage() {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('Processando todos os movimientos...');
-  // Server clock offset: serverTime ≈ Date.now() + serverClockOffset
+  // Server clock offset: serverTime â‰ˆ Date.now() + serverClockOffset
   const serverClockOffsetRef = useRef(0);
   const serverNow = useCallback(() => Date.now() + serverClockOffsetRef.current, []);
   const updateServerOffset = useCallback((serverTimestamp: number) => {
@@ -219,9 +378,8 @@ export default function MatchRoomPage() {
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
   const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
-   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
-   const inertiaConsumedRef = useRef<boolean>(false);
-   const attrsLoadedRef = useRef(false);
+  const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
+  const inertiaConsumedRef = useRef<boolean>(false);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -240,243 +398,366 @@ export default function MatchRoomPage() {
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
   const animatedResolutionIdRef = useRef<string | null>(null);
-  const phaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolvedMatchEngineRef = useRef(getInitialMatchEngineFunction());
+  const matchRef = useRef<MatchData | null>(null);
+  const homeClubRef = useRef<ClubInfo | null>(null);
+  const awayClubRef = useRef<ClubInfo | null>(null);
+  const activeTurnRef = useRef<MatchTurn | null>(null);
+  const participantRowsRef = useRef<Participant[]>([]);
+  const playerProfileCacheRef = useRef<Map<string, PlayerProfileSummary>>(new Map());
+  const lineupSlotCacheRef = useRef<Map<string, LineupSlotSummary>>(new Map());
+  const turnMetaByIdRef = useRef<Map<string, TurnMeta>>(new Map());
+  const turnActionsRef = useRef<MatchAction[]>([]);
+  const turnActionsFetchInFlightRef = useRef(false);
+  const turnActionsFetchQueuedRef = useRef(false);
+  const turnActionsFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveSnapshotInFlightRef = useRef(false);
 
-  // ── Load match data ──────────────────────────────────────────
-  const loadMatch = useCallback(async () => {
-    if (!matchId) return;
-    const { data: m } = await supabase.from('matches').select('*').eq('id', matchId).single();
-    if (!m) return;
+  // â”€â”€ Load match data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
+  const currentTurnNumberRef = useRef<number | null>(currentTurnNumber);
 
-    // Safely check scheduled_at
-    const scheduledDate = new Date(m.scheduled_at);
-    const isValidDate = !isNaN(scheduledDate.getTime());
-    const shouldAutoStart = isValidDate && (scheduledDate.getTime() + PRE_MATCH_COUNTDOWN_MS) <= serverNow();
+  useEffect(() => { matchRef.current = match; }, [match]);
+  useEffect(() => { homeClubRef.current = homeClub; }, [homeClub]);
+  useEffect(() => { awayClubRef.current = awayClub; }, [awayClub]);
+  useEffect(() => { activeTurnRef.current = activeTurn; }, [activeTurn]);
+  useEffect(() => { turnActionsRef.current = turnActions; }, [turnActions]);
+  useEffect(() => { currentTurnNumberRef.current = currentTurnNumber; }, [currentTurnNumber]);
 
-    if (m.status === 'scheduled' && shouldAutoStart) {
-      await callEngine({ action: 'auto_start' });
-      const { data: updated } = await supabase.from('matches').select('*').eq('id', matchId).single();
-      if (updated) setMatch(updated as MatchData);
-      else setMatch(m as MatchData);
-    } else {
-      setMatch(m as MatchData);
-    }
+  const setTurnActionsState = useCallback((actions: MatchAction[]) => {
+    const nextActions = dedupeAndSortTurnActions(actions);
+    turnActionsRef.current = nextActions;
+    setTurnActions(nextActions);
+  }, []);
 
-    const [hcRes, acRes, hSettings, aSettings] = await Promise.all([
-      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', m.home_club_id).single(),
-      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', m.away_club_id).single(),
-      supabase.from('club_settings').select('default_formation').eq('club_id', m.home_club_id).maybeSingle(),
-      supabase.from('club_settings').select('default_formation').eq('club_id', m.away_club_id).maybeSingle(),
-    ]);
+  const appendEventLog = useCallback((event: EventLog) => {
+    setEvents(prev => {
+      const nextEvents = [...prev, event];
+      return nextEvents.length > LIVE_EVENT_LIMIT ? nextEvents.slice(-LIVE_EVENT_LIMIT) : nextEvents;
+    });
+  }, []);
 
-    const homeClubData: ClubInfo = { ...(hcRes.data as ClubInfo), formation: hSettings.data?.default_formation || DEFAULT_FORMATION };
-    const awayClubData: ClubInfo = { ...(acRes.data as ClubInfo), formation: aSettings.data?.default_formation || DEFAULT_FORMATION };
-    setHomeClub(homeClubData);
-    setAwayClub(awayClubData);
-
-    // Participants
-    const { data: parts } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
-
-    if (parts && parts.length > 0) {
-      const playerIds = parts.filter(p => p.player_profile_id).map(p => p.player_profile_id!);
-      const slotIds = parts.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id!);
-
-      const [playersRes, slotsRes] = await Promise.all([
-        playerIds.length > 0 ? supabase.from('player_profiles').select('id, full_name, primary_position, overall').in('id', playerIds) : { data: [] },
-        slotIds.length > 0 ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds) : { data: [] },
-      ]);
-
-      const playerMap = new Map((playersRes.data || []).map(p => [p.id, p]));
-      const slotMap = new Map((slotsRes.data || []).map(s => [s.id, s]));
-
-      const enriched: Participant[] = parts.map(p => ({
-        ...p,
-        player_name: p.player_profile_id ? playerMap.get(p.player_profile_id)?.full_name : undefined,
-        overall: p.player_profile_id ? playerMap.get(p.player_profile_id)?.overall : undefined,
-        slot_position: p.lineup_slot_id ? slotMap.get(p.lineup_slot_id)?.slot_position : undefined,
-      }));
-
-      const homeParts = enriched.filter(p => p.club_id === m.home_club_id && p.role_type === 'player');
-      const awayParts = enriched.filter(p => p.club_id === m.away_club_id && p.role_type === 'player');
-
-      const isTestMatch = homeParts.length <= 3 && awayParts.length <= 3;
-
-      // Clamp to own half during kickoff (turn 0 or 1)
-      const isKickoffStart = (m.current_turn_number ?? 0) <= 1;
-
-      const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
-        const positions = getFormationPositions(formation, isHome, isKickoffStart);
-        // Sort so GK always gets index 0 (GK formation slot), stable tiebreaker by id
-        const sorted = [...list].sort((a, b) => {
-          const aSortOrder = a.lineup_slot_id ? slotMap.get(a.lineup_slot_id)?.sort_order ?? null : null;
-          const bSortOrder = b.lineup_slot_id ? slotMap.get(b.lineup_slot_id)?.sort_order ?? null : null;
-          if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
-          if (aSortOrder != null && bSortOrder == null) return -1;
-          if (aSortOrder == null && bSortOrder != null) return 1;
-          const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
-          const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
-          if (aIsGK && !bIsGK) return -1;
-          if (!aIsGK && bIsGK) return 1;
-          return a.id.localeCompare(b.id);
-        });
-        return sorted.map((p, i) => {
-          let fx = p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70);
-          // Clamp DB positions too during kickoff
-          if (isKickoffStart) fx = isHome ? Math.min(fx, 48) : Math.max(fx, 52);
-          return {
-            ...p,
-            field_x: fx,
-            field_y: p.pos_y ?? positions[i]?.y ?? 50,
-            field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
-            jersey_number: i + 1,
-          };
-        });
-      };
-
-      const ensureEleven = async (list: Participant[], formation: string, isHome: boolean, clubId: string): Promise<Participant[]> => {
-        const positioned = assignPositions(list, formation, isHome);
-        if (isTestMatch) return positioned;
-        const positions = getFormationPositions(formation, isHome, isKickoffStart);
-        const botsToInsert: any[] = [];
-        for (let i = positioned.length; i < 11; i++) {
-          const coords = positions[i] || { x: isHome ? 30 : 70, y: 50 };
-          botsToInsert.push({
-            match_id: matchId!,
-            player_profile_id: null, club_id: clubId,
-            lineup_slot_id: null, role_type: 'player',
-            is_bot: true, is_ready: false, connected_user_id: null,
-            pos_x: coords.x, pos_y: coords.y,
-          });
-        }
-        // Persist bots to DB so match engine can use them
-        if (botsToInsert.length > 0) {
-          const { data: inserted } = await supabase.from('match_participants').insert(botsToInsert).select('*');
-          for (const bot of (inserted || [])) {
-            const idx = positioned.length;
-            const pos = positions[idx] || { x: isHome ? 30 : 70, y: 50, pos: '?' };
-            positioned.push({
-              ...bot,
-              field_x: bot.pos_x ?? pos.x,
-              field_y: bot.pos_y ?? pos.y,
-              field_pos: pos.pos ?? '?',
-              jersey_number: idx + 1,
-            });
-          }
-        }
-        return positioned;
-      };
-
-      const homeFmt = homeClubData.formation || DEFAULT_FORMATION;
-      const awayFmt = awayClubData.formation || DEFAULT_FORMATION;
-
-      const homeWithPos = await ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFmt, true, m.home_club_id);
-      const awayWithPos = await ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFmt, false, m.away_club_id);
-      const managersAndSpecs = enriched.filter(p => p.role_type !== 'player');
-
-      setParticipants([...homeWithPos, ...awayWithPos, ...managersAndSpecs]);
-    }
-
-    const { data: turn } = await supabase
-      .from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    
-    // Validate turn ends_at before setting
-    if (turn) {
-      const endsAt = new Date(turn.ends_at);
-      if (isNaN(endsAt.getTime())) {
-        console.error('Invalid ends_at in turn:', turn.ends_at);
-        // Don't set an invalid turn
-      } else {
-        setActiveTurn(turn as MatchTurn | null);
-      }
-    } else {
-      setActiveTurn(null);
-    }
-
-    const { data: evts } = await supabase
-      .from('match_event_logs').select('*').eq('match_id', matchId)
-      .order('created_at', { ascending: true }).limit(60);
-    setEvents(evts || []);
-
-    setLoading(false);
+  const applyParticipantRows = useCallback((rows: Participant[], matchData?: MatchData | null) => {
+    const effectiveMatch = matchData ?? matchRef.current;
+    if (!matchId || !effectiveMatch) return;
+    participantRowsRef.current = rows;
+    setParticipants(
+      buildParticipantLayout(
+        rows,
+        effectiveMatch,
+        homeClubRef.current,
+        awayClubRef.current,
+        playerProfileCacheRef.current,
+        lineupSlotCacheRef.current,
+        matchId,
+      )
+    );
   }, [matchId]);
 
-  // ── Load actions for current turn ──────────────────────────
-  const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
-
-  const loadTurnActions = useCallback(async () => {
-    if (!matchId || !currentTurnNumber) {
-      setTurnActions([]);
+  const runTurnActionsReconcile = useCallback(async () => {
+    const turnNumber = currentTurnNumberRef.current;
+    if (!matchId || !turnNumber) {
+      turnMetaByIdRef.current = new Map();
+      setTurnActionsState([]);
       return;
     }
 
-    const { data: phaseTurns } = await supabase
-      .from('match_turns')
-      .select('id, phase, turn_number, created_at')
-      .eq('match_id', matchId)
-      .eq('turn_number', currentTurnNumber)
-      .order('created_at', { ascending: true });
-
-    const turnIds = (phaseTurns || []).map(turn => turn.id);
-    if (turnIds.length === 0) {
-      setTurnActions([]);
+    if (turnActionsFetchInFlightRef.current) {
+      turnActionsFetchQueuedRef.current = true;
       return;
     }
 
-    const phaseByTurnId = new Map((phaseTurns || []).map(turn => [turn.id, turn.phase]));
-    const { data: actions } = await supabase
-      .from('match_actions')
-      .select('*')
-      .in('match_turn_id', turnIds)
-      .order('created_at', { ascending: true });
+    turnActionsFetchInFlightRef.current = true;
+    try {
+      const { data: phaseTurns } = await supabase
+        .from('match_turns')
+        .select('id, phase, turn_number, created_at')
+        .eq('match_id', matchId)
+        .eq('turn_number', turnNumber)
+        .order('created_at', { ascending: true });
 
-    const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
-    const dedupedByParticipantAndPhase = new Map<string, MatchAction>();
+      const nextTurnMeta = new Map<string, TurnMeta>();
+      for (const turn of (phaseTurns || [])) {
+        nextTurnMeta.set(turn.id, { phase: turn.phase, turn_number: turn.turn_number });
+      }
+      turnMetaByIdRef.current = nextTurnMeta;
 
-    for (const action of ((actions || []) as MatchAction[])) {
-      const enriched: MatchAction = {
+      const turnIds = (phaseTurns || []).map(turn => turn.id);
+      if (turnIds.length === 0) {
+        setTurnActionsState([]);
+        return;
+      }
+
+      const { data: actions } = await supabase
+        .from('match_actions')
+        .select('*')
+        .in('match_turn_id', turnIds)
+        .order('created_at', { ascending: true });
+
+      const enrichedActions = ((actions || []) as MatchAction[]).map(action => ({
         ...action,
-        turn_phase: phaseByTurnId.get(action.match_turn_id) ?? null,
-        turn_number: currentTurnNumber,
-      };
-      const key = `${enriched.turn_phase ?? 'unknown'}:${enriched.participant_id}`;
-      const existing = dedupedByParticipantAndPhase.get(key);
+        turn_phase: nextTurnMeta.get(action.match_turn_id)?.phase ?? null,
+        turn_number: turnNumber,
+      }));
 
-      if (!existing) {
-        dedupedByParticipantAndPhase.set(key, enriched);
-        continue;
-      }
-
-      const existingPriority = priorityByController[existing.controlled_by_type] ?? 0;
-      const nextPriority = priorityByController[enriched.controlled_by_type] ?? 0;
-      const existingCreatedAt = new Date(existing.created_at || 0).getTime();
-      const nextCreatedAt = new Date(enriched.created_at || 0).getTime();
-
-      if (nextPriority > existingPriority || (nextPriority === existingPriority && nextCreatedAt >= existingCreatedAt)) {
-        dedupedByParticipantAndPhase.set(key, enriched);
+      setTurnActionsState(enrichedActions);
+    } finally {
+      turnActionsFetchInFlightRef.current = false;
+      if (turnActionsFetchQueuedRef.current) {
+        turnActionsFetchQueuedRef.current = false;
+        void runTurnActionsReconcile();
       }
     }
+  }, [matchId, setTurnActionsState]);
 
-    const phaseOrder: Record<string, number> = {
-      positioning_attack: -2,
-      positioning_defense: -1,
-      ball_holder: 0,
-      attacking_support: 1,
-      defending_response: 2,
-      resolution: 3,
+  const scheduleTurnActionsReconcile = useCallback((immediate = false) => {
+    if (!matchId) return;
+
+    if (turnActionsFetchInFlightRef.current) {
+      turnActionsFetchQueuedRef.current = true;
+      return;
+    }
+
+    if (turnActionsFetchTimerRef.current) {
+      if (!immediate) return;
+      clearTimeout(turnActionsFetchTimerRef.current);
+      turnActionsFetchTimerRef.current = null;
+    }
+
+    if (immediate) {
+      void runTurnActionsReconcile();
+      return;
+    }
+
+    turnActionsFetchTimerRef.current = setTimeout(() => {
+      turnActionsFetchTimerRef.current = null;
+      void runTurnActionsReconcile();
+    }, TURN_ACTION_RECONCILE_DELAY_MS);
+  }, [matchId, runTurnActionsReconcile]);
+
+  const applyIncomingTurnAction = useCallback((actionRow: MatchAction | null | undefined) => {
+    if (!actionRow) return;
+    const turnMeta = turnMetaByIdRef.current.get(actionRow.match_turn_id);
+    if (!turnMeta || turnMeta.turn_number == null) {
+      scheduleTurnActionsReconcile();
+      return;
+    }
+    if (turnMeta.turn_number !== currentTurnNumberRef.current) return;
+
+    const nextAction: MatchAction = {
+      ...actionRow,
+      turn_phase: turnMeta.phase,
+      turn_number: turnMeta.turn_number,
     };
 
-    setTurnActions(
-      Array.from(dedupedByParticipantAndPhase.values()).sort((a, b) => {
-        const phaseDiff = (phaseOrder[a.turn_phase || 'resolution'] ?? 99) - (phaseOrder[b.turn_phase || 'resolution'] ?? 99);
-        if (phaseDiff !== 0) return phaseDiff;
-        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
-      })
-    );
-  }, [matchId, currentTurnNumber, activeTurn?.id]);
+    setTurnActionsState([
+      ...turnActionsRef.current.filter(existing => existing.id !== nextAction.id),
+      nextAction,
+    ]);
+    scheduleTurnActionsReconcile();
+  }, [scheduleTurnActionsReconcile, setTurnActionsState]);
 
-  useEffect(() => { loadTurnActions(); }, [loadTurnActions]);
+  const loadStaticMatchData = useCallback(async () => {
+    if (!matchId) return null;
+
+    const { data: matchRow } = await supabase.from('matches').select('*').eq('id', matchId).single();
+    if (!matchRow) return null;
+
+    const matchData = matchRow as MatchData;
+    matchRef.current = matchData;
+    setMatch(matchData);
+
+    const [homeClubRes, awayClubRes, homeSettingsRes, awaySettingsRes] = await Promise.all([
+      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', matchData.home_club_id).single(),
+      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', matchData.away_club_id).single(),
+      supabase.from('club_settings').select('default_formation').eq('club_id', matchData.home_club_id).maybeSingle(),
+      supabase.from('club_settings').select('default_formation').eq('club_id', matchData.away_club_id).maybeSingle(),
+    ]);
+
+    const nextHomeClub: ClubInfo = {
+      ...(homeClubRes.data as ClubInfo),
+      formation: homeSettingsRes.data?.default_formation || DEFAULT_FORMATION,
+    };
+    const nextAwayClub: ClubInfo = {
+      ...(awayClubRes.data as ClubInfo),
+      formation: awaySettingsRes.data?.default_formation || DEFAULT_FORMATION,
+    };
+
+    homeClubRef.current = nextHomeClub;
+    awayClubRef.current = nextAwayClub;
+    setHomeClub(nextHomeClub);
+    setAwayClub(nextAwayClub);
+
+    const { data: participantRows } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
+    let nextParticipantRows = ((participantRows || []) as Participant[]);
+
+    const playerIds = [...new Set(nextParticipantRows.filter(participant => participant.player_profile_id).map(participant => participant.player_profile_id!))];
+    const slotIds = [...new Set(nextParticipantRows.filter(participant => participant.lineup_slot_id).map(participant => participant.lineup_slot_id!))];
+
+    const [playersRes, slotsRes] = await Promise.all([
+      playerIds.length > 0
+        ? supabase.from('player_profiles').select('id, full_name, primary_position, overall').in('id', playerIds)
+        : Promise.resolve({ data: [] as PlayerProfileSummary[] }),
+      slotIds.length > 0
+        ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds)
+        : Promise.resolve({ data: [] as LineupSlotSummary[] }),
+    ]);
+
+    playerProfileCacheRef.current = new Map((playersRes.data || []).map(player => [player.id, player as PlayerProfileSummary]));
+    lineupSlotCacheRef.current = new Map((slotsRes.data || []).map(slot => [slot.id, slot as LineupSlotSummary]));
+
+    const homePlayers = nextParticipantRows.filter(participant => participant.club_id === matchData.home_club_id && participant.role_type === 'player');
+    const awayPlayers = nextParticipantRows.filter(participant => participant.club_id === matchData.away_club_id && participant.role_type === 'player');
+    const isTestMatch = homePlayers.length <= 3 && awayPlayers.length <= 3;
+    const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
+
+    const buildMissingBots = (list: Participant[], formation: string, isHome: boolean, clubId: string) => {
+      if (isTestMatch || list.length >= 11) return [] as Array<Record<string, unknown>>;
+      const positions = getFormationPositions(formation, isHome, isKickoffStart);
+      const sorted = [...list].sort((a, b) => {
+        const aSortOrder = a.lineup_slot_id ? lineupSlotCacheRef.current.get(a.lineup_slot_id)?.sort_order ?? null : null;
+        const bSortOrder = b.lineup_slot_id ? lineupSlotCacheRef.current.get(b.lineup_slot_id)?.sort_order ?? null : null;
+        if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
+        if (aSortOrder != null && bSortOrder == null) return -1;
+        if (aSortOrder == null && bSortOrder != null) return 1;
+        const aPosition = a.lineup_slot_id ? lineupSlotCacheRef.current.get(a.lineup_slot_id)?.slot_position : null;
+        const bPosition = b.lineup_slot_id ? lineupSlotCacheRef.current.get(b.lineup_slot_id)?.slot_position : null;
+        const aIsGK = aPosition === 'GK' || (a.player_profile_id && playerProfileCacheRef.current.get(a.player_profile_id)?.primary_position === 'GK');
+        const bIsGK = bPosition === 'GK' || (b.player_profile_id && playerProfileCacheRef.current.get(b.player_profile_id)?.primary_position === 'GK');
+        if (aIsGK && !bIsGK) return -1;
+        if (!aIsGK && bIsGK) return 1;
+        return a.id.localeCompare(b.id);
+      });
+
+      const botsToInsert: Array<Record<string, unknown>> = [];
+      for (let index = sorted.length; index < 11; index++) {
+        const coords = positions[index] || { x: isHome ? 30 : 70, y: 50 };
+        botsToInsert.push({
+          match_id: matchId,
+          player_profile_id: null,
+          club_id: clubId,
+          lineup_slot_id: null,
+          role_type: 'player',
+          is_bot: true,
+          is_ready: false,
+          connected_user_id: null,
+          pos_x: coords.x,
+          pos_y: coords.y,
+        });
+      }
+      return botsToInsert;
+    };
+
+    const botsToInsert = [
+      ...buildMissingBots(homePlayers, nextHomeClub.formation || DEFAULT_FORMATION, true, matchData.home_club_id),
+      ...buildMissingBots(awayPlayers, nextAwayClub.formation || DEFAULT_FORMATION, false, matchData.away_club_id),
+    ];
+
+    if (botsToInsert.length > 0) {
+      const { data: insertedBots } = await supabase.from('match_participants').insert(botsToInsert).select('*');
+      nextParticipantRows = [...nextParticipantRows, ...(((insertedBots || []) as Participant[]))];
+    }
+
+    const uniqueProfileIds = [...new Set(nextParticipantRows.filter(participant => participant.player_profile_id).map(participant => participant.player_profile_id!))];
+    const { data: attrRows } = uniqueProfileIds.length > 0
+      ? await supabase.from('player_attributes').select('*').in('player_profile_id', uniqueProfileIds)
+      : { data: [] };
+
+    setPlayerAttrsMap(buildParticipantAttrsMap(nextParticipantRows, attrRows || []));
+    applyParticipantRows(nextParticipantRows, matchData);
+
+    return matchData;
+  }, [applyParticipantRows, matchId]);
+
+  const loadLiveSnapshot = useCallback(async () => {
+    if (!matchId || liveSnapshotInFlightRef.current) return;
+    liveSnapshotInFlightRef.current = true;
+
+    try {
+      const [matchRes, turnRes, eventsRes] = await Promise.all([
+        supabase.from('matches').select('*').eq('id', matchId).single(),
+        supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
+          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('match_event_logs').select('*').eq('match_id', matchId)
+          .order('created_at', { ascending: true }).limit(LIVE_EVENT_LIMIT),
+      ]);
+
+      if (matchRes.data) {
+        const matchData = matchRes.data as MatchData;
+        matchRef.current = matchData;
+        setMatch(matchData);
+        if (participantRowsRef.current.length > 0) applyParticipantRows(participantRowsRef.current, matchData);
+      }
+
+      if (turnRes.data) {
+        const turnData = turnRes.data as MatchTurn;
+        const endsAt = new Date(turnData.ends_at);
+        if (!isNaN(endsAt.getTime())) {
+          activeTurnRef.current = turnData;
+          turnMetaByIdRef.current.set(turnData.id, { phase: turnData.phase, turn_number: turnData.turn_number });
+          setActiveTurn(turnData);
+        }
+      } else {
+        activeTurnRef.current = null;
+        setActiveTurn(null);
+      }
+
+      setEvents(((eventsRes.data || []) as EventLog[]).slice(-LIVE_EVENT_LIMIT));
+      scheduleTurnActionsReconcile(true);
+    } finally {
+      liveSnapshotInFlightRef.current = false;
+    }
+  }, [applyParticipantRows, matchId, scheduleTurnActionsReconcile]);
+
+  useEffect(() => {
+    if (!matchId) return;
+
+    matchRef.current = null;
+    homeClubRef.current = null;
+    awayClubRef.current = null;
+    activeTurnRef.current = null;
+    participantRowsRef.current = [];
+    playerProfileCacheRef.current = new Map();
+    lineupSlotCacheRef.current = new Map();
+    turnMetaByIdRef.current = new Map();
+    turnActionsRef.current = [];
+    turnActionsFetchInFlightRef.current = false;
+    turnActionsFetchQueuedRef.current = false;
+    if (turnActionsFetchTimerRef.current) {
+      clearTimeout(turnActionsFetchTimerRef.current);
+      turnActionsFetchTimerRef.current = null;
+    }
+
+    setLoading(true);
+    setMatch(null);
+    setHomeClub(null);
+    setAwayClub(null);
+    setActiveTurn(null);
+    setEvents([]);
+    setParticipants([]);
+    setTurnActions([]);
+    setPlayerAttrsMap({});
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await loadStaticMatchData();
+        if (cancelled) return;
+        await loadLiveSnapshot();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (turnActionsFetchTimerRef.current) {
+        clearTimeout(turnActionsFetchTimerRef.current);
+        turnActionsFetchTimerRef.current = null;
+      }
+    };
+  }, [loadLiveSnapshot, loadStaticMatchData, matchId]);
 
   const persistedSubmittedIds = useMemo(() => new Set(turnActions.map(action => action.participant_id)), [turnActions]);
   const allSubmittedIds = useMemo(
@@ -484,7 +765,7 @@ export default function MatchRoomPage() {
     [persistedSubmittedIds, submittedActions]
   );
 
-  // ── Determine user role ─────────────────────────────────────
+  // â”€â”€ Determine user role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!user || !match) return;
     const playerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'player');
@@ -507,32 +788,6 @@ export default function MatchRoomPage() {
     }
   }, [user, participants, match, club]);
 
-  useEffect(() => { loadMatch(); }, [loadMatch]);
-
-  // ── Load player attributes for physics constraints ──
-  useEffect(() => {
-    if (attrsLoadedRef.current || participants.length === 0) return;
-    const profileIds = [...new Set(participants.filter(p => p.player_profile_id).map(p => p.player_profile_id!))];
-    if (profileIds.length === 0) return;
-    attrsLoadedRef.current = true;
-    (async () => {
-      const { data } = await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds);
-      if (!data) return;
-      const map: Record<string, any> = {};
-      for (const row of data) {
-        for (const part of participants.filter(p => p.player_profile_id === row.player_profile_id)) {
-          map[part.id] = row;
-        }
-      }
-      setPlayerAttrsMap(map);
-      console.log('[PHYSICS] Loaded attributes for', Object.keys(map).length, 'participants');
-      for (const [pid, a] of Object.entries(map)) {
-        console.log(`[PHYSICS] ${pid.slice(0,8)}: vel=${a.velocidade} accel=${a.aceleracao} agil=${a.agilidade} stam=${a.stamina} forca=${a.forca} ctrl=${a.controle_bola} pass_lo=${a.passe_baixo} pass_hi=${a.passe_alto} shot_acc=${a.acuracia_chute} shot_pow=${a.forca_chute}`);
-      }
-    })();
-  }, [participants]);
-
-  // ── Compute max move range from player attributes ──
   const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
@@ -578,7 +833,7 @@ export default function MatchRoomPage() {
     return range;
   }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase]);
 
-  // ── Pre-match countdown / auto-start ────────────────────────
+  // â”€â”€ Pre-match countdown / auto-start â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!match || match.status !== 'scheduled') return;
 
@@ -604,16 +859,16 @@ export default function MatchRoomPage() {
 
       if (!triggered && now >= countdownEnd) {
         triggered = true;
-        loadMatch();
+        void loadLiveSnapshot();
       }
     };
 
     update();
     const interval = setInterval(update, 200);
     return () => clearInterval(interval);
-  }, [match?.status, match?.scheduled_at, loadMatch]);
+  }, [loadLiveSnapshot, match?.status, match?.scheduled_at, serverNow]);
 
-  // ── Phase countdown timer ────────────────────────────────────
+  // â”€â”€ Phase countdown timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
     if (!activeTurn || match?.status !== 'live') return;
@@ -640,14 +895,14 @@ export default function MatchRoomPage() {
 
     if (activeTurn?.ball_holder_participant_id == null) {
       if (carriedLooseBallPos) {
-        // Ball was ALREADY loose — check if inertia was consumed
+        // Ball was ALREADY loose â€” check if inertia was consumed
         if (inertiaConsumedRef.current) {
-          // Inertia already applied last turn — clear it, ball stays put
+          // Inertia already applied last turn â€” clear it, ball stays put
           setBallInertiaDir(null);
         }
         // If not consumed yet, keep ballInertiaDir alive for arrow/animation
       } else {
-        // Ball JUST became loose — use ref for position (avoids race condition with state)
+        // Ball JUST became loose â€” use ref for position (avoids race condition with state)
         const pos = finalBallPosRef.current || finalBallPos;
         if (pos) {
           setCarriedLooseBallPos(pos);
@@ -666,7 +921,7 @@ export default function MatchRoomPage() {
     }
 
     setFinalBallPos(null);
-    // Don't clear finalBallPosRef here — it's consumed above
+    // Don't clear finalBallPosRef here â€” it's consumed above
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
 
@@ -686,7 +941,7 @@ export default function MatchRoomPage() {
   const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
   const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
 
-  // ── Possession change detection ────────────────────────────
+  // â”€â”€ Possession change detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!activeTurn) return;
     const currentPoss = activeTurn.possession_club_id;
@@ -700,7 +955,7 @@ export default function MatchRoomPage() {
     prevPossClubRef.current = currentPoss ?? null;
   }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
 
-  // ── Contest visual effect from event logs ────────────────────
+  // â”€â”€ Contest visual effect from event logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (events.length === 0) return;
     const last = events[events.length - 1];
@@ -725,7 +980,7 @@ export default function MatchRoomPage() {
   }, [events.length]);
 
   // Auto-show action menu for ball holder in phase 1
-  // For loose ball (no ball_holder), skip phase 1 — handled by engine
+  // For loose ball (no ball_holder), skip phase 1 â€” handled by engine
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
     
@@ -748,216 +1003,108 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn]);
 
-  // ── Engine tick — process once per phase end with explicit pause ─────────────
-  const tickInFlightRef = useRef(false);
+  // â”€â”€ Engine tick â€” process once per phase end with explicit pause â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
-    if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
-    if (match?.status !== 'live' || !matchId || !activeTurn || isPhaseProcessing) return;
-
-    // Validate ends_at
-    const endsAtDate = new Date(activeTurn.ends_at);
-    if (isNaN(endsAtDate.getTime())) {
-      console.error('Invalid ends_at, cannot schedule tick:', activeTurn.ends_at);
+    if (match?.status !== 'live' || !activeTurn) {
+      setIsPhaseProcessing(false);
+      return;
+    }
+    if (phaseTimeLeft > 0) {
+      setIsPhaseProcessing(false);
       return;
     }
 
-    const processTurnPhase = async () => {
-      if (tickInFlightRef.current) return;
-      tickInFlightRef.current = true;
-      setIsPhaseProcessing(true);
-      setProcessingLabel(
-        isPositioningTurn
-          ? 'Aplicando posicionamento...'
-          : activeTurn.phase === 'defending_response'
-          ? 'Processando todos os movimentos...'
-          : activeTurn.phase === 'resolution'
-            ? 'Processando próximo turno...'
-            : 'Processando os movimentos...'
-      );
-
-      try {
-        const { response, result } = await invokeMatchEngine({ action: 'tick', match_id: matchId });
-
-        if (result?.status === 'waiting') {
-          const retryMs = Math.max(150, Number(result.remaining_ms ?? 250));
-          tickInFlightRef.current = false;
-          setIsPhaseProcessing(false);
-          phaseTimeoutRef.current = setTimeout(processTurnPhase, retryMs);
-          return;
-        }
-
-        // "No active turn" is a recoverable race condition — just reload state
-        if (result?.error === 'No active turn' || result?.error === 'Match not found or not live') {
-          console.warn('Tick: no active turn or match not live, reloading state...');
-          await loadMatch();
-          return;
-        }
-
-        if (!response.ok || result?.error) {
-          throw new Error(String(result?.error || 'Erro ao processar turno'));
-        }
-
-        const [matchRes, turnRes, partsRes] = await Promise.all([
-          supabase.from('matches').select('*').eq('id', matchId).single(),
-          supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
-            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
-          supabase.from('match_participants').select('*').eq('match_id', matchId),
-        ]);
-
-        if (matchRes.data) setMatch(matchRes.data as MatchData);
-        if (turnRes.data !== undefined) {
-          // Validate turn before setting
-          if (turnRes.data) {
-            const endsAt = new Date(turnRes.data.ends_at);
-            if (!isNaN(endsAt.getTime())) {
-              setActiveTurn(turnRes.data as MatchTurn | null);
-            }
-          } else {
-            setActiveTurn(null);
-          }
-        }
-        if (partsRes.data && matchRes.data) await reEnrichParticipants(partsRes.data, matchRes.data as MatchData);
-        await loadTurnActions();
-      } catch (e) {
-        console.error('Tick failed:', e);
-        toast.error('Erro ao processar a próxima parte do turno');
-      } finally {
-        tickInFlightRef.current = false;
-        setIsPhaseProcessing(false);
-      }
-    };
-
-    const remaining = Math.max(0, endsAtDate.getTime() - serverNow());
-    phaseTimeoutRef.current = setTimeout(processTurnPhase, remaining + 50);
-
-    return () => {
-      if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
-    };
-  }, [match?.status, matchId, activeTurn?.id, activeTurn?.ends_at, activeTurn?.phase, isPhaseProcessing, loadMatch, loadTurnActions]);
-
-  // Helper to re-enrich participants after position updates
-  async function reEnrichParticipants(parts: any[], matchData: MatchData) {
-    if (!matchId || !matchData) return;
-    const playerIds = parts.filter(p => p.player_profile_id).map(p => p.player_profile_id!);
-    const slotIds = parts.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id!);
-
-    const [playersRes, slotsRes] = await Promise.all([
-      playerIds.length > 0 ? supabase.from('player_profiles').select('id, full_name, primary_position, overall').in('id', playerIds) : { data: [] },
-      slotIds.length > 0 ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds) : { data: [] },
-    ]);
-
-    const playerMap = new Map((playersRes.data || []).map(p => [p.id, p]));
-    const slotMap = new Map((slotsRes.data || []).map(s => [s.id, s]));
-
-    const enriched: Participant[] = parts.map(p => ({
-      ...p,
-      player_name: p.player_profile_id ? playerMap.get(p.player_profile_id)?.full_name : undefined,
-      overall: p.player_profile_id ? playerMap.get(p.player_profile_id)?.overall : undefined,
-      slot_position: p.lineup_slot_id ? slotMap.get(p.lineup_slot_id)?.slot_position : undefined,
-    }));
-
-    const homeParts = enriched.filter(p => p.club_id === matchData.home_club_id && p.role_type === 'player');
-    const awayParts = enriched.filter(p => p.club_id === matchData.away_club_id && p.role_type === 'player');
-    const isTestMatch = homeParts.length <= 3 && awayParts.length <= 3;
-    const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
-
-    const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
-      const positions = getFormationPositions(formation, isHome, isKickoffStart);
-      const sorted = [...list].sort((a, b) => {
-        const aSortOrder = a.lineup_slot_id ? slotMap.get(a.lineup_slot_id)?.sort_order ?? null : null;
-        const bSortOrder = b.lineup_slot_id ? slotMap.get(b.lineup_slot_id)?.sort_order ?? null : null;
-        if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
-        if (aSortOrder != null && bSortOrder == null) return -1;
-        if (aSortOrder == null && bSortOrder != null) return 1;
-        const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
-        const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
-        if (aIsGK && !bIsGK) return -1;
-        if (!aIsGK && bIsGK) return 1;
-        return a.id.localeCompare(b.id);
-      });
-      return sorted.map((p, i) => {
-        let fx = p.pos_x ?? positions[i]?.x ?? (isHome ? 30 : 70);
-        if (isKickoffStart) fx = isHome ? Math.min(fx, 48) : Math.max(fx, 52);
-        return {
-          ...p,
-          field_x: fx,
-          field_y: p.pos_y ?? positions[i]?.y ?? 50,
-          field_pos: p.slot_position || (p.player_profile_id ? playerMap.get(p.player_profile_id)?.primary_position : undefined) || positions[i]?.pos || '?',
-          jersey_number: i + 1,
-        };
-      });
-    };
-
-    const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
-      const positioned = assignPositions(list, formation, isHome);
-      if (isTestMatch) return positioned;
-      const positions = getFormationPositions(formation, isHome, isKickoffStart);
-      for (let i = positioned.length; i < 11; i++) {
-        positioned.push({
-          id: `virtual-${isHome ? 'home' : 'away'}-${i}`,
-          match_id: matchId!,
-          player_profile_id: null, club_id: clubId,
-          lineup_slot_id: null, role_type: 'player',
-          is_bot: true, connected_user_id: null,
-          pos_x: null, pos_y: null,
-          field_x: positions[i]?.x ?? (isHome ? 30 : 70),
-          field_y: positions[i]?.y ?? 50,
-          field_pos: positions[i]?.pos ?? '?',
-          jersey_number: i + 1,
-        });
-      }
-      return positioned;
-    };
-
-    const homeFmt = homeClub?.formation || DEFAULT_FORMATION;
-    const awayFmt = awayClub?.formation || DEFAULT_FORMATION;
-
-    const homeWithPos = ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFmt, true, matchData.home_club_id);
-    const awayWithPos = ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFmt, false, matchData.away_club_id);
-    const managersAndSpecs = enriched.filter(p => p.role_type !== 'player');
-
-    setParticipants([...homeWithPos, ...awayWithPos, ...managersAndSpecs]);
-  }
-
-  // ── Realtime ─────────────────────────────────────────────────
+    setIsPhaseProcessing(true);
+    setProcessingLabel(
+      isPositioningTurn
+        ? 'Aguardando posicionamento...'
+        : activeTurn.phase === 'resolution'
+          ? 'Aguardando proximo turno...'
+          : 'Aguardando servidor...'
+    );
+  }, [activeTurn?.id, activeTurn?.phase, isPositioningTurn, match?.status, phaseTimeLeft]);
   useEffect(() => {
     if (!matchId) return;
     const channel = supabase.channel(`match-room-${matchId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `id=eq.${matchId}` }, (p) => {
-        setMatch(p.new as MatchData);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `id=eq.${matchId}` }, (payload: any) => {
+        const nextMatch = payload.new as MatchData;
+        if (!nextMatch?.id) return;
+        matchRef.current = nextMatch;
+        setMatch(nextMatch);
+        if (participantRowsRef.current.length > 0) applyParticipantRows(participantRowsRef.current, nextMatch);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_turns', filter: `match_id=eq.${matchId}` }, () => {
-        supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
-          .order('created_at', { ascending: false }).limit(1).maybeSingle()
-          .then(({ data }) => {
-            if (data) {
-              const endsAt = new Date(data.ends_at);
-              if (!isNaN(endsAt.getTime())) {
-                setActiveTurn(data as MatchTurn | null);
-              }
-            } else {
-              setActiveTurn(null);
-            }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_turns', filter: `match_id=eq.${matchId}` }, (payload: any) => {
+        const eventType = payload.eventType as string;
+        const nextTurn = (eventType === 'DELETE' ? payload.old : payload.new) as MatchTurn | null;
+        const previousTurn = payload.old as MatchTurn | null;
+        const turnForMeta = nextTurn || previousTurn;
+
+        if (turnForMeta?.id && turnForMeta.turn_number != null) {
+          turnMetaByIdRef.current.set(turnForMeta.id, {
+            phase: nextTurn?.phase ?? previousTurn?.phase ?? null,
+            turn_number: nextTurn?.turn_number ?? previousTurn?.turn_number ?? null,
           });
+        }
+
+        if (nextTurn?.status === 'active') {
+          const endsAt = new Date(nextTurn.ends_at);
+          if (!isNaN(endsAt.getTime())) {
+            activeTurnRef.current = nextTurn;
+            setActiveTurn(nextTurn);
+            scheduleTurnActionsReconcile(true);
+          }
+          return;
+        }
+
+        if ((eventType === 'UPDATE' || eventType === 'DELETE') && previousTurn?.id && activeTurnRef.current?.id === previousTurn.id) {
+          activeTurnRef.current = null;
+          setActiveTurn(null);
+          scheduleTurnActionsReconcile();
+        }
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_event_logs', filter: `match_id=eq.${matchId}` }, (p) => {
-        setEvents(prev => [...prev, p.new as EventLog]);
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_event_logs', filter: `match_id=eq.${matchId}` }, (payload: any) => {
+        appendEventLog(payload.new as EventLog);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_actions', filter: `match_id=eq.${matchId}` }, () => {
-        loadTurnActions();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_actions', filter: `match_id=eq.${matchId}` }, (payload: any) => {
+        const eventType = payload.eventType as string;
+        const actionRow = (eventType === 'DELETE' ? payload.old : payload.new) as MatchAction | null;
+        if (eventType === 'DELETE' && actionRow?.id) {
+          setTurnActionsState(turnActionsRef.current.filter(action => action.id !== actionRow.id));
+          scheduleTurnActionsReconcile();
+          return;
+        }
+        applyIncomingTurnAction(actionRow);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${matchId}` }, () => {
-        supabase.from('match_participants').select('*').eq('match_id', matchId).then(({ data }) => {
-          if (data && match) reEnrichParticipants(data, match);
-        });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${matchId}` }, (payload: any) => {
+        const eventType = payload.eventType as string;
+        const row = (eventType === 'DELETE' ? payload.old : payload.new) as Participant | null;
+        if (!row) return;
+
+        const nextRows = [...participantRowsRef.current];
+        const existingIndex = nextRows.findIndex(participant => participant.id === row.id);
+
+        if (eventType === 'DELETE') {
+          if (existingIndex >= 0) nextRows.splice(existingIndex, 1);
+        } else if (existingIndex >= 0) {
+          nextRows[existingIndex] = { ...nextRows[existingIndex], ...row };
+        } else {
+          nextRows.push(row);
+        }
+
+        const effectiveMatch = matchRef.current;
+        if (effectiveMatch) applyParticipantRows(nextRows, effectiveMatch);
       })
-      .subscribe();
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          void loadLiveSnapshot();
+        }
+      });
     return () => { supabase.removeChannel(channel); };
-  }, [matchId, match, loadTurnActions]);
+  }, [applyIncomingTurnAction, applyParticipantRows, appendEventLog, loadLiveSnapshot, matchId, scheduleTurnActionsReconcile, setTurnActionsState]);
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
-  // ── Helpers ──────────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
     const { data: { session } } = await supabase.auth.getSession();
     return invokeConfiguredMatchEngine({
@@ -968,12 +1115,25 @@ export default function MatchRoomPage() {
     });
   }, [updateServerOffset]);
 
-  const callEngine = async (body: Record<string, unknown>) => {
-    try {
-      const { result } = await invokeMatchEngine(body);
-      return result;
-    } catch (e) { console.error('Engine call failed:', e); return {}; }
-  };
+  useEffect(() => {
+    if (!ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK) return;
+    if (match?.status !== 'live' || !activeTurn || phaseTimeLeft > 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await invokeMatchEngine({ action: 'process_due_matches' });
+      } catch (error) {
+        console.error('Client fallback processor failed:', error);
+        if (!cancelled) toast.error('Erro ao sincronizar a partida');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTurn?.id, invokeMatchEngine, match?.status, phaseTimeLeft]);
 
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
@@ -988,23 +1148,23 @@ export default function MatchRoomPage() {
         ...(payload ? { payload } : {}),
       });
       if (!response.ok && !result?.error) {
-        throw new Error('Erro ao enviar ação');
+        throw new Error('Erro ao enviar aÃ§Ã£o');
       }
       if (result.error) {
         if (result.recoverable || result.error === 'No active turn') {
-          console.warn('[SUBMIT] No active turn — phase transition in progress, retrying...');
-          await loadMatch();
-          toast.info('Turno em transição, tente novamente');
+          console.warn('[SUBMIT] No active turn â€” phase transition in progress, retrying...');
+          await loadLiveSnapshot();
+          toast.info('Turno em transiÃ§Ã£o, tente novamente');
         } else {
           toast.error(String(result.error));
         }
       }
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
-        toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
-        loadTurnActions();
+        toast.success(`âœ… ${ACTION_LABELS[actionType] || actionType}`);
+
       }
-    } catch { toast.error('Erro ao enviar ação'); }
+    } catch { toast.error('Erro ao enviar aÃ§Ã£o'); }
     finally { setSubmittingAction(false); }
   };
 
@@ -1016,7 +1176,7 @@ export default function MatchRoomPage() {
         throw new Error(String(result?.error || 'Erro ao finalizar'));
       }
       toast.success('Partida finalizada!');
-      loadMatch();
+      void loadLiveSnapshot();
     } catch { toast.error('Erro ao finalizar'); }
   };
 
@@ -1043,11 +1203,11 @@ export default function MatchRoomPage() {
       return;
     }
     // One-touch actions: if player has a pendingInterceptChoice (they clicked on a trajectory),
-    // pass/shoot actions become one-touch — they need a target, so enter drawing mode with the
+    // pass/shoot actions become one-touch â€” they need a target, so enter drawing mode with the
     // intercept position as the starting point for the action
     if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId &&
         (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch' || actionType === 'shoot_controlled' || actionType === 'shoot_power')) {
-      // Store the one-touch context — the drawing will submit with one_touch payload
+      // Store the one-touch context â€” the drawing will submit with one_touch payload
       setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
       setShowActionMenu(null);
       // Keep pendingInterceptChoice alive so we know this is a one-touch
@@ -1308,20 +1468,15 @@ export default function MatchRoomPage() {
     }
   };
 
-  // ─── All submitted actions are always visible ───────────────
+  // â”€â”€â”€ All submitted actions are always visible â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const visibleActions = useMemo(() => {
     return turnActions;
   }, [turnActions]);
 
-  // ─── Animation for phase 4 ─────────────────────────────────
+  // â”€â”€â”€ Animation for phase 4 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
-  const turnActionsRef = useRef(turnActions);
-  turnActionsRef.current = turnActions;
-
-  const matchRef = useRef(match);
-  matchRef.current = match;
 
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
@@ -1383,11 +1538,11 @@ export default function MatchRoomPage() {
                 if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
                   newDirections[p.id] = { x: ddx, y: ddy };
                 } else {
-                  delete newDirections[p.id]; // Stayed still — reset inertia
+                  delete newDirections[p.id]; // Stayed still â€” reset inertia
                 }
               }
             } else {
-              // Player didn't move at all — reset inertia completely
+              // Player didn't move at all â€” reset inertia completely
               delete newDirections[p.id];
             }
           }
@@ -1454,7 +1609,7 @@ export default function MatchRoomPage() {
               setCarriedLooseBallPos(newPos);
               finalBallPosRef.current = newPos;
               setFinalBallPos(newPos);
-              // Mark inertia as consumed — ball will stop next turn
+              // Mark inertia as consumed â€” ball will stop next turn
               inertiaConsumedRef.current = true;
               lastBallDirRef.current = null;
             }
@@ -1479,7 +1634,7 @@ export default function MatchRoomPage() {
     };
   }, [activeTurn?.phase, activeTurn?.id]);
 
-  // ── Compute animated positions (physics-based easing) ───────
+  // â”€â”€ Compute animated positions (physics-based easing) â”€â”€â”€â”€â”€â”€â”€
   const getAnimatedPos = (p: Participant): { x: number; y: number } => {
     // If we have final locked positions (post-animation), use them
     if (finalPositions[p.id] && !animating) {
@@ -1503,7 +1658,7 @@ export default function MatchRoomPage() {
     }
 
     // Physics-based easing: slow start (acceleration), fast mid, slight decel at end
-    // Simulates inertia — player needs to accelerate and can't change direction instantly
+    // Simulates inertia â€” player needs to accelerate and can't change direction instantly
     const raw = animProgress;
     // Multi-segment ease: slow acceleration phase (0-0.3), cruise (0.3-0.8), slight decel (0.8-1)
     let t: number;
@@ -1527,7 +1682,7 @@ export default function MatchRoomPage() {
     };
   };
 
-  // ─────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (loading || !match) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1593,7 +1748,7 @@ export default function MatchRoomPage() {
     return [];
   };
 
-  // ─── Field constants ───────────────────────────────────────
+  // â”€â”€â”€ Field constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const FIELD_W = 900;
   const FIELD_H = 580;
   const PAD = 20;
@@ -1807,7 +1962,7 @@ export default function MatchRoomPage() {
         };
       }
 
-      // Ball sticks to player during dribbling — use player's animated position
+      // Ball sticks to player during dribbling â€” use player's animated position
       const playerAnimPos = getAnimatedPos(ballHolder);
       return {
         x: playerAnimPos.x + 1.2,
@@ -1860,7 +2015,7 @@ export default function MatchRoomPage() {
 
   const ballDisplayPos = getAnimatedBallPos();
 
-  // ── Ball arc lift (visual only) for high passes, launches, and shots ──
+  // â”€â”€ Ball arc lift (visual only) for high passes, launches, and shots â”€â”€
   const ballArcLift = (() => {
     if (!animating || activeTurn?.phase !== 'resolution' || !ballHolder) return 0;
     const bhAllActions = turnActions
@@ -1998,7 +2153,7 @@ export default function MatchRoomPage() {
   // Compute intercept zone path for ball trajectory
   const getBallTrajectoryAction = (): MatchAction | null => {
     if (!activeTurn?.ball_holder_participant_id) {
-      // Loose ball with inertia — create a virtual pass_low trajectory
+      // Loose ball with inertia â€” create a virtual pass_low trajectory
       if (isLooseBall && looseBallPos && ballInertiaDir) {
         const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
         if (inertiaLen >= 0.5) {
@@ -2038,7 +2193,7 @@ export default function MatchRoomPage() {
 
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
-      {/* ── Top scoreboard bar ── */}
+      {/* â”€â”€ Top scoreboard bar â”€â”€ */}
       <div className="bg-[hsl(140,20%,8%)] border-b border-[hsl(140,10%,20%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
@@ -2048,7 +2203,7 @@ export default function MatchRoomPage() {
           {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">3v3</Badge>}
           {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
           {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
-          {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">📍 POSICIONAMENTO</Badge>}
+          {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">ðŸ“ POSICIONAMENTO</Badge>}
         </div>
 
         <div className="flex items-center gap-4">
@@ -2083,10 +2238,10 @@ export default function MatchRoomPage() {
         </div>
       </div>
 
-      {/* ── Main layout ── */}
+      {/* â”€â”€ Main layout â”€â”€ */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ── Field area (dominant) ── */}
+        {/* â”€â”€ Field area (dominant) â”€â”€ */}
         <div className="flex-1 flex items-center justify-center p-2 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)' }}>
           <div className="relative w-full" style={{ maxWidth: 960 }}>
             <svg
@@ -2109,7 +2264,7 @@ export default function MatchRoomPage() {
                   <feGaussianBlur stdDeviation="4" result="b" />
                   <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
                 </filter>
-                {/* Arrow markers — smaller (ball-sized) */}
+                {/* Arrow markers â€” smaller (ball-sized) */}
                 <marker id="ah-black" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#1a1a2e" /></marker>
                 <marker id="ah-green" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#22c55e" /></marker>
                 <marker id="ah-yellow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#f59e0b" /></marker>
@@ -2153,7 +2308,7 @@ export default function MatchRoomPage() {
                 ))}
               </g>
 
-              {/* ── Kickoff half-field overlay during positioning ── */}
+              {/* â”€â”€ Kickoff half-field overlay during positioning â”€â”€ */}
               {isPositioningTurn && (() => {
                 const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
                 const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
@@ -2170,7 +2325,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Intercept zone visualization ── */}
+              {/* â”€â”€ Intercept zone visualization â”€â”€ */}
               {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
@@ -2202,7 +2357,7 @@ export default function MatchRoomPage() {
                 })()
               )}
 
-              {/* ── Loose ball intercept zone (circle around loose ball) ── */}
+              {/* â”€â”€ Loose ball intercept zone (circle around loose ball) â”€â”€ */}
               {isLooseBall && looseBallPos && !animating &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                 const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
@@ -2218,7 +2373,7 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Ball inertia trajectory — green arrow + label (rendered like a real pass_low) ── */}
+              {/* â”€â”€ Ball inertia trajectory â€” green arrow + label (rendered like a real pass_low) â”€â”€ */}
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
                 ballTrajectoryAction?.id === '__inertia__' &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
@@ -2227,7 +2382,7 @@ export default function MatchRoomPage() {
                 const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
                   <g pointerEvents="none">
-                    {/* Solid green arrow — same as pass_low */}
+                    {/* Solid green arrow â€” same as pass_low */}
                     <line
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                       stroke="#22c55e" strokeWidth={3}
@@ -2237,13 +2392,13 @@ export default function MatchRoomPage() {
                     {/* Label */}
                     <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
                       textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
-                      ⚽ Inércia
+                      âš½ InÃ©rcia
                     </text>
                   </g>
                 );
               })()}
 
-              {/* (Fixed markers removed — live preview replaces them) */}
+              {/* (Fixed markers removed â€” live preview replaces them) */}
 
               {visibleActions.map(action => {
                 if (action.target_x == null || action.target_y == null) return null;
@@ -2260,7 +2415,7 @@ export default function MatchRoomPage() {
                 const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
-                const controlLabel = action.controlled_by_type === 'bot' ? '🤖' : action.controlled_by_type === 'manager' ? '📋' : '👤';
+                const controlLabel = action.controlled_by_type === 'bot' ? 'ðŸ¤–' : action.controlled_by_type === 'manager' ? 'ðŸ“‹' : 'ðŸ‘¤';
                 const opacity = animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8;
                 const dashArray = action.controlled_by_type === 'bot' ? '4,3' : 'none';
 
@@ -2270,7 +2425,7 @@ export default function MatchRoomPage() {
                   const dy = to.y - from.y;
 
                   if (action.action_type === 'pass_high') {
-                    // Yellow (20%) → Red (60%) → Yellow (20%), tip green
+                    // Yellow (20%) â†’ Red (60%) â†’ Yellow (20%), tip green
                     const seg = [
                       { t0: 0, t1: 0.2, color: '#f59e0b' },
                       { t0: 0.2, t1: 0.8, color: '#ef4444' },
@@ -2289,7 +2444,7 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'pass_launch') {
-                    // Yellow (35%) → Red (30%) → Yellow (35%), tip green
+                    // Yellow (35%) â†’ Red (30%) â†’ Yellow (35%), tip green
                     const seg = [
                       { t0: 0, t1: 0.35, color: '#f59e0b' },
                       { t0: 0.35, t1: 0.65, color: '#ef4444' },
@@ -2308,7 +2463,7 @@ export default function MatchRoomPage() {
                   }
 
                   if (action.action_type === 'shoot_power') {
-                    // Yellow→Red segments based on quality
+                    // Yellowâ†’Red segments based on quality
                     if (color === '#ef4444') {
                       // Full red = terrible
                       return [(
@@ -2321,7 +2476,7 @@ export default function MatchRoomPage() {
                         />
                       )];
                     }
-                    // Check if it's a borderline case — yellow→red at end
+                    // Check if it's a borderline case â€” yellowâ†’red at end
                     const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
                     const attrs = playerAttrsMap[action.participant_id];
                     const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
@@ -2356,7 +2511,7 @@ export default function MatchRoomPage() {
                     )];
                   }
 
-                  // pass_low, shoot_controlled, move, receive — single solid line
+                  // pass_low, shoot_controlled, move, receive â€” single solid line
                   return [(
                     <line key="single"
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
@@ -2385,15 +2540,15 @@ export default function MatchRoomPage() {
 
               {/* Drawing arrow (follows mouse) */}
               {drawingAction && drawingFrom && mouseFieldPct && (() => {
-                // One-touch: show move line (player → intercept) + ball action arrow (intercept → target)
+                // One-touch: show move line (player â†’ intercept) + ball action arrow (intercept â†’ target)
                 const isOneTouchDraw = pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId &&
                   drawingAction.type !== 'move';
 
                 if (isOneTouchDraw) {
-                  // Move line: player → intercept point
+                  // Move line: player â†’ intercept point
                   const playerPos = toSVG(drawingFrom.field_x!, drawingFrom.field_y!);
                   const interceptPos = toSVG(pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY);
-                  // Ball action: intercept → target
+                  // Ball action: intercept â†’ target
                   let targetFieldX: number, targetFieldY: number;
                   if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
                     const goalTarget = getShootTarget(drawingFrom);
@@ -2420,7 +2575,7 @@ export default function MatchRoomPage() {
                       <text x={(interceptPos.x + targetPos.x) / 2} y={(interceptPos.y + targetPos.y) / 2 - 6}
                         textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.8)"
                         fontFamily="'Barlow Condensed', sans-serif">
-                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1ª)
+                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1Âª)
                       </text>
                     </g>
                   );
@@ -2507,7 +2662,7 @@ export default function MatchRoomPage() {
                     />
                   );
                 }
-                // Shots: preview only green/yellow (no red — surprise)
+                // Shots: preview only green/yellow (no red â€” surprise)
                 const color = getArrowQuality(fromFieldX, fromFieldY, toFieldX, toFieldY, drawingAction.type, drawingAction.fromParticipantId);
                 const previewColor = drawingAction.type === 'shoot_controlled' ? '#22c55e' :
                   (color === '#ef4444' ? '#f59e0b' : color); // cap at yellow for shots
@@ -2578,7 +2733,7 @@ export default function MatchRoomPage() {
                     // Once reachable at a point, everything from that point to END is also reachable
                     canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
                   } else {
-                    // Stationary ball holder — if within reach, can tackle
+                    // Stationary ball holder â€” if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
                     canReachBall = distToBH <= (circleRadiusField + INTERCEPT_RADIUS + 2);
                   }
@@ -2594,7 +2749,7 @@ export default function MatchRoomPage() {
                     {/* Outer glow around active player (all actions) */}
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={18} fill="none" stroke={glowColor} strokeWidth="2" filter="url(#pulse-glow)" />
                     <circle cx={fromSvg.x} cy={fromSvg.y} r={14} fill="none" stroke={glowStroke} strokeWidth="4" />
-                    {/* Action circle at cursor (only for MOVE) — green=can't reach, purple=can reach */}
+                    {/* Action circle at cursor (only for MOVE) â€” green=can't reach, purple=can reach */}
                     {isMove && (
                       <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill={circleColor} stroke={circleStroke} strokeWidth="1.2" />
                     )}
@@ -2631,7 +2786,7 @@ export default function MatchRoomPage() {
                       <text x={previewSvg.x} y={previewSvg.y - 9} textAnchor="middle"
                         fontSize="6" fill="rgba(255,255,255,0.7)"
                         fontFamily="'Barlow Condensed', sans-serif" fontWeight="700">
-                        ⚽ {Math.round(movePct * 100)}%
+                        âš½ {Math.round(movePct * 100)}%
                       </text>
                     </g>
                   );
@@ -2776,15 +2931,15 @@ export default function MatchRoomPage() {
                     // Context-aware label for 'receive' action
                     let label = ACTION_LABELS[a];
                     let icon = '';
-                    if (a === 'move') icon = '↗';
-                    else if (a === 'pass_low') icon = '➡';
-                    else if (a === 'pass_high') icon = '⤴';
-                    else if (a === 'pass_launch') icon = '🚀';
-                    else if (a === 'shoot_controlled') icon = '🎯';
-                    else if (a === 'shoot_power') icon = '💥';
-                    else if (a === 'no_action') icon = '⊘';
+                    if (a === 'move') icon = 'â†—';
+                    else if (a === 'pass_low') icon = 'âž¡';
+                    else if (a === 'pass_high') icon = 'â¤´';
+                    else if (a === 'pass_launch') icon = 'ðŸš€';
+                    else if (a === 'shoot_controlled') icon = 'ðŸŽ¯';
+                    else if (a === 'shoot_power') icon = 'ðŸ’¥';
+                    else if (a === 'no_action') icon = 'âŠ˜';
                     else if (a === 'receive') {
-                      icon = '🤲';
+                      icon = 'ðŸ¤²';
                       // Determine context
                       const menuPlayer = participants.find(p => p.id === showActionMenu);
                       const bhAction = ballTrajectoryAction;
@@ -2793,7 +2948,7 @@ export default function MatchRoomPage() {
                         const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
                         if (bhAction.action_type === 'move' && isOpponent) {
                           label = 'DESARME';
-                          icon = '🦵';
+                          icon = 'ðŸ¦µ';
                         } else if (isShootAction(bhAction.action_type) && isOpponent) {
                           const isGK = menuPlayer.field_pos === 'GK';
                           if (isGK) {
@@ -2805,14 +2960,14 @@ export default function MatchRoomPage() {
                               : (gkX >= 82 && gkY >= 20 && gkY <= 80);
                             if (inBox) {
                               label = 'DEFENDER';
-                              icon = '🧤';
+                              icon = 'ðŸ§¤';
                             } else {
                               label = 'BLOQUEAR';
-                              icon = '🛡️';
+                              icon = 'ðŸ›¡ï¸';
                             }
                           } else {
                             label = 'BLOQUEAR';
-                            icon = '🛡️';
+                            icon = 'ðŸ›¡ï¸';
                           }
                         }
                       }
@@ -2822,12 +2977,12 @@ export default function MatchRoomPage() {
                       (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
                     if (isOneTouchOption) {
                       const baseLabel = ACTION_LABELS[a] || a;
-                      label = `${baseLabel} (1ª)`;
-                      if (a === 'pass_low') icon = '⚡➡';
-                      else if (a === 'pass_high') icon = '⚡⤴';
-                      else if (a === 'pass_launch') icon = '⚡🚀';
-                      else if (a === 'shoot_controlled') icon = '⚡🎯';
-                      else if (a === 'shoot_power') icon = '⚡💥';
+                      label = `${baseLabel} (1Âª)`;
+                      if (a === 'pass_low') icon = 'âš¡âž¡';
+                      else if (a === 'pass_high') icon = 'âš¡â¤´';
+                      else if (a === 'pass_launch') icon = 'âš¡ðŸš€';
+                      else if (a === 'shoot_controlled') icon = 'âš¡ðŸŽ¯';
+                      else if (a === 'shoot_power') icon = 'âš¡ðŸ’¥';
                     }
                     return (
                       <button
@@ -2848,7 +3003,7 @@ export default function MatchRoomPage() {
             {/* Pass/Shot quality indicator */}
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
-              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Média' : 'Ruim';
+              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'MÃ©dia' : 'Ruim';
               const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
               const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
               return (
@@ -2876,7 +3031,7 @@ export default function MatchRoomPage() {
               return (
                 <div className="absolute top-2 right-2 bg-[hsl(220,20%,8%)]/90 border border-[hsl(140,10%,25%)] rounded-lg px-3 py-1.5 z-30 flex items-center gap-2">
                   {isHalftime ? (
-                    <span className="text-[12px] font-display font-bold text-warning animate-pulse">⏸ INTERVALO</span>
+                    <span className="text-[12px] font-display font-bold text-warning animate-pulse">â¸ INTERVALO</span>
                   ) : (
                     <>
                       <span className="text-[10px] font-display text-muted-foreground uppercase">{half}</span>
@@ -2890,7 +3045,7 @@ export default function MatchRoomPage() {
             {(animating || isPhaseProcessing) && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
                 <span className="text-[11px] font-display font-bold text-tactical animate-pulse">
-                  {isPhaseProcessing ? `⏸ ${processingLabel}` : '⚡ MOTION — Resolvendo jogada...'}
+                  {isPhaseProcessing ? `â¸ ${processingLabel}` : 'âš¡ MOTION â€” Resolvendo jogada...'}
                 </span>
               </div>
             )}
@@ -2898,7 +3053,7 @@ export default function MatchRoomPage() {
             {/* Intercept zone hint */}
             {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
               <div className="absolute bottom-2 right-2 bg-[hsl(220,20%,10%)]/80 border border-blue-500/30 rounded px-3 py-1 z-30">
-                <span className="text-[9px] font-display text-blue-400">💡 Mova para a zona azul para DOMINAR BOLA</span>
+                <span className="text-[9px] font-display text-blue-400">ðŸ’¡ Mova para a zona azul para DOMINAR BOLA</span>
               </div>
             )}
 
@@ -2908,11 +3063,11 @@ export default function MatchRoomPage() {
                 <p className="font-display text-lg text-white/80">
                   {(() => {
                     const scheduledDate = new Date(match.scheduled_at);
-                    if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
+                    if (isNaN(scheduledDate.getTime())) return 'Aguardando inÃ­cio...';
                     const now = serverNow();
                     const countdownStart = scheduledDate.getTime();
                     const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
-                    if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
+                    if (now < countdownStart) return `ComeÃ§a: ${formatScheduledDate(match.scheduled_at)}`;
                     if (now < countdownEnd) return `Preparar... ${preMatchCountdownLeft}s`;
                     return 'Iniciando partida...';
                   })()}
@@ -2922,7 +3077,7 @@ export default function MatchRoomPage() {
             {isFinished && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
                 <p className="font-display font-extrabold text-xl text-white">
-                  ⏱ ENCERRADA — {match.home_score} × {match.away_score}
+                  â± ENCERRADA â€” {match.home_score} Ã— {match.away_score}
                 </p>
               </div>
             )}
@@ -2934,12 +3089,12 @@ export default function MatchRoomPage() {
               onClick={() => { setDrawingAction(null); setMouseFieldPct(null); }}
               className="absolute top-3 left-3 bg-destructive/80 text-white text-[10px] font-display px-2 py-1 rounded hover:bg-destructive"
             >
-              ✕ Cancelar
+              âœ• Cancelar
             </button>
           )}
         </div>
 
-        {/* ── Right sidebar ── */}
+        {/* â”€â”€ Right sidebar â”€â”€ */}
         <div className="w-72 shrink-0 bg-[hsl(140,10%,10%)] border-l border-[hsl(140,10%,18%)] flex flex-col overflow-hidden">
 
           {/* Turn Wheel */}
@@ -3031,7 +3186,7 @@ export default function MatchRoomPage() {
   );
 }
 
-// ─── Match minute calculation ─────────────────────────────────
+// â”€â”€â”€ Match minute calculation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const TURNS_PER_HALF = 62;
 
 function computeMatchMinute(turnNumber: number): number {
@@ -3041,7 +3196,7 @@ function computeMatchMinute(turnNumber: number): number {
   return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
 }
 
-// ─── TurnWheel (animated clock) ───────────────────────────────
+// â”€â”€â”€ TurnWheel (animated clock) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
@@ -3049,14 +3204,14 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
   const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
   const matchMinute = computeMatchMinute(turnNumber);
-  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1º Tempo' : '2º Tempo';
+  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1Âº Tempo' : '2Âº Tempo';
 
   const phases = isPositioning
     ? [
-        { key: 'positioning_attack', label: '⚽' },
-        { key: 'positioning_defense', label: '🛡' },
-        { key: '_skip1', label: '—' },
-        { key: '_skip2', label: '—' },
+        { key: 'positioning_attack', label: 'âš½' },
+        { key: 'positioning_defense', label: 'ðŸ›¡' },
+        { key: '_skip1', label: 'â€”' },
+        { key: '_skip2', label: 'â€”' },
       ]
     : [
         { key: 'ball_holder', label: '1' },
@@ -3109,13 +3264,13 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         <span className="text-[10px] font-display text-muted-foreground uppercase tracking-widest">{halfLabel}</span>
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-sm text-foreground">{matchMinute}'</span>
-          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
+          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || 'â€”'}</span>
         </div>
       </div>
 
       {isHalftime && (
         <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 mb-1">
-          <span className="text-[10px] font-display font-bold text-warning">⏸ INTERVALO</span>
+          <span className="text-[10px] font-display font-bold text-warning">â¸ INTERVALO</span>
         </div>
       )}
 
@@ -3142,7 +3297,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
                     fontSize="14" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
                     fill={isSkipped ? 'hsl(var(--muted-foreground) / 0.3)' : isActive ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
                   >
-                    {isSkipped ? '—' : phases[i].label}
+                    {isSkipped ? 'â€”' : phases[i].label}
                   </text>
                 );
               })()}
@@ -3203,7 +3358,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         <div className="flex items-center gap-1.5 mt-1">
           <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
           <span className="text-[9px] font-display text-muted-foreground">
-            {isLooseBall ? '⚽ BOLA SOLTA' : `⚽ ${possessionClub.short_name}`}
+            {isLooseBall ? 'âš½ BOLA SOLTA' : `âš½ ${possessionClub.short_name}`}
           </span>
         </div>
       )}
@@ -3211,7 +3366,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   );
 }
 
-// ─── AccordionSection ─────────────────────────────────────────
+// â”€â”€â”€ AccordionSection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AccordionSection({ title, badge, color, open, onToggle, children, className }: {
   title: string; badge?: string; color?: string;
   open: boolean; onToggle: () => void;
@@ -3232,7 +3387,7 @@ function AccordionSection({ title, badge, color, open, onToggle, children, class
   );
 }
 
-// ─── TeamList ─────────────────────────────────────────────────
+// â”€â”€â”€ TeamList â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submittedIds }: {
   players: Participant[]; ballHolderId: string | null; myId: string | null;
   selectedId: string | null; onSelect: (id: string) => void; submittedIds: Set<string>;
@@ -3252,15 +3407,15 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
           <span className="font-display w-5 shrink-0">{p.jersey_number || '?'}</span>
           <span className="font-display w-6 text-muted-foreground shrink-0">{p.field_pos || '?'}</span>
           <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
-          {ballHolderId === p.id && <span className="text-[8px]">⚽</span>}
-          {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">✓</span>}
+          {ballHolderId === p.id && <span className="text-[8px]">âš½</span>}
+          {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">âœ“</span>}
         </button>
       ))}
     </div>
   );
 }
 
-// ─── ClubBadgeInline ──────────────────────────────────────────
+// â”€â”€â”€ ClubBadgeInline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boolean }) {
   if (!club) return <div className="w-7 h-7 rounded bg-muted animate-pulse" />;
   return (
@@ -3275,3 +3430,7 @@ function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boole
     </div>
   );
 }
+
+
+
+
