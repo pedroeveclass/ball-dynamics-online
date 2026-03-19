@@ -1355,9 +1355,10 @@ Deno.serve(async (req) => {
         const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
         const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
 
+        const transSetPieceType = (currentPhaseIndex < 0) ? (activeTurn.set_piece_type || null) : null;
         await supabase.from('match_turns').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', activeTurn.id);
         await supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id);
-        await supabase.from('match_turns').insert({ match_id, turn_number: activeTurn.turn_number, phase: nextPhase, possession_club_id: possClubId, ball_holder_participant_id: activeTurn.ball_holder_participant_id, started_at: nextPhaseStart, ends_at: nextPhaseEnd, status: 'active' });
+        await supabase.from('match_turns').insert({ match_id, turn_number: activeTurn.turn_number, phase: nextPhase, possession_club_id: possClubId, ball_holder_participant_id: activeTurn.ball_holder_participant_id, started_at: nextPhaseStart, ends_at: nextPhaseEnd, status: 'active', set_piece_type: transSetPieceType });
       }
 
       return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

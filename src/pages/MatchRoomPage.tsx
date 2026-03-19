@@ -1100,6 +1100,8 @@ export default function MatchRoomPage() {
             activeTurnRef.current = nextTurn;
             setActiveTurn(nextTurn);
             scheduleTurnActionsReconcile(true);
+            // Secondary reconcile to catch bot actions with slight replication delay
+            setTimeout(() => scheduleTurnActionsReconcile(true), 500);
           }
           return;
         }

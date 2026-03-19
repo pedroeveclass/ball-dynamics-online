@@ -1,0 +1,1 @@
+ALTER TABLE public.match_turns ADD COLUMN set_piece_type text DEFAULT NULL;
