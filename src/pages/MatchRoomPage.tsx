@@ -2842,7 +2842,7 @@ export default function MatchRoomPage() {
                       <text x={previewSvg.x} y={previewSvg.y - 9} textAnchor="middle"
                         fontSize="6" fill="rgba(255,255,255,0.7)"
                         fontFamily="'Barlow Condensed', sans-serif" fontWeight="700">
-                        âš½ {Math.round(movePct * 100)}%
+                        Bola {Math.round(movePct * 100)}%
                       </text>
                     </g>
                   );
