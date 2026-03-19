@@ -3108,8 +3108,8 @@ export default function MatchRoomPage() {
 
             {/* Intercept zone hint */}
             {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
-              <div className="absolute bottom-2 right-2 bg-[hsl(220,20%,10%)]/80 border border-blue-500/30 rounded px-3 py-1 z-30">
-                <span className="text-[9px] font-display text-blue-400">ðŸ’¡ Mova para a zona azul para DOMINAR BOLA</span>
+              <div className="absolute bottom-2 right-2 bg-background/80 border border-blue-500/30 rounded px-3 py-1 z-30">
+                <span className="text-[9px] font-display text-blue-400">Mova para a zona azul para DOMINAR BOLA</span>
               </div>
             )}
 
