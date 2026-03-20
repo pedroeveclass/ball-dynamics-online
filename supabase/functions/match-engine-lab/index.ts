@@ -1728,6 +1728,23 @@ Deno.serve(async (req) => {
                 const receiverAction = allActions.find(a => a.participant_id === ballHolderAction.target_participant_id && a.action_type === 'receive');
                 if (receiverAction) {
                   nextBallHolderParticipantId = ballHolderAction.target_participant_id;
+                  // ── One-touch: auto-insert follow-up action for next turn ──
+                  const otPayload = receiverAction.payload && typeof receiverAction.payload === 'object' ? receiverAction.payload as any : null;
+                  if (otPayload?.one_touch && otPayload.next_action_type && otPayload.next_target_x != null && otPayload.next_target_y != null) {
+                    const newTurnNumber = match.current_turn_number + 1;
+                    console.log(`[ENGINE] One-touch detected! Inserting follow-up ${otPayload.next_action_type} for turn ${newTurnNumber}`);
+                    // We'll insert the follow-up action after the next turn is created (stored for later)
+                    (match as any)._oneTouchFollowUp = {
+                      participant_id: receiverAction.participant_id,
+                      action_type: otPayload.next_action_type,
+                      target_x: otPayload.next_target_x,
+                      target_y: otPayload.next_target_y,
+                      target_participant_id: otPayload.next_target_participant_id || null,
+                      controlled_by_type: receiverAction.controlled_by_type,
+                      controlled_by_user_id: receiverAction.controlled_by_user_id,
+                      payload: { one_touch_executed: true },
+                    };
+                  }
                 } else {
                   nextBallHolderParticipantId = null;
                   await supabase.from('match_event_logs').insert({
