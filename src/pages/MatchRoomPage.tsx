@@ -2357,10 +2357,29 @@ export default function MatchRoomPage() {
 
         <div className="flex items-center gap-4">
           <ClubBadgeInline club={homeClub} />
-          <div className="font-display text-3xl font-extrabold tracking-widest">
-            <span style={{ color: homeClub?.primary_color }}>{match.home_score}</span>
-            <span className="text-muted-foreground mx-2 text-lg">:</span>
-            <span style={{ color: awayClub?.primary_color }}>{match.away_score}</span>
+          <div className="flex items-center gap-2">
+            <div className="font-display text-3xl font-extrabold tracking-widest">
+              <span style={{ color: homeClub?.primary_color }}>{match.home_score}</span>
+              <span className="text-muted-foreground mx-2 text-lg">:</span>
+              <span style={{ color: awayClub?.primary_color }}>{match.away_score}</span>
+            </div>
+            {isLive && (() => {
+              const minute = computeMatchMinute(match.current_turn_number);
+              const half = match.current_turn_number <= TURNS_PER_HALF ? '1T' : '2T';
+              const isHalftime = activeTurn?.phase === 'positioning_attack' && match.current_turn_number === TURNS_PER_HALF + 1;
+              return (
+                <div className="flex items-center gap-1.5 ml-2 bg-[hsl(140,10%,15%)] rounded px-2 py-0.5">
+                  {isHalftime ? (
+                    <span className="text-[11px] font-display font-bold text-warning animate-pulse">⏸ INT</span>
+                  ) : (
+                    <>
+                      <span className="text-[9px] font-display text-muted-foreground">{half}</span>
+                      <span className="font-display font-bold text-sm text-foreground tabular-nums">{minute}'</span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <ClubBadgeInline club={awayClub} right />
         </div>
