@@ -358,37 +358,52 @@ function computeDeviation(
 
   let difficultyMultiplier: number;
   let skillFactor: number;
+  let minRandomDeviation: number;
 
   switch (actionType) {
-    case 'pass_low':
-      difficultyMultiplier = 5;
+    case 'pass_low': {
+      // Short passes (≤20) are easy, long passes (>35) get exponentially harder
+      const longPenalty = dist > 35 ? Math.pow((dist - 35) / 65, 1.2) * 4 : 0;
+      difficultyMultiplier = 5 + longPenalty;
       skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
+      minRandomDeviation = dist > 25 ? 0.4 + (dist / 100) * 0.6 : 0.3;
       break;
+    }
     case 'pass_high':
-      difficultyMultiplier = 7;
+      difficultyMultiplier = 10;
       skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
+      minRandomDeviation = 0.5 + (dist / 100) * 0.8;
       break;
     case 'pass_launch':
-      difficultyMultiplier = 6;
+      difficultyMultiplier = 9;
       skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
+      minRandomDeviation = 0.5 + (dist / 100) * 0.7;
       break;
-    case 'shoot_controlled':
-      difficultyMultiplier = 4;
+    case 'shoot_controlled': {
+      // Distance to goal penalty — shots from midfield are very hard
+      const goalX = targetX > 50 ? 100 : 0;
+      const distToGoal = Math.abs(startX - goalX);
+      const distPenalty = distToGoal > 25 ? Math.pow((distToGoal - 25) / 75, 1.5) * 5 : 0;
+      difficultyMultiplier = 7 + distPenalty;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
+      minRandomDeviation = 0.4 + (distToGoal / 100) * 0.8;
       break;
+    }
     case 'shoot_power':
       difficultyMultiplier = 8;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
+      minRandomDeviation = 0.6;
       break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
   }
 
-  const baseDifficulty = (dist / 100) * difficultyMultiplier;
-  // Harsh exponential curve: 99 = zero deviation, <50 = harsh, <40 = always large
-  const skillCurve = Math.pow(1 - skillFactor, 3.5);
-  const minimumDeviation = skillFactor < 0.45 ? (1 + (0.45 - skillFactor) * 3) : 0;
-  const deviationRadius = (baseDifficulty * skillCurve + minimumDeviation) * (0.6 + Math.random() * 0.4);
+  // Exponential distance factor instead of linear
+  const distFactor = Math.pow(dist / 100, 1.4) * difficultyMultiplier;
+  // Skill curve: even 99 skill has some deviation via minRandomDeviation
+  const skillCurve = Math.pow(1 - skillFactor, 2.5);
+  // Final deviation = skill-based + random floor
+  const deviationRadius = (distFactor * skillCurve + minRandomDeviation) * (0.5 + Math.random() * 0.5);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
@@ -396,18 +411,15 @@ function computeDeviation(
   // For shoot_power: if deviation is large, ball goes over the goal
   let overGoal = false;
   if (actionType === 'shoot_power' && deviationRadius > 1.0) {
-    // Push target_y outside goal range (38-62)
     if (actualY >= 38 && actualY <= 62) {
       actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
       overGoal = true;
     }
   }
 
-  // Don't clamp — allow ball to go out of bounds for set pieces
-
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
-  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} overGoal=${overGoal}`);
+  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal}`);
 
   return { actualX, actualY, deviationDist, overGoal };
 }
