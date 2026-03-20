@@ -1002,12 +1002,18 @@ export default function MatchRoomPage() {
     prevPossClubRef.current = currentPoss ?? null;
   }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
 
-  // ── Contest visual effect from event logs ────────────────────
+  // ── Contest visual effect + sounds from event logs ────────────
   useEffect(() => {
     if (events.length === 0) return;
     const last = events[events.length - 1];
     if (!last) return;
-    // Only trigger during/near resolution
+
+    // Sound effects based on event type
+    if (last.event_type === 'goal') sounds.goal();
+    else if (last.event_type === 'foul' || last.event_type === 'penalty') sounds.foul();
+    else if (last.event_type === 'kickoff') sounds.whistle();
+
+    // Only trigger visual during/near resolution
     const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
     if (!isContest) return;
     
