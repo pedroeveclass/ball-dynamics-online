@@ -9,8 +9,8 @@ const PHASE_DURATION_MS = 6000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
-const MAX_TURNS = 124;
-const TURNS_PER_HALF = 62;
+const MAX_TURNS = 144;
+const TURNS_PER_HALF = 72;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 
 // ─── Match minute calculation ────────────────────────────────
