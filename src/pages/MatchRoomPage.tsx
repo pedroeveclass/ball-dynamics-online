@@ -1,4 +1,5 @@
-﻿import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { sounds } from '@/lib/sounds';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { getInitialMatchEngineFunction, invokeConfiguredMatchEngine } from '@/lib/matchEngine';
@@ -1580,9 +1581,22 @@ export default function MatchRoomPage() {
     }
   };
 
-  // ─── All submitted actions are always visible ───────────────
+  // ─── Filter bot arrows when human already acted ───────────────
   const visibleActions = useMemo(() => {
-    return turnActions;
+    // Find participant IDs where a human already submitted an action this turn
+    const humanActionedIds = new Set<string>();
+    for (const act of turnActions) {
+      if (act.controlled_by_type === 'player' || act.controlled_by_type === 'manager') {
+        humanActionedIds.add(act.participant_id);
+      }
+    }
+    // Filter out bot actions for participants where a human already acted
+    return turnActions.filter(act => {
+      if (act.controlled_by_type === 'bot' && humanActionedIds.has(act.participant_id)) {
+        return false;
+      }
+      return true;
+    });
   }, [turnActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
@@ -2343,10 +2357,29 @@ export default function MatchRoomPage() {
 
         <div className="flex items-center gap-4">
           <ClubBadgeInline club={homeClub} />
-          <div className="font-display text-3xl font-extrabold tracking-widest">
-            <span style={{ color: homeClub?.primary_color }}>{match.home_score}</span>
-            <span className="text-muted-foreground mx-2 text-lg">:</span>
-            <span style={{ color: awayClub?.primary_color }}>{match.away_score}</span>
+          <div className="flex items-center gap-2">
+            <div className="font-display text-3xl font-extrabold tracking-widest">
+              <span style={{ color: homeClub?.primary_color }}>{match.home_score}</span>
+              <span className="text-muted-foreground mx-2 text-lg">:</span>
+              <span style={{ color: awayClub?.primary_color }}>{match.away_score}</span>
+            </div>
+            {isLive && (() => {
+              const minute = computeMatchMinute(match.current_turn_number);
+              const half = match.current_turn_number <= TURNS_PER_HALF ? '1T' : '2T';
+              const isHalftime = activeTurn?.phase === 'positioning_attack' && match.current_turn_number === TURNS_PER_HALF + 1;
+              return (
+                <div className="flex items-center gap-1.5 ml-2 bg-[hsl(140,10%,15%)] rounded px-2 py-0.5">
+                  {isHalftime ? (
+                    <span className="text-[11px] font-display font-bold text-warning animate-pulse">⏸ INT</span>
+                  ) : (
+                    <>
+                      <span className="text-[9px] font-display text-muted-foreground">{half}</span>
+                      <span className="font-display font-bold text-sm text-foreground tabular-nums">{minute}'</span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <ClubBadgeInline club={awayClub} right />
         </div>
@@ -3171,24 +3204,7 @@ export default function MatchRoomPage() {
               );
             })()}
 
-            {/* Match clock overlay on field */}
-            {isLive && (() => {
-              const minute = computeMatchMinute(match.current_turn_number);
-              const half = match.current_turn_number <= TURNS_PER_HALF ? '1T' : '2T';
-              const isHalftime = activeTurn?.phase === 'positioning_attack' && match.current_turn_number === TURNS_PER_HALF + 1;
-              return (
-                <div className="absolute top-2 right-2 bg-[hsl(220,20%,8%)]/90 border border-[hsl(140,10%,25%)] rounded-lg px-3 py-1.5 z-30 flex items-center gap-2">
-                  {isHalftime ? (
-                    <span className="text-[12px] font-display font-bold text-warning animate-pulse">⏸ INTERVALO</span>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-display text-muted-foreground uppercase">{half}</span>
-                      <span className="font-display font-extrabold text-lg text-foreground tabular-nums">{minute}'</span>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+            {/* Clock moved to scoreboard — removed from field */}
 
             {(animating || isPhaseProcessing) && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
@@ -3307,17 +3323,20 @@ export default function MatchRoomPage() {
                {events.slice(-30).map(e => (
                  <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
                    e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-                   e.event_type === 'kickoff' ? 'border-tactical text-foreground' :
-                   e.event_type === 'possession_change' ? 'border-warning/60 text-muted-foreground' :
+                   e.event_type === 'kickoff' ? 'border-tactical text-foreground/90' :
+                   e.event_type === 'possession_change' ? 'border-warning/60 text-foreground/70' :
                    e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
                    e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
                    e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
                    e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
                    e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
-                   'border-[hsl(140,10%,25%)] text-muted-foreground'
+                   e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
+                   e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
+                   e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
+                   'border-[hsl(140,10%,25%)] text-foreground/70'
                  }`}>
                    <p className="font-display font-semibold">{e.title}</p>
-                   {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
+                   {e.body && <p className="opacity-80 text-[9px]">{e.body}</p>}
                  </div>
                ))}
               <div ref={eventsEndRef} />
@@ -3335,7 +3354,7 @@ export default function MatchRoomPage() {
 }
 
 // ─── Match minute calculation ─────────────────────────────────
-const TURNS_PER_HALF = 62;
+const TURNS_PER_HALF = 72;
 
 function computeMatchMinute(turnNumber: number): number {
   if (turnNumber <= TURNS_PER_HALF) {

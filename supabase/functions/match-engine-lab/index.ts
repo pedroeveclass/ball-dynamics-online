@@ -9,8 +9,8 @@ const PHASE_DURATION_MS = 6000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
-const MAX_TURNS = 124;
-const TURNS_PER_HALF = 62;
+const MAX_TURNS = 144;
+const TURNS_PER_HALF = 72;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 
 // ─── Match minute calculation ────────────────────────────────
@@ -358,37 +358,52 @@ function computeDeviation(
 
   let difficultyMultiplier: number;
   let skillFactor: number;
+  let minRandomDeviation: number;
 
   switch (actionType) {
-    case 'pass_low':
-      difficultyMultiplier = 5;
+    case 'pass_low': {
+      // Short passes (≤20) are easy, long passes (>35) get exponentially harder
+      const longPenalty = dist > 35 ? Math.pow((dist - 35) / 65, 1.2) * 4 : 0;
+      difficultyMultiplier = 5 + longPenalty;
       skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
+      minRandomDeviation = dist > 25 ? 0.4 + (dist / 100) * 0.6 : 0.3;
       break;
+    }
     case 'pass_high':
-      difficultyMultiplier = 7;
+      difficultyMultiplier = 10;
       skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
+      minRandomDeviation = 0.5 + (dist / 100) * 0.8;
       break;
     case 'pass_launch':
-      difficultyMultiplier = 6;
+      difficultyMultiplier = 9;
       skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
+      minRandomDeviation = 0.5 + (dist / 100) * 0.7;
       break;
-    case 'shoot_controlled':
-      difficultyMultiplier = 4;
+    case 'shoot_controlled': {
+      // Distance to goal penalty — shots from midfield are very hard
+      const goalX = targetX > 50 ? 100 : 0;
+      const distToGoal = Math.abs(startX - goalX);
+      const distPenalty = distToGoal > 25 ? Math.pow((distToGoal - 25) / 75, 1.5) * 5 : 0;
+      difficultyMultiplier = 7 + distPenalty;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
+      minRandomDeviation = 0.4 + (distToGoal / 100) * 0.8;
       break;
+    }
     case 'shoot_power':
       difficultyMultiplier = 8;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
+      minRandomDeviation = 0.6;
       break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
   }
 
-  const baseDifficulty = (dist / 100) * difficultyMultiplier;
-  // Harsh exponential curve: 99 = zero deviation, <50 = harsh, <40 = always large
-  const skillCurve = Math.pow(1 - skillFactor, 3.5);
-  const minimumDeviation = skillFactor < 0.45 ? (1 + (0.45 - skillFactor) * 3) : 0;
-  const deviationRadius = (baseDifficulty * skillCurve + minimumDeviation) * (0.6 + Math.random() * 0.4);
+  // Exponential distance factor instead of linear
+  const distFactor = Math.pow(dist / 100, 1.4) * difficultyMultiplier;
+  // Skill curve: even 99 skill has some deviation via minRandomDeviation
+  const skillCurve = Math.pow(1 - skillFactor, 2.5);
+  // Final deviation = skill-based + random floor
+  const deviationRadius = (distFactor * skillCurve + minRandomDeviation) * (0.5 + Math.random() * 0.5);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
@@ -396,18 +411,15 @@ function computeDeviation(
   // For shoot_power: if deviation is large, ball goes over the goal
   let overGoal = false;
   if (actionType === 'shoot_power' && deviationRadius > 1.0) {
-    // Push target_y outside goal range (38-62)
     if (actualY >= 38 && actualY <= 62) {
       actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
       overGoal = true;
     }
   }
 
-  // Don't clamp — allow ball to go out of bounds for set pieces
-
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
-  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} overGoal=${overGoal}`);
+  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal}`);
 
   return { actualX, actualY, deviationDist, overGoal };
 }
@@ -1666,13 +1678,34 @@ Deno.serve(async (req) => {
                 body: result.description,
               });
             } else if (result.foul && result.foulPosition) {
-              nextBallHolderParticipantId = ballHolder.id;
-              await supabase.from('match_participants').update({ pos_x: result.foulPosition.x, pos_y: result.foulPosition.y }).eq('id', ballHolder.id);
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
-              });
-              nextSetPieceType = 'free_kick';
-              ballEndPos = { x: result.foulPosition.x, y: result.foulPosition.y };
+              // Check if foul is inside penalty area
+              const foulX = result.foulPosition.x;
+              const foulY = result.foulPosition.y;
+              const isHomeAttacking = possClubId === match.home_club_id;
+              const inPenaltyArea = isHomeAttacking
+                ? (foulX >= 82 && foulY >= 20 && foulY <= 80)
+                : (foulX <= 18 && foulY >= 20 && foulY <= 80);
+
+              if (inPenaltyArea) {
+                // PENALTY!
+                const penaltyX = isHomeAttacking ? 88 : 12;
+                const penaltyY = 50;
+                nextBallHolderParticipantId = ballHolder.id;
+                await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', ballHolder.id);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'penalty', title: '🟥 PÊNALTI!', body: 'Falta dentro da área! Pênalti marcado.',
+                });
+                nextSetPieceType = 'penalty';
+                ballEndPos = { x: penaltyX, y: penaltyY };
+              } else {
+                nextBallHolderParticipantId = ballHolder.id;
+                await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', ballHolder.id);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
+                });
+                nextSetPieceType = 'free_kick';
+                ballEndPos = { x: foulX, y: foulY };
+              }
               if (result.failedContestLog) {
                 await supabase.from('match_event_logs').insert({
                   match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
@@ -1716,6 +1749,23 @@ Deno.serve(async (req) => {
                 const receiverAction = allActions.find(a => a.participant_id === ballHolderAction.target_participant_id && a.action_type === 'receive');
                 if (receiverAction) {
                   nextBallHolderParticipantId = ballHolderAction.target_participant_id;
+                  // ── One-touch: auto-insert follow-up action for next turn ──
+                  const otPayload = receiverAction.payload && typeof receiverAction.payload === 'object' ? receiverAction.payload as any : null;
+                  if (otPayload?.one_touch && otPayload.next_action_type && otPayload.next_target_x != null && otPayload.next_target_y != null) {
+                    const newTurnNumber = match.current_turn_number + 1;
+                    console.log(`[ENGINE] One-touch detected! Inserting follow-up ${otPayload.next_action_type} for turn ${newTurnNumber}`);
+                    // We'll insert the follow-up action after the next turn is created (stored for later)
+                    (match as any)._oneTouchFollowUp = {
+                      participant_id: receiverAction.participant_id,
+                      action_type: otPayload.next_action_type,
+                      target_x: otPayload.next_target_x,
+                      target_y: otPayload.next_target_y,
+                      target_participant_id: otPayload.next_target_participant_id || null,
+                      controlled_by_type: receiverAction.controlled_by_type,
+                      controlled_by_user_id: receiverAction.controlled_by_user_id,
+                      payload: { one_touch_executed: true },
+                    };
+                  }
                 } else {
                   nextBallHolderParticipantId = null;
                   await supabase.from('match_event_logs').insert({
@@ -1986,12 +2036,41 @@ Deno.serve(async (req) => {
             body: `Partida encerrada aos ${matchMinute}'.`,
           });
         } else {
+          // ── Post-goal reset: move all players to formation positions ──
+          if (nextSetPieceType === 'kickoff') {
+            const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.home_club_id).maybeSingle();
+            const { data: awaySettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.away_club_id).maybeSingle();
+            const homeFormation = homeSettings?.default_formation || '4-4-2';
+            const awayFormation = awaySettings?.default_formation || '4-4-2';
+
+            const resetTeam = async (clubId: string, formation: string, isHome: boolean) => {
+              const teamParts = (participants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && p.id !== nextBallHolderParticipantId);
+              const positions = getFormationForFill(formation, isHome);
+              const updates: Promise<any>[] = [];
+              teamParts.forEach((p: any, i: number) => {
+                const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
+                let x = pos.x;
+                // Clamp to own half for kickoff
+                x = isHome ? Math.min(x, 48) : Math.max(x, 52);
+                updates.push(supabase.from('match_participants').update({ pos_x: x, pos_y: pos.y }).eq('id', p.id));
+              });
+              await Promise.all(updates);
+            };
+            await Promise.all([
+              resetTeam(match.home_club_id, homeFormation, true),
+              resetTeam(match.away_club_id, awayFormation, false),
+            ]);
+            console.log(`[ENGINE] Post-goal reset: all players moved to formation positions`);
+          }
+
           const nextPhaseStart = new Date().toISOString();
           const isNextLooseBall = nextBallHolderParticipantId === null;
 
-          const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType);
+          // Penalty: skip positioning, go directly to ball_holder phase
+          const isPenalty = nextSetPieceType === 'penalty';
+          const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType) && !isPenalty;
           const usePositioning = hasDeadBallRestart;
-          const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
+          const nextPhase = isPenalty ? 'ball_holder' : (isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder'));
           const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
           const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
 
@@ -2002,7 +2081,7 @@ Deno.serve(async (req) => {
             home_score: homeScore, away_score: awayScore,
           }).eq('id', match_id);
 
-          await supabase.from('match_turns').insert({
+          const { data: insertedTurn } = await supabase.from('match_turns').insert({
             match_id, turn_number: newTurnNumber,
             phase: nextPhase,
             possession_club_id: newPossessionClubId,
@@ -2010,7 +2089,31 @@ Deno.serve(async (req) => {
             started_at: nextPhaseStart, ends_at: nextPhaseEnd,
             status: 'active',
             set_piece_type: nextSetPieceType || null,
-          });
+          }).select('id').single();
+
+          // ── One-touch follow-up: insert auto action for next turn ──
+          const oneTouchFollowUp = (match as any)._oneTouchFollowUp;
+          if (oneTouchFollowUp && insertedTurn && nextPhase === 'ball_holder') {
+            await supabase.from('match_actions').insert({
+              match_id,
+              match_turn_id: insertedTurn.id,
+              participant_id: oneTouchFollowUp.participant_id,
+              controlled_by_type: oneTouchFollowUp.controlled_by_type || 'bot',
+              controlled_by_user_id: oneTouchFollowUp.controlled_by_user_id || null,
+              action_type: oneTouchFollowUp.action_type,
+              target_x: oneTouchFollowUp.target_x,
+              target_y: oneTouchFollowUp.target_y,
+              target_participant_id: oneTouchFollowUp.target_participant_id || null,
+              status: 'pending',
+              payload: oneTouchFollowUp.payload || null,
+            });
+            console.log(`[ENGINE] One-touch follow-up inserted: ${oneTouchFollowUp.action_type} for participant ${oneTouchFollowUp.participant_id.slice(0,8)}`);
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'one_touch',
+              title: '⚡ Toque de primeira!',
+              body: 'Jogador executou a ação de primeira, sem dominar a bola.',
+            });
+          }
 
           if (isNextLooseBall) {
             await supabase.from('match_event_logs').insert({
@@ -2023,6 +2126,12 @@ Deno.serve(async (req) => {
               match_id, event_type: 'positioning',
               title: '📍 Posicionamento',
               body: 'Time com a bola posiciona seus jogadores primeiro.',
+            });
+          } else if (isPenalty) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'penalty_kick',
+              title: '🎯 Cobrança de pênalti',
+              body: 'O jogador que sofreu a falta cobra o pênalti.',
             });
           }
         }
