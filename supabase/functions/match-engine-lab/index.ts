@@ -1745,43 +1745,29 @@ Deno.serve(async (req) => {
               }
             } else if (isPassType(ballHolderAction.action_type)) {
               if (ballHolderAction.target_participant_id) {
-                // Only give ball if target submitted a 'receive' action
-                const receiverAction = allActions.find(a => a.participant_id === ballHolderAction.target_participant_id && a.action_type === 'receive');
-                if (receiverAction) {
-                  nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-                  // ── One-touch: auto-insert follow-up action for next turn ──
-                  const otPayload = receiverAction.payload && typeof receiverAction.payload === 'object' ? receiverAction.payload as any : null;
-                  if (otPayload?.one_touch && otPayload.next_action_type && otPayload.next_target_x != null && otPayload.next_target_y != null) {
-                    const newTurnNumber = match.current_turn_number + 1;
-                    console.log(`[ENGINE] One-touch detected! Inserting follow-up ${otPayload.next_action_type} for turn ${newTurnNumber}`);
-                    // We'll insert the follow-up action after the next turn is created (stored for later)
-                    (match as any)._oneTouchFollowUp = {
-                      participant_id: receiverAction.participant_id,
-                      action_type: otPayload.next_action_type,
-                      target_x: otPayload.next_target_x,
-                      target_y: otPayload.next_target_y,
-                      target_participant_id: otPayload.next_target_participant_id || null,
-                      controlled_by_type: receiverAction.controlled_by_type,
-                      controlled_by_user_id: receiverAction.controlled_by_user_id,
-                      payload: { one_touch_executed: true },
-                    };
+                nextBallHolderParticipantId = ballHolderAction.target_participant_id;
+              } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
+                let closestDist = Infinity;
+                let closestId: string | null = null;
+                for (const p of (participants || [])) {
+                  if (p.id === ballHolder.id) continue;
+                  const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive'));
+                  const px = moveAction?.target_x ?? p.pos_x ?? 50;
+                  const py = moveAction?.target_y ?? p.pos_y ?? 50;
+                  const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
+                  if (dist < closestDist) { closestDist = dist; closestId = p.id; }
+                }
+                if (closestId && closestDist <= 8) {
+                  nextBallHolderParticipantId = closestId;
+                  const closestPlayer = (participants || []).find(p => p.id === closestId);
+                  if (closestPlayer && closestPlayer.club_id !== possClubId) {
+                    newPossessionClubId = closestPlayer.club_id;
+                    await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
                   }
                 } else {
                   nextBallHolderParticipantId = null;
-                  await supabase.from('match_event_logs').insert({
-                    match_id, event_type: 'loose_ball',
-                    title: '⚽ Bola solta!',
-                    body: 'O destinatário não dominou a bola.',
-                  });
+                  await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Passe para área vazia. Ninguém está com a bola.' });
                 }
-              } else {
-                // Pass to empty space — always loose ball
-                nextBallHolderParticipantId = null;
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'loose_ball',
-                  title: '⚽ Bola solta!',
-                  body: 'Passe para área vazia. Ninguém dominou a bola.',
-                });
               }
             } else if (ballHolderAction.action_type === 'move') {
               nextBallHolderParticipantId = ballHolder.id;
@@ -2091,28 +2077,32 @@ Deno.serve(async (req) => {
             set_piece_type: nextSetPieceType || null,
           }).select('id').single();
 
-          // ── One-touch follow-up: insert auto action for next turn ──
-          const oneTouchFollowUp = (match as any)._oneTouchFollowUp;
-          if (oneTouchFollowUp && insertedTurn && nextPhase === 'ball_holder') {
-            await supabase.from('match_actions').insert({
-              match_id,
-              match_turn_id: insertedTurn.id,
-              participant_id: oneTouchFollowUp.participant_id,
-              controlled_by_type: oneTouchFollowUp.controlled_by_type || 'bot',
-              controlled_by_user_id: oneTouchFollowUp.controlled_by_user_id || null,
-              action_type: oneTouchFollowUp.action_type,
-              target_x: oneTouchFollowUp.target_x,
-              target_y: oneTouchFollowUp.target_y,
-              target_participant_id: oneTouchFollowUp.target_participant_id || null,
-              status: 'pending',
-              payload: oneTouchFollowUp.payload || null,
-            });
-            console.log(`[ENGINE] One-touch follow-up inserted: ${oneTouchFollowUp.action_type} for participant ${oneTouchFollowUp.participant_id.slice(0,8)}`);
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'one_touch',
-              title: '⚡ Toque de primeira!',
-              body: 'Jogador executou a ação de primeira, sem dominar a bola.',
-            });
+          // ── One-touch auto-action (same approach as 11x11 engine) ──
+          if (nextBallHolderParticipantId && insertedTurn?.id) {
+            const oneTouchAction = allActions.find(a =>
+              a.participant_id === nextBallHolderParticipantId &&
+              a.action_type === 'receive' &&
+              a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch === true
+            );
+            if (oneTouchAction) {
+              const otPayload = oneTouchAction.payload as any;
+              if (otPayload.next_action_type) {
+                await supabase.from('match_actions').insert({
+                  match_id, match_turn_id: insertedTurn.id,
+                  participant_id: nextBallHolderParticipantId,
+                  controlled_by_type: oneTouchAction.controlled_by_type || 'bot',
+                  controlled_by_user_id: oneTouchAction.controlled_by_user_id || null,
+                  action_type: otPayload.next_action_type,
+                  target_x: otPayload.next_target_x ?? null,
+                  target_y: otPayload.next_target_y ?? null,
+                  target_participant_id: otPayload.next_target_participant_id || null,
+                  payload: { one_touch_executed: true },
+                  status: 'pending',
+                });
+                console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type}`);
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque de primeira!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
+              }
+            }
           }
 
           if (isNextLooseBall) {
