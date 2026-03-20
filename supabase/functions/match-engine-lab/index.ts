@@ -2077,28 +2077,32 @@ Deno.serve(async (req) => {
             set_piece_type: nextSetPieceType || null,
           }).select('id').single();
 
-          // ── One-touch follow-up: insert auto action for next turn ──
-          const oneTouchFollowUp = (match as any)._oneTouchFollowUp;
-          if (oneTouchFollowUp && insertedTurn && nextPhase === 'ball_holder') {
-            await supabase.from('match_actions').insert({
-              match_id,
-              match_turn_id: insertedTurn.id,
-              participant_id: oneTouchFollowUp.participant_id,
-              controlled_by_type: oneTouchFollowUp.controlled_by_type || 'bot',
-              controlled_by_user_id: oneTouchFollowUp.controlled_by_user_id || null,
-              action_type: oneTouchFollowUp.action_type,
-              target_x: oneTouchFollowUp.target_x,
-              target_y: oneTouchFollowUp.target_y,
-              target_participant_id: oneTouchFollowUp.target_participant_id || null,
-              status: 'pending',
-              payload: oneTouchFollowUp.payload || null,
-            });
-            console.log(`[ENGINE] One-touch follow-up inserted: ${oneTouchFollowUp.action_type} for participant ${oneTouchFollowUp.participant_id.slice(0,8)}`);
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'one_touch',
-              title: '⚡ Toque de primeira!',
-              body: 'Jogador executou a ação de primeira, sem dominar a bola.',
-            });
+          // ── One-touch auto-action (same approach as 11x11 engine) ──
+          if (nextBallHolderParticipantId && insertedTurn?.id) {
+            const oneTouchAction = allActions.find(a =>
+              a.participant_id === nextBallHolderParticipantId &&
+              a.action_type === 'receive' &&
+              a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch === true
+            );
+            if (oneTouchAction) {
+              const otPayload = oneTouchAction.payload as any;
+              if (otPayload.next_action_type) {
+                await supabase.from('match_actions').insert({
+                  match_id, match_turn_id: insertedTurn.id,
+                  participant_id: nextBallHolderParticipantId,
+                  controlled_by_type: oneTouchAction.controlled_by_type || 'bot',
+                  controlled_by_user_id: oneTouchAction.controlled_by_user_id || null,
+                  action_type: otPayload.next_action_type,
+                  target_x: otPayload.next_target_x ?? null,
+                  target_y: otPayload.next_target_y ?? null,
+                  target_participant_id: otPayload.next_target_participant_id || null,
+                  payload: { one_touch_executed: true },
+                  status: 'pending',
+                });
+                console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type}`);
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque de primeira!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
+              }
+            }
           }
 
           if (isNextLooseBall) {
