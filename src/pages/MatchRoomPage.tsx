@@ -3349,7 +3349,7 @@ export default function MatchRoomPage() {
 }
 
 // ─── Match minute calculation ─────────────────────────────────
-const TURNS_PER_HALF = 62;
+const TURNS_PER_HALF = 72;
 
 function computeMatchMinute(turnNumber: number): number {
   if (turnNumber <= TURNS_PER_HALF) {
