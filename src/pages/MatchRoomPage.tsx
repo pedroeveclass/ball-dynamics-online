@@ -3204,24 +3204,7 @@ export default function MatchRoomPage() {
               );
             })()}
 
-            {/* Match clock overlay on field */}
-            {isLive && (() => {
-              const minute = computeMatchMinute(match.current_turn_number);
-              const half = match.current_turn_number <= TURNS_PER_HALF ? '1T' : '2T';
-              const isHalftime = activeTurn?.phase === 'positioning_attack' && match.current_turn_number === TURNS_PER_HALF + 1;
-              return (
-                <div className="absolute top-2 right-2 bg-[hsl(220,20%,8%)]/90 border border-[hsl(140,10%,25%)] rounded-lg px-3 py-1.5 z-30 flex items-center gap-2">
-                  {isHalftime ? (
-                    <span className="text-[12px] font-display font-bold text-warning animate-pulse">⏸ INTERVALO</span>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-display text-muted-foreground uppercase">{half}</span>
-                      <span className="font-display font-extrabold text-lg text-foreground tabular-nums">{minute}'</span>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+            {/* Clock moved to scoreboard — removed from field */}
 
             {(animating || isPhaseProcessing) && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
