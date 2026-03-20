@@ -2506,6 +2506,23 @@ export default function MatchRoomPage() {
                 );
               })()}
 
+              {/* ── Free-kick 9m barrier circle ── */}
+              {isPositioningTurn && activeTurn?.set_piece_type === 'free_kick' && (() => {
+                const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+                if (!bh || bh.field_x == null || bh.field_y == null) return null;
+                const ballSvg = toSVG(bh.field_x, bh.field_y);
+                const barrierRadiusSvg = (9.15 / 100) * INNER_W;
+                return (
+                  <circle
+                    cx={ballSvg.x} cy={ballSvg.y} r={barrierRadiusSvg}
+                    fill="rgba(239,68,68,0.06)"
+                    stroke="rgba(239,68,68,0.4)"
+                    strokeWidth="1.5"
+                    strokeDasharray="6,4"
+                  />
+                );
+              })()}
+
               {/* ── Intercept zone visualization ── */}
               {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
