@@ -1002,12 +1002,18 @@ export default function MatchRoomPage() {
     prevPossClubRef.current = currentPoss ?? null;
   }, [activeTurn?.possession_club_id, activeTurn?.ball_holder_participant_id]);
 
-  // ── Contest visual effect from event logs ────────────────────
+  // ── Contest visual effect + sounds from event logs ────────────
   useEffect(() => {
     if (events.length === 0) return;
     const last = events[events.length - 1];
     if (!last) return;
-    // Only trigger during/near resolution
+
+    // Sound effects based on event type
+    if (last.event_type === 'goal') sounds.goal();
+    else if (last.event_type === 'foul' || last.event_type === 'penalty') sounds.foul();
+    else if (last.event_type === 'kickoff') sounds.whistle();
+
+    // Only trigger visual during/near resolution
     const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
     if (!isContest) return;
     
@@ -1235,7 +1241,10 @@ export default function MatchRoomPage() {
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
-
+        // Sound effects
+        if (actionType === 'shoot_controlled' || actionType === 'shoot_power') sounds.kick();
+        else if (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch') sounds.pass();
+        else sounds.phaseChange();
       }
     } catch { toast.error('Erro ao enviar ação'); }
     finally { setSubmittingAction(false); }
@@ -2506,6 +2515,23 @@ export default function MatchRoomPage() {
                 );
               })()}
 
+              {/* ── Free-kick 9m barrier circle ── */}
+              {isPositioningTurn && activeTurn?.set_piece_type === 'free_kick' && (() => {
+                const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+                if (!bh || bh.field_x == null || bh.field_y == null) return null;
+                const ballSvg = toSVG(bh.field_x, bh.field_y);
+                const barrierRadiusSvg = (9.15 / 100) * INNER_W;
+                return (
+                  <circle
+                    cx={ballSvg.x} cy={ballSvg.y} r={barrierRadiusSvg}
+                    fill="rgba(239,68,68,0.06)"
+                    stroke="rgba(239,68,68,0.4)"
+                    strokeWidth="1.5"
+                    strokeDasharray="6,4"
+                  />
+                );
+              })()}
+
               {/* ── Intercept zone visualization ── */}
               {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
@@ -3363,170 +3389,108 @@ function computeMatchMinute(turnNumber: number): number {
   return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
 }
 
-// ─── TurnWheel (animated clock) ───────────────────────────────
+// ─── TurnWheel (horizontal segmented bar) ─────────────────────
 function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
 }) {
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
   const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
-  const matchMinute = computeMatchMinute(turnNumber);
-  const halfLabel = turnNumber <= TURNS_PER_HALF ? '1o Tempo' : '2o Tempo';
 
   const phases = isPositioning
     ? [
-        { key: 'positioning_attack', label: 'ATK' },
-        { key: 'positioning_defense', label: 'DEF' },
-        { key: '_skip1', label: '-' },
-        { key: '_skip2', label: '-' },
+        { key: 'positioning_attack', label: 'ATK', icon: '⚽' },
+        { key: 'positioning_defense', label: 'DEF', icon: '🛡️' },
       ]
     : [
-        { key: 'ball_holder', label: '1' },
-        { key: 'attacking_support', label: '2' },
-        { key: 'defending_response', label: '3' },
-        { key: 'resolution', label: '4' },
+        { key: 'ball_holder', label: 'Portador', icon: '⚽' },
+        { key: 'attacking_support', label: 'Ataque', icon: '⚔️' },
+        { key: 'defending_response', label: 'Defesa', icon: '🛡️' },
+        { key: 'resolution', label: 'Motion', icon: '⚡' },
       ];
   const currentIdx = phases.findIndex(p => p.key === currentPhase);
-
-  const SIZE = 140;
-  const CX = SIZE / 2;
-  const CY = SIZE / 2;
-  const R_OUTER = 62;
-  const R_INNER = 28;
-
-  const quadrants = [
-    { startAngle: -90, endAngle: 0 },
-    { startAngle: 0, endAngle: 90 },
-    { startAngle: 90, endAngle: 180 },
-    { startAngle: 180, endAngle: 270 },
-  ];
-
-  function polar(angleDeg: number, r: number) {
-    const rad = (angleDeg * Math.PI) / 180;
-    return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
-  }
-
-  function arcPath(startA: number, endA: number, rI: number, rO: number) {
-    const gap = 2;
-    const p1 = polar(startA + gap, rO);
-    const p2 = polar(endA - gap, rO);
-    const p3 = polar(endA - gap, rI);
-    const p4 = polar(startA + gap, rI);
-    return `M ${p1.x} ${p1.y} A ${rO} ${rO} 0 0 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${rI} ${rI} 0 0 0 ${p4.x} ${p4.y} Z`;
-  }
-
-  function labelPos(startA: number, endA: number, r: number) {
-    const mid = (startA + endA) / 2;
-    return polar(mid, r);
-  }
-
-  const sweepProgress = currentIdx >= 0 ? (1 - timeLeft / phaseDuration) : 0;
-  const phaseFills = isPositioning
-    ? ['hsl(var(--pitch))', 'hsl(var(--tactical))', 'hsl(var(--muted))', 'hsl(var(--muted))']
-    : ['hsl(var(--pitch))', 'hsl(var(--warning))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
+  const progress = phaseDuration > 0 ? (1 - timeLeft / phaseDuration) : 0;
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="flex items-center justify-between w-full px-2">
-        <span className="text-[10px] font-display text-muted-foreground uppercase tracking-widest">{halfLabel}</span>
-        <div className="flex items-center gap-2">
-          <span className="font-display font-bold text-sm text-foreground">{matchMinute}'</span>
-          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
-        </div>
-      </div>
-
+    <div className="flex flex-col gap-2">
       {isHalftime && (
-        <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 mb-1">
+        <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 text-center">
           <span className="text-[10px] font-display font-bold text-warning">⏸ INTERVALO</span>
         </div>
       )}
 
-      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-        {quadrants.map((q, i) => {
+      {/* Phase segments */}
+      <div className="flex gap-1">
+        {phases.map((phase, i) => {
           const isActive = i === currentIdx;
           const isPast = i < currentIdx;
-          const isSkipped = (isLooseBall && i === 0 && !isPositioning) || (isPositioning && i >= 2);
-          const fillColor = isSkipped ? 'hsl(var(--muted))' : isActive ? phaseFills[i] : isPast ? 'hsl(var(--secondary))' : 'hsl(var(--muted))';
+          const isSkipped = isLooseBall && phase.key === 'ball_holder' && !isPositioning;
 
           return (
-            <g key={i}>
-              <path
-                d={arcPath(q.startAngle, q.endAngle, R_INNER, R_OUTER)}
-                fill={fillColor}
-                opacity={isSkipped ? 0.2 : isActive ? 1 : isPast ? 0.6 : 0.35}
-                stroke={isActive ? 'hsl(var(--foreground))' : 'hsl(var(--border))'}
-                strokeWidth={isActive ? 1.5 : 0.5}
-              />
-              {(() => {
-                const lp = labelPos(q.startAngle, q.endAngle, (R_INNER + R_OUTER) / 2);
-                return (
-                  <text x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="central"
-                    fontSize="14" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-                    fill={isSkipped ? 'hsl(var(--muted-foreground) / 0.3)' : isActive ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
-                  >
-                    {isSkipped ? '—' : phases[i].label}
-                  </text>
-                );
-              })()}
-            </g>
+            <div key={phase.key} className="flex-1 relative">
+              <div
+                className={`h-7 rounded-md flex items-center justify-center gap-1 text-[9px] font-display font-bold transition-all relative overflow-hidden ${
+                  isSkipped ? 'bg-muted/30 text-muted-foreground/30' :
+                  isActive ? 'border border-foreground/30 text-foreground' :
+                  isPast ? 'bg-pitch/20 text-pitch/80' :
+                  'bg-muted/40 text-muted-foreground/50'
+                }`}
+                style={isActive ? { backgroundColor: 'hsl(140,20%,18%)' } : undefined}
+              >
+                {/* Active progress fill */}
+                {isActive && (
+                  <div
+                    className="absolute inset-0 rounded-md transition-all duration-100"
+                    style={{
+                      width: `${progress * 100}%`,
+                      background: 'linear-gradient(90deg, hsl(160,84%,39%,0.3), hsl(160,84%,39%,0.15))',
+                    }}
+                  />
+                )}
+                <span className="relative z-10">
+                  {isSkipped ? '—' : isPast ? '✓' : phase.icon}
+                </span>
+                <span className="relative z-10 hidden sm:inline">
+                  {isSkipped ? '' : phase.label}
+                </span>
+              </div>
+            </div>
           );
         })}
+      </div>
 
-        {currentIdx >= 0 && sweepProgress > 0.01 && (() => {
-          const q = quadrants[currentIdx];
-          const sweepEnd = q.startAngle + 2 + (q.endAngle - q.startAngle - 4) * sweepProgress;
-          const p1 = polar(q.startAngle + 2, R_OUTER - 2);
-          const p2 = polar(sweepEnd, R_OUTER - 2);
-          const largeArc = sweepProgress > 0.5 ? 1 : 0;
-          return (
-            <path
-              d={`M ${p1.x} ${p1.y} A ${R_OUTER - 2} ${R_OUTER - 2} 0 ${largeArc} 1 ${p2.x} ${p2.y}`}
-              fill="none" stroke="hsl(var(--foreground) / 0.35)" strokeWidth="4" strokeLinecap="round"
-            />
-          );
-        })()}
-
-        <circle cx={CX} cy={CY} r={R_INNER - 2} fill="hsl(var(--background))" stroke="hsl(var(--border))" strokeWidth="1" />
-        <line x1={CX - 6} y1={CY} x2={CX + 6} y2={CY} stroke="hsl(var(--foreground) / 0.2)" strokeWidth="0.5" />
-        <line x1={CX} y1={CY - 6} x2={CX} y2={CY + 6} stroke="hsl(var(--foreground) / 0.2)" strokeWidth="0.5" />
-
-        <text x={CX} y={CY - 2} textAnchor="middle" dominantBaseline="central"
-          fontSize="12" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-          fill={currentPhase ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}
-        >
-          {currentPhase ? (PHASE_LABELS[currentPhase] || 'Wait') : 'Wait'}
-        </text>
-        {currentPhase && timeLeft > 0 && (
-          <text x={CX} y={CY + 10} textAnchor="middle"
-            fontSize="9" fontWeight="700" fontFamily="'Barlow Condensed', sans-serif"
-            fill={timeLeft <= 2 ? 'hsl(var(--destructive))' : 'hsl(var(--muted-foreground))'}
-          >
-            {timeLeft}s
-          </text>
+      {/* Timer + Turn info */}
+      <div className="flex items-center justify-between px-1">
+        {possessionClub && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
+            <span className="text-[10px] font-display font-semibold text-foreground/80">
+              {isLooseBall ? 'BOLA SOLTA' : possessionClub.short_name}
+            </span>
+          </div>
         )}
-      </svg>
-
-      {currentPhase && (
-        <div className="w-full px-3">
-          <div className="flex justify-between text-[9px] font-display text-muted-foreground mb-0.5">
-            <span>{isLooseBall && currentPhase === 'ball_holder' ? 'Pulando...' : PHASE_LABELS[currentPhase]}</span>
-            <span className={timeLeft <= 2 ? 'text-destructive' : ''}>{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
-          </div>
-          <div className="h-1 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-100 bg-primary"
-              style={{ width: `${(timeLeft / phaseDuration) * 100}%` }}
-            />
-          </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
+          {currentPhase && timeLeft > 0 && (
+            <span className={`font-display font-bold text-sm tabular-nums ${timeLeft <= 2 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
+              {timeLeft}s
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
-      {possessionClub && (
-        <div className="flex items-center gap-1.5 mt-1">
-          <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
-          <span className="text-[9px] font-display text-muted-foreground">
-            {isLooseBall ? '⚽ BOLA SOLTA' : `⚽ ${possessionClub.short_name}`}
-          </span>
+      {/* Progress bar */}
+      {currentPhase && (
+        <div className="h-1 rounded-full bg-muted/40 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-100"
+            style={{
+              width: `${(timeLeft / phaseDuration) * 100}%`,
+              background: timeLeft <= 2
+                ? 'hsl(var(--destructive))'
+                : 'linear-gradient(90deg, hsl(var(--pitch-green)), hsl(var(--warning-amber)))',
+            }}
+          />
         </div>
       )}
     </div>
@@ -3593,7 +3557,7 @@ function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boole
       >
         {club.short_name.substring(0, 3)}
       </div>
-      <span className="font-display font-bold text-[11px] text-muted-foreground hidden sm:block max-w-20 truncate">{club.name}</span>
+      <span className="font-display font-bold text-[11px] text-foreground/90 hidden sm:block max-w-20 truncate">{club.name}</span>
     </div>
   );
 }
