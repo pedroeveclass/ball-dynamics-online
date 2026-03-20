@@ -1581,9 +1581,22 @@ export default function MatchRoomPage() {
     }
   };
 
-  // ─── All submitted actions are always visible ───────────────
+  // ─── Filter bot arrows when human already acted ───────────────
   const visibleActions = useMemo(() => {
-    return turnActions;
+    // Find participant IDs where a human already submitted an action this turn
+    const humanActionedIds = new Set<string>();
+    for (const act of turnActions) {
+      if (act.controlled_by_type === 'player' || act.controlled_by_type === 'manager') {
+        humanActionedIds.add(act.participant_id);
+      }
+    }
+    // Filter out bot actions for participants where a human already acted
+    return turnActions.filter(act => {
+      if (act.controlled_by_type === 'bot' && humanActionedIds.has(act.participant_id)) {
+        return false;
+      }
+      return true;
+    });
   }, [turnActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
