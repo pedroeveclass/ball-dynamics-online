@@ -1678,13 +1678,34 @@ Deno.serve(async (req) => {
                 body: result.description,
               });
             } else if (result.foul && result.foulPosition) {
-              nextBallHolderParticipantId = ballHolder.id;
-              await supabase.from('match_participants').update({ pos_x: result.foulPosition.x, pos_y: result.foulPosition.y }).eq('id', ballHolder.id);
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
-              });
-              nextSetPieceType = 'free_kick';
-              ballEndPos = { x: result.foulPosition.x, y: result.foulPosition.y };
+              // Check if foul is inside penalty area
+              const foulX = result.foulPosition.x;
+              const foulY = result.foulPosition.y;
+              const isHomeAttacking = possClubId === match.home_club_id;
+              const inPenaltyArea = isHomeAttacking
+                ? (foulX >= 82 && foulY >= 20 && foulY <= 80)
+                : (foulX <= 18 && foulY >= 20 && foulY <= 80);
+
+              if (inPenaltyArea) {
+                // PENALTY!
+                const penaltyX = isHomeAttacking ? 88 : 12;
+                const penaltyY = 50;
+                nextBallHolderParticipantId = ballHolder.id;
+                await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', ballHolder.id);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'penalty', title: '🟥 PÊNALTI!', body: 'Falta dentro da área! Pênalti marcado.',
+                });
+                nextSetPieceType = 'penalty';
+                ballEndPos = { x: penaltyX, y: penaltyY };
+              } else {
+                nextBallHolderParticipantId = ballHolder.id;
+                await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', ballHolder.id);
+                await supabase.from('match_event_logs').insert({
+                  match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
+                });
+                nextSetPieceType = 'free_kick';
+                ballEndPos = { x: foulX, y: foulY };
+              }
               if (result.failedContestLog) {
                 await supabase.from('match_event_logs').insert({
                   match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
