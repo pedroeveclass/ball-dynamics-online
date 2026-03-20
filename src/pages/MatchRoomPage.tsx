@@ -3548,7 +3548,7 @@ function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boole
       >
         {club.short_name.substring(0, 3)}
       </div>
-      <span className="font-display font-bold text-[11px] text-muted-foreground hidden sm:block max-w-20 truncate">{club.name}</span>
+      <span className="font-display font-bold text-[11px] text-foreground/90 hidden sm:block max-w-20 truncate">{club.name}</span>
     </div>
   );
 }
