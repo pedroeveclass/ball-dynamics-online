@@ -1235,7 +1235,10 @@ export default function MatchRoomPage() {
       else {
         setSubmittedActions(prev => new Set([...prev, pid]));
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
-
+        // Sound effects
+        if (actionType === 'shoot_controlled' || actionType === 'shoot_power') sounds.kick();
+        else if (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch') sounds.pass();
+        else sounds.phaseChange();
       }
     } catch { toast.error('Erro ao enviar ação'); }
     finally { setSubmittingAction(false); }
