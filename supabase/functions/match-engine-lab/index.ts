@@ -2036,12 +2036,41 @@ Deno.serve(async (req) => {
             body: `Partida encerrada aos ${matchMinute}'.`,
           });
         } else {
+          // ── Post-goal reset: move all players to formation positions ──
+          if (nextSetPieceType === 'kickoff') {
+            const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.home_club_id).maybeSingle();
+            const { data: awaySettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.away_club_id).maybeSingle();
+            const homeFormation = homeSettings?.default_formation || '4-4-2';
+            const awayFormation = awaySettings?.default_formation || '4-4-2';
+
+            const resetTeam = async (clubId: string, formation: string, isHome: boolean) => {
+              const teamParts = (participants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && p.id !== nextBallHolderParticipantId);
+              const positions = getFormationForFill(formation, isHome);
+              const updates: Promise<any>[] = [];
+              teamParts.forEach((p: any, i: number) => {
+                const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
+                let x = pos.x;
+                // Clamp to own half for kickoff
+                x = isHome ? Math.min(x, 48) : Math.max(x, 52);
+                updates.push(supabase.from('match_participants').update({ pos_x: x, pos_y: pos.y }).eq('id', p.id));
+              });
+              await Promise.all(updates);
+            };
+            await Promise.all([
+              resetTeam(match.home_club_id, homeFormation, true),
+              resetTeam(match.away_club_id, awayFormation, false),
+            ]);
+            console.log(`[ENGINE] Post-goal reset: all players moved to formation positions`);
+          }
+
           const nextPhaseStart = new Date().toISOString();
           const isNextLooseBall = nextBallHolderParticipantId === null;
 
-          const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType);
+          // Penalty: skip positioning, go directly to ball_holder phase
+          const isPenalty = nextSetPieceType === 'penalty';
+          const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType) && !isPenalty;
           const usePositioning = hasDeadBallRestart;
-          const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
+          const nextPhase = isPenalty ? 'ball_holder' : (isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder'));
           const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
           const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
 
@@ -2052,7 +2081,7 @@ Deno.serve(async (req) => {
             home_score: homeScore, away_score: awayScore,
           }).eq('id', match_id);
 
-          await supabase.from('match_turns').insert({
+          const { data: insertedTurn } = await supabase.from('match_turns').insert({
             match_id, turn_number: newTurnNumber,
             phase: nextPhase,
             possession_club_id: newPossessionClubId,
@@ -2060,7 +2089,31 @@ Deno.serve(async (req) => {
             started_at: nextPhaseStart, ends_at: nextPhaseEnd,
             status: 'active',
             set_piece_type: nextSetPieceType || null,
-          });
+          }).select('id').single();
+
+          // ── One-touch follow-up: insert auto action for next turn ──
+          const oneTouchFollowUp = (match as any)._oneTouchFollowUp;
+          if (oneTouchFollowUp && insertedTurn && nextPhase === 'ball_holder') {
+            await supabase.from('match_actions').insert({
+              match_id,
+              match_turn_id: insertedTurn.id,
+              participant_id: oneTouchFollowUp.participant_id,
+              controlled_by_type: oneTouchFollowUp.controlled_by_type || 'bot',
+              controlled_by_user_id: oneTouchFollowUp.controlled_by_user_id || null,
+              action_type: oneTouchFollowUp.action_type,
+              target_x: oneTouchFollowUp.target_x,
+              target_y: oneTouchFollowUp.target_y,
+              target_participant_id: oneTouchFollowUp.target_participant_id || null,
+              status: 'pending',
+              payload: oneTouchFollowUp.payload || null,
+            });
+            console.log(`[ENGINE] One-touch follow-up inserted: ${oneTouchFollowUp.action_type} for participant ${oneTouchFollowUp.participant_id.slice(0,8)}`);
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'one_touch',
+              title: '⚡ Toque de primeira!',
+              body: 'Jogador executou a ação de primeira, sem dominar a bola.',
+            });
+          }
 
           if (isNextLooseBall) {
             await supabase.from('match_event_logs').insert({
@@ -2073,6 +2126,12 @@ Deno.serve(async (req) => {
               match_id, event_type: 'positioning',
               title: '📍 Posicionamento',
               body: 'Time com a bola posiciona seus jogadores primeiro.',
+            });
+          } else if (isPenalty) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'penalty_kick',
+              title: '🎯 Cobrança de pênalti',
+              body: 'O jogador que sofreu a falta cobra o pênalti.',
             });
           }
         }
