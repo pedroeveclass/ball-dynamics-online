@@ -248,7 +248,7 @@ function buildParticipantLayout(
 
   const homeParts = enriched.filter(participant => participant.club_id === matchData.home_club_id && participant.role_type === 'player');
   const awayParts = enriched.filter(participant => participant.club_id === matchData.away_club_id && participant.role_type === 'player');
-  const isTestMatch = homeParts.length <= 3 && awayParts.length <= 3;
+  const isTestMatch = !matchData.home_lineup_id && !matchData.away_lineup_id;
   const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
 
   const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
@@ -626,7 +626,7 @@ export default function MatchRoomPage() {
 
     const homePlayers = nextParticipantRows.filter(participant => participant.club_id === matchData.home_club_id && participant.role_type === 'player');
     const awayPlayers = nextParticipantRows.filter(participant => participant.club_id === matchData.away_club_id && participant.role_type === 'player');
-    const isTestMatch = homePlayers.length <= 3 && awayPlayers.length <= 3;
+    const isTestMatch = !matchData.home_lineup_id && !matchData.away_lineup_id;
     const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
 
     const buildMissingBots = (list: Participant[], formation: string, isHome: boolean, clubId: string) => {
@@ -1839,7 +1839,7 @@ export default function MatchRoomPage() {
   const awayPlayers = participants.filter(p => p.club_id === match.away_club_id && p.role_type === 'player');
 
   const possClubId = activeTurn?.possession_club_id ?? match.possession_club_id;
-  const isTestMatch = homePlayers.length <= 3 && awayPlayers.length <= 3;
+  const isTestMatch = !match.home_lineup_id && !match.away_lineup_id;
   const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
   // Get actions for current phase

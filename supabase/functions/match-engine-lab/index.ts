@@ -50,18 +50,24 @@ function getFormationForFill(formation: string, isHome: boolean): Array<{ x: num
   return base.map(p => ({ ...p, x: 100 - p.x }));
 }
 
+function pickImplicitGoalkeeperId(teamParts: any[]): string | null {
+  if (teamParts.length === 0) return null;
+  const avgX = teamParts.reduce((sum: number, part: any) => sum + Number(part.pos_x ?? 50), 0) / teamParts.length;
+  const isHomeLike = avgX <= 50;
+  const sorted = [...teamParts].sort((a: any, b: any) => {
+    const ax = Number(a.pos_x ?? 50);
+    const bx = Number(b.pos_x ?? 50);
+    return isHomeLike ? ax - bx : bx - ax;
+  });
+  return sorted[0]?.id ?? null;
+}
+
 // ─── Enrich participants with slot_position ──────────────────
 async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[]): Promise<any[]> {
   const slotIds = participants.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
-  if (slotIds.length === 0) {
-    // For bots without lineup_slot_id, detect GK by position
-    return participants.map(p => {
-      const x = Number(p.pos_x ?? 50);
-      if (x <= 7 || x >= 93) p._slot_position = 'GK';
-      return p;
-    });
-  }
-  const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
+  const { data: slots } = slotIds.length > 0
+    ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
+    : { data: [] };
   const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
 
   // Also load player profiles for primary_position fallback
@@ -72,15 +78,30 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
   }
 
+  const gkIdByClub = new Map<string, string>();
+  const teamPartsByClub = new Map<string, any[]>();
+  for (const participant of participants) {
+    const team = teamPartsByClub.get(participant.club_id) || [];
+    team.push(participant);
+    teamPartsByClub.set(participant.club_id, team);
+  }
+
+  for (const [clubId, teamParts] of teamPartsByClub.entries()) {
+    const explicitGK = teamParts.find((participant: any) =>
+      (participant.lineup_slot_id && slotMap.get(participant.lineup_slot_id) === 'GK') ||
+      (participant.player_profile_id && profilePosMap.get(participant.player_profile_id) === 'GK')
+    );
+    const implicitGKId = explicitGK?.id || pickImplicitGoalkeeperId(teamParts);
+    if (implicitGKId) gkIdByClub.set(clubId, implicitGKId);
+  }
+
   return participants.map(p => {
     if (p.lineup_slot_id && slotMap.has(p.lineup_slot_id)) {
       p._slot_position = slotMap.get(p.lineup_slot_id);
     } else if (p.player_profile_id && profilePosMap.get(p.player_profile_id)) {
       p._slot_position = profilePosMap.get(p.player_profile_id);
-    } else {
-      // Heuristic for bots without lineup
-      const x = Number(p.pos_x ?? 50);
-      if (x <= 7 || x >= 93) p._slot_position = 'GK';
+    } else if (gkIdByClub.get(p.club_id) === p.id) {
+      p._slot_position = 'GK';
     }
     return p;
   });
@@ -192,7 +213,7 @@ async function generateBotActions(
     const isBH = bot.id === ballHolderId;
     const isHome = bot.club_id === homeClubId;
     const slotPos = getSlotPos(bot);
-    const isGK = slotPos === 'GK' || bot._slot_position === 'GK' || posX <= 7 || posX >= 93;
+    const isGK = slotPos === 'GK' || bot._slot_position === 'GK';
 
     if (isBH && phase === 'ball_holder') {
       // ── Ball holder bot decision making ──
@@ -966,7 +987,7 @@ async function handleSetPiece(
     : { data: [] };
   const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
 
-  const getSlotPos = (p: any): string => String(slotMap.get(p.lineup_slot_id) || '');
+  const getSlotPos = (p: any): string => String(slotMap.get(p.lineup_slot_id) || p._slot_position || '');
   const getPlayerFinalPos = (p: any) => {
     const moveAct = allActions.find((ac: any) => ac.participant_id === p.id && (ac.action_type === 'move' || ac.action_type === 'receive'));
     return { x: Number(moveAct?.target_x ?? p.pos_x ?? 50), y: Number(moveAct?.target_y ?? p.pos_y ?? 50) };
@@ -1129,14 +1150,19 @@ async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubI
   for (const clubId of [homeClubId, awayClubId]) {
     const isHome = clubId === homeClubId;
     const teamParts = participants.filter((p: any) => p.club_id === clubId);
-    const existingGK = teamParts.find((p: any) => isGK(p));
+    const hasStructuredIdentity = teamParts.some((p: any) => p.lineup_slot_id || p.player_profile_id);
+    const existingGK = teamParts.find((p: any) => isGK(p))
+      || (!hasStructuredIdentity ? teamParts.find((p: any) => p.id === pickImplicitGoalkeeperId(teamParts)) : null);
 
     if (existingGK) {
       // GK exists — ensure they're positioned inside the box
       const gkX = isHome ? 5 : 95;
       const gkY = 50;
       const currentX = Number(existingGK.pos_x ?? 50);
-      const needsReposition = isHome ? currentX > 18 : currentX < 82;
+      const currentY = Number(existingGK.pos_y ?? 50);
+      const needsReposition = isHome
+        ? currentX > 18 || currentY < 20 || currentY > 80
+        : currentX < 82 || currentY < 20 || currentY > 80;
       if (needsReposition) {
         await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', existingGK.id);
         console.log(`[ENGINE] Repositioned existing GK ${existingGK.id.slice(0,8)} to (${gkX}, ${gkY})`);
@@ -1194,7 +1220,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
 
     const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id);
     const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id);
-    const isTestMatch = homeParts.length <= 4 && awayParts.length <= 4;
+    const isTestMatch = !m.home_lineup_id && !m.away_lineup_id;
 
     if (!isTestMatch) {
       const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.home_club_id).maybeSingle();
@@ -2143,8 +2169,9 @@ Deno.serve(async (req) => {
           if (nextSetPieceType === 'kickoff') {
             const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.home_club_id).maybeSingle();
             const { data: awaySettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.away_club_id).maybeSingle();
-            const homeFormation = homeSettings?.default_formation || '4-4-2';
-            const awayFormation = awaySettings?.default_formation || '4-4-2';
+            const isTestMatch = !match.home_lineup_id && !match.away_lineup_id;
+            const homeFormation = isTestMatch ? 'test-home' : (homeSettings?.default_formation || '4-4-2');
+            const awayFormation = isTestMatch ? 'test-away' : (awaySettings?.default_formation || '4-4-2');
 
             const resetTeam = async (clubId: string, formation: string, isHome: boolean) => {
               const teamParts = (participants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && p.id !== nextBallHolderParticipantId);
