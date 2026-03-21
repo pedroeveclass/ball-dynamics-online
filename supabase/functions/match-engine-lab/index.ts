@@ -1450,6 +1450,20 @@ Deno.serve(async (req) => {
           let targetX = Number(a.target_x ?? part.pos_x ?? 50);
           let targetY = Number(a.target_y ?? part.pos_y ?? 50);
 
+          // GK constraint: keep goalkeeper inside the box
+          const partSlotPos = part._slot_position || part.slot_position || '';
+          const partIsGK = partSlotPos === 'GK';
+          if (partIsGK) {
+            const isHome = part.club_id === match.home_club_id;
+            if (isHome) {
+              targetX = Math.min(targetX, 18);
+              targetY = Math.max(20, Math.min(80, targetY));
+            } else {
+              targetX = Math.max(targetX, 82);
+              targetY = Math.max(20, Math.min(80, targetY));
+            }
+          }
+
           // Kickoff half-field constraint
           if (isKickoff) {
             const isHome = part.club_id === match.home_club_id;
