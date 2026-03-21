@@ -613,7 +613,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
 
   for (const candidate of interceptors) {
     const defAttrs = getFullAttrs(candidate.participant);
-    const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
+    const slotPos = candidate.participant.slot_position || candidate.participant._slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
     const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
     let ballHeightZone: 'green' | 'yellow' | 'red' = 'green';
