@@ -239,6 +239,20 @@ function buildParticipantLayout(
   slotMap: Map<string, LineupSlotSummary>,
   matchId: string,
 ): Participant[] {
+  const pickImplicitGoalkeeperId = (teamParts: Participant[]): string | null => {
+    if (teamParts.length === 0) return null;
+    const avgX = teamParts.reduce((sum, part) => sum + Number(part.pos_x ?? 50), 0) / teamParts.length;
+    const isHomeLike = avgX <= 50;
+    const sorted = [...teamParts].sort((a, b) => {
+      const ax = Number(a.pos_x ?? 50);
+      const bx = Number(b.pos_x ?? 50);
+      const xDiff = isHomeLike ? ax - bx : bx - ax;
+      if (xDiff !== 0) return xDiff;
+      return a.id.localeCompare(b.id);
+    });
+    return sorted[0]?.id ?? null;
+  };
+
   const enriched: Participant[] = parts.map(participant => ({
     ...participant,
     player_name: participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.full_name ?? undefined : undefined,
@@ -251,6 +265,28 @@ function buildParticipantLayout(
   const isTestMatch = !matchData.home_lineup_id && !matchData.away_lineup_id;
   const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
 
+  const explicitGoalkeeperIds = new Set(
+    enriched
+      .filter(participant =>
+        participant.slot_position === 'GK'
+        || (participant.player_profile_id && playerMap.get(participant.player_profile_id)?.primary_position === 'GK')
+      )
+      .map(participant => participant.id)
+  );
+
+  const implicitGoalkeeperIds = new Set<string>();
+  for (const teamParts of [homeParts, awayParts]) {
+    if (teamParts.length === 0) continue;
+    const hasExplicitGoalkeeper = teamParts.some(participant => explicitGoalkeeperIds.has(participant.id));
+    if (!hasExplicitGoalkeeper) {
+      const inferredId = pickImplicitGoalkeeperId(teamParts);
+      if (inferredId) implicitGoalkeeperIds.add(inferredId);
+    }
+  }
+
+  const isGoalkeeper = (participant: Participant) =>
+    explicitGoalkeeperIds.has(participant.id) || implicitGoalkeeperIds.has(participant.id);
+
   const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
     const positions = getFormationPositions(formation, isHome, isKickoffStart);
     const sorted = [...list].sort((a, b) => {
@@ -259,8 +295,8 @@ function buildParticipantLayout(
       if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
       if (aSortOrder != null && bSortOrder == null) return -1;
       if (aSortOrder == null && bSortOrder != null) return 1;
-      const aIsGK = a.slot_position === 'GK' || (a.player_profile_id && playerMap.get(a.player_profile_id)?.primary_position === 'GK');
-      const bIsGK = b.slot_position === 'GK' || (b.player_profile_id && playerMap.get(b.player_profile_id)?.primary_position === 'GK');
+      const aIsGK = isGoalkeeper(a);
+      const bIsGK = isGoalkeeper(b);
       if (aIsGK && !bIsGK) return -1;
       if (!aIsGK && bIsGK) return 1;
       return a.id.localeCompare(b.id);
@@ -273,7 +309,9 @@ function buildParticipantLayout(
         ...participant,
         field_x: fieldX,
         field_y: participant.pos_y ?? positions[index]?.y ?? 50,
-        field_pos: participant.slot_position
+        field_pos: isGoalkeeper(participant)
+          ? 'GK'
+          : participant.slot_position
           || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined)
           || positions[index]?.pos
           || '?',
