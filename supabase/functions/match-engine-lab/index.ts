@@ -57,9 +57,46 @@ function pickImplicitGoalkeeperId(teamParts: any[]): string | null {
   const sorted = [...teamParts].sort((a: any, b: any) => {
     const ax = Number(a.pos_x ?? 50);
     const bx = Number(b.pos_x ?? 50);
-    return isHomeLike ? ax - bx : bx - ax;
+    const xDiff = isHomeLike ? ax - bx : bx - ax;
+    if (xDiff !== 0) return xDiff;
+    return String(a.id).localeCompare(String(b.id));
   });
   return sorted[0]?.id ?? null;
+}
+
+function isExplicitGoalkeeper(
+  participant: any,
+  slotMap: Map<string, string>,
+  profilePosMap: Map<string, string>,
+): boolean {
+  if (participant.lineup_slot_id && slotMap.get(participant.lineup_slot_id) === 'GK') return true;
+  if (participant.player_profile_id && profilePosMap.get(participant.player_profile_id) === 'GK') return true;
+  return false;
+}
+
+function getGoalkeeperIdsByClub(
+  participants: any[],
+  slotMap: Map<string, string>,
+  profilePosMap: Map<string, string>,
+): Map<string, string> {
+  const gkIdByClub = new Map<string, string>();
+  const teamPartsByClub = new Map<string, any[]>();
+
+  for (const participant of participants) {
+    const team = teamPartsByClub.get(participant.club_id) || [];
+    team.push(participant);
+    teamPartsByClub.set(participant.club_id, team);
+  }
+
+  for (const [clubId, teamParts] of teamPartsByClub.entries()) {
+    const explicitGK = teamParts.find((participant: any) =>
+      isExplicitGoalkeeper(participant, slotMap, profilePosMap)
+    );
+    const implicitGKId = explicitGK?.id || pickImplicitGoalkeeperId(teamParts);
+    if (implicitGKId) gkIdByClub.set(clubId, implicitGKId);
+  }
+
+  return gkIdByClub;
 }
 
 // ─── Enrich participants with slot_position ──────────────────
@@ -78,22 +115,7 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
   }
 
-  const gkIdByClub = new Map<string, string>();
-  const teamPartsByClub = new Map<string, any[]>();
-  for (const participant of participants) {
-    const team = teamPartsByClub.get(participant.club_id) || [];
-    team.push(participant);
-    teamPartsByClub.set(participant.club_id, team);
-  }
-
-  for (const [clubId, teamParts] of teamPartsByClub.entries()) {
-    const explicitGK = teamParts.find((participant: any) =>
-      (participant.lineup_slot_id && slotMap.get(participant.lineup_slot_id) === 'GK') ||
-      (participant.player_profile_id && profilePosMap.get(participant.player_profile_id) === 'GK')
-    );
-    const implicitGKId = explicitGK?.id || pickImplicitGoalkeeperId(teamParts);
-    if (implicitGKId) gkIdByClub.set(clubId, implicitGKId);
-  }
+  const gkIdByClub = getGoalkeeperIdsByClub(participants, slotMap, profilePosMap);
 
   return participants.map(p => {
     if (p.lineup_slot_id && slotMap.has(p.lineup_slot_id)) {
@@ -744,7 +766,7 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
   if (candidates.length === 0) {
     const { data } = await supabase
       .from('match_participants')
-      .select('id, club_id, role_type, pos_x, pos_y, created_at')
+      .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y, created_at')
       .eq('match_id', matchId)
       .eq('club_id', clubId)
       .eq('role_type', 'player');
@@ -752,6 +774,26 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
   }
 
   if (candidates.length === 0) return null;
+
+  const slotIds = [...new Set(candidates.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id))];
+  const profileIds = [...new Set(candidates.filter((p: any) => p.player_profile_id).map((p: any) => p.player_profile_id))];
+  const [{ data: slots }, { data: profiles }] = await Promise.all([
+    slotIds.length > 0
+      ? supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
+      : Promise.resolve({ data: [] }),
+    profileIds.length > 0
+      ? supabase.from('player_profiles').select('id, primary_position').in('id', profileIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const slotMap = new Map((slots || []).map((slot: any) => [slot.id, slot.slot_position]));
+  const profilePosMap = new Map((profiles || []).map((profile: any) => [profile.id, profile.primary_position]));
+  const gkIdByClub = getGoalkeeperIdsByClub(candidates, slotMap, profilePosMap);
+  const clubGoalkeeperId = gkIdByClub.get(clubId);
+  const nonGoalkeeperCandidates = candidates.filter((participant: any) => participant.id !== clubGoalkeeperId);
+  if (nonGoalkeeperCandidates.length > 0) {
+    candidates = nonGoalkeeperCandidates;
+  }
 
   candidates.sort((a: any, b: any) => {
     const distA = ((a.pos_x ?? KICKOFF_X) - KICKOFF_X) ** 2 + ((a.pos_y ?? KICKOFF_Y) - KICKOFF_Y) ** 2;
@@ -1141,18 +1183,13 @@ async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubI
     profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
   }
 
-  const isGK = (p: any): boolean => {
-    if (p.lineup_slot_id && slotMap.get(p.lineup_slot_id) === 'GK') return true;
-    if (p.player_profile_id && profilePosMap.get(p.player_profile_id) === 'GK') return true;
-    return false;
-  };
+  const gkIdByClub = getGoalkeeperIdsByClub(participants, slotMap, profilePosMap);
 
   for (const clubId of [homeClubId, awayClubId]) {
     const isHome = clubId === homeClubId;
     const teamParts = participants.filter((p: any) => p.club_id === clubId);
-    const hasStructuredIdentity = teamParts.some((p: any) => p.lineup_slot_id || p.player_profile_id);
-    const existingGK = teamParts.find((p: any) => isGK(p))
-      || (!hasStructuredIdentity ? teamParts.find((p: any) => p.id === pickImplicitGoalkeeperId(teamParts)) : null);
+    const existingGKId = gkIdByClub.get(clubId);
+    const existingGK = existingGKId ? teamParts.find((p: any) => p.id === existingGKId) : null;
 
     if (existingGK) {
       // GK exists — ensure they're positioned inside the box
