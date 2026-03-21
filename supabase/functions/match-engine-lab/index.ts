@@ -50,6 +50,42 @@ function getFormationForFill(formation: string, isHome: boolean): Array<{ x: num
   return base.map(p => ({ ...p, x: 100 - p.x }));
 }
 
+// ─── Enrich participants with slot_position ──────────────────
+async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[]): Promise<any[]> {
+  const slotIds = participants.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
+  if (slotIds.length === 0) {
+    // For bots without lineup_slot_id, detect GK by position
+    return participants.map(p => {
+      const x = Number(p.pos_x ?? 50);
+      if (x <= 7 || x >= 93) p._slot_position = 'GK';
+      return p;
+    });
+  }
+  const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
+  const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+
+  // Also load player profiles for primary_position fallback
+  const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
+  let profilePosMap = new Map<string, string>();
+  if (profileIds.length > 0) {
+    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position').in('id', profileIds);
+    profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+  }
+
+  return participants.map(p => {
+    if (p.lineup_slot_id && slotMap.has(p.lineup_slot_id)) {
+      p._slot_position = slotMap.get(p.lineup_slot_id);
+    } else if (p.player_profile_id && profilePosMap.get(p.player_profile_id)) {
+      p._slot_position = profilePosMap.get(p.player_profile_id);
+    } else {
+      // Heuristic for bots without lineup
+      const x = Number(p.pos_x ?? 50);
+      if (x <= 7 || x >= 93) p._slot_position = 'GK';
+    }
+    return p;
+  });
+}
+
 // ─── Bot AI: generate smart fallback actions ─────────────────
 async function generateBotActions(
   supabase: any,
@@ -145,8 +181,7 @@ async function generateBotActions(
 
   // Helper: get slot position from lineup
   const getSlotPos = (bot: any): string => {
-    // Simple: use what we have
-    return bot.slot_position || '';
+    return bot.slot_position || bot._slot_position || '';
   };
 
   const actions: any[] = [];
@@ -157,7 +192,7 @@ async function generateBotActions(
     const isBH = bot.id === ballHolderId;
     const isHome = bot.club_id === homeClubId;
     const slotPos = getSlotPos(bot);
-    const isGK = slotPos === 'GK' || posX <= 7 || posX >= 93; // Rough GK detection
+    const isGK = slotPos === 'GK' || bot._slot_position === 'GK' || posX <= 7 || posX >= 93;
 
     if (isBH && phase === 'ball_holder') {
       // ── Ball holder bot decision making ──
@@ -578,7 +613,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
 
   for (const candidate of interceptors) {
     const defAttrs = getFullAttrs(candidate.participant);
-    const slotPos = candidate.participant.slot_position || candidate.participant.field_pos || '';
+    const slotPos = candidate.participant.slot_position || candidate.participant._slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
     const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
     let ballHeightZone: 'green' | 'yellow' | 'red' = 'green';
@@ -1059,6 +1094,69 @@ async function invokeTickForMatch(functionUrl: string, matchId: string) {
   return { response, result };
 }
 
+// ─── Ensure each team has a goalkeeper ─────────────────────────
+async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubId: string, awayClubId: string) {
+  const { data: allParts } = await supabase
+    .from('match_participants')
+    .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y, is_bot')
+    .eq('match_id', matchId)
+    .eq('role_type', 'player');
+
+  const participants = allParts || [];
+
+  // Load lineup slot positions to identify GK from lineup
+  const slotIds = participants.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id);
+  let slotMap = new Map<string, string>();
+  if (slotIds.length > 0) {
+    const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
+    slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+  }
+
+  // Load player profiles to check primary_position
+  const profileIds = participants.filter((p: any) => p.player_profile_id).map((p: any) => p.player_profile_id);
+  let profilePosMap = new Map<string, string>();
+  if (profileIds.length > 0) {
+    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position').in('id', profileIds);
+    profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+  }
+
+  const isGK = (p: any): boolean => {
+    if (p.lineup_slot_id && slotMap.get(p.lineup_slot_id) === 'GK') return true;
+    if (p.player_profile_id && profilePosMap.get(p.player_profile_id) === 'GK') return true;
+    return false;
+  };
+
+  for (const clubId of [homeClubId, awayClubId]) {
+    const isHome = clubId === homeClubId;
+    const teamParts = participants.filter((p: any) => p.club_id === clubId);
+    const existingGK = teamParts.find((p: any) => isGK(p));
+
+    if (existingGK) {
+      // GK exists — ensure they're positioned inside the box
+      const gkX = isHome ? 5 : 95;
+      const gkY = 50;
+      const currentX = Number(existingGK.pos_x ?? 50);
+      const needsReposition = isHome ? currentX > 18 : currentX < 82;
+      if (needsReposition) {
+        await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', existingGK.id);
+        console.log(`[ENGINE] Repositioned existing GK ${existingGK.id.slice(0,8)} to (${gkX}, ${gkY})`);
+      }
+    } else {
+      // No GK found — create a bot GK inside the box
+      const gkX = isHome ? 5 : 95;
+      const { data: insertedGK } = await supabase.from('match_participants').insert({
+        match_id: matchId,
+        club_id: clubId,
+        role_type: 'player',
+        is_bot: true,
+        pos_x: gkX,
+        pos_y: 50,
+      }).select('id').single();
+      console.log(`[ENGINE] Created bot GK ${insertedGK?.id?.slice(0,8)} for club ${clubId.slice(0,8)} at (${gkX}, 50)`);
+    }
+  }
+}
+
 async function autoStartDueMatches(supabase: any, matchId?: string | null) {
   const now = new Date().toISOString();
   let query = supabase
@@ -1090,7 +1188,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
 
     const { data: existingParts } = await supabase
       .from('match_participants')
-      .select('id, club_id, role_type')
+      .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y')
       .eq('match_id', m.id)
       .eq('role_type', 'player');
 
@@ -1130,6 +1228,9 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         fillBots(m.away_club_id, awayParts.length, awayFormation, false),
       ]);
     }
+
+    // ── Ensure each team has a GK (including test matches / 3x3) ──
+    await ensureGoalkeeperPerTeam(supabase, m.id, m.home_club_id, m.away_club_id);
 
 
     const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
@@ -1285,8 +1386,9 @@ Deno.serve(async (req) => {
 
         // ── POSITIONING PHASES ──
         if (isPositioningPhase(activeTurn.phase)) {
-        const { data: participants } = await supabase
+        const { data: rawParticipants } = await supabase
           .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+        const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
 
         const possClubId = activeTurn.possession_club_id;
         const isAttackPhase = activeTurn.phase === 'positioning_attack';
@@ -1347,6 +1449,20 @@ Deno.serve(async (req) => {
 
           let targetX = Number(a.target_x ?? part.pos_x ?? 50);
           let targetY = Number(a.target_y ?? part.pos_y ?? 50);
+
+          // GK constraint: keep goalkeeper inside the box
+          const partSlotPos = part._slot_position || part.slot_position || '';
+          const partIsGK = partSlotPos === 'GK';
+          if (partIsGK) {
+            const isHome = part.club_id === match.home_club_id;
+            if (isHome) {
+              targetX = Math.min(targetX, 18);
+              targetY = Math.max(20, Math.min(80, targetY));
+            } else {
+              targetX = Math.max(targetX, 82);
+              targetY = Math.max(20, Math.min(80, targetY));
+            }
+          }
 
           // Kickoff half-field constraint
           if (isKickoff) {
@@ -1422,8 +1538,9 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const { data: participants } = await supabase
+      const { data: rawParticipants2 } = await supabase
         .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+      const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
 
       const possClubId = activeTurn.possession_club_id;
       const possPlayers = (participants || []).filter(p => p.club_id === possClubId);

@@ -758,6 +758,60 @@ async function invokeTickForMatch(functionUrl: string, matchId: string) {
   return { response, result };
 }
 
+// ─── Ensure each team has a goalkeeper ─────────────────────────
+async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubId: string, awayClubId: string) {
+  const { data: allParts } = await supabase
+    .from('match_participants')
+    .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y, is_bot')
+    .eq('match_id', matchId)
+    .eq('role_type', 'player');
+
+  const participants = allParts || [];
+
+  const slotIds = participants.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id);
+  let slotMap = new Map<string, string>();
+  if (slotIds.length > 0) {
+    const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
+    slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+  }
+
+  const profileIds = participants.filter((p: any) => p.player_profile_id).map((p: any) => p.player_profile_id);
+  let profilePosMap = new Map<string, string>();
+  if (profileIds.length > 0) {
+    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position').in('id', profileIds);
+    profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+  }
+
+  const isGK = (p: any): boolean => {
+    if (p.lineup_slot_id && slotMap.get(p.lineup_slot_id) === 'GK') return true;
+    if (p.player_profile_id && profilePosMap.get(p.player_profile_id) === 'GK') return true;
+    return false;
+  };
+
+  for (const clubId of [homeClubId, awayClubId]) {
+    const isHome = clubId === homeClubId;
+    const teamParts = participants.filter((p: any) => p.club_id === clubId);
+    const existingGK = teamParts.find((p: any) => isGK(p));
+
+    if (existingGK) {
+      const gkX = isHome ? 5 : 95;
+      const currentX = Number(existingGK.pos_x ?? 50);
+      const needsReposition = isHome ? currentX > 18 : currentX < 82;
+      if (needsReposition) {
+        await supabase.from('match_participants').update({ pos_x: gkX, pos_y: 50 }).eq('id', existingGK.id);
+        console.log(`[ENGINE] Repositioned GK ${existingGK.id.slice(0,8)} to (${gkX}, 50)`);
+      }
+    } else {
+      const gkX = isHome ? 5 : 95;
+      await supabase.from('match_participants').insert({
+        match_id: matchId, club_id: clubId, role_type: 'player',
+        is_bot: true, pos_x: gkX, pos_y: 50,
+      });
+      console.log(`[ENGINE] Created bot GK for club ${clubId.slice(0,8)} at (${gkX}, 50)`);
+    }
+  }
+}
+
 async function autoStartDueMatches(supabase: any, matchId?: string | null) {
   const now = new Date().toISOString();
   let query = supabase
@@ -786,6 +840,9 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     if (!claimedMatch) {
       continue;
     }
+
+    // Ensure each team has a GK before starting
+    await ensureGoalkeeperPerTeam(supabase, m.id, m.home_club_id, m.away_club_id);
 
     const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
