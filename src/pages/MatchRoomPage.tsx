@@ -1599,6 +1599,10 @@ export default function MatchRoomPage() {
         humanActionedIds.add(act.participant_id);
       }
     }
+    // Also include participants the human acted for locally (before realtime confirms)
+    for (const pid of submittedActions) {
+      humanActionedIds.add(pid);
+    }
     // Filter out bot actions for participants where a human already acted
     return turnActions.filter(act => {
       if (act.controlled_by_type === 'bot' && humanActionedIds.has(act.participant_id)) {
@@ -1606,7 +1610,7 @@ export default function MatchRoomPage() {
       }
       return true;
     });
-  }, [turnActions]);
+  }, [turnActions, submittedActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
   const participantsRef = useRef(participants);
