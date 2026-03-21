@@ -145,8 +145,7 @@ async function generateBotActions(
 
   // Helper: get slot position from lineup
   const getSlotPos = (bot: any): string => {
-    // Simple: use what we have
-    return bot.slot_position || '';
+    return bot.slot_position || bot._slot_position || '';
   };
 
   const actions: any[] = [];
