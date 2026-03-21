@@ -1386,8 +1386,9 @@ Deno.serve(async (req) => {
 
         // ── POSITIONING PHASES ──
         if (isPositioningPhase(activeTurn.phase)) {
-        const { data: participants } = await supabase
+        const { data: rawParticipants } = await supabase
           .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+        const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
 
         const possClubId = activeTurn.possession_club_id;
         const isAttackPhase = activeTurn.phase === 'positioning_attack';
