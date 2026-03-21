@@ -1524,8 +1524,9 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      const { data: participants } = await supabase
+      const { data: rawParticipants2 } = await supabase
         .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+      const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
 
       const possClubId = activeTurn.possession_club_id;
       const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
