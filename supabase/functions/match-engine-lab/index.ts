@@ -1090,7 +1090,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
 
     const { data: existingParts } = await supabase
       .from('match_participants')
-      .select('id, club_id, role_type')
+      .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y')
       .eq('match_id', m.id)
       .eq('role_type', 'player');
 
@@ -1130,6 +1130,9 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         fillBots(m.away_club_id, awayParts.length, awayFormation, false),
       ]);
     }
+
+    // ── Ensure each team has a GK (including test matches / 3x3) ──
+    await ensureGoalkeeperPerTeam(supabase, m.id, m.home_club_id, m.away_club_id);
 
 
     const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
