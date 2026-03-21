@@ -50,6 +50,42 @@ function getFormationForFill(formation: string, isHome: boolean): Array<{ x: num
   return base.map(p => ({ ...p, x: 100 - p.x }));
 }
 
+// ─── Enrich participants with slot_position ──────────────────
+async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[]): Promise<any[]> {
+  const slotIds = participants.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
+  if (slotIds.length === 0) {
+    // For bots without lineup_slot_id, detect GK by position
+    return participants.map(p => {
+      const x = Number(p.pos_x ?? 50);
+      if (x <= 7 || x >= 93) p._slot_position = 'GK';
+      return p;
+    });
+  }
+  const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
+  const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+
+  // Also load player profiles for primary_position fallback
+  const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
+  let profilePosMap = new Map<string, string>();
+  if (profileIds.length > 0) {
+    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position').in('id', profileIds);
+    profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+  }
+
+  return participants.map(p => {
+    if (p.lineup_slot_id && slotMap.has(p.lineup_slot_id)) {
+      p._slot_position = slotMap.get(p.lineup_slot_id);
+    } else if (p.player_profile_id && profilePosMap.get(p.player_profile_id)) {
+      p._slot_position = profilePosMap.get(p.player_profile_id);
+    } else {
+      // Heuristic for bots without lineup
+      const x = Number(p.pos_x ?? 50);
+      if (x <= 7 || x >= 93) p._slot_position = 'GK';
+    }
+    return p;
+  });
+}
+
 // ─── Bot AI: generate smart fallback actions ─────────────────
 async function generateBotActions(
   supabase: any,
