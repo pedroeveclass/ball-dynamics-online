@@ -192,7 +192,7 @@ async function generateBotActions(
     const isBH = bot.id === ballHolderId;
     const isHome = bot.club_id === homeClubId;
     const slotPos = getSlotPos(bot);
-    const isGK = slotPos === 'GK' || posX <= 7 || posX >= 93; // Rough GK detection
+    const isGK = slotPos === 'GK' || bot._slot_position === 'GK' || posX <= 7 || posX >= 93;
 
     if (isBH && phase === 'ball_holder') {
       // ── Ball holder bot decision making ──
