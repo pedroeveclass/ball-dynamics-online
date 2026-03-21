@@ -1157,7 +1157,7 @@ async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubI
   }
 }
 
-
+async function autoStartDueMatches(supabase: any, matchId?: string | null) {
   const now = new Date().toISOString();
   let query = supabase
     .from('matches')
