@@ -841,6 +841,9 @@ async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubI
       continue;
     }
 
+    // Ensure each team has a GK before starting
+    await ensureGoalkeeperPerTeam(supabase, m.id, m.home_club_id, m.away_club_id);
+
     const ballHolderParticipantId = await pickCenterKickoffPlayer(supabase, m.id, possessionClubId);
 
     const phaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
