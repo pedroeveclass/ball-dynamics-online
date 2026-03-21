@@ -500,6 +500,133 @@ async function handleSetPiece(
   return null;
 }
 
+// ─── Formation positions for tactical AI ─────────────────────────
+const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
+  '4-4-2': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 42, y: 15, pos: 'LM' }, { x: 42, y: 37, pos: 'CM' }, { x: 42, y: 63, pos: 'CM' }, { x: 42, y: 85, pos: 'RM' },
+    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
+  ],
+  '4-3-3': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 40, y: 25, pos: 'CM' }, { x: 40, y: 50, pos: 'CM' }, { x: 40, y: 75, pos: 'CM' },
+    { x: 60, y: 15, pos: 'LW' }, { x: 62, y: 50, pos: 'ST' }, { x: 60, y: 85, pos: 'RW' },
+  ],
+  '4-2-3-1': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 36, y: 35, pos: 'CDM' }, { x: 36, y: 65, pos: 'CDM' },
+    { x: 50, y: 15, pos: 'LM' }, { x: 50, y: 50, pos: 'CAM' }, { x: 50, y: 85, pos: 'RM' },
+    { x: 63, y: 50, pos: 'ST' },
+  ],
+};
+
+// ─── Tactical Role System ────────────────────────────────────
+type TacticalRole = 'goalkeeper' | 'centerBack' | 'fullBack' | 'defensiveMid' | 'centralMid' | 'attackingMid' | 'wideMid' | 'winger' | 'striker';
+
+function getPositionRole(slotPos: string): TacticalRole {
+  const pos = (slotPos || '').toUpperCase();
+  if (pos === 'GK') return 'goalkeeper';
+  if (pos === 'CB') return 'centerBack';
+  if (['LB', 'RB', 'LWB', 'RWB'].includes(pos)) return 'fullBack';
+  if (pos === 'CDM') return 'defensiveMid';
+  if (pos === 'CM') return 'centralMid';
+  if (pos === 'CAM') return 'attackingMid';
+  if (['LM', 'RM'].includes(pos)) return 'wideMid';
+  if (['LW', 'RW'].includes(pos)) return 'winger';
+  if (['ST', 'CF'].includes(pos)) return 'striker';
+  return 'centralMid';
+}
+
+const ROLE_ADVANCE_LIMIT: Record<TacticalRole, number> = {
+  goalkeeper: 18, centerBack: 50, fullBack: 65, defensiveMid: 55,
+  centralMid: 65, attackingMid: 75, wideMid: 70, winger: 80, striker: 95,
+};
+const ROLE_RETREAT_LIMIT: Record<TacticalRole, number> = {
+  goalkeeper: 2, centerBack: 10, fullBack: 12, defensiveMid: 15,
+  centralMid: 20, attackingMid: 30, wideMid: 25, winger: 35, striker: 40,
+};
+
+function getFormationAnchor11(
+  bot: any, participants: any[], formation: string, isHome: boolean,
+): { x: number; y: number } {
+  const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
+  const formSlots = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
+  const teamPartsOfSamePos = participants.filter(
+    (p: any) => p.club_id === bot.club_id && ((p._slot_position || p.slot_position || '').toUpperCase()) === slotPos && p.role_type === 'player'
+  ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+  const indexInPos = teamPartsOfSamePos.findIndex((p: any) => p.id === bot.id);
+  const matchingSlots = formSlots.filter(s => s.pos.toUpperCase() === slotPos);
+  let slot = matchingSlots[Math.max(0, Math.min(indexInPos, matchingSlots.length - 1))];
+  if (!slot) slot = formSlots[Math.min(formSlots.length - 1, Math.max(0, Math.floor(formSlots.length / 2)))];
+  if (isHome) return { x: slot.x, y: slot.y };
+  return { x: 100 - slot.x, y: slot.y };
+}
+
+function computeTacticalTarget11(
+  bot: any, role: TacticalRole, anchor: { x: number; y: number },
+  ballPos: { x: number; y: number }, isHome: boolean, isAttacking: boolean, isDefending: boolean,
+): { x: number; y: number } {
+  const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.35 : 0.25);
+  const ballShiftY = (ballPos.y - 50) * 0.12;
+  let targetX = anchor.x + ballShiftX;
+  let targetY = anchor.y + ballShiftY;
+  if (isAttacking && role !== 'goalkeeper') {
+    const push = role === 'striker' ? 8 : role === 'winger' || role === 'attackingMid' ? 6 : role === 'centralMid' ? 4 : role === 'fullBack' ? 3 : 1;
+    targetX += isHome ? push : -push;
+  }
+  if (isDefending && role !== 'goalkeeper') {
+    const pull = role === 'centerBack' ? 5 : role === 'fullBack' ? 5 : role === 'defensiveMid' ? 4 : role === 'centralMid' ? 3 : 2;
+    targetX += isHome ? -pull : pull;
+  }
+  if (role === 'goalkeeper') {
+    const goalX = isHome ? 5 : 95;
+    targetX = goalX + (ballPos.x - goalX) * 0.12;
+    targetY = 50 + (ballPos.y - 50) * 0.3;
+    if (isHome) targetX = Math.max(2, Math.min(18, targetX));
+    else targetX = Math.max(82, Math.min(98, targetX));
+    targetY = Math.max(20, Math.min(80, targetY));
+    return { x: targetX, y: targetY };
+  }
+  const advLim = isHome ? ROLE_ADVANCE_LIMIT[role] : 100 - ROLE_ADVANCE_LIMIT[role];
+  const retLim = isHome ? ROLE_RETREAT_LIMIT[role] : 100 - ROLE_RETREAT_LIMIT[role];
+  if (isHome) targetX = Math.max(retLim, Math.min(advLim, targetX));
+  else targetX = Math.max(advLim, Math.min(retLim, targetX));
+  targetX += (Math.random() - 0.5) * 3;
+  targetY += (Math.random() - 0.5) * 4;
+  return { x: Math.max(2, Math.min(98, targetX)), y: Math.max(2, Math.min(98, targetY)) };
+}
+
+function pickBestPassTarget11(
+  bot: any, role: TacticalRole, teammates: any[], isHome: boolean, opponents: any[],
+): { target: any; actionType: string } | null {
+  if (teammates.length === 0) return null;
+  const scored = teammates.map((t: any) => {
+    const tx = Number(t.pos_x ?? 50); const ty = Number(t.pos_y ?? 50);
+    const bx = Number(bot.pos_x ?? 50); const by = Number(bot.pos_y ?? 50);
+    const dist = Math.sqrt((tx - bx) ** 2 + (ty - by) ** 2);
+    const fwd = (tx - bx) * (isHome ? 1 : -1);
+    let closestOpp = 999;
+    for (const o of opponents) { const d = Math.sqrt((tx - Number(o.pos_x ?? 50)) ** 2 + (ty - Number(o.pos_y ?? 50)) ** 2); if (d < closestOpp) closestOpp = d; }
+    const freedom = Math.min(closestOpp / 15, 1);
+    const tRole = getPositionRole((t._slot_position || t.slot_position || '').toUpperCase());
+    let rp = 0;
+    if (role === 'goalkeeper') { rp = (tRole === 'centerBack' || tRole === 'fullBack') ? 2 : tRole === 'defensiveMid' ? 1.5 : 0; }
+    else if (role === 'centerBack') { rp = (tRole === 'defensiveMid' || tRole === 'centralMid') ? 2 : tRole === 'fullBack' ? 1.5 : 0; }
+    else if (role === 'defensiveMid') { rp = (tRole === 'centralMid' || tRole === 'attackingMid') ? 2 : (tRole === 'striker' && freedom > 0.6) ? 1.5 : 0; }
+    else if (role === 'centralMid' || role === 'attackingMid' || role === 'wideMid') { rp = tRole === 'striker' ? 2.5 : tRole === 'winger' ? 1.5 : 0; }
+    else if (role === 'striker') { rp = 1; }
+    return { ...t, score: fwd * 0.3 + freedom * 8 + rp * 3 - dist * 0.08, dist };
+  }).sort((a: any, b: any) => b.score - a.score);
+  const best = scored[0]; if (!best) return null;
+  let at = 'pass_low';
+  if (best.dist > 40) at = 'pass_launch';
+  else if (best.dist > 25) at = Math.random() < 0.6 ? 'pass_high' : 'pass_low';
+  return { target: best, actionType: at };
+}
+
 // ─── Bot AI: generate actions for bots that haven't acted ─────
 async function generateBotActions(
   supabase: any,
@@ -515,204 +642,128 @@ async function generateBotActions(
 ) {
   const players = participants.filter(p => p.role_type === 'player');
   const botActions: any[] = [];
+  const homeClubId = match.home_club_id;
 
-  // Helper: compute max move range for a bot
-  const botMoveRange = (p: any): number => {
-    const raw = p.player_profile_id ? attrByProfile[p.player_profile_id] : null;
-    const vel = Number(raw?.velocidade ?? 40);
-    const accel = Number(raw?.aceleracao ?? 40);
-    const stam = Number(raw?.stamina ?? 40);
-    const forca = Number(raw?.forca ?? 40);
-    const base = 8 + normalizeAttr(vel) * 17;
-    const af = 0.6 + normalizeAttr(accel) * 0.4;
-    const sd = 1.0 - (Math.max(0, match.current_turn_number - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
-    const ff = 1.0 + normalizeAttr(forca) * 0.1;
-    return base * af * sd * ff;
-  };
+  // Load formations
+  let homeFormation = '4-4-2', awayFormation = '4-4-2';
+  const clubIds = [match.home_club_id, match.away_club_id].filter(Boolean);
+  if (clubIds.length > 0) {
+    const { data: settings } = await supabase.from('club_settings').select('club_id, default_formation').in('club_id', clubIds);
+    for (const s of (settings || [])) {
+      if (s.club_id === match.home_club_id && s.default_formation) homeFormation = s.default_formation;
+      if (s.club_id === match.away_club_id && s.default_formation) awayFormation = s.default_formation;
+    }
+  }
 
-  // Ball position for reference
   const ballHolder = ballHolderParticipantId ? players.find(p => p.id === ballHolderParticipantId) : null;
-  const ballX = Number(ballHolder?.pos_x ?? 50);
-  const ballY = Number(ballHolder?.pos_y ?? 50);
-
-  const isHome = (clubId: string) => clubId === match.home_club_id;
+  const ballPos = { x: Number(ballHolder?.pos_x ?? 50), y: Number(ballHolder?.pos_y ?? 50) };
+  const isLooseBall = !ballHolderParticipantId;
+  const looseBallChasersByClub = new Map<string, number>();
 
   for (const p of players) {
-    if (existingActionParticipantIds.has(p.id)) continue; // Human or manager already acted
+    if (existingActionParticipantIds.has(p.id)) continue;
 
     const px = Number(p.pos_x ?? 50);
     const py = Number(p.pos_y ?? 50);
     const isAttacking = p.club_id === possClubId;
     const isBH = p.id === ballHolderParticipantId;
-    const maxRange = botMoveRange(p);
+    const isHome = p.club_id === homeClubId;
+    const formation = isHome ? homeFormation : awayFormation;
+    const slotPos = (p._slot_position || p.slot_position || '').toUpperCase();
+    const role = getPositionRole(slotPos);
+    const isGK = role === 'goalkeeper';
+    const anchor = getFormationAnchor11(p, participants, formation, isHome);
+    const teammates = players.filter(t => t.club_id === p.club_id && t.id !== p.id);
+    const opponents = players.filter(t => t.club_id !== p.club_id);
 
-    // Phase 1: Ball holder bot
+    // Phase 1: Ball holder
     if (phase === 'ball_holder' && isBH) {
-      // Bot ball holder: look for a teammate to pass to, or dribble forward
-      const teammates = players.filter(t => t.club_id === p.club_id && t.id !== p.id);
-      const goalX = isHome(p.club_id) ? 100 : 0;
-      
-      // Check if in shooting range
-      const distToGoal = Math.abs(px - goalX);
-      if (distToGoal < 30) {
-        // Shoot!
-        const shotY = 45 + Math.random() * 10; // aim roughly at goal center
-        botActions.push({
-          match_id: matchId, match_turn_id: activeTurnId,
-          participant_id: p.id, controlled_by_type: 'bot',
-          action_type: Math.random() > 0.5 ? 'shoot_controlled' : 'shoot_power',
-          target_x: goalX, target_y: shotY,
-          status: 'pending',
-        });
-        console.log(`[BOT] Ball holder ${p.id.slice(0,8)} shoots at goal`);
-        continue;
-      }
+      const goalX = isHome ? 100 : 0;
+      const goalY = 40 + Math.random() * 20;
+      const distToGoal = Math.sqrt((px - goalX) ** 2 + (py - 50) ** 2);
 
-      // Find best pass target: teammate closest to opponent goal
-      const bestTarget = teammates
-        .filter(t => {
-          const tx = Number(t.pos_x ?? 50);
-          return isHome(p.club_id) ? tx > px - 5 : tx < px + 5; // forward or lateral
-        })
-        .sort((a, b) => {
-          const da = Math.abs(Number(a.pos_x ?? 50) - goalX);
-          const db = Math.abs(Number(b.pos_x ?? 50) - goalX);
-          return da - db;
-        })[0];
-
-      if (bestTarget && Math.random() > 0.3) {
-        const tx = Number(bestTarget.pos_x ?? 50);
-        const ty = Number(bestTarget.pos_y ?? 50);
-        const dist = Math.sqrt((tx - px) ** 2 + (ty - py) ** 2);
-        const passType = dist > 40 ? 'pass_high' : dist > 25 ? 'pass_launch' : 'pass_low';
-        botActions.push({
-          match_id: matchId, match_turn_id: activeTurnId,
-          participant_id: p.id, controlled_by_type: 'bot',
-          action_type: passType,
-          target_x: tx, target_y: ty,
-          target_participant_id: bestTarget.id,
-          status: 'pending',
-        });
-        console.log(`[BOT] Ball holder ${p.id.slice(0,8)} passes to ${bestTarget.id.slice(0,8)}`);
+      if (isGK) {
+        const pr = pickBestPassTarget11(p, role, teammates, isHome, opponents);
+        if (pr) { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: pr.actionType, target_x: Number(pr.target.pos_x ?? 50), target_y: Number(pr.target.pos_y ?? 50), target_participant_id: pr.target.id, status: 'pending' }); }
+        else { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'pass_launch', target_x: isHome ? Math.min(98, px + 30) : Math.max(2, px - 30), target_y: 40 + Math.random() * 20, status: 'pending' }); }
+      } else if (role === 'centerBack') {
+        const pr = pickBestPassTarget11(p, role, teammates, isHome, opponents);
+        if (pr) { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: pr.actionType, target_x: Number(pr.target.pos_x ?? 50), target_y: Number(pr.target.pos_y ?? 50), target_participant_id: pr.target.id, status: 'pending' }); }
+        else { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'pass_high', target_x: isHome ? Math.min(98, px + 20) : Math.max(2, px - 20), target_y: 30 + Math.random() * 40, status: 'pending' }); }
+      } else if (role === 'striker' && distToGoal < 25) {
+        botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: Math.random() < 0.7 ? 'shoot_controlled' : 'shoot_power', target_x: goalX, target_y: goalY, status: 'pending' });
+      } else if ((role === 'centralMid' || role === 'attackingMid' || role === 'wideMid' || role === 'winger') && distToGoal < 30 && Math.random() < 0.35) {
+        botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: Math.random() < 0.6 ? 'shoot_controlled' : 'shoot_power', target_x: goalX, target_y: goalY, status: 'pending' });
       } else {
-        // Dribble forward
-        const dribbleDir = isHome(p.club_id) ? 1 : -1;
-        const dx = dribbleDir * (3 + Math.random() * Math.min(maxRange * 0.5, 8));
-        const dy = (Math.random() - 0.5) * 6;
-        botActions.push({
-          match_id: matchId, match_turn_id: activeTurnId,
-          participant_id: p.id, controlled_by_type: 'bot',
-          action_type: 'move',
-          target_x: Math.max(1, Math.min(99, px + dx)),
-          target_y: Math.max(1, Math.min(99, py + dy)),
-          status: 'pending',
-        });
-        console.log(`[BOT] Ball holder ${p.id.slice(0,8)} dribbles forward`);
+        const nearOpp = opponents.reduce((b: any, o: any) => { const d = Math.sqrt((px - Number(o.pos_x ?? 50)) ** 2 + (py - Number(o.pos_y ?? 50)) ** 2); return d < (b?.dist ?? 999) ? { dist: d } : b; }, null as any);
+        if (nearOpp && nearOpp.dist > 12 && (role === 'winger' || role === 'attackingMid' || role === 'striker') && Math.random() < 0.35) {
+          const mx = isHome ? Math.min(98, px + 6 + Math.random() * 4) : Math.max(2, px - 6 - Math.random() * 4);
+          botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: mx, target_y: py + (Math.random() - 0.5) * 6, status: 'pending' });
+        } else {
+          const pr = pickBestPassTarget11(p, role, teammates, isHome, opponents);
+          if (pr) { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: pr.actionType, target_x: Number(pr.target.pos_x ?? 50), target_y: Number(pr.target.pos_y ?? 50), target_participant_id: pr.target.id, status: 'pending' }); }
+          else { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: isHome ? Math.min(98, px + 5) : Math.max(2, px - 5), target_y: py + (Math.random() - 0.5) * 4, status: 'pending' }); }
+        }
       }
       continue;
     }
 
-    // Phase 2: Attacking support bots
-    if (phase === 'attacking_support' && isAttacking && !isBH) {
-      // Move towards a useful attacking position
-      const goalX = isHome(p.club_id) ? 100 : 0;
-      const forwardBias = isHome(p.club_id) ? 1 : -1;
-      
-      // Move towards ball or forward, with some randomness
-      const moveScale = Math.min(maxRange, 10);
-      let targetX = px + forwardBias * (2 + Math.random() * moveScale * 0.5);
-      let targetY = py + (ballY - py) * 0.2 + (Math.random() - 0.5) * 8;
-      
-      // Clamp to field and range
-      targetX = Math.max(1, Math.min(99, targetX));
-      targetY = Math.max(1, Math.min(99, targetY));
-      const dx = targetX - px;
-      const dy = targetY - py;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > maxRange) {
-        const scale = maxRange / dist;
-        targetX = px + dx * scale;
-        targetY = py + dy * scale;
+    // Loose ball
+    if (isLooseBall) {
+      const distBall = Math.sqrt((px - ballPos.x) ** 2 + (py - ballPos.y) ** 2);
+      const chasers = looseBallChasersByClub.get(p.club_id) ?? 0;
+      if (distBall < 10 && chasers < 2) {
+        looseBallChasersByClub.set(p.club_id, chasers + 1);
+        if (distBall < 8) { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'receive', target_x: ballPos.x, target_y: ballPos.y, status: 'pending' }); }
+        else { botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: Math.max(2, Math.min(98, px + (ballPos.x - px) * 0.5)), target_y: Math.max(2, Math.min(98, py + (ballPos.y - py) * 0.5)), status: 'pending' }); }
+      } else {
+        const t = computeTacticalTarget11(p, role, anchor, ballPos, isHome, false, false);
+        botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: t.x, target_y: t.y, status: 'pending' });
       }
-
-      botActions.push({
-        match_id: matchId, match_turn_id: activeTurnId,
-        participant_id: p.id, controlled_by_type: 'bot',
-        action_type: 'move',
-        target_x: targetX, target_y: targetY,
-        status: 'pending',
-      });
       continue;
     }
 
-    // Phase 2 for ball holder: mini-move after passing (already acted in phase 1)
-    if (phase === 'attacking_support' && isBH) {
-      const forwardBias = isHome(p.club_id) ? 1 : -1;
-      const miniRange = maxRange * 0.35;
-      const targetX = Math.max(1, Math.min(99, px + forwardBias * (1 + Math.random() * miniRange * 0.5)));
-      const targetY = Math.max(1, Math.min(99, py + (Math.random() - 0.5) * 4));
-      botActions.push({
-        match_id: matchId, match_turn_id: activeTurnId,
-        participant_id: p.id, controlled_by_type: 'bot',
-        action_type: 'move',
-        target_x: targetX, target_y: targetY,
-        status: 'pending',
-      });
+    // Phase 2: Attacking support
+    if (phase === 'attacking_support' && isAttacking) {
+      const t = computeTacticalTarget11(p, role, anchor, ballPos, isHome, true, false);
+      botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: t.x, target_y: t.y, status: 'pending' });
       continue;
     }
 
-    // Phase 3: Defending bots
+    // Phase 3: Defending
     if (phase === 'defending_response' && !isAttacking) {
-      // Move towards ball or mark nearest attacker
-      const defBias = isHome(p.club_id) ? -1 : 1; // move towards own goal
-      
-      // GK stays near goal
-      const slotPos = p.slot_position || '';
-      if (slotPos === 'GK') {
-        const homeGoalX = isHome(p.club_id) ? 5 : 95;
-        const gkTargetX = homeGoalX + (ballX > 50 && isHome(p.club_id) ? 3 : !isHome(p.club_id) && ballX < 50 ? -3 : 0);
-        const gkTargetY = Math.max(35, Math.min(65, py + (ballY - py) * 0.3));
-        const dx = gkTargetX - px;
-        const dy = gkTargetY - py;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        let tx = gkTargetX, ty = gkTargetY;
-        if (dist > maxRange) { const s = maxRange / dist; tx = px + dx * s; ty = py + dy * s; }
-        botActions.push({
-          match_id: matchId, match_turn_id: activeTurnId,
-          participant_id: p.id, controlled_by_type: 'bot',
-          action_type: 'move', target_x: tx, target_y: ty, status: 'pending',
-        });
-        continue;
+      const bhDist = Math.sqrt((px - ballPos.x) ** 2 + (py - ballPos.y) ** 2);
+      if (isGK) {
+        const t = computeTacticalTarget11(p, role, anchor, ballPos, isHome, false, true);
+        botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: t.x, target_y: t.y, status: 'pending' });
+      } else if ((role === 'centerBack' || role === 'fullBack') && bhDist > 10) {
+        // Mark nearest attacker
+        const attackers = opponents.filter(o => { const r = getPositionRole((o._slot_position || o.slot_position || '').toUpperCase()); return r === 'striker' || r === 'winger' || r === 'attackingMid'; });
+        const nearest = attackers.reduce((b: any, o: any) => { const d = Math.sqrt((px - Number(o.pos_x ?? 50)) ** 2 + (py - Number(o.pos_y ?? 50)) ** 2); return d < (b?.dist ?? 999) ? { opp: o, dist: d } : b; }, null as any);
+        if (nearest) {
+          const ox = Number(nearest.opp.pos_x ?? 50); const oy = Number(nearest.opp.pos_y ?? 50);
+          const ownGoalX = isHome ? 0 : 100;
+          const markX = ox + (ownGoalX - ox) * 0.25; const markY = oy + (50 - oy) * 0.1;
+          const t = computeTacticalTarget11(p, role, { x: markX, y: markY }, ballPos, isHome, false, true);
+          botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: t.x, target_y: t.y, status: 'pending' });
+        } else {
+          const t = computeTacticalTarget11(p, role, anchor, ballPos, isHome, false, true);
+          botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: t.x, target_y: t.y, status: 'pending' });
+        }
+      } else if (bhDist < 12) {
+        const pressX = px + (ballPos.x - px) * 0.4; const pressY = py + (ballPos.y - py) * 0.4;
+        botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: Math.max(2, Math.min(98, pressX)), target_y: Math.max(2, Math.min(98, pressY)), status: 'pending' });
+      } else {
+        const t = computeTacticalTarget11(p, role, anchor, ballPos, isHome, false, true);
+        botActions.push({ match_id: matchId, match_turn_id: activeTurnId, participant_id: p.id, controlled_by_type: 'bot', action_type: 'move', target_x: t.x, target_y: t.y, status: 'pending' });
       }
-
-      // Move towards ball with compactness
-      const moveScale = Math.min(maxRange, 8);
-      let targetX = px + (ballX - px) * 0.3 + defBias * (1 + Math.random() * 2);
-      let targetY = py + (ballY - py) * 0.2 + (Math.random() - 0.5) * 4;
-      targetX = Math.max(1, Math.min(99, targetX));
-      targetY = Math.max(1, Math.min(99, targetY));
-      const dx = targetX - px;
-      const dy = targetY - py;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > maxRange) {
-        const scale = maxRange / dist;
-        targetX = px + dx * scale;
-        targetY = py + dy * scale;
-      }
-
-      botActions.push({
-        match_id: matchId, match_turn_id: activeTurnId,
-        participant_id: p.id, controlled_by_type: 'bot',
-        action_type: 'move', target_x: targetX, target_y: targetY, status: 'pending',
-      });
       continue;
     }
   }
 
-  // Insert all bot actions at once
   if (botActions.length > 0) {
     await supabase.from('match_actions').insert(botActions);
-    console.log(`[BOT] Generated ${botActions.length} bot actions for phase ${phase}`);
+    console.log(`[BOT] Generated ${botActions.length} tactical bot actions for phase ${phase}`);
   }
 }
 
