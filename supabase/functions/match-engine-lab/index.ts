@@ -896,6 +896,34 @@ async function generateBotActions(
     }
   }
 
+  // ── Clamp all bot move actions to max movement range ──
+  for (const action of actions) {
+    if (action.action_type === 'move' && action.target_x != null && action.target_y != null) {
+      const bot = botsToAct.find(b => b.id === action.participant_id);
+      if (bot) {
+        const botRaw = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
+        const moveAttrs = {
+          velocidade: Number(botRaw?.velocidade ?? 40),
+          aceleracao: Number(botRaw?.aceleracao ?? 40),
+          agilidade: Number(botRaw?.agilidade ?? 40),
+          stamina: Number(botRaw?.stamina ?? 40),
+          forca: Number(botRaw?.forca ?? 40),
+        };
+        const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+        const bx = Number(bot.pos_x ?? 50);
+        const by = Number(bot.pos_y ?? 50);
+        const dx = action.target_x - bx;
+        const dy = action.target_y - by;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          action.target_x = bx + dx * scale;
+          action.target_y = by + dy * scale;
+        }
+      }
+    }
+  }
+
   if (actions.length > 0) {
     await supabase.from('match_actions').insert(actions);
     console.log(`[ENGINE] Bot tactical AI generated ${actions.length} actions for phase ${phase}`);
@@ -1441,7 +1469,7 @@ function computeBallControlDifficulty(
   return Math.max(0.1, Math.min(1.0, chance));
 }
 
-function findLooseBallClaimer(allActions: any[], participants: any[]): any | null {
+function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number): any | null {
   const receiveActions = allActions.filter((a) => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
 
@@ -1451,9 +1479,28 @@ function findLooseBallClaimer(allActions: any[], participants: any[]): any | nul
 
     const startX = participant.pos_x ?? 50;
     const startY = participant.pos_y ?? 50;
+    const dist = Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2);
+
+    // ── Check if player can physically reach the ball ──
+    if (attrByProfile && turnNumber != null) {
+      const raw = participant.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+      const moveAttrs = {
+        velocidade: Number(raw?.velocidade ?? 40),
+        aceleracao: Number(raw?.aceleracao ?? 40),
+        agilidade: Number(raw?.agilidade ?? 40),
+        stamina: Number(raw?.stamina ?? 40),
+        forca: Number(raw?.forca ?? 40),
+      };
+      const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+      if (dist > maxRange + 2) { // +2 tolerance
+        console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+        continue;
+      }
+    }
+
     ranked.push({
       participant,
-      distance: Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2),
+      distance: dist,
       createdAt: new Date(action.created_at || 0).getTime(),
     });
   }
