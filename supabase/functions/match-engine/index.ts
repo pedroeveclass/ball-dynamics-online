@@ -1059,9 +1059,35 @@ Deno.serve(async (req) => {
       }
 
       // ── Generate bot actions BEFORE phase transition ──
-      // Get existing actions to know which participants already acted
-      const { data: existingActions } = await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
+      // Current phase actions block bot generation for this phase,
+      // and ANY human action in the same turn blocks bot generation for that participant entirely.
+      const { data: existingActions } = await supabase
+        .from('match_actions')
+        .select('participant_id')
+        .eq('match_turn_id', activeTurn.id)
+        .eq('status', 'pending');
+
       const existingActionPids = new Set((existingActions || []).map(a => a.participant_id));
+
+      const { data: currentTurnRows } = await supabase
+        .from('match_turns')
+        .select('id')
+        .eq('match_id', match_id)
+        .eq('turn_number', activeTurn.turn_number);
+
+      const currentTurnIds = (currentTurnRows || []).map((t: any) => t.id);
+      if (currentTurnIds.length > 0) {
+        const { data: humanActionsThisTurn } = await supabase
+          .from('match_actions')
+          .select('participant_id')
+          .in('match_turn_id', currentTurnIds)
+          .in('controlled_by_type', ['player', 'manager'])
+          .eq('status', 'pending');
+
+        for (const row of (humanActionsThisTurn || [])) {
+          existingActionPids.add(row.participant_id);
+        }
+      }
 
       // Only generate bot actions for phases 1-3 (not resolution or positioning)
       const currentPhase = activeTurn.phase;
@@ -1098,22 +1124,65 @@ Deno.serve(async (req) => {
         console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
         const { data: turnRows } = await supabase.from('match_turns').select('id').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number);
         const allTurnIds = (turnRows || []).map(t => t.id);
-        const { data: rawActions } = await supabase.from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending').order('created_at', { ascending: false });
+        const { data: rawActions } = await supabase
+          .from('match_actions')
+          .select('*')
+          .in('match_turn_id', allTurnIds)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
 
-        const seenParticipants = new Map<string, string[]>();
-        const allActions = (rawActions || []).filter(a => {
-          const existing = seenParticipants.get(a.participant_id);
-          if (!existing) { seenParticipants.set(a.participant_id, [a.action_type]); return true; }
-          const isBallHolder = a.participant_id === activeTurn.ball_holder_participant_id;
-          if (isBallHolder) {
-            const hasBallAction = existing.some(t => isPassType(t) || isShootType(t));
-            const hasMoveAction = existing.some(t => t === 'move');
-            if ((isPassType(a.action_type) || isShootType(a.action_type)) && !hasBallAction) { existing.push(a.action_type); return true; }
-            if (a.action_type === 'move' && !hasMoveAction) { existing.push(a.action_type); return true; }
+        const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+
+        const humanControlledParticipants = new Set<string>();
+        for (const a of (rawActions || [])) {
+          if (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager') {
+            humanControlledParticipants.add(a.participant_id);
+          }
+        }
+
+        const filteredRaw = (rawActions || []).filter((a: any) => {
+          if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
             return false;
           }
-          return false;
+          return true;
         });
+
+        const sortedRaw = [...filteredRaw].sort((a, b) => {
+          const pa = priorityByController[a.controlled_by_type] ?? 0;
+          const pb = priorityByController[b.controlled_by_type] ?? 0;
+          if (pa !== pb) return pb - pa;
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
+
+        const seenParticipants = new Map<string, string[]>();
+        const allActions: any[] = [];
+
+        for (const a of sortedRaw) {
+          const existing = seenParticipants.get(a.participant_id);
+          const isBallHolder = a.participant_id === activeTurn.ball_holder_participant_id;
+
+          if (!existing) {
+            seenParticipants.set(a.participant_id, [a.action_type]);
+            allActions.push(a);
+            continue;
+          }
+
+          if (!isBallHolder) continue;
+
+          const hasBallAction = existing.some(t => isPassType(t) || isShootType(t));
+          const hasMoveAction = existing.some(t => t === 'move');
+
+          if ((isPassType(a.action_type) || isShootType(a.action_type)) && !hasBallAction) {
+            existing.push(a.action_type);
+            allActions.push(a);
+            continue;
+          }
+
+          if (a.action_type === 'move' && !hasMoveAction) {
+            existing.push(a.action_type);
+            allActions.push(a);
+          }
+        }
 
         // Apply movement
         const bhHasBallAction = ballHolder && allActions.some(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
