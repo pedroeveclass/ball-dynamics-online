@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle } from 'lucide-react';
+import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -286,6 +286,80 @@ export default function ManagerChallengesPage() {
     finally { setCreatingTarget(null); }
   };
 
+  const [creatingBotMatch, setCreatingBotMatch] = useState(false);
+
+  const handleCreateBotFriendly = async () => {
+    if (!club || !managerProfile) return;
+    setCreatingBotMatch(true);
+    try {
+      // Pick a random opponent club for the bot team
+      const { data: otherClubs } = await supabase.from('clubs').select('id').neq('id', club.id);
+      if (!otherClubs?.length) { toast.error('Nenhum clube adversário encontrado.'); return; }
+      const opponentId = otherClubs[Math.floor(Math.random() * otherClubs.length)].id;
+
+      // Get active lineup for user's club
+      const { data: activeLineup } = await supabase.from('lineups')
+        .select('id, formation').eq('club_id', club.id).eq('is_active', true).limit(1).maybeSingle();
+
+      const homeLineupId = activeLineup?.id || null;
+      const formation = activeLineup?.formation || '4-4-2';
+
+      const { data: match, error: matchError } = await supabase.from('matches').insert({
+        home_club_id: club.id, away_club_id: opponentId,
+        home_lineup_id: homeLineupId, away_lineup_id: null,
+        status: 'scheduled', scheduled_at: new Date().toISOString(), current_phase: 'pre_match',
+      }).select('id').single();
+      if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
+
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      const participantsToInsert: any[] = [];
+
+      // Load lineup slots if lineup exists
+      if (homeLineupId) {
+        const { data: slots } = await supabase.from('lineup_slots')
+          .select('id, player_profile_id, slot_position, role_type')
+          .eq('lineup_id', homeLineupId).eq('role_type', 'starter');
+
+        const starterSlots = slots || [];
+        const playerIds = starterSlots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
+        const { data: players } = playerIds.length > 0
+          ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds)
+          : { data: [] };
+        const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
+
+        for (const slot of starterSlots) {
+          const pUserId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
+          participantsToInsert.push({
+            match_id: match.id, player_profile_id: slot.player_profile_id || null,
+            club_id: club.id, lineup_slot_id: slot.id, role_type: 'player',
+            is_bot: !pUserId, is_ready: false, connected_user_id: pUserId || null,
+          });
+        }
+      }
+
+      // The engine's ensureEleven will fill remaining spots for both teams with bots
+      // Add manager participant
+      participantsToInsert.push({
+        match_id: match.id, club_id: club.id, role_type: 'manager',
+        is_bot: false, is_ready: false, connected_user_id: userId,
+      });
+
+      if (participantsToInsert.length > 0) {
+        await supabase.from('match_participants').insert(participantsToInsert);
+      }
+
+      await supabase.from('match_event_logs').insert({
+        match_id: match.id, event_type: 'system',
+        title: '⚽ Amistoso x BOT',
+        body: `${club.name} (${formation}) vs BOT 11x11`,
+      });
+
+      toast.success('Amistoso contra BOTs criado!');
+      navigate(`/match/${match.id}`);
+    } catch (err: any) { toast.error(err.message || 'Erro ao criar amistoso'); }
+    finally { setCreatingBotMatch(false); }
+  };
+
   const received = challenges.filter(c => c.challenged_club_id === club?.id);
   const sent = challenges.filter(c => c.challenger_club_id === club?.id);
 
@@ -298,12 +372,15 @@ export default function ManagerChallengesPage() {
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
             <Swords className="h-6 w-6 text-tactical" /> Amistosos
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => navigate('/match-lab/solo')} className="font-display text-xs border-tactical/40 text-tactical hover:bg-tactical/10">
               <FlaskConical className="h-4 w-4 mr-1" /> Lab Solo
             </Button>
             <Button size="sm" variant="outline" onClick={() => handleCreateTestMatch('match')} disabled={creatingTarget !== null} className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
               <FlaskConical className="h-4 w-4 mr-1" /> {creatingTarget === 'match' ? 'Criando...' : 'Teste 3v3'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleCreateBotFriendly} disabled={creatingBotMatch} className="font-display text-xs border-pitch/40 text-pitch hover:bg-pitch/10">
+              <Bot className="h-4 w-4 mr-1" /> {creatingBotMatch ? 'Criando...' : 'Amistoso x BOT'}
             </Button>
             <Button size="sm" onClick={openCreateDialog} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
               <Plus className="h-4 w-4 mr-1" /> Enviar Convite

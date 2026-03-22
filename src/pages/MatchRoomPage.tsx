@@ -3384,27 +3384,27 @@ export default function MatchRoomPage() {
             onToggle={() => setLogAccOpen(!logAccOpen)}
             className="flex-1"
           >
-            <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
+            <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 bg-card/90 rounded-md p-2">
               {events.length === 0 && (
-                <p className="text-[10px] text-muted-foreground px-1">Aguardando eventos...</p>
+                <p className="text-[10px] text-primary/50 px-1">Aguardando eventos...</p>
               )}
                {events.slice(-30).map(e => (
                  <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
                    e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-                   e.event_type === 'kickoff' ? 'border-tactical text-foreground/90' :
-                   e.event_type === 'possession_change' ? 'border-warning/60 text-foreground/70' :
+                   e.event_type === 'kickoff' ? 'border-tactical text-primary' :
+                   e.event_type === 'possession_change' ? 'border-warning/60 text-primary/80' :
                    e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
-                   e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
-                   e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
-                   e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
-                   e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
-                   e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
-                   e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
-                   e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
-                   'border-[hsl(140,10%,25%)] text-foreground/70'
+                   e.event_type === 'tackle' ? 'border-red-500 text-red-700' :
+                   e.event_type === 'dribble' ? 'border-green-500 text-green-700' :
+                   e.event_type === 'blocked' ? 'border-orange-500 text-orange-700' :
+                   e.event_type === 'saved' ? 'border-blue-500 text-blue-700' :
+                   e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-500 text-yellow-700' :
+                   e.event_type === 'offside' ? 'border-purple-500 text-purple-700' :
+                   e.event_type === 'one_touch' ? 'border-cyan-500 text-cyan-700' :
+                   'border-border text-primary/70'
                  }`}>
                    <p className="font-display font-semibold">{e.title}</p>
-                   {e.body && <p className="opacity-80 text-[9px]">{e.body}</p>}
+                   {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
                  </div>
                ))}
               <div ref={eventsEndRef} />
