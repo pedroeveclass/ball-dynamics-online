@@ -2596,11 +2596,24 @@ Deno.serve(async (req) => {
         if (bhHasBallAction && ballHolder) {
           const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
           if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
+            const bhAttrs = getAttrs(ballHolder);
+            const bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
+            const bhStartX = Number(ballHolder.pos_x ?? 50);
+            const bhStartY = Number(ballHolder.pos_y ?? 50);
+            let bhFinalX = Number(bhMoveAction.target_x);
+            let bhFinalY = Number(bhMoveAction.target_y);
+            const bhDx = bhFinalX - bhStartX;
+            const bhDy = bhFinalY - bhStartY;
+            const bhDist = Math.sqrt(bhDx * bhDx + bhDy * bhDy);
+            if (bhDist > bhMaxRange) {
+              const scale = bhMaxRange / bhDist;
+              bhFinalX = bhStartX + bhDx * scale;
+              bhFinalY = bhStartY + bhDy * scale;
+            }
             await supabase.from('match_participants').update({
-              pos_x: Number(bhMoveAction.target_x),
-              pos_y: Number(bhMoveAction.target_y),
+              pos_x: bhFinalX, pos_y: bhFinalY,
             }).eq('id', ballHolder.id);
-            console.log(`[ENGINE] Deferred BH move applied: (${Number(bhMoveAction.target_x).toFixed(1)},${Number(bhMoveAction.target_y).toFixed(1)})`);
+            console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
           }
         }
 
