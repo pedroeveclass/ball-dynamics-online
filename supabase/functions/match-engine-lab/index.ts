@@ -2331,14 +2331,26 @@ Deno.serve(async (req) => {
             const part = (participants || []).find(p => p.id === a.participant_id);
             const startX = Number(part?.pos_x ?? 50);
             const startY = Number(part?.pos_y ?? 50);
-            const dist = Math.sqrt((Number(a.target_x) - startX) ** 2 + (Number(a.target_y) - startY) ** 2);
-            const attrs = getAttrs(part);
+            let finalX = Number(a.target_x);
+            let finalY = Number(a.target_y);
 
-            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${Number(a.target_x).toFixed(1)},${Number(a.target_y).toFixed(1)}) dist=${dist.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
+            // ── Apply physics movement limits ──
+            const attrs = getAttrs(part);
+            const maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
+            const dx = finalX - startX;
+            const dy = finalY - startY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > maxRange) {
+              const scale = maxRange / dist;
+              finalX = startX + dx * scale;
+              finalY = startY + dy * scale;
+            }
+
+            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
             await supabase.from('match_participants').update({
-              pos_x: Number(a.target_x),
-              pos_y: Number(a.target_y),
+              pos_x: finalX,
+              pos_y: finalY,
             }).eq('id', a.participant_id);
           }
         }
@@ -2537,7 +2549,7 @@ Deno.serve(async (req) => {
 
           const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
 
-          const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
+          const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1);
 
           if (looseBallClaimer) {
             nextBallHolderParticipantId = looseBallClaimer.id;
