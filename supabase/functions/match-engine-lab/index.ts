@@ -181,21 +181,52 @@ function getFormationAnchor(
 ): { x: number; y: number } {
   const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
   const formSlots = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
+  
+  // Get all team players to determine team size
+  const teamParts = participants.filter(
+    (p: any) => p.club_id === bot.club_id && p.role_type === 'player'
+  ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+  
+  const teamSize = teamParts.length;
+  const botIndexInTeam = teamParts.findIndex((p: any) => p.id === bot.id);
+  
+  // For small teams (3x3, etc), distribute across formation proportionally
+  if (teamSize < 11 && teamSize > 0) {
+    const slotIndex = Math.round((botIndexInTeam / Math.max(1, teamSize - 1)) * (formSlots.length - 1));
+    const slot = formSlots[Math.max(0, Math.min(formSlots.length - 1, slotIndex))];
+    if (isHome) return { x: slot.x, y: slot.y };
+    return { x: 100 - slot.x, y: slot.y };
+  }
+  
+  // For 11v11, match by position
   const teamPartsOfSamePos = participants.filter(
     (p: any) => p.club_id === bot.club_id && (p._slot_position || '').toUpperCase() === slotPos && p.role_type === 'player'
   ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
   const indexInPos = teamPartsOfSamePos.findIndex((p: any) => p.id === bot.id);
 
-  // Find matching formation slot
   const matchingSlots = formSlots.filter(s => s.pos.toUpperCase() === slotPos);
   let slot = matchingSlots[Math.max(0, Math.min(indexInPos, matchingSlots.length - 1))];
   if (!slot) {
-    // Fallback: find closest unmatched slot
     slot = formSlots[Math.min(formSlots.length - 1, Math.max(0, Math.floor(formSlots.length / 2)))];
   }
 
   if (isHome) return { x: slot.x, y: slot.y };
   return { x: 100 - slot.x, y: slot.y };
+}
+
+// ─── Compute max movement range based on attributes ──────────
+function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
+  const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
+  const maxSpeed = 3 + normalizeAttr(attrs.velocidade) * 4;
+  const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
+  let totalDist = 0;
+  let vel = 0;
+  for (let i = 0; i < NUM_SUBSTEPS; i++) {
+    vel = vel * (1 - accelFactor) + (maxSpeed / NUM_SUBSTEPS) * staminaDecay * accelFactor;
+    const speed = Math.min(vel, maxSpeed / NUM_SUBSTEPS);
+    totalDist += speed;
+  }
+  return totalDist;
 }
 
 function computeTacticalTarget(
@@ -206,56 +237,64 @@ function computeTacticalTarget(
   isHome: boolean,
   isAttacking: boolean,
   isDefending: boolean,
+  maxMoveRange?: number,
 ): { x: number; y: number } {
-  // Ball displacement: team shifts toward ball
-  const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.35 : 0.25);
-  const ballShiftY = (ballPos.y - 50) * 0.12;
+  // Ball displacement: reduced to prevent clustering
+  const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.20 : 0.15);
+  const ballShiftY = (ballPos.y - 50) * 0.08;
 
   let targetX = anchor.x + ballShiftX;
   let targetY = anchor.y + ballShiftY;
 
-  // Attack: push formation forward
   if (isAttacking && role !== 'goalkeeper') {
     const pushAmount = role === 'striker' ? 8 : role === 'winger' || role === 'attackingMid' ? 6 : role === 'centralMid' ? 4 : role === 'fullBack' ? 3 : 1;
     targetX += isHome ? pushAmount : -pushAmount;
   }
 
-  // Defense: compress lines back
   if (isDefending && role !== 'goalkeeper') {
     const pullAmount = role === 'centerBack' ? 5 : role === 'fullBack' ? 5 : role === 'defensiveMid' ? 4 : role === 'centralMid' ? 3 : 2;
     targetX += isHome ? -pullAmount : pullAmount;
   }
 
-  // GK: stay between ball and goal center
   if (role === 'goalkeeper') {
     const goalX = isHome ? 5 : 95;
     const goalY = 50;
     targetX = goalX + (ballPos.x - goalX) * 0.12;
     targetY = goalY + (ballPos.y - goalY) * 0.3;
-    // Clamp GK inside penalty area
     if (isHome) targetX = Math.max(2, Math.min(18, targetX));
     else targetX = Math.max(82, Math.min(98, targetX));
     targetY = Math.max(20, Math.min(80, targetY));
-    return { x: targetX, y: targetY };
-  }
-
-  // Apply advance/retreat limits
-  const advanceLimit = isHome ? ROLE_ADVANCE_LIMIT[role] : 100 - ROLE_ADVANCE_LIMIT[role];
-  const retreatLimit = isHome ? ROLE_RETREAT_LIMIT[role] : 100 - ROLE_RETREAT_LIMIT[role];
-  if (isHome) {
-    targetX = Math.max(retreatLimit, Math.min(advanceLimit, targetX));
   } else {
-    targetX = Math.max(advanceLimit, Math.min(retreatLimit, targetX));
+    const advanceLimit = isHome ? ROLE_ADVANCE_LIMIT[role] : 100 - ROLE_ADVANCE_LIMIT[role];
+    const retreatLimit = isHome ? ROLE_RETREAT_LIMIT[role] : 100 - ROLE_RETREAT_LIMIT[role];
+    if (isHome) {
+      targetX = Math.max(retreatLimit, Math.min(advanceLimit, targetX));
+    } else {
+      targetX = Math.max(advanceLimit, Math.min(retreatLimit, targetX));
+    }
+
+    targetX += (Math.random() - 0.5) * 3;
+    targetY += (Math.random() - 0.5) * 4;
   }
 
-  // Add small random variation for natural movement
-  targetX += (Math.random() - 0.5) * 3;
-  targetY += (Math.random() - 0.5) * 4;
+  targetX = Math.max(2, Math.min(98, targetX));
+  targetY = Math.max(2, Math.min(98, targetY));
 
-  return {
-    x: Math.max(2, Math.min(98, targetX)),
-    y: Math.max(2, Math.min(98, targetY)),
-  };
+  // ── Clamp movement to max movement range ──
+  if (maxMoveRange && maxMoveRange > 0) {
+    const botX = Number(bot.pos_x ?? 50);
+    const botY = Number(bot.pos_y ?? 50);
+    const dx = targetX - botX;
+    const dy = targetY - botY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > maxMoveRange) {
+      const scale = maxMoveRange / dist;
+      targetX = botX + dx * scale;
+      targetY = botY + dy * scale;
+    }
+  }
+
+  return { x: targetX, y: targetY };
 }
 
 function pickBestPassTarget(
@@ -400,6 +439,15 @@ async function generateBotActions(
   // Track loose ball chasers (max 2 per team)
   const looseBallChasersByClub = new Map<string, number>();
 
+  // Pre-load attributes for max move range calculation
+  const botProfileIds = botsToAct.filter(b => b.player_profile_id).map(b => b.player_profile_id);
+  let botAttrMap: Record<string, any> = {};
+  if (botProfileIds.length > 0) {
+    const { data: botAttrRows } = await supabase.from('player_attributes').select('*').in('player_profile_id', botProfileIds);
+    for (const row of (botAttrRows || [])) botAttrMap[row.player_profile_id] = row;
+  }
+  const turnNumber = match?.current_turn_number ?? 1;
+
   for (const bot of botsToAct) {
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
@@ -410,6 +458,17 @@ async function generateBotActions(
     const role = getPositionRole(slotPos);
     const isGK = role === 'goalkeeper';
     const anchor = getFormationAnchor(bot, participants, formation, isHome, match);
+
+    // Calculate max movement range for this bot
+    const botRawAttrs = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
+    const botMoveAttrs = {
+      velocidade: Number(botRawAttrs?.velocidade ?? 40),
+      aceleracao: Number(botRawAttrs?.aceleracao ?? 40),
+      agilidade: Number(botRawAttrs?.agilidade ?? 40),
+      stamina: Number(botRawAttrs?.stamina ?? 40),
+      forca: Number(botRawAttrs?.forca ?? 40),
+    };
+    const maxMoveRange = computeMaxMoveRange(botMoveAttrs, turnNumber);
 
     const teammates = participants.filter(
       (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
@@ -834,6 +893,34 @@ async function generateBotActions(
         controlled_by_type: 'bot', action_type: 'move',
         target_x: target.x, target_y: target.y, status: 'pending',
       });
+    }
+  }
+
+  // ── Clamp all bot move actions to max movement range ──
+  for (const action of actions) {
+    if (action.action_type === 'move' && action.target_x != null && action.target_y != null) {
+      const bot = botsToAct.find(b => b.id === action.participant_id);
+      if (bot) {
+        const botRaw = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
+        const moveAttrs = {
+          velocidade: Number(botRaw?.velocidade ?? 40),
+          aceleracao: Number(botRaw?.aceleracao ?? 40),
+          agilidade: Number(botRaw?.agilidade ?? 40),
+          stamina: Number(botRaw?.stamina ?? 40),
+          forca: Number(botRaw?.forca ?? 40),
+        };
+        const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+        const bx = Number(bot.pos_x ?? 50);
+        const by = Number(bot.pos_y ?? 50);
+        const dx = action.target_x - bx;
+        const dy = action.target_y - by;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          action.target_x = bx + dx * scale;
+          action.target_y = by + dy * scale;
+        }
+      }
     }
   }
 
@@ -1382,7 +1469,7 @@ function computeBallControlDifficulty(
   return Math.max(0.1, Math.min(1.0, chance));
 }
 
-function findLooseBallClaimer(allActions: any[], participants: any[]): any | null {
+function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number): any | null {
   const receiveActions = allActions.filter((a) => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
 
@@ -1392,9 +1479,28 @@ function findLooseBallClaimer(allActions: any[], participants: any[]): any | nul
 
     const startX = participant.pos_x ?? 50;
     const startY = participant.pos_y ?? 50;
+    const dist = Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2);
+
+    // ── Check if player can physically reach the ball ──
+    if (attrByProfile && turnNumber != null) {
+      const raw = participant.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+      const moveAttrs = {
+        velocidade: Number(raw?.velocidade ?? 40),
+        aceleracao: Number(raw?.aceleracao ?? 40),
+        agilidade: Number(raw?.agilidade ?? 40),
+        stamina: Number(raw?.stamina ?? 40),
+        forca: Number(raw?.forca ?? 40),
+      };
+      const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+      if (dist > maxRange + 2) { // +2 tolerance
+        console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+        continue;
+      }
+    }
+
     ranked.push({
       participant,
-      distance: Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2),
+      distance: dist,
       createdAt: new Date(action.created_at || 0).getTime(),
     });
   }
@@ -2225,14 +2331,26 @@ Deno.serve(async (req) => {
             const part = (participants || []).find(p => p.id === a.participant_id);
             const startX = Number(part?.pos_x ?? 50);
             const startY = Number(part?.pos_y ?? 50);
-            const dist = Math.sqrt((Number(a.target_x) - startX) ** 2 + (Number(a.target_y) - startY) ** 2);
-            const attrs = getAttrs(part);
+            let finalX = Number(a.target_x);
+            let finalY = Number(a.target_y);
 
-            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${Number(a.target_x).toFixed(1)},${Number(a.target_y).toFixed(1)}) dist=${dist.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
+            // ── Apply physics movement limits ──
+            const attrs = getAttrs(part);
+            const maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
+            const dx = finalX - startX;
+            const dy = finalY - startY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > maxRange) {
+              const scale = maxRange / dist;
+              finalX = startX + dx * scale;
+              finalY = startY + dy * scale;
+            }
+
+            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
             await supabase.from('match_participants').update({
-              pos_x: Number(a.target_x),
-              pos_y: Number(a.target_y),
+              pos_x: finalX,
+              pos_y: finalY,
             }).eq('id', a.participant_id);
           }
         }
@@ -2431,7 +2549,7 @@ Deno.serve(async (req) => {
 
           const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
 
-          const looseBallClaimer = findLooseBallClaimer(allActions, participants || []);
+          const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1);
 
           if (looseBallClaimer) {
             nextBallHolderParticipantId = looseBallClaimer.id;
@@ -2478,11 +2596,24 @@ Deno.serve(async (req) => {
         if (bhHasBallAction && ballHolder) {
           const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
           if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
+            const bhAttrs = getAttrs(ballHolder);
+            const bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
+            const bhStartX = Number(ballHolder.pos_x ?? 50);
+            const bhStartY = Number(ballHolder.pos_y ?? 50);
+            let bhFinalX = Number(bhMoveAction.target_x);
+            let bhFinalY = Number(bhMoveAction.target_y);
+            const bhDx = bhFinalX - bhStartX;
+            const bhDy = bhFinalY - bhStartY;
+            const bhDist = Math.sqrt(bhDx * bhDx + bhDy * bhDy);
+            if (bhDist > bhMaxRange) {
+              const scale = bhMaxRange / bhDist;
+              bhFinalX = bhStartX + bhDx * scale;
+              bhFinalY = bhStartY + bhDy * scale;
+            }
             await supabase.from('match_participants').update({
-              pos_x: Number(bhMoveAction.target_x),
-              pos_y: Number(bhMoveAction.target_y),
+              pos_x: bhFinalX, pos_y: bhFinalY,
             }).eq('id', ballHolder.id);
-            console.log(`[ENGINE] Deferred BH move applied: (${Number(bhMoveAction.target_x).toFixed(1)},${Number(bhMoveAction.target_y).toFixed(1)})`);
+            console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
           }
         }
 
