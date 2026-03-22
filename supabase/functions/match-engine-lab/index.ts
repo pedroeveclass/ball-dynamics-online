@@ -2215,18 +2215,36 @@ Deno.serve(async (req) => {
 
         // Dedup: keep latest action per participant, BUT allow ball holder to have
         // BOTH a pass/shoot (from phase 1) AND a move (from phase 2)
-        // CRITICAL: human actions (player/manager) ALWAYS override bot actions
+        // CRITICAL: human actions (player/manager) ALWAYS override ALL bot actions for that participant
         const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
-        const seenParticipants = new Map<string, { types: string[]; actions: any[] }>();
-        const allActions: any[] = [];
         
-        // Sort: human actions first (higher priority), then by created_at desc
-        const sortedRaw = [...(rawActions || [])].sort((a, b) => {
+        // Step 1: Find all participants that have at least one human action
+        const humanControlledParticipants = new Set<string>();
+        for (const a of (rawActions || [])) {
+          if (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager') {
+            humanControlledParticipants.add(a.participant_id);
+          }
+        }
+        
+        // Step 2: Filter out ALL bot actions for participants that have human actions
+        const filteredRaw = (rawActions || []).filter(a => {
+          if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
+            return false; // Human controls this participant — discard bot action entirely
+          }
+          return true;
+        });
+        
+        // Step 3: Sort remaining by priority (human first), then by created_at desc
+        const sortedRaw = [...filteredRaw].sort((a, b) => {
           const pa = priorityByController[a.controlled_by_type] ?? 0;
           const pb = priorityByController[b.controlled_by_type] ?? 0;
-          if (pa !== pb) return pb - pa; // higher priority first
+          if (pa !== pb) return pb - pa;
           return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
         });
+        
+        // Step 4: Dedup — BH can have ball action + move; others get one action
+        const seenParticipants = new Map<string, { types: string[]; actions: any[] }>();
+        const allActions: any[] = [];
         
         for (const a of sortedRaw) {
           const existing = seenParticipants.get(a.participant_id);
@@ -2248,7 +2266,7 @@ Deno.serve(async (req) => {
             seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
             allActions.push(a);
           } else {
-            if (existing) continue; // Already have a higher-priority action
+            if (existing) continue;
             seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
             allActions.push(a);
           }
