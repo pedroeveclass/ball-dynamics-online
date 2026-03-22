@@ -439,6 +439,15 @@ async function generateBotActions(
   // Track loose ball chasers (max 2 per team)
   const looseBallChasersByClub = new Map<string, number>();
 
+  // Pre-load attributes for max move range calculation
+  const botProfileIds = botsToAct.filter(b => b.player_profile_id).map(b => b.player_profile_id);
+  let botAttrMap: Record<string, any> = {};
+  if (botProfileIds.length > 0) {
+    const { data: botAttrRows } = await supabase.from('player_attributes').select('*').in('player_profile_id', botProfileIds);
+    for (const row of (botAttrRows || [])) botAttrMap[row.player_profile_id] = row;
+  }
+  const turnNumber = match?.current_turn_number ?? 1;
+
   for (const bot of botsToAct) {
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
@@ -449,6 +458,17 @@ async function generateBotActions(
     const role = getPositionRole(slotPos);
     const isGK = role === 'goalkeeper';
     const anchor = getFormationAnchor(bot, participants, formation, isHome, match);
+
+    // Calculate max movement range for this bot
+    const botRawAttrs = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
+    const botMoveAttrs = {
+      velocidade: Number(botRawAttrs?.velocidade ?? 40),
+      aceleracao: Number(botRawAttrs?.aceleracao ?? 40),
+      agilidade: Number(botRawAttrs?.agilidade ?? 40),
+      stamina: Number(botRawAttrs?.stamina ?? 40),
+      forca: Number(botRawAttrs?.forca ?? 40),
+    };
+    const maxMoveRange = computeMaxMoveRange(botMoveAttrs, turnNumber);
 
     const teammates = participants.filter(
       (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
