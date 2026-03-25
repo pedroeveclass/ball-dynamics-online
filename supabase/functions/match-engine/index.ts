@@ -1559,11 +1559,17 @@ Deno.serve(async (req) => {
 
       let activeTurn: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        const { data } = await supabase.from('match_turns').select('id').eq('match_id', match_id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).single();
+        const { data } = await supabase.from('match_turns').select('id, phase, turn_number, ends_at').eq('match_id', match_id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).single();
         if (data) { activeTurn = data; break; }
         if (attempt < 2) await new Promise(r => setTimeout(r, 300));
       }
       if (!activeTurn) return new Response(JSON.stringify({ error: 'No active turn', recoverable: true }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const serverNow = new Date();
+      const activeTurnEndsAt = new Date(activeTurn.ends_at);
+      if (activeTurn.phase === 'resolution' || !Number.isFinite(activeTurnEndsAt.getTime()) || serverNow >= activeTurnEndsAt) {
+        return jsonResponse({ error: 'Turn closed', recoverable: true, server_now: serverNow.getTime() }, 409);
+      }
 
       const { data: participant } = await supabase.from('match_participants').select('*, matches!inner(home_club_id, away_club_id)').eq('id', participant_id).single();
       const isOwnParticipant = participant?.connected_user_id === user.id;
@@ -1578,6 +1584,24 @@ Deno.serve(async (req) => {
       if (!isOwnParticipant && !isManagerOfClub && !isManagerOfMatch) return new Response(JSON.stringify({ error: 'Not authorized to control this participant' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const byType = isOwnParticipant ? 'player' : 'manager';
+
+      const { data: currentTurnRows } = await supabase
+        .from('match_turns')
+        .select('id')
+        .eq('match_id', match_id)
+        .eq('turn_number', activeTurn.turn_number);
+
+      const currentTurnIds = (currentTurnRows || []).map((row: any) => row.id);
+      if (currentTurnIds.length > 0) {
+        await supabase
+          .from('match_actions')
+          .update({ status: 'overridden' })
+          .in('match_turn_id', currentTurnIds)
+          .eq('participant_id', participant_id)
+          .eq('controlled_by_type', 'bot')
+          .eq('status', 'pending');
+      }
+
       await supabase.from('match_actions').insert({
         match_id, match_turn_id: activeTurn.id, participant_id,
         controlled_by_type: byType, controlled_by_user_id: user.id,
