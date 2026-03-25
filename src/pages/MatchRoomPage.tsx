@@ -1714,6 +1714,7 @@ export default function MatchRoomPage() {
           // Animation done: lock final positions
           const latestActions = turnActionsRef.current;
           const finals: Record<string, { x: number; y: number }> = {};
+          const bhId = activeTurn?.ball_holder_participant_id ?? null;
           
           const ballHolderHasBallAction = Boolean(
             bhId && latestActions.some(action => action.participant_id === bhId && (
