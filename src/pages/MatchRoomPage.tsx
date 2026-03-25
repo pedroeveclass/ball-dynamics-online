@@ -1714,6 +1714,7 @@ export default function MatchRoomPage() {
           // Animation done: lock final positions
           const latestActions = turnActionsRef.current;
           const finals: Record<string, { x: number; y: number }> = {};
+          const bhId = activeTurn?.ball_holder_participant_id ?? null;
           
           const ballHolderHasBallAction = Boolean(
             bhId && latestActions.some(action => action.participant_id === bhId && (
@@ -1761,8 +1762,7 @@ export default function MatchRoomPage() {
           }
           prevDirectionsRef.current = newDirections;
           
-           // Compute final ball position
-           const bhId = activeTurn.ball_holder_participant_id;
+           // Compute final ball position (bhId already declared above)
            const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
            
            if (bhId) {
