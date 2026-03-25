@@ -888,7 +888,7 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40);
     const stam = Number(attrs?.stamina ?? 40);
     const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
-    const maxSpeed = 3 + normalizeAttr(vel) * 4;
+    const maxSpeed = 6 + normalizeAttr(vel) * 8;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     let range = 0;
     let speed = 0;
@@ -2365,7 +2365,7 @@ export default function MatchRoomPage() {
     const fromY = origin?.y ?? fromPart.field_y ?? 50;
 
     if (action.action_type === 'move') {
-      return { color: '#1a1a2e', markerId: 'ah-black-lg', strokeW: 4 };
+      return { color: '#1a1a2e', markerId: 'ah-black', strokeW: 2 };
     }
     if (action.action_type === 'receive') {
       return { color: '#1a1a2e', markerId: 'ah-cyan', strokeW: 2 };
@@ -2527,7 +2527,6 @@ export default function MatchRoomPage() {
                 </filter>
                 {/* Arrow markers — smaller (ball-sized) */}
                 <marker id="ah-black" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#1a1a2e" /></marker>
-                <marker id="ah-black-lg" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><polygon points="0 0, 10 4, 0 8" fill="#1a1a2e" /></marker>
                 <marker id="ah-green" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#22c55e" /></marker>
                 <marker id="ah-yellow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#f59e0b" /></marker>
                 <marker id="ah-red" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#ef4444" /></marker>

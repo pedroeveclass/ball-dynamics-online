@@ -349,7 +349,7 @@ function simulatePlayerMovement(
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
   const agilityFactor = 0.4 + normalizeAttr(attrs.agilidade) * 0.5;
   const forceFactor = normalizeAttr(attrs.forca);
-  const maxSpeed = (3 + normalizeAttr(attrs.velocidade) * 4) / NUM_SUBSTEPS;
+  const maxSpeed = (6 + normalizeAttr(attrs.velocidade) * 8) / NUM_SUBSTEPS;
   const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
   const state: PhysicsPlayerState = { pos: { ...startPos }, vel: { x: 0, y: 0 } };
 
@@ -570,7 +570,7 @@ function computeTacticalTarget11(
   ballPos: { x: number; y: number }, isHome: boolean, isAttacking: boolean, isDefending: boolean,
 ): { x: number; y: number } {
   const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.35 : 0.25);
-  const ballShiftY = (ballPos.y - 50) * 0.12;
+  const ballShiftY = (ballPos.y - 50) * 0.05;
   let targetX = anchor.x + ballShiftX;
   let targetY = anchor.y + ballShiftY;
   if (isAttacking && role !== 'goalkeeper') {
@@ -1063,12 +1063,13 @@ Deno.serve(async (req) => {
       // and ANY human action in the same turn blocks bot generation for that participant entirely.
       const { data: existingActions } = await supabase
         .from('match_actions')
-        .select('participant_id')
+        .select('participant_id, controlled_by_type')
         .eq('match_turn_id', activeTurn.id)
         .eq('status', 'pending');
 
       const existingActionPids = new Set((existingActions || []).map(a => a.participant_id));
 
+      // Also check ALL turn IDs for this turn number to prevent duplicate bot actions across phases
       const { data: currentTurnRows } = await supabase
         .from('match_turns')
         .select('id')
@@ -1077,15 +1078,21 @@ Deno.serve(async (req) => {
 
       const currentTurnIds = (currentTurnRows || []).map((t: any) => t.id);
       if (currentTurnIds.length > 0) {
-        const { data: humanActionsThisTurn } = await supabase
+        const { data: allActionsThisTurn } = await supabase
           .from('match_actions')
-          .select('participant_id')
+          .select('participant_id, controlled_by_type')
           .in('match_turn_id', currentTurnIds)
-          .in('controlled_by_type', ['player', 'manager'])
           .eq('status', 'pending');
 
-        for (const row of (humanActionsThisTurn || [])) {
-          existingActionPids.add(row.participant_id);
+        for (const row of (allActionsThisTurn || [])) {
+          // Human actions always block bot generation
+          if (row.controlled_by_type === 'player' || row.controlled_by_type === 'manager') {
+            existingActionPids.add(row.participant_id);
+          }
+          // Bot actions from previous phases also block new bot actions for same participant
+          if (row.controlled_by_type === 'bot') {
+            existingActionPids.add(row.participant_id);
+          }
         }
       }
 
