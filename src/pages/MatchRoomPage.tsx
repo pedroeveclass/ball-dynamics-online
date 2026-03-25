@@ -888,7 +888,7 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40);
     const stam = Number(attrs?.stamina ?? 40);
     const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
-    const maxSpeed = 6 + normalizeAttr(vel) * 8;
+    const maxSpeed = 10 + normalizeAttr(vel) * 14;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     let range = 0;
     let speed = 0;
@@ -1072,6 +1072,7 @@ export default function MatchRoomPage() {
 
   // Auto-show action menu for ball holder in phase 1
   // For loose ball (no ball_holder), skip phase 1 — handled by engine
+  // IMPORTANT: If there's already a one_touch_executed action for this turn, DON'T auto-open
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
     
@@ -1079,6 +1080,16 @@ export default function MatchRoomPage() {
     if (isPositioningTurn) return;
     
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
+      // Check if a one-touch action was already injected for this ball holder
+      const hasOneTouchAction = turnActions.some(a =>
+        a.participant_id === activeTurn.ball_holder_participant_id &&
+        a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch_executed === true
+      );
+      if (hasOneTouchAction) {
+        // One-touch action already set — skip auto-open, the action is pre-determined
+        return;
+      }
+
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
       const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
       const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
@@ -1092,7 +1103,7 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
@@ -1616,6 +1627,13 @@ export default function MatchRoomPage() {
           }
           return;
         }
+
+        // Block manual menu open if one-touch action is already set for this participant
+        const hasOneTouchAction = turnActions.some(a =>
+          a.participant_id === participantId &&
+          a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch_executed === true
+        );
+        if (hasOneTouchAction) return;
 
         if (
           (phase === 'ball_holder' && isBH) ||

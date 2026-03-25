@@ -1,5 +1,14 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const DEFAULT_MATCH_ENGINE_FUNCTION = "match-engine";
+
+// ═══════════════════════════════════════════════════════════════════
+// A engine principal agora é "match-engine-lab" para TODOS os modos
+// de jogo (3x3, 11x11, amistosos, oficiais).
+// A engine original "match-engine" foi desativada/arquivada.
+// ═══════════════════════════════════════════════════════════════════
+const DEFAULT_MATCH_ENGINE_FUNCTION = "match-engine-lab";
+
+// ── Engine antiga (desativada) ──
+// const LEGACY_MATCH_ENGINE_FUNCTION = "match-engine";
 
 const normalizeEnvValue = (value?: string) => {
   if (!value) return "";
