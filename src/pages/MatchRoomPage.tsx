@@ -200,11 +200,29 @@ function formatScheduledDate(dateStr: string): string {
 }
 
 // ─── Main Component ───────────────────────────────────────────
+function filterEffectiveTurnActions(actions: MatchAction[], optimisticHumanActionedIds?: Set<string>): MatchAction[] {
+  const humanActionedIds = new Set(optimisticHumanActionedIds || []);
+  const nonOverriddenActions = actions.filter(action => action.status !== 'overridden');
+
+  for (const action of nonOverriddenActions) {
+    if (action.controlled_by_type === 'player' || action.controlled_by_type === 'manager') {
+      humanActionedIds.add(action.participant_id);
+    }
+  }
+
+  return nonOverriddenActions.filter(action => {
+    if (action.controlled_by_type === 'bot' && humanActionedIds.has(action.participant_id)) {
+      return false;
+    }
+    return true;
+  });
+}
+
 function dedupeAndSortTurnActions(actions: MatchAction[]): MatchAction[] {
   const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
   const dedupedByParticipantAndPhase = new Map<string, MatchAction>();
 
-  for (const action of actions) {
+  for (const action of filterEffectiveTurnActions(actions)) {
     const key = `${action.turn_phase ?? 'unknown'}:${action.participant_id}`;
     const existing = dedupedByParticipantAndPhase.get(key);
 
@@ -1630,24 +1648,11 @@ export default function MatchRoomPage() {
 
   // ─── Filter bot arrows when human already acted ───────────────
   const visibleActions = useMemo(() => {
-    // Find participant IDs where a human already submitted an action this turn
     const humanActionedIds = new Set<string>();
-    for (const act of turnActions) {
-      if (act.controlled_by_type === 'player' || act.controlled_by_type === 'manager') {
-        humanActionedIds.add(act.participant_id);
-      }
-    }
-    // Also include participants the human acted for locally (before realtime confirms)
     for (const pid of submittedActions) {
       humanActionedIds.add(pid);
     }
-    // Filter out bot actions for participants where a human already acted
-    return turnActions.filter(act => {
-      if (act.controlled_by_type === 'bot' && humanActionedIds.has(act.participant_id)) {
-        return false;
-      }
-      return true;
-    });
+    return filterEffectiveTurnActions(turnActions, humanActionedIds);
   }, [turnActions, submittedActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
