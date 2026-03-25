@@ -241,7 +241,7 @@ function computeTacticalTarget(
 ): { x: number; y: number } {
   // Ball displacement: reduced to prevent clustering
   const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.20 : 0.15);
-  const ballShiftY = (ballPos.y - 50) * 0.08;
+  const ballShiftY = (ballPos.y - 50) * 0.05;
 
   let targetX = anchor.x + ballShiftX;
   let targetY = anchor.y + ballShiftY;
