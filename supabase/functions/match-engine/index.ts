@@ -349,7 +349,7 @@ function simulatePlayerMovement(
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
   const agilityFactor = 0.4 + normalizeAttr(attrs.agilidade) * 0.5;
   const forceFactor = normalizeAttr(attrs.forca);
-  const maxSpeed = (3 + normalizeAttr(attrs.velocidade) * 4) / NUM_SUBSTEPS;
+  const maxSpeed = (6 + normalizeAttr(attrs.velocidade) * 8) / NUM_SUBSTEPS;
   const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
   const state: PhysicsPlayerState = { pos: { ...startPos }, vel: { x: 0, y: 0 } };
 
