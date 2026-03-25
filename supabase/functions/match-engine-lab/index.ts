@@ -239,9 +239,12 @@ function computeTacticalTarget(
   isDefending: boolean,
   maxMoveRange?: number,
 ): { x: number; y: number } {
-  // Ball displacement: reduced to prevent clustering
-  const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.20 : 0.15);
-  const ballShiftY = (ballPos.y - 50) * 0.05;
+  // ── Ball displacement: VERY small to prevent clustering ──
+  // X shift: team slides laterally toward the ball (moderate)
+  const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.15 : 0.10);
+  // Y shift: MINIMAL — players should NOT drift vertically toward the ball
+  // This was the main cause of the "clustering to top" bug
+  const ballShiftY = (ballPos.y - 50) * 0.02; // nearly zero vertical pull
 
   let targetX = anchor.x + ballShiftX;
   let targetY = anchor.y + ballShiftY;
@@ -273,8 +276,9 @@ function computeTacticalTarget(
       targetX = Math.max(advanceLimit, Math.min(retreatLimit, targetX));
     }
 
-    targetX += (Math.random() - 0.5) * 3;
-    targetY += (Math.random() - 0.5) * 4;
+    // Small random jitter — reduced to prevent erratic movement
+    targetX += (Math.random() - 0.5) * 2;
+    targetY += (Math.random() - 0.5) * 2;
   }
 
   targetX = Math.max(2, Math.min(98, targetX));
