@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const PHASE_DURATION_MS = 6000;
+const PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 3000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
