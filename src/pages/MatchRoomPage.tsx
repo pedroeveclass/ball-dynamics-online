@@ -150,7 +150,7 @@ const ACTION_LABELS: Record<string, string> = {
   block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
-const PHASE_DURATION = 6;
+const PHASE_DURATION = 10;
 const POSITIONING_PHASE_DURATION = 10;
 const RESOLUTION_PHASE_DURATION = 3;
 const PRE_MATCH_COUNTDOWN_SECONDS = 10;
@@ -881,44 +881,26 @@ export default function MatchRoomPage() {
     }
   }, [user, participants, match, club]);
 
-  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
+  const computeMaxMoveRange = useCallback((participantId: string, _targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
     const vel = Number(attrs?.velocidade ?? 40);
     const accel = Number(attrs?.aceleracao ?? 40);
     const stam = Number(attrs?.stamina ?? 40);
-    const forca = Number(attrs?.forca ?? 40);
-    const baseRange = 8 + normalizeAttr(vel) * 17;
-    const accelFactor = 0.6 + normalizeAttr(accel) * 0.4;
+    const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
+    const maxSpeed = 3 + normalizeAttr(vel) * 4;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
-    const forceFactor = 1.0 + normalizeAttr(forca) * 0.1;
-    let range = baseRange * accelFactor * staminaDecay * forceFactor;
+    let range = 0;
+    let speed = 0;
 
-    // Ball carrier speed penalty (carrying ball = 15% slower)
-    const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
-    if (isBallHolder) {
-      // In phase 2 (attacking_support), ball holder who already acted gets only 35% range
-      if (activeTurn?.phase === 'attacking_support') {
-        range *= 0.35;
-      } else {
-        range *= 0.85;
-      }
+    for (let i = 0; i < 10; i += 1) {
+      speed = speed * (1 - accelFactor) + (maxSpeed / 10) * staminaDecay * accelFactor;
+      range += Math.min(speed, maxSpeed / 10);
     }
 
-    // Inertia multiplier based on previous direction
-    if (targetDirection) {
-      const prevDir = prevDirectionsRef.current[participantId];
-      if (prevDir) {
-        const prevLen = Math.sqrt(prevDir.x * prevDir.x + prevDir.y * prevDir.y);
-        const curLen = Math.sqrt(targetDirection.x * targetDirection.x + targetDirection.y * targetDirection.y);
-        if (prevLen > 0.1 && curLen > 0.1) {
-          const dot = (prevDir.x * targetDirection.x + prevDir.y * targetDirection.y) / (prevLen * curLen);
-          const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
-          const normalizedAngle = angleDiff / Math.PI; // 0 = same dir, 1 = opposite
-          const multiplier = 1.2 - 0.4 * normalizedAngle; // 1.2x same, 0.8x opposite
-          range *= multiplier;
-        }
-      }
+    const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
+    if (isBallHolder && activeTurn?.phase === 'attacking_support') {
+      range *= 0.35;
     }
 
     if (overrideMultiplier != null) range *= overrideMultiplier;
@@ -1659,6 +1641,45 @@ export default function MatchRoomPage() {
   const participantsRef = useRef(participants);
   participantsRef.current = participants;
 
+  const getEffectiveActionTarget = useCallback((
+    action: MatchAction,
+    start?: { x: number; y: number },
+    actions: MatchAction[] = turnActionsRef.current,
+  ) => {
+    if (action.target_x == null || action.target_y == null) return null;
+    if (action.action_type !== 'move' && action.action_type !== 'receive') {
+      return { x: action.target_x, y: action.target_y };
+    }
+
+    const participant = participantsRef.current.find(p => p.id === action.participant_id);
+    const startX = start?.x ?? participant?.field_x ?? participant?.pos_x ?? 50;
+    const startY = start?.y ?? participant?.field_y ?? participant?.pos_y ?? 50;
+    const hasDeferredBallAction = action.action_type === 'move'
+      && action.participant_id === activeTurnRef.current?.ball_holder_participant_id
+      && actions.some(candidate => candidate.participant_id === action.participant_id && (
+        candidate.action_type === 'pass_low'
+        || candidate.action_type === 'pass_high'
+        || candidate.action_type === 'pass_launch'
+        || candidate.action_type === 'shoot'
+        || candidate.action_type === 'shoot_controlled'
+        || candidate.action_type === 'shoot_power'
+      ));
+    const maxRange = computeMaxMoveRange(action.participant_id, undefined, hasDeferredBallAction ? 0.35 : undefined);
+    const dx = action.target_x - startX;
+    const dy = action.target_y - startY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist <= maxRange || dist === 0) {
+      return { x: action.target_x, y: action.target_y };
+    }
+
+    const scale = maxRange / dist;
+    return {
+      x: startX + dx * scale,
+      y: startY + dy * scale,
+    };
+  }, [computeMaxMoveRange]);
+
 
   useEffect(() => {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
@@ -1694,11 +1715,20 @@ export default function MatchRoomPage() {
           const latestActions = turnActionsRef.current;
           const finals: Record<string, { x: number; y: number }> = {};
           
+          const ballHolderHasBallAction = Boolean(
+            bhId && latestActions.some(action => action.participant_id === bhId && (
+              isPassAction(action.action_type) || isShootAction(action.action_type)
+            ))
+          );
+
           for (const p of participantsRef.current) {
             // Both 'move' and 'receive' actions cause player to end at target
             const action = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
             if (action && action.target_x != null && action.target_y != null) {
-              finals[p.id] = { x: action.target_x, y: action.target_y };
+              const effectiveTarget = getEffectiveActionTarget(action, snapshot[p.id], latestActions);
+              if (effectiveTarget) {
+                finals[p.id] = effectiveTarget;
+              }
             } else {
               const startPos = snapshot[p.id];
               if (startPos) finals[p.id] = startPos;
@@ -1715,8 +1745,9 @@ export default function MatchRoomPage() {
             if (moveAct && moveAct.target_x != null && moveAct.target_y != null) {
               const sp = snapshot[p.id];
               if (sp) {
-                const ddx = moveAct.target_x - sp.x;
-                const ddy = moveAct.target_y - sp.y;
+                const effectiveTarget = getEffectiveActionTarget(moveAct, sp, latestActions);
+                const ddx = (effectiveTarget?.x ?? sp.x) - sp.x;
+                const ddy = (effectiveTarget?.y ?? sp.y) - sp.y;
                 if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
                   newDirections[p.id] = { x: ddx, y: ddy };
                 } else {
@@ -1769,10 +1800,11 @@ export default function MatchRoomPage() {
                     lastBallDirRef.current = { dx: ballAction.target_x - sp.x, dy: ballAction.target_y - sp.y };
                   }
                 } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+                  const effectiveTarget = getEffectiveActionTarget(ballAction, snapshot[bhId], latestActions);
                   if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                     fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
                   } else {
-                    fbp = { x: ballAction.target_x, y: ballAction.target_y };
+                    fbp = effectiveTarget ?? { x: ballAction.target_x, y: ballAction.target_y };
                   }
                   lastBallDirRef.current = null; // No inertia for dribble
                 }
@@ -1858,10 +1890,12 @@ export default function MatchRoomPage() {
       t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
     }
 
-    return {
-      x: startX + (moveAction.target_x - startX) * t,
-      y: startY + (moveAction.target_y - startY) * t,
-    };
+      const effectiveTarget = getEffectiveActionTarget(moveAction, { x: startX, y: startY }, turnActions);
+
+      return {
+        x: startX + ((effectiveTarget?.x ?? moveAction.target_x) - startX) * t,
+        y: startY + ((effectiveTarget?.y ?? moveAction.target_y) - startY) * t,
+      };
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -2147,8 +2181,11 @@ export default function MatchRoomPage() {
     const t = expDecay / normFactor; // normalized to [0, 1]
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
-      const dx = ballAction.target_x - startPos.x;
-      const dy = ballAction.target_y - startPos.y;
+      const effectiveTarget = getEffectiveActionTarget(ballAction, startPos, turnActions);
+      const endX = effectiveTarget?.x ?? ballAction.target_x;
+      const endY = effectiveTarget?.y ?? ballAction.target_y;
+      const dx = endX - startPos.x;
+      const dy = endY - startPos.y;
 
       if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
         const len2 = dx * dx + dy * dy;
