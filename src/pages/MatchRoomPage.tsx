@@ -1628,6 +1628,13 @@ export default function MatchRoomPage() {
           return;
         }
 
+        // Block manual menu open if one-touch action is already set for this participant
+        const hasOneTouchAction = turnActions.some(a =>
+          a.participant_id === participantId &&
+          a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch_executed === true
+        );
+        if (hasOneTouchAction) return;
+
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking) ||
