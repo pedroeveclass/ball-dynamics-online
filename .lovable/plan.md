@@ -1,62 +1,84 @@
 
 
-# Plano: Validar distância física para desarmes, interceptações e recepções
+# Plano: Sistema de Zonas Táticas por Formação e Momento de Jogo
 
-## Problema
-Bots conseguem realizar desarmes e interceptações "impossíveis" porque a engine nunca valida se o jogador consegue fisicamente chegar ao ponto de interceptação. Isso afeta desarmes, bloqueios, defesas de goleiro e potencialmente domínio de passes.
+## Resumo
+Substituir o sistema atual de âncora fixa + `ballShift` + `ROLE_ADVANCE_LIMIT`/`ROLE_RETREAT_LIMIT` por zonas retangulares definidas para cada slot de cada formação, em 3 momentos de jogo. Os bots ficam confinados dentro da sua zona e se posicionam em relação ao ponto ideal dentro dela.
 
-Três falhas específicas:
+## Arquivo alterado
+`supabase/functions/match-engine-lab/index.ts`
 
-1. **`findInterceptorCandidates`** — verifica apenas se o alvo do `receive` está perto da trajetória da bola (threshold 2 unidades), mas nunca calcula se o interceptador consegue se mover até aquele ponto com base no seu `maxMoveRange`.
+## Estrutura de dados
 
-2. **Clamp de ações** — só aplica limitação de distância para ações `move`, ignorando completamente ações `receive`. Um bot pode submeter um `receive` a 50 unidades de distância e a engine aceita.
+Uma constante `FORMATION_ZONES` com a seguinte estrutura:
 
-3. **Decisão defensiva dos bots** — usa `bhDist < 12` como limite arbitrário que não corresponde ao alcance real do jogador.
+```text
+FORMATION_ZONES[formação][momento][slotIndex] = {
+  minX, maxX, minY, maxY,  // limites da zona
+  idealX, idealY            // ponto ideal dentro da zona
+}
+```
 
-## Correções (arquivo único: `supabase/functions/match-engine-lab/index.ts`)
+Momentos: `defensive`, `transition`, `offensive`
 
-### 1. Validar alcance físico em `findInterceptorCandidates`
-Para cada candidato a interceptação, calcular a distância entre a posição atual do jogador e o ponto de interceptação (`interceptX`, `interceptY`). Buscar os atributos do jogador e calcular seu `computeMaxMoveRange`. Rejeitar candidatos cuja distância exceda o alcance.
+### Zonas por formação (Home team, campo 0-100)
 
-Isso corrige desarmes, bloqueios, defesas E domínio de passes de uma vez — todas essas ações passam por `findInterceptorCandidates`.
+Baseado nas 8 imagens enviadas, cada slot terá zonas para os 3 momentos. Abaixo os slots por formação (GK sempre fixo: zona 2-18, 20-80):
 
-### 2. Estender clamp para ações `receive`
-Na linha 932, mudar o filtro de `action.action_type === 'move'` para `action.action_type === 'move<lov-plan>
+**4-4-2** (11 slots: GK, LB, CB1, CB2, RB, LM, CM1, CM2, RM, ST1, ST2)
+**4-3-3** (11 slots: GK, LB, CB1, CB2, RB, CM1, CM2, CM3, LW, ST, RW)
+**4-2-3-1** (11 slots: GK, LB, CB1, CB2, RB, CDM1, CDM2, LW, CAM, RW, ST)
+**3-5-2** (11 slots: GK, CB1, CB2, CB3, LWB, CM1, CM2, CM3, RWB, ST1, ST2)
+**3-4-3** (11 slots: GK, CB1, CB2, CB3, LM, CM1, CM2, RM, LW, ST, RW)
+**5-3-2** (11 slots: GK, LWB, CB1, CB2, CB3, RWB, CM1, CM2, CM3, ST1, ST2)
+**5-4-1** (11 slots: GK, LWB, CB1, CB2, CB3, RWB, LM, CM1, CM2, RM, ST)
+**4-1-4-1** (11 slots: GK, LB, CB1, CB2, RB, CDM, LM, CM1, CM2, RM, ST)
 
-# Plano: Validar distância física para desarmes, interceptações e recepções
+As coordenadas de cada zona serão extraídas visualmente das imagens fornecidas, mapeando as elipses coloridas (amarelo=defesa, azul=meio, vermelho/rosa=ataque, laranja=GK) para retângulos (minX, maxX, minY, maxY).
 
-## Problema
-Bots conseguem realizar desarmes e interceptações "impossíveis" porque a engine nunca valida se o jogador consegue fisicamente chegar ao ponto de interceptação. Isso afeta desarmes, bloqueios, defesas de goleiro e potencialmente domínio de passes.
+Para o time Away, espelhamento automático: `X → 100 - X`.
 
-Três falhas específicas:
+## Detecção de momento
 
-1. **`findInterceptorCandidates`** — verifica apenas se o alvo do `receive` está perto da trajetória da bola (threshold 2 unidades), mas nunca calcula se o interceptador consegue se mover até aquele ponto com base no seu `maxMoveRange`.
+```text
+function detectGameMoment(isAttacking, ballX, isHome):
+  SE não tem posse → 'defensive'
+  SE tem posse E bola no terço defensivo → 'transition'
+  SE tem posse E bola no meio-campo → 'transition'  
+  SE tem posse E bola no terço ofensivo → 'offensive'
+```
 
-2. **Clamp de ações** — só aplica limitação de distância para ações `move`, ignorando completamente ações `receive`. Um bot pode submeter um `receive` a 50 unidades de distância e a engine aceita.
+Terço defensivo (Home): ballX < 35. Terço ofensivo (Home): ballX > 65. Away invertido.
 
-3. **Decisão defensiva dos bots** — usa `bhDist < 12` como limite arbitrário que não corresponde ao alcance real do jogador.
+## Refatoração de `computeTacticalTarget`
 
-## Correções (arquivo único: `supabase/functions/match-engine-lab/index.ts`)
+1. Recebe `formation` e `slotIndex` como parâmetros adicionais
+2. Usa `detectGameMoment` para determinar o momento
+3. Busca a zona do slot naquele momento via `FORMATION_ZONES[formation][moment][slotIndex]`
+4. Calcula alvo = ponto ideal da zona, com leve atração da bola (max 20% da largura da zona em X, 10% em Y)
+5. Clampa ao retângulo da zona
+6. Clampa ao `maxMoveRange` do jogador
+7. Jitter mínimo (1 unidade) para evitar sobreposição exata
 
-### 1. Validar alcance físico em `findInterceptorCandidates`
-Para cada candidato a interceptação, calcular a distância entre a posição atual do jogador e o ponto de interceptação (`interceptX`, `interceptY`). Buscar os atributos do jogador e calcular seu `computeMaxMoveRange`. Rejeitar candidatos cuja distância exceda o alcance.
+## O que é removido
+- `ROLE_ADVANCE_LIMIT` e `ROLE_RETREAT_LIMIT` (substituídos pelos limites das zonas)
+- `ballShiftX`/`ballShiftY` hardcoded (substituídos por atração proporcional ao tamanho da zona)
+- `pushAmount`/`pullAmount` fixos por role (substituídos pela zona do momento correto)
 
-Isso corrige desarmes, bloqueios, defesas E domínio de passes de uma vez — todas essas ações passam por `findInterceptorCandidates`. A função precisa receber o `turnNumber` e o mapa de atributos como parâmetros adicionais.
+## O que é mantido
+- `computeMaxMoveRange` e clamp final de alcance
+- Lógica específica do GK (posicionamento reativo ao chute)
+- `getFormationAnchor` continua existindo para o fallback de bot fill e posicionamento inicial
+- `FORMATION_POSITIONS` para preenchimento de bots
 
-### 2. Estender clamp para ações `receive`
-Na linha 932, mudar o filtro de `action.action_type === 'move'` para incluir `'receive'` também. Assim, mesmo ações de `receive` submetidas por humanos ou bots são limitadas ao alcance real do jogador.
+## Refatoração das chamadas
+- `getFormationAnchor` passa a retornar também o `slotIndex` para que `computeTacticalTarget` saiba qual zona usar
+- Todas as ~15 chamadas a `computeTacticalTarget` passam a incluir `formation` e `slotIndex`
+- Formações não mapeadas fazem fallback para `4-4-2`
 
-### 3. Corrigir limites de decisão dos bots defensivos
-Substituir `bhDist < 12` (linha 802) e qualquer outro threshold arbitrário por comparação direta com `maxMoveRange` do bot. O bot só tenta desarme se `bhDist <= maxMoveRange`.
-
-## Impacto em outras mecânicas
-- **Dominar passes**: Passa por `findInterceptorCandidates`, então a mesma validação de alcance se aplica automaticamente — jogadores longe demais não conseguirão "dominar" um passe que não alcançam.
-- **Defesa do goleiro**: A lógica do GK na linha 776 já usa `distToIntercept <= maxMoveRange`, então está correta. A validação adicional em `findInterceptorCandidates` serve como segunda camada de segurança.
-- **One-touch / toque de primeira**: Não é afetado, pois usa injeção direta de ação, não passa por interceptação.
-- **Bola solta**: Ações de `receive` para bola solta também serão corretamente limitadas pelo clamp.
-
-## Detalhes técnicos
-- `computeMaxMoveRange` já existe e calcula o alcance real com base em velocidade, aceleração, agilidade, stamina e turno.
-- `findInterceptorCandidates` precisará receber parâmetros extras: `turnNumber` e referência aos atributos dos participantes para calcular o range de cada candidato.
-- Todas as chamadas a `findInterceptorCandidates` (linhas 1209 e 1310) precisarão ser atualizadas para passar esses novos parâmetros.
+## Impacto
+- Bots respeitam zonas táticas reais baseadas na formação escolhida pelo manager
+- Posicionamento muda dinamicamente conforme o time ataca ou defende
+- Elimina o problema de clustering/drift vertical
+- Funciona para todas as 8 formações suportadas
 
