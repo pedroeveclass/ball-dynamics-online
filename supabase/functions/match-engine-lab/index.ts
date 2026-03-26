@@ -799,7 +799,7 @@ async function generateBotActions(
           }
         } else if (role === 'centerBack' || role === 'fullBack') {
           // ── Defenders: tackle if close, otherwise mark attackers ──
-          if (bhDist <= maxMoveRange && bhDist < 12) {
+          if (bhDist <= maxMoveRange) {
             // Close enough to tackle — submit receive to intercept the ball carrier
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -843,7 +843,7 @@ async function generateBotActions(
           }
         } else if (role === 'defensiveMid' || role === 'centralMid') {
           // ── Midfielders: press if close, tackle if very close ──
-          if (bhDist <= maxMoveRange && bhDist < 10) {
+          if (bhDist <= maxMoveRange) {
             // Very close — try to tackle
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -870,7 +870,7 @@ async function generateBotActions(
           }
         } else {
           // ── Attackers defending: occasional press ──
-          if (bhDist < 12 && Math.random() < 0.35) {
+          if (bhDist <= maxMoveRange && Math.random() < 0.35) {
             const pressX = posX + (ballPos.x - posX) * 0.35;
             const pressY = posY + (ballPos.y - posY) * 0.35;
             actions.push({
@@ -929,7 +929,7 @@ async function generateBotActions(
 
   // ── Clamp all bot move actions to max movement range ──
   for (const action of actions) {
-    if (action.action_type === 'move' && action.target_x != null && action.target_y != null) {
+    if ((action.action_type === 'move' || action.action_type === 'receive') && action.target_x != null && action.target_y != null) {
       const bot = botsToAct.find(b => b.id === action.participant_id);
       if (bot) {
         const botRaw = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
@@ -1263,7 +1263,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[]): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
   if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
   if (!bh) return [];
@@ -1294,6 +1294,26 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
     if (dist <= threshold) {
       const isInInterceptableZone = interceptableRanges.some(([lo, hi]) => t >= lo && t <= hi);
       if (isInInterceptableZone) {
+        // ── Physical reach validation ──
+        const interceptor = participants.find((p: any) => p.id === a.participant_id);
+        if (interceptor && turnNumber != null && attrByProfile) {
+          const pRaw = interceptor.player_profile_id ? attrByProfile[interceptor.player_profile_id] : null;
+          const moveAttrs = {
+            velocidade: Number(pRaw?.velocidade ?? 40),
+            aceleracao: Number(pRaw?.aceleracao ?? 40),
+            agilidade: Number(pRaw?.agilidade ?? 40),
+            stamina: Number(pRaw?.stamina ?? 40),
+            forca: Number(pRaw?.forca ?? 40),
+          };
+          const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+          const posX = Number(interceptor.pos_x ?? 50);
+          const posY = Number(interceptor.pos_y ?? 50);
+          const distToIntercept = Math.sqrt((posX - cx) ** 2 + (posY - cy) ** 2);
+          if (distToIntercept > maxRange) {
+            console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+            continue;
+          }
+        }
         interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy });
       } else {
         console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
