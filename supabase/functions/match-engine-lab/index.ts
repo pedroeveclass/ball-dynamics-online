@@ -1177,7 +1177,7 @@ function computeInterceptSuccess(
   return { success, chance: successChance, foul };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -1206,7 +1206,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
   const bhAttrs = getFullAttrs(bh);
   const bhActionType = _attacker.action_type || action;
-  const interceptors = findInterceptorCandidates(allActions, _attacker, participants);
+  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile);
 
   for (const candidate of interceptors) {
     const defAttrs = getFullAttrs(candidate.participant);
