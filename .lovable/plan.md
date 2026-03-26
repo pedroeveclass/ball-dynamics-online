@@ -1,44 +1,62 @@
 
-Plano de implementação
 
-1. Travar corretamente o “toque de primeira” no turno seguinte
-- Ajustar a MatchRoom para não abrir o menu da Fase 1 quando o portador da bola já tiver uma ação automática injetada pelo toque de primeira no turno atual.
-- Bloquear isso em dois lugares: auto-abertura do menu e clique manual no jogador.
-- Fazer a tela reconhecer explicitamente ações com `payload.one_touch_executed` como “ação já consumida”.
+# Plano: Validar distância física para desarmes, interceptações e recepções
 
-2. Centralizar tudo em uma engine única
-- Tornar `match-engine-lab` a única engine real de jogo para 3x3, 11x11, amistoso e oficial.
-- Atualizar o seletor cliente (`src/lib/matchEngine.ts`) para usar lab como padrão real e remover dependência prática da engine antiga.
-- Preservar a engine antiga apenas como referência legada/desativada no código, sem continuar como fonte ativa de lógica divergente.
+## Problema
+Bots conseguem realizar desarmes e interceptações "impossíveis" porque a engine nunca valida se o jogador consegue fisicamente chegar ao ponto de interceptação. Isso afeta desarmes, bloqueios, defesas de goleiro e potencialmente domínio de passes.
 
-3. Reescrever a lógica defensiva dos bots
-- Hoje os bots defensivos estão quase sempre só andando; por isso não roubam bola e o goleiro não entra nas disputas corretamente.
-- Vou fazer defensores e goleiros gerarem ações reais de disputa (`receive` nos pontos de interceptação/roubo/defesa) quando a bola estiver fisicamente alcançável.
-- Manter movimento tático apenas como fallback quando não houver disputa possível.
+Três falhas específicas:
 
-4. Corrigir de vez o posicionamento absurdo para cima
-- Refazer o cálculo de alvo tático dos bots para reduzir drasticamente o arrasto vertical.
-- Fortalecer âncoras de formação, limitar deslocamento em Y por faixa/posição, remover aleatoriedade excessiva e usar separação entre companheiros para evitar amontoamento.
-- Corrigir também o fallback de âncora quando slot/posição não vier bem preenchido, para não empurrar vários atletas para a mesma faixa.
+1. **`findInterceptorCandidates`** — verifica apenas se o alvo do `receive` está perto da trajetória da bola (threshold 2 unidades), mas nunca calcula se o interceptador consegue se mover até aquele ponto com base no seu `maxMoveRange`.
 
-5. Aumentar novamente a distância de movimento
-- Subir quase ao dobro o alcance atual de movimento.
-- Aplicar a mesma regra no backend e na UI para a seta/preview bater com a resolução real.
-- Manter a penalidade de aproximadamente 15% para quem está com a bola, além da restrição já existente de movimento pós-ação de bola.
+2. **Clamp de ações** — só aplica limitação de distância para ações `move`, ignorando completamente ações `receive`. Um bot pode submeter um `receive` a 50 unidades de distância e a engine aceita.
 
-6. Eliminar divergência entre seta mostrada e posição final
-- Parar de depender só do alvo bruto da ação para animação/finalização.
-- Fazer a resolução expor ou reutilizar a coordenada final realmente aplicada ao jogador, para a UI desenhar exatamente o destino resolvido e não uma aproximação.
+3. **Decisão defensiva dos bots** — usa `bhDist < 12` como limite arbitrário que não corresponde ao alcance real do jogador.
 
-Arquivos principais
-- `src/pages/MatchRoomPage.tsx`
-- `src/lib/matchEngine.ts`
-- `supabase/functions/match-engine-lab/index.ts`
-- `supabase/functions/match-engine/index.ts` (apenas para desativação/legado, não como engine viva)
+## Correções (arquivo único: `supabase/functions/match-engine-lab/index.ts`)
 
-Detalhes técnicos
-- O problema do toque de primeira está na UI: a Fase 1 ainda autoabre menu só porque o jogador virou portador, sem checar se já existe ação automática pendente para ele.
-- O problema de roubo/defesa dos bots está na engine: a resolução considera interceptadores via `receive`, mas a IA defensiva atual em `defending_response` quase sempre envia só `move`.
-- O arrasto para o topo ainda não está resolvido apenas com `ballShiftY = 0.05`; o cálculo de alvo/âncora precisa ser refeito, com clamp por corredor e menos jitter aleatório.
-- A unificação para lab já está parcialmente encaminhada no projeto atual, porque o cliente já aponta para `match-engine-lab`; falta remover a dependência residual da engine original e parar de manter duas lógicas vivas.
-- Na implementação, vou aplicar tudo primeiro na lab e deixar a antiga somente como legado desativado, para evitar voltar a ter correções em duplicidade.
+### 1. Validar alcance físico em `findInterceptorCandidates`
+Para cada candidato a interceptação, calcular a distância entre a posição atual do jogador e o ponto de interceptação (`interceptX`, `interceptY`). Buscar os atributos do jogador e calcular seu `computeMaxMoveRange`. Rejeitar candidatos cuja distância exceda o alcance.
+
+Isso corrige desarmes, bloqueios, defesas E domínio de passes de uma vez — todas essas ações passam por `findInterceptorCandidates`.
+
+### 2. Estender clamp para ações `receive`
+Na linha 932, mudar o filtro de `action.action_type === 'move'` para `action.action_type === 'move<lov-plan>
+
+# Plano: Validar distância física para desarmes, interceptações e recepções
+
+## Problema
+Bots conseguem realizar desarmes e interceptações "impossíveis" porque a engine nunca valida se o jogador consegue fisicamente chegar ao ponto de interceptação. Isso afeta desarmes, bloqueios, defesas de goleiro e potencialmente domínio de passes.
+
+Três falhas específicas:
+
+1. **`findInterceptorCandidates`** — verifica apenas se o alvo do `receive` está perto da trajetória da bola (threshold 2 unidades), mas nunca calcula se o interceptador consegue se mover até aquele ponto com base no seu `maxMoveRange`.
+
+2. **Clamp de ações** — só aplica limitação de distância para ações `move`, ignorando completamente ações `receive`. Um bot pode submeter um `receive` a 50 unidades de distância e a engine aceita.
+
+3. **Decisão defensiva dos bots** — usa `bhDist < 12` como limite arbitrário que não corresponde ao alcance real do jogador.
+
+## Correções (arquivo único: `supabase/functions/match-engine-lab/index.ts`)
+
+### 1. Validar alcance físico em `findInterceptorCandidates`
+Para cada candidato a interceptação, calcular a distância entre a posição atual do jogador e o ponto de interceptação (`interceptX`, `interceptY`). Buscar os atributos do jogador e calcular seu `computeMaxMoveRange`. Rejeitar candidatos cuja distância exceda o alcance.
+
+Isso corrige desarmes, bloqueios, defesas E domínio de passes de uma vez — todas essas ações passam por `findInterceptorCandidates`. A função precisa receber o `turnNumber` e o mapa de atributos como parâmetros adicionais.
+
+### 2. Estender clamp para ações `receive`
+Na linha 932, mudar o filtro de `action.action_type === 'move'` para incluir `'receive'` também. Assim, mesmo ações de `receive` submetidas por humanos ou bots são limitadas ao alcance real do jogador.
+
+### 3. Corrigir limites de decisão dos bots defensivos
+Substituir `bhDist < 12` (linha 802) e qualquer outro threshold arbitrário por comparação direta com `maxMoveRange` do bot. O bot só tenta desarme se `bhDist <= maxMoveRange`.
+
+## Impacto em outras mecânicas
+- **Dominar passes**: Passa por `findInterceptorCandidates`, então a mesma validação de alcance se aplica automaticamente — jogadores longe demais não conseguirão "dominar" um passe que não alcançam.
+- **Defesa do goleiro**: A lógica do GK na linha 776 já usa `distToIntercept <= maxMoveRange`, então está correta. A validação adicional em `findInterceptorCandidates` serve como segunda camada de segurança.
+- **One-touch / toque de primeira**: Não é afetado, pois usa injeção direta de ação, não passa por interceptação.
+- **Bola solta**: Ações de `receive` para bola solta também serão corretamente limitadas pelo clamp.
+
+## Detalhes técnicos
+- `computeMaxMoveRange` já existe e calcula o alcance real com base em velocidade, aceleração, agilidade, stamina e turno.
+- `findInterceptorCandidates` precisará receber parâmetros extras: `turnNumber` e referência aos atributos dos participantes para calcular o range de cada candidato.
+- Todas as chamadas a `findInterceptorCandidates` (linhas 1209 e 1310) precisarão ser atualizadas para passar esses novos parâmetros.
+
