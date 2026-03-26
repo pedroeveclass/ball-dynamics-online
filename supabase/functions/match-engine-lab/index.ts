@@ -840,7 +840,8 @@ async function generateBotActions(
     const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
     const role = getPositionRole(slotPos);
     const isGK = role === 'goalkeeper';
-    const anchor = getFormationAnchor(bot, participants, formation, isHome, match);
+    const anchorResult = getFormationAnchor(bot, participants, formation, isHome, match);
+    const slotIndex = anchorResult.slotIndex;
 
     // Calculate max movement range for this bot
     const botRawAttrs = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
@@ -1123,7 +1124,7 @@ async function generateBotActions(
         }
       } else {
         // Maintain formation position, don't chase
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, false);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -1161,7 +1162,7 @@ async function generateBotActions(
               });
             } else {
               // Move toward best defensive position
-              const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -1169,7 +1170,7 @@ async function generateBotActions(
               });
             }
           } else {
-            const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -1204,7 +1205,7 @@ async function generateBotActions(
                 const ownGoalX = isHome ? 0 : 100;
                 const markX = oppX + (ownGoalX - oppX) * 0.25;
                 const markY = oppY + (50 - oppY) * 0.1;
-                const target = computeTacticalTarget(bot, role, { x: markX, y: markY }, ballPos, isHome, false, true, maxMoveRange);
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, { x: markX, y: markY });
                 actions.push({
                   match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                   controlled_by_type: 'bot', action_type: 'move',
@@ -1212,7 +1213,7 @@ async function generateBotActions(
                 });
               }
             } else {
-              const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -1240,7 +1241,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -1259,7 +1260,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -1268,7 +1269,7 @@ async function generateBotActions(
           }
         }
       } else {
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -1279,7 +1280,7 @@ async function generateBotActions(
       // ── Attacking Support ──
       if (isGK) {
         // GK stays back
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, true, false);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -1287,7 +1288,7 @@ async function generateBotActions(
         });
       } else {
         // Move to tactical position with attacking push
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, true, false);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -1297,7 +1298,7 @@ async function generateBotActions(
     } else {
       // ── Positioning phases or fallback ──
       const isDefending = phase === 'positioning_defense';
-      const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, !isDefending, isDefending);
+      const target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex);
       actions.push({
         match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
         controlled_by_type: 'bot', action_type: 'move',
