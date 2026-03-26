@@ -2431,7 +2431,7 @@ Deno.serve(async (req) => {
             || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
           if (ballHolderAction) {
-            const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile);
+            const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1);
 
             if (result.goal) {
               // Check if the shot is actually on target
