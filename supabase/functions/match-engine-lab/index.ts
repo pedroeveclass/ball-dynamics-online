@@ -42,6 +42,37 @@ const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: str
     { x: 50, y: 15, pos: 'LM' }, { x: 50, y: 50, pos: 'CAM' }, { x: 50, y: 85, pos: 'RM' },
     { x: 63, y: 50, pos: 'ST' },
   ],
+  '3-5-2': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 25, pos: 'CB' }, { x: 22, y: 50, pos: 'CB' }, { x: 22, y: 75, pos: 'CB' },
+    { x: 38, y: 10, pos: 'LWB' }, { x: 38, y: 35, pos: 'CM' }, { x: 38, y: 50, pos: 'CM' }, { x: 38, y: 65, pos: 'CM' }, { x: 38, y: 90, pos: 'RWB' },
+    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
+  ],
+  '3-4-3': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 25, pos: 'CB' }, { x: 22, y: 50, pos: 'CB' }, { x: 22, y: 75, pos: 'CB' },
+    { x: 40, y: 15, pos: 'LM' }, { x: 40, y: 37, pos: 'CM' }, { x: 40, y: 63, pos: 'CM' }, { x: 40, y: 85, pos: 'RM' },
+    { x: 60, y: 15, pos: 'LW' }, { x: 62, y: 50, pos: 'ST' }, { x: 60, y: 85, pos: 'RW' },
+  ],
+  '5-3-2': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 20, y: 10, pos: 'LWB' }, { x: 18, y: 30, pos: 'CB' }, { x: 18, y: 50, pos: 'CB' }, { x: 18, y: 70, pos: 'CB' }, { x: 20, y: 90, pos: 'RWB' },
+    { x: 40, y: 25, pos: 'CM' }, { x: 40, y: 50, pos: 'CM' }, { x: 40, y: 75, pos: 'CM' },
+    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
+  ],
+  '5-4-1': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 20, y: 10, pos: 'LWB' }, { x: 18, y: 30, pos: 'CB' }, { x: 18, y: 50, pos: 'CB' }, { x: 18, y: 70, pos: 'CB' }, { x: 20, y: 90, pos: 'RWB' },
+    { x: 40, y: 15, pos: 'LM' }, { x: 40, y: 37, pos: 'CM' }, { x: 40, y: 63, pos: 'CM' }, { x: 40, y: 85, pos: 'RM' },
+    { x: 62, y: 50, pos: 'ST' },
+  ],
+  '4-1-4-1': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 34, y: 50, pos: 'CDM' },
+    { x: 48, y: 15, pos: 'LM' }, { x: 48, y: 37, pos: 'CM' }, { x: 48, y: 63, pos: 'CM' }, { x: 48, y: 85, pos: 'RM' },
+    { x: 63, y: 50, pos: 'ST' },
+  ],
 };
 
 function getFormationForFill(formation: string, isHome: boolean): Array<{ x: number; y: number; pos: string }> {
@@ -146,31 +177,370 @@ function getPositionRole(slotPos: string): TacticalRole {
   return 'centralMid'; // fallback
 }
 
-// Max advance limits per role (home team values; away = 100 - value)
-const ROLE_ADVANCE_LIMIT: Record<TacticalRole, number> = {
-  goalkeeper: 18,
-  centerBack: 50,
-  fullBack: 65,
-  defensiveMid: 55,
-  centralMid: 65,
-  attackingMid: 75,
-  wideMid: 70,
-  winger: 80,
-  striker: 95,
+// ─── Zone-Based Tactical Positioning ─────────────────────────
+type Zone = { minX: number; maxX: number; minY: number; maxY: number; idealX: number; idealY: number };
+type FormationZoneMap = { defensive: Zone[]; transition: Zone[]; offensive: Zone[] };
+
+function z(minX: number, maxX: number, minY: number, maxY: number, idealX: number, idealY: number): Zone {
+  return { minX, maxX, minY, maxY, idealX, idealY };
+}
+
+const GK_DEF = z(2, 16, 25, 75, 5, 50);
+const GK_TRA = z(2, 16, 25, 75, 5, 50);
+const GK_OFF = z(2, 18, 25, 75, 6, 50);
+
+const FORMATION_ZONES: Record<string, FormationZoneMap> = {
+  '4-4-2': {
+    defensive: [
+      GK_DEF,
+      z(15, 32, 5, 35, 22, 18),   // LB
+      z(15, 30, 28, 52, 20, 38),   // CB
+      z(15, 30, 48, 72, 20, 62),   // CB
+      z(15, 32, 65, 95, 22, 82),   // RB
+      z(30, 50, 5, 38, 38, 20),    // LM
+      z(28, 48, 28, 52, 36, 40),   // CM
+      z(28, 48, 48, 72, 36, 60),   // CM
+      z(30, 50, 62, 95, 38, 80),   // RM
+      z(40, 58, 22, 52, 48, 38),   // ST
+      z(40, 58, 48, 78, 48, 62),   // ST
+    ],
+    transition: [
+      GK_TRA,
+      z(22, 42, 5, 38, 30, 18),
+      z(20, 38, 28, 52, 28, 40),
+      z(20, 38, 48, 72, 28, 60),
+      z(22, 42, 62, 95, 30, 82),
+      z(38, 60, 5, 42, 48, 22),
+      z(35, 58, 28, 52, 45, 40),
+      z(35, 58, 48, 72, 45, 60),
+      z(38, 60, 58, 95, 48, 78),
+      z(50, 70, 22, 52, 58, 38),
+      z(50, 70, 48, 78, 58, 62),
+    ],
+    offensive: [
+      GK_OFF,
+      z(30, 58, 5, 35, 42, 18),
+      z(28, 45, 28, 52, 35, 40),
+      z(28, 45, 48, 72, 35, 60),
+      z(30, 58, 65, 95, 42, 82),
+      z(50, 78, 5, 38, 62, 20),
+      z(45, 68, 28, 52, 55, 40),
+      z(45, 68, 48, 72, 55, 60),
+      z(50, 78, 62, 95, 62, 80),
+      z(65, 92, 22, 52, 78, 38),
+      z(65, 92, 48, 78, 78, 62),
+    ],
+  },
+  '4-3-3': {
+    defensive: [
+      GK_DEF,
+      z(15, 32, 5, 35, 22, 18),
+      z(15, 30, 28, 52, 20, 38),
+      z(15, 30, 48, 72, 20, 62),
+      z(15, 32, 65, 95, 22, 82),
+      z(28, 50, 15, 42, 38, 28),   // CM
+      z(28, 50, 35, 65, 38, 50),   // CM
+      z(28, 50, 58, 85, 38, 72),   // CM
+      z(38, 55, 5, 30, 45, 15),    // LW
+      z(40, 58, 30, 70, 48, 50),   // ST
+      z(38, 55, 70, 95, 45, 85),   // RW
+    ],
+    transition: [
+      GK_TRA,
+      z(22, 42, 5, 38, 30, 18),
+      z(20, 38, 28, 52, 28, 40),
+      z(20, 38, 48, 72, 28, 60),
+      z(22, 42, 62, 95, 30, 82),
+      z(38, 58, 15, 42, 46, 28),
+      z(38, 58, 35, 65, 46, 50),
+      z(38, 58, 58, 85, 46, 72),
+      z(48, 68, 5, 30, 56, 15),
+      z(50, 70, 30, 70, 58, 50),
+      z(48, 68, 70, 95, 56, 85),
+    ],
+    offensive: [
+      GK_OFF,
+      z(30, 58, 5, 35, 42, 18),
+      z(28, 45, 28, 52, 35, 40),
+      z(28, 45, 48, 72, 35, 60),
+      z(30, 58, 65, 95, 42, 82),
+      z(48, 70, 18, 42, 58, 30),
+      z(48, 70, 35, 65, 58, 50),
+      z(48, 70, 58, 82, 58, 70),
+      z(62, 92, 5, 28, 75, 15),
+      z(68, 95, 30, 70, 82, 50),
+      z(62, 92, 72, 95, 75, 85),
+    ],
+  },
+  '4-2-3-1': {
+    defensive: [
+      GK_DEF,
+      z(15, 32, 5, 35, 22, 18),
+      z(15, 30, 28, 52, 20, 38),
+      z(15, 30, 48, 72, 20, 62),
+      z(15, 32, 65, 95, 22, 82),
+      z(25, 45, 25, 50, 34, 38),   // CDM
+      z(25, 45, 50, 75, 34, 62),   // CDM
+      z(35, 55, 5, 32, 42, 18),    // LM
+      z(35, 55, 35, 65, 42, 50),   // CAM
+      z(35, 55, 68, 95, 42, 82),   // RM
+      z(42, 60, 30, 70, 50, 50),   // ST
+    ],
+    transition: [
+      GK_TRA,
+      z(22, 42, 5, 38, 30, 18),
+      z(20, 38, 28, 52, 28, 40),
+      z(20, 38, 48, 72, 28, 60),
+      z(22, 42, 62, 95, 30, 82),
+      z(35, 55, 25, 50, 42, 38),
+      z(35, 55, 50, 75, 42, 62),
+      z(45, 65, 5, 32, 52, 18),
+      z(45, 65, 35, 65, 52, 50),
+      z(45, 65, 68, 95, 52, 82),
+      z(55, 72, 30, 70, 62, 50),
+    ],
+    offensive: [
+      GK_OFF,
+      z(30, 58, 5, 35, 42, 18),
+      z(28, 45, 28, 52, 35, 40),
+      z(28, 45, 48, 72, 35, 60),
+      z(30, 58, 65, 95, 42, 82),
+      z(45, 65, 28, 52, 52, 40),
+      z(45, 65, 48, 72, 52, 60),
+      z(58, 82, 5, 28, 68, 15),
+      z(55, 75, 30, 70, 65, 50),
+      z(58, 82, 72, 95, 68, 85),
+      z(70, 95, 28, 72, 82, 50),
+    ],
+  },
+  '3-5-2': {
+    defensive: [
+      GK_DEF,
+      z(15, 30, 15, 42, 20, 28),   // CB
+      z(15, 30, 35, 65, 20, 50),   // CB
+      z(15, 30, 58, 85, 20, 72),   // CB
+      z(25, 48, 2, 22, 35, 10),    // LWB
+      z(25, 48, 20, 45, 35, 32),   // CM
+      z(25, 48, 38, 62, 35, 50),   // CM
+      z(25, 48, 55, 80, 35, 68),   // CM
+      z(25, 48, 78, 98, 35, 90),   // RWB
+      z(40, 58, 22, 52, 48, 38),   // ST
+      z(40, 58, 48, 78, 48, 62),   // ST
+    ],
+    transition: [
+      GK_TRA,
+      z(20, 38, 15, 42, 28, 28),
+      z(20, 38, 35, 65, 28, 50),
+      z(20, 38, 58, 85, 28, 72),
+      z(35, 58, 2, 25, 45, 12),
+      z(35, 55, 22, 45, 42, 32),
+      z(35, 55, 38, 62, 42, 50),
+      z(35, 55, 55, 78, 42, 68),
+      z(35, 58, 75, 98, 45, 88),
+      z(50, 70, 22, 52, 58, 38),
+      z(50, 70, 48, 78, 58, 62),
+    ],
+    offensive: [
+      GK_OFF,
+      z(28, 45, 15, 42, 35, 28),
+      z(28, 45, 35, 65, 35, 50),
+      z(28, 45, 58, 85, 35, 72),
+      z(45, 72, 2, 22, 58, 10),
+      z(42, 65, 22, 45, 52, 32),
+      z(42, 65, 38, 62, 52, 50),
+      z(42, 65, 55, 78, 52, 68),
+      z(45, 72, 78, 98, 58, 90),
+      z(65, 92, 22, 52, 78, 38),
+      z(65, 92, 48, 78, 78, 62),
+    ],
+  },
+  '3-4-3': {
+    defensive: [
+      GK_DEF,
+      z(15, 30, 15, 42, 20, 28),   // CB
+      z(15, 30, 35, 65, 20, 50),   // CB
+      z(15, 30, 58, 85, 20, 72),   // CB
+      z(28, 50, 5, 32, 38, 18),    // LM
+      z(28, 48, 25, 50, 36, 38),   // CM
+      z(28, 48, 50, 75, 36, 62),   // CM
+      z(28, 50, 68, 95, 38, 82),   // RM
+      z(38, 55, 5, 28, 45, 15),    // LW
+      z(40, 58, 30, 70, 48, 50),   // ST
+      z(38, 55, 72, 95, 45, 85),   // RW
+    ],
+    transition: [
+      GK_TRA,
+      z(20, 38, 15, 42, 28, 28),
+      z(20, 38, 35, 65, 28, 50),
+      z(20, 38, 58, 85, 28, 72),
+      z(38, 58, 5, 35, 46, 18),
+      z(35, 55, 25, 50, 44, 38),
+      z(35, 55, 50, 75, 44, 62),
+      z(38, 58, 65, 95, 46, 82),
+      z(50, 68, 5, 28, 58, 15),
+      z(52, 72, 30, 70, 60, 50),
+      z(50, 68, 72, 95, 58, 85),
+    ],
+    offensive: [
+      GK_OFF,
+      z(28, 45, 15, 42, 35, 28),
+      z(28, 45, 35, 65, 35, 50),
+      z(28, 45, 58, 85, 35, 72),
+      z(50, 75, 5, 32, 60, 18),
+      z(48, 68, 25, 50, 56, 38),
+      z(48, 68, 50, 75, 56, 62),
+      z(50, 75, 68, 95, 60, 82),
+      z(62, 92, 5, 28, 75, 15),
+      z(68, 95, 30, 70, 82, 50),
+      z(62, 92, 72, 95, 75, 85),
+    ],
+  },
+  '5-3-2': {
+    defensive: [
+      GK_DEF,
+      z(14, 30, 2, 22, 20, 12),    // LWB
+      z(12, 28, 18, 40, 18, 28),   // CB
+      z(12, 28, 35, 65, 18, 50),   // CB
+      z(12, 28, 60, 82, 18, 72),   // CB
+      z(14, 30, 78, 98, 20, 88),   // RWB
+      z(28, 48, 18, 42, 36, 30),   // CM
+      z(28, 48, 38, 62, 36, 50),   // CM
+      z(28, 48, 58, 82, 36, 70),   // CM
+      z(40, 58, 22, 52, 48, 38),   // ST
+      z(40, 58, 48, 78, 48, 62),   // ST
+    ],
+    transition: [
+      GK_TRA,
+      z(22, 42, 2, 25, 30, 12),
+      z(18, 35, 18, 40, 25, 28),
+      z(18, 35, 35, 65, 25, 50),
+      z(18, 35, 60, 82, 25, 72),
+      z(22, 42, 75, 98, 30, 88),
+      z(38, 58, 18, 42, 46, 30),
+      z(38, 58, 38, 62, 46, 50),
+      z(38, 58, 58, 82, 46, 70),
+      z(52, 70, 22, 52, 60, 38),
+      z(52, 70, 48, 78, 60, 62),
+    ],
+    offensive: [
+      GK_OFF,
+      z(35, 62, 2, 22, 48, 10),
+      z(28, 45, 18, 40, 35, 28),
+      z(28, 45, 35, 65, 35, 50),
+      z(28, 45, 60, 82, 35, 72),
+      z(35, 62, 78, 98, 48, 90),
+      z(48, 70, 18, 42, 58, 30),
+      z(48, 70, 38, 62, 58, 50),
+      z(48, 70, 58, 82, 58, 70),
+      z(65, 92, 22, 52, 78, 38),
+      z(65, 92, 48, 78, 78, 62),
+    ],
+  },
+  '5-4-1': {
+    defensive: [
+      GK_DEF,
+      z(14, 30, 2, 22, 20, 12),    // LWB
+      z(12, 28, 18, 40, 18, 28),   // CB
+      z(12, 28, 35, 65, 18, 50),   // CB
+      z(12, 28, 60, 82, 18, 72),   // CB
+      z(14, 30, 78, 98, 20, 88),   // RWB
+      z(28, 48, 5, 30, 36, 18),    // LM
+      z(28, 48, 25, 50, 36, 38),   // CM
+      z(28, 48, 50, 75, 36, 62),   // CM
+      z(28, 48, 70, 95, 36, 82),   // RM
+      z(42, 60, 30, 70, 50, 50),   // ST
+    ],
+    transition: [
+      GK_TRA,
+      z(22, 42, 2, 25, 30, 12),
+      z(18, 35, 18, 40, 25, 28),
+      z(18, 35, 35, 65, 25, 50),
+      z(18, 35, 60, 82, 25, 72),
+      z(22, 42, 75, 98, 30, 88),
+      z(38, 58, 5, 32, 46, 18),
+      z(38, 58, 28, 52, 46, 40),
+      z(38, 58, 48, 72, 46, 60),
+      z(38, 58, 68, 95, 46, 82),
+      z(55, 72, 30, 70, 62, 50),
+    ],
+    offensive: [
+      GK_OFF,
+      z(35, 62, 2, 22, 48, 10),
+      z(28, 45, 18, 40, 35, 28),
+      z(28, 45, 35, 65, 35, 50),
+      z(28, 45, 60, 82, 35, 72),
+      z(35, 62, 78, 98, 48, 90),
+      z(50, 75, 5, 28, 60, 15),
+      z(48, 68, 25, 50, 56, 38),
+      z(48, 68, 50, 75, 56, 62),
+      z(50, 75, 72, 95, 60, 85),
+      z(70, 95, 28, 72, 82, 50),
+    ],
+  },
+  '4-1-4-1': {
+    defensive: [
+      GK_DEF,
+      z(15, 32, 5, 35, 22, 18),    // LB
+      z(15, 30, 28, 52, 20, 38),   // CB
+      z(15, 30, 48, 72, 20, 62),   // CB
+      z(15, 32, 65, 95, 22, 82),   // RB
+      z(22, 42, 35, 65, 32, 50),   // CDM
+      z(32, 52, 5, 30, 40, 18),    // LM
+      z(32, 50, 25, 50, 40, 38),   // CM
+      z(32, 50, 50, 75, 40, 62),   // CM
+      z(32, 52, 70, 95, 40, 82),   // RM
+      z(42, 60, 30, 70, 50, 50),   // ST
+    ],
+    transition: [
+      GK_TRA,
+      z(22, 42, 5, 38, 30, 18),
+      z(20, 38, 28, 52, 28, 40),
+      z(20, 38, 48, 72, 28, 60),
+      z(22, 42, 62, 95, 30, 82),
+      z(32, 52, 35, 65, 40, 50),
+      z(42, 62, 5, 32, 50, 18),
+      z(40, 60, 25, 50, 48, 38),
+      z(40, 60, 50, 75, 48, 62),
+      z(42, 62, 68, 95, 50, 82),
+      z(55, 72, 30, 70, 62, 50),
+    ],
+    offensive: [
+      GK_OFF,
+      z(30, 58, 5, 35, 42, 18),
+      z(28, 45, 28, 52, 35, 40),
+      z(28, 45, 48, 72, 35, 60),
+      z(30, 58, 65, 95, 42, 82),
+      z(40, 60, 35, 65, 48, 50),
+      z(55, 78, 5, 28, 65, 15),
+      z(50, 70, 22, 48, 58, 35),
+      z(50, 70, 52, 78, 58, 65),
+      z(55, 78, 72, 95, 65, 85),
+      z(70, 95, 28, 72, 82, 50),
+    ],
+  },
 };
 
-// Max retreat limits per role (home team; away = 100 - value)
-const ROLE_RETREAT_LIMIT: Record<TacticalRole, number> = {
-  goalkeeper: 2,
-  centerBack: 10,
-  fullBack: 12,
-  defensiveMid: 15,
-  centralMid: 20,
-  attackingMid: 30,
-  wideMid: 25,
-  winger: 35,
-  striker: 40,
-};
+// Mirror a zone for the away team (X → 100 - X)
+function mirrorZone(zone: Zone): Zone {
+  return {
+    minX: 100 - zone.maxX,
+    maxX: 100 - zone.minX,
+    minY: zone.minY,
+    maxY: zone.maxY,
+    idealX: 100 - zone.idealX,
+    idealY: zone.idealY,
+  };
+}
+
+type GameMoment = 'defensive' | 'transition' | 'offensive';
+
+function detectGameMoment(isAttacking: boolean, ballX: number, isHome: boolean): GameMoment {
+  if (!isAttacking) return 'defensive';
+  // Normalize ball position for home perspective
+  const normBallX = isHome ? ballX : 100 - ballX;
+  if (normBallX > 65) return 'offensive';
+  return 'transition';
+}
 
 function getFormationAnchor(
   bot: any,
@@ -178,11 +548,10 @@ function getFormationAnchor(
   formation: string,
   isHome: boolean,
   match?: any,
-): { x: number; y: number } {
+): { x: number; y: number; slotIndex: number } {
   const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
   const formSlots = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
   
-  // Get all team players to determine team size
   const teamParts = participants.filter(
     (p: any) => p.club_id === bot.club_id && p.role_type === 'player'
   ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
@@ -193,9 +562,10 @@ function getFormationAnchor(
   // For small teams (3x3, etc), distribute across formation proportionally
   if (teamSize < 11 && teamSize > 0) {
     const slotIndex = Math.round((botIndexInTeam / Math.max(1, teamSize - 1)) * (formSlots.length - 1));
-    const slot = formSlots[Math.max(0, Math.min(formSlots.length - 1, slotIndex))];
-    if (isHome) return { x: slot.x, y: slot.y };
-    return { x: 100 - slot.x, y: slot.y };
+    const si = Math.max(0, Math.min(formSlots.length - 1, slotIndex));
+    const slot = formSlots[si];
+    if (isHome) return { x: slot.x, y: slot.y, slotIndex: si };
+    return { x: 100 - slot.x, y: slot.y, slotIndex: si };
   }
   
   // For 11v11, match by position
@@ -204,14 +574,15 @@ function getFormationAnchor(
   ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
   const indexInPos = teamPartsOfSamePos.findIndex((p: any) => p.id === bot.id);
 
-  const matchingSlots = formSlots.filter(s => s.pos.toUpperCase() === slotPos);
-  let slot = matchingSlots[Math.max(0, Math.min(indexInPos, matchingSlots.length - 1))];
-  if (!slot) {
-    slot = formSlots[Math.min(formSlots.length - 1, Math.max(0, Math.floor(formSlots.length / 2)))];
+  const matchingSlots = formSlots.map((s, i) => ({ ...s, slotIndex: i })).filter(s => s.pos.toUpperCase() === slotPos);
+  let matched = matchingSlots[Math.max(0, Math.min(indexInPos, matchingSlots.length - 1))];
+  if (!matched) {
+    const fallbackIdx = Math.min(formSlots.length - 1, Math.max(0, Math.floor(formSlots.length / 2)));
+    matched = { ...formSlots[fallbackIdx], slotIndex: fallbackIdx };
   }
 
-  if (isHome) return { x: slot.x, y: slot.y };
-  return { x: 100 - slot.x, y: slot.y };
+  if (isHome) return { x: matched.x, y: matched.y, slotIndex: matched.slotIndex };
+  return { x: 100 - matched.x, y: matched.y, slotIndex: matched.slotIndex };
 }
 
 // ─── Compute max movement range based on attributes ──────────
@@ -232,59 +603,67 @@ function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; ag
 function computeTacticalTarget(
   bot: any,
   role: TacticalRole,
-  anchor: { x: number; y: number },
   ballPos: { x: number; y: number },
   isHome: boolean,
   isAttacking: boolean,
   isDefending: boolean,
+  formation: string,
+  slotIndex: number,
   maxMoveRange?: number,
+  attractOverride?: { x: number; y: number },
 ): { x: number; y: number } {
-  // ── Ball displacement: VERY small to prevent clustering ──
-  // X shift: team slides laterally toward the ball (moderate)
-  const ballShiftX = (ballPos.x - 50) * (isDefending ? 0.15 : 0.10);
-  // Y shift: MINIMAL — players should NOT drift vertically toward the ball
-  // This was the main cause of the "clustering to top" bug
-  const ballShiftY = (ballPos.y - 50) * 0.02; // nearly zero vertical pull
+  // Determine game moment
+  const moment = isDefending ? 'defensive' : detectGameMoment(!isDefending, ballPos.x, isHome);
 
-  let targetX = anchor.x + ballShiftX;
-  let targetY = anchor.y + ballShiftY;
+  // Get zone for this slot
+  const formZones = FORMATION_ZONES[formation] || FORMATION_ZONES['4-4-2'];
+  const momentZones = formZones[moment] || formZones.transition;
+  let zone = momentZones[Math.min(slotIndex, momentZones.length - 1)];
+  if (!zone) zone = { minX: 2, maxX: 98, minY: 2, maxY: 98, idealX: 50, idealY: 50 };
 
-  if (isAttacking && role !== 'goalkeeper') {
-    const pushAmount = role === 'striker' ? 8 : role === 'winger' || role === 'attackingMid' ? 6 : role === 'centralMid' ? 4 : role === 'fullBack' ? 3 : 1;
-    targetX += isHome ? pushAmount : -pushAmount;
-  }
+  // Mirror for away team
+  if (!isHome) zone = mirrorZone(zone);
 
-  if (isDefending && role !== 'goalkeeper') {
-    const pullAmount = role === 'centerBack' ? 5 : role === 'fullBack' ? 5 : role === 'defensiveMid' ? 4 : role === 'centralMid' ? 3 : 2;
-    targetX += isHome ? -pullAmount : pullAmount;
-  }
+  // Start from the zone's ideal point
+  let targetX = zone.idealX;
+  let targetY = zone.idealY;
 
+  // GK: special reactive positioning
   if (role === 'goalkeeper') {
     const goalX = isHome ? 5 : 95;
     const goalY = 50;
     targetX = goalX + (ballPos.x - goalX) * 0.12;
     targetY = goalY + (ballPos.y - goalY) * 0.3;
-    if (isHome) targetX = Math.max(2, Math.min(18, targetX));
-    else targetX = Math.max(82, Math.min(98, targetX));
-    targetY = Math.max(20, Math.min(80, targetY));
+    targetX = Math.max(zone.minX, Math.min(zone.maxX, targetX));
+    targetY = Math.max(zone.minY, Math.min(zone.maxY, targetY));
   } else {
-    const advanceLimit = isHome ? ROLE_ADVANCE_LIMIT[role] : 100 - ROLE_ADVANCE_LIMIT[role];
-    const retreatLimit = isHome ? ROLE_RETREAT_LIMIT[role] : 100 - ROLE_RETREAT_LIMIT[role];
-    if (isHome) {
-      targetX = Math.max(retreatLimit, Math.min(advanceLimit, targetX));
-    } else {
-      targetX = Math.max(advanceLimit, Math.min(retreatLimit, targetX));
-    }
+    // Ball attraction: gentle pull toward ball, proportional to zone size
+    const attractX = attractOverride ? attractOverride.x : ballPos.x;
+    const attractY = attractOverride ? attractOverride.y : ballPos.y;
+    const zoneWidthX = zone.maxX - zone.minX;
+    const zoneWidthY = zone.maxY - zone.minY;
+    const ballPullX = (attractX - targetX) * 0.20; // max 20% of displacement
+    const ballPullY = (attractY - targetY) * 0.10; // max 10% in Y
+    // Clamp the pull to not exceed 25% of zone dimensions
+    const maxPullX = zoneWidthX * 0.25;
+    const maxPullY = zoneWidthY * 0.15;
+    targetX += Math.max(-maxPullX, Math.min(maxPullX, ballPullX));
+    targetY += Math.max(-maxPullY, Math.min(maxPullY, ballPullY));
 
-    // Small random jitter — reduced to prevent erratic movement
-    targetX += (Math.random() - 0.5) * 2;
-    targetY += (Math.random() - 0.5) * 2;
+    // Jitter to avoid exact overlaps (minimal)
+    targetX += (Math.random() - 0.5) * 1.5;
+    targetY += (Math.random() - 0.5) * 1.5;
+
+    // Clamp to zone boundaries
+    targetX = Math.max(zone.minX, Math.min(zone.maxX, targetX));
+    targetY = Math.max(zone.minY, Math.min(zone.maxY, targetY));
   }
 
+  // Field boundaries
   targetX = Math.max(2, Math.min(98, targetX));
   targetY = Math.max(2, Math.min(98, targetY));
 
-  // ── Clamp movement to max movement range ──
+  // Clamp to physical movement range
   if (maxMoveRange && maxMoveRange > 0) {
     const botX = Number(bot.pos_x ?? 50);
     const botY = Number(bot.pos_y ?? 50);
@@ -461,7 +840,8 @@ async function generateBotActions(
     const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
     const role = getPositionRole(slotPos);
     const isGK = role === 'goalkeeper';
-    const anchor = getFormationAnchor(bot, participants, formation, isHome, match);
+    const anchorResult = getFormationAnchor(bot, participants, formation, isHome, match);
+    const slotIndex = anchorResult.slotIndex;
 
     // Calculate max movement range for this bot
     const botRawAttrs = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
@@ -744,7 +1124,7 @@ async function generateBotActions(
         }
       } else {
         // Maintain formation position, don't chase
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, false);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -782,7 +1162,7 @@ async function generateBotActions(
               });
             } else {
               // Move toward best defensive position
-              const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -790,7 +1170,7 @@ async function generateBotActions(
               });
             }
           } else {
-            const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -825,7 +1205,7 @@ async function generateBotActions(
                 const ownGoalX = isHome ? 0 : 100;
                 const markX = oppX + (ownGoalX - oppX) * 0.25;
                 const markY = oppY + (50 - oppY) * 0.1;
-                const target = computeTacticalTarget(bot, role, { x: markX, y: markY }, ballPos, isHome, false, true, maxMoveRange);
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, { x: markX, y: markY });
                 actions.push({
                   match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                   controlled_by_type: 'bot', action_type: 'move',
@@ -833,7 +1213,7 @@ async function generateBotActions(
                 });
               }
             } else {
-              const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -861,7 +1241,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -880,7 +1260,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -889,7 +1269,7 @@ async function generateBotActions(
           }
         }
       } else {
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, false, true, maxMoveRange);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -900,7 +1280,7 @@ async function generateBotActions(
       // ── Attacking Support ──
       if (isGK) {
         // GK stays back
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, true, false);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -908,7 +1288,7 @@ async function generateBotActions(
         });
       } else {
         // Move to tactical position with attacking push
-        const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, true, false);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -918,7 +1298,7 @@ async function generateBotActions(
     } else {
       // ── Positioning phases or fallback ──
       const isDefending = phase === 'positioning_defense';
-      const target = computeTacticalTarget(bot, role, anchor, ballPos, isHome, !isDefending, isDefending);
+      const target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex);
       actions.push({
         match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
         controlled_by_type: 'bot', action_type: 'move',
