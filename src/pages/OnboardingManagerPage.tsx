@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,15 +6,35 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Check, User, Shield, Building2, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, User, Shield, Building2, Eye, Swords, Brain, CircleDot, Frown, Loader2 } from 'lucide-react';
 
-const STEPS = ['Manager', 'Clube', 'Estádio', 'Revisão'];
+const STEPS = ['Manager', 'Time', 'Personalizar', 'Revisão'];
 const STEP_ICONS = [User, Shield, Building2, Eye];
+
+const COACH_TYPES = [
+  { value: 'defensive', label: 'Defensivo', description: '+15% treino defesa', icon: Shield },
+  { value: 'offensive', label: 'Ofensivo', description: '+15% treino ataque', icon: Swords },
+  { value: 'technical', label: 'Técnico', description: '+15% treino técnica', icon: Brain },
+  { value: 'complete', label: 'Completo', description: '+10% em tudo', icon: CircleDot },
+] as const;
 
 const PRESET_COLORS = [
   '#1a5276', '#c0392b', '#27ae60', '#f39c12', '#8e44ad',
   '#2c3e50', '#e74c3c', '#3498db', '#1abc9c', '#d35400',
 ];
+
+type CoachType = typeof COACH_TYPES[number]['value'];
+
+interface AvailableClub {
+  id: string;
+  name: string;
+  short_name: string;
+  primary_color: string;
+  secondary_color: string;
+  city: string | null;
+  league_id: string | null;
+  stadiums: { id: string; name: string }[];
+}
 
 export default function OnboardingManagerPage() {
   const { user, refreshManagerProfile } = useAuth();
@@ -22,26 +42,100 @@ export default function OnboardingManagerPage() {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
-  // Step 1: Manager
+  // Step 0: Manager profile
   const [managerName, setManagerName] = useState('');
-  // Step 2: Club
+  const [coachType, setCoachType] = useState<CoachType | null>(null);
+
+  // Step 1: Select team
+  const [availableClubs, setAvailableClubs] = useState<AvailableClub[]>([]);
+  const [loadingClubs, setLoadingClubs] = useState(false);
+  const [selectedClub, setSelectedClub] = useState<AvailableClub | null>(null);
+  const [noTeamsAvailable, setNoTeamsAvailable] = useState(false);
+
+  // Step 2: Customize team
   const [clubName, setClubName] = useState('');
   const [shortName, setShortName] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#1a5276');
   const [secondaryColor, setSecondaryColor] = useState('#ffffff');
   const [city, setCity] = useState('');
-  // Step 3: Stadium
   const [stadiumName, setStadiumName] = useState('');
 
+  // Fetch available clubs when entering step 1
+  useEffect(() => {
+    if (step === 1) {
+      fetchAvailableClubs();
+    }
+  }, [step]);
+
+  const fetchAvailableClubs = async () => {
+    setLoadingClubs(true);
+    try {
+      const { data, error } = await supabase
+        .from('clubs')
+        .select('id, name, short_name, primary_color, secondary_color, city, league_id, stadiums(id, name)')
+        .eq('is_bot_managed', true)
+        .not('league_id', 'is', null);
+
+      if (error) throw error;
+      setAvailableClubs((data as unknown as AvailableClub[]) || []);
+      setNoTeamsAvailable(!data || data.length === 0);
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao buscar times disponíveis');
+      setAvailableClubs([]);
+      setNoTeamsAvailable(true);
+    } finally {
+      setLoadingClubs(false);
+    }
+  };
+
+  // Pre-fill customization when a club is selected
+  const handleSelectClub = (club: AvailableClub) => {
+    setSelectedClub(club);
+    setClubName(club.name);
+    setShortName(club.short_name);
+    setPrimaryColor(club.primary_color);
+    setSecondaryColor(club.secondary_color);
+    setCity(club.city || '');
+    setStadiumName(club.stadiums?.[0]?.name || '');
+    setStep(2);
+  };
+
   const canNext = () => {
-    if (step === 0) return managerName.trim().length >= 2;
-    if (step === 1) return clubName.trim().length >= 2 && shortName.trim().length === 3;
-    if (step === 2) return stadiumName.trim().length >= 2;
+    if (step === 0) return managerName.trim().length >= 2 && coachType !== null;
+    if (step === 1) return selectedClub !== null;
+    if (step === 2) return clubName.trim().length >= 2 && shortName.trim().length === 3 && stadiumName.trim().length >= 2;
     return true;
   };
 
-  const handleSubmit = async () => {
+  const handleCreateProfileWithoutTeam = async () => {
     if (!user) return;
+    setSubmitting(true);
+    try {
+      const { error: managerError } = await supabase
+        .from('manager_profiles')
+        .insert({
+          user_id: user.id,
+          full_name: managerName.trim(),
+          coach_type: coachType,
+          reputation: 30,
+          money: 50000,
+        });
+      if (managerError) throw managerError;
+
+      await refreshManagerProfile();
+      toast.success('Perfil criado com sucesso! Você será notificado quando houver vagas.');
+      navigate('/manager', { replace: true });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Erro ao criar perfil');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !selectedClub) return;
     setSubmitting(true);
 
     try {
@@ -51,6 +145,7 @@ export default function OnboardingManagerPage() {
         .insert({
           user_id: user.id,
           full_name: managerName.trim(),
+          coach_type: coachType,
           reputation: 30,
           money: 50000,
         })
@@ -58,75 +153,55 @@ export default function OnboardingManagerPage() {
         .single();
       if (managerError) throw managerError;
 
-      // 2. Create Club
-      const { data: clubData, error: clubError } = await supabase
+      // 2. Update the selected club
+      const { error: clubError } = await supabase
         .from('clubs')
-        .insert({
+        .update({
           manager_profile_id: managerData.id,
           name: clubName.trim(),
           short_name: shortName.trim().toUpperCase(),
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           city: city.trim() || null,
-          reputation: 20,
-          status: 'active',
+          is_bot_managed: false,
         })
-        .select()
-        .single();
+        .eq('id', selectedClub.id);
       if (clubError) throw clubError;
 
-      // 3. Create ClubFinance
-      const { error: financeError } = await supabase
-        .from('club_finances')
-        .insert({
-          club_id: clubData.id,
-          balance: 500000,
-          weekly_wage_bill: 0,
-          projected_income: 10000,
-          projected_expense: 5000,
-        });
-      if (financeError) throw financeError;
+      // 3. Update stadium name if changed
+      const originalStadium = selectedClub.stadiums?.[0];
+      if (originalStadium && stadiumName.trim() !== originalStadium.name) {
+        const { error: stadiumError } = await supabase
+          .from('stadiums')
+          .update({ name: stadiumName.trim() })
+          .eq('id', originalStadium.id);
+        if (stadiumError) throw stadiumError;
+      }
 
-      // 4. Create Stadium
-      const { data: stadiumData, error: stadiumError } = await supabase
-        .from('stadiums')
-        .insert({
-          club_id: clubData.id,
-          name: stadiumName.trim(),
-          capacity: 5000,
-          quality: 30,
-          maintenance_cost: 2000,
-          prestige: 15,
-        })
-        .select()
-        .single();
-      if (stadiumError) throw stadiumError;
+      // 4. Ensure facilities exist for the club
+      const { data: existingFacilities } = await supabase
+        .from('club_facilities')
+        .select('id')
+        .eq('club_id', selectedClub.id)
+        .limit(1);
 
-      // 5. Create Stadium Sectors
-      const sectors = [
-        { stadium_id: stadiumData.id, sector_type: 'popular', capacity: 3000, ticket_price: 15 },
-        { stadium_id: stadiumData.id, sector_type: 'central', capacity: 1500, ticket_price: 35 },
-        { stadium_id: stadiumData.id, sector_type: 'premium', capacity: 500, ticket_price: 80 },
-      ];
-      const { error: sectorError } = await supabase.from('stadium_sectors').insert(sectors);
-      if (sectorError) throw sectorError;
-
-      // 6. Create ClubSettings
-      const { error: settingsError } = await supabase
-        .from('club_settings')
-        .insert({
-          club_id: clubData.id,
-          default_formation: '4-4-2',
-          play_style: 'balanced',
-        });
-      if (settingsError) throw settingsError;
+      if (!existingFacilities || existingFacilities.length === 0) {
+        const facilityTypes = ['training_center', 'youth_academy', 'medical_center', 'scouting_network'];
+        const facilities = facilityTypes.map(ft => ({
+          club_id: selectedClub.id,
+          facility_type: ft,
+          level: 1,
+        }));
+        const { error: facilityError } = await supabase.from('club_facilities').insert(facilities);
+        if (facilityError) throw facilityError;
+      }
 
       await refreshManagerProfile();
-      toast.success('Clube criado com sucesso!');
+      toast.success('Time assumido com sucesso!');
       navigate('/manager', { replace: true });
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Erro ao criar clube');
+      toast.error(err.message || 'Erro ao assumir time');
     } finally {
       setSubmitting(false);
     }
@@ -136,8 +211,8 @@ export default function OnboardingManagerPage() {
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="font-display text-3xl font-bold text-primary-foreground">CRIAR CLUBE</h1>
-          <p className="mt-1 text-sm text-primary-foreground/60">Monte seu time do zero</p>
+          <h1 className="font-display text-3xl font-bold text-primary-foreground">NOVO MANAGER</h1>
+          <p className="mt-1 text-sm text-primary-foreground/60">Monte seu perfil e assuma um time</p>
         </div>
 
         {/* Steps */}
@@ -160,18 +235,113 @@ export default function OnboardingManagerPage() {
         </div>
 
         <div className="rounded-lg bg-card p-6 space-y-6">
-          {/* Step 0: Manager */}
+          {/* Step 0: Manager Profile */}
           {step === 0 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="managerName">Nome do Manager</Label>
                 <Input id="managerName" value={managerName} onChange={e => setManagerName(e.target.value)} placeholder="Ex: José Mourinho" maxLength={50} />
               </div>
+
+              <div className="space-y-3">
+                <Label>Tipo de Treinador</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {COACH_TYPES.map(ct => {
+                    const Icon = ct.icon;
+                    const isSelected = coachType === ct.value;
+                    return (
+                      <button
+                        key={ct.value}
+                        onClick={() => setCoachType(ct.value)}
+                        className={`p-3 rounded-lg border-2 transition-all text-left space-y-1 ${
+                          isSelected
+                            ? 'border-tactical bg-tactical/10'
+                            : 'border-border hover:border-muted-foreground/40 bg-muted/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon className={`h-4 w-4 ${isSelected ? 'text-tactical' : 'text-muted-foreground'}`} />
+                          <span className={`font-display font-bold text-sm ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            {ct.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{ct.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Step 1: Club */}
+          {/* Step 1: Select Team */}
           {step === 1 && (
+            <div className="space-y-4">
+              <h2 className="font-display text-lg font-bold text-foreground">Escolha um Time</h2>
+
+              {loadingClubs && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+
+              {!loadingClubs && noTeamsAvailable && (
+                <div className="text-center py-8 space-y-4">
+                  <Frown className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                  <p className="text-muted-foreground text-sm">
+                    Nenhum time disponível no momento.<br />
+                    Você será notificado quando houver vagas.
+                  </p>
+                  <Button
+                    onClick={handleCreateProfileWithoutTeam}
+                    disabled={submitting}
+                    className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
+                  >
+                    {submitting ? 'Criando...' : 'Criar Perfil sem Time'}
+                  </Button>
+                </div>
+              )}
+
+              {!loadingClubs && !noTeamsAvailable && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
+                  {availableClubs.map(club => (
+                    <div
+                      key={club.id}
+                      className={`p-3 rounded-lg border-2 transition-all ${
+                        selectedClub?.id === club.id
+                          ? 'border-tactical bg-tactical/10'
+                          : 'border-border hover:border-muted-foreground/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center font-display text-xs font-extrabold shrink-0"
+                          style={{ backgroundColor: club.primary_color, color: club.secondary_color }}
+                        >
+                          {club.short_name}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-display font-bold text-sm text-foreground truncate">{club.name}</p>
+                          {club.city && <p className="text-xs text-muted-foreground truncate">{club.city}</p>}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={selectedClub?.id === club.id ? 'default' : 'outline'}
+                        className="w-full text-xs font-display"
+                        onClick={() => handleSelectClub(club)}
+                      >
+                        {selectedClub?.id === club.id ? 'Selecionado' : 'Selecionar'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 2: Customize Team */}
+          {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="clubName">Nome do Clube</Label>
@@ -217,35 +387,12 @@ export default function OnboardingManagerPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="city">Cidade (opcional)</Label>
+                <Label htmlFor="city">Cidade</Label>
                 <Input id="city" value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: São Paulo" maxLength={50} />
               </div>
-            </div>
-          )}
-
-          {/* Step 2: Stadium */}
-          {step === 2 && (
-            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="stadiumName">Nome do Estádio</Label>
                 <Input id="stadiumName" value={stadiumName} onChange={e => setStadiumName(e.target.value)} placeholder="Ex: Arena do Povo" maxLength={50} />
-              </div>
-              <div className="p-4 rounded-md bg-muted/50 space-y-2 text-sm">
-                <p className="font-display font-semibold text-foreground">Valores iniciais do estádio:</p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div><span className="text-muted-foreground">Capacidade:</span> <span className="font-bold">5.000</span></div>
-                  <div><span className="text-muted-foreground">Qualidade:</span> <span className="font-bold">30/100</span></div>
-                  <div><span className="text-muted-foreground">Prestígio:</span> <span className="font-bold">15/100</span></div>
-                  <div><span className="text-muted-foreground">Manutenção:</span> <span className="font-bold">$2.000/sem</span></div>
-                </div>
-                <div className="border-t border-border pt-2 mt-2">
-                  <p className="font-display font-semibold text-foreground text-xs mb-1">Setores:</p>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between"><span>Popular (3.000 lugares)</span><span className="font-bold">$15/ingresso</span></div>
-                    <div className="flex justify-between"><span>Central (1.500 lugares)</span><span className="font-bold">$35/ingresso</span></div>
-                    <div className="flex justify-between"><span>Premium (500 lugares)</span><span className="font-bold">$80/ingresso</span></div>
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -253,9 +400,28 @@ export default function OnboardingManagerPage() {
           {/* Step 3: Review */}
           {step === 3 && (
             <div className="space-y-4">
-              <h2 className="font-display text-xl font-bold text-foreground">Confirmar Criação</h2>
+              <h2 className="font-display text-xl font-bold text-foreground">Confirmar</h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Manager</span><p className="font-display font-bold">{managerName}</p></div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">Manager</span>
+                  <p className="font-display font-bold">{managerName}</p>
+                </div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">Tipo</span>
+                  <div className="flex items-center gap-1.5">
+                    {(() => {
+                      const ct = COACH_TYPES.find(c => c.value === coachType);
+                      if (!ct) return null;
+                      const Icon = ct.icon;
+                      return (
+                        <>
+                          <Icon className="h-3.5 w-3.5 text-tactical" />
+                          <p className="font-display font-bold">{ct.label}</p>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
                 <div className="stat-card">
                   <span className="text-muted-foreground text-xs">Clube</span>
                   <div className="flex items-center gap-2">
@@ -263,10 +429,21 @@ export default function OnboardingManagerPage() {
                     <p className="font-display font-bold">{clubName}</p>
                   </div>
                 </div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Estádio</span><p className="font-display font-bold">{stadiumName}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Cidade</span><p className="font-display font-bold">{city || '—'}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Saldo Inicial</span><p className="font-display font-bold text-pitch">$500.000</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Formação</span><p className="font-display font-bold">4-4-2</p></div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">Estádio</span>
+                  <p className="font-display font-bold">{stadiumName}</p>
+                </div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">Cidade</span>
+                  <p className="font-display font-bold">{city || '—'}</p>
+                </div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">Cores</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: primaryColor }} />
+                    <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: secondaryColor }} />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -274,18 +451,39 @@ export default function OnboardingManagerPage() {
           {/* Navigation */}
           <div className="flex justify-between pt-2">
             {step > 0 ? (
-              <Button variant="ghost" onClick={() => setStep(s => s - 1)} className="text-muted-foreground">
+              <Button variant="ghost" onClick={() => {
+                if (step === 2 && selectedClub) {
+                  // Going back from customize to team selection - keep selection but go back
+                  setStep(1);
+                } else {
+                  setStep(s => s - 1);
+                }
+              }} className="text-muted-foreground">
                 <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
               </Button>
             ) : <div />}
 
-            {step < 3 ? (
-              <Button onClick={() => setStep(s => s + 1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+            {step === 0 && (
+              <Button onClick={() => setStep(1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
                 Próximo <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
-            ) : (
+            )}
+
+            {step === 1 && !noTeamsAvailable && selectedClub && (
+              <Button onClick={() => setStep(2)} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+                Próximo <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            )}
+
+            {step === 2 && (
+              <Button onClick={() => setStep(3)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+                Próximo <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            )}
+
+            {step === 3 && (
               <Button onClick={handleSubmit} disabled={submitting} className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
-                {submitting ? 'Criando...' : <><Check className="h-4 w-4 mr-1" /> Criar Clube</>}
+                {submitting ? 'Criando...' : <><Check className="h-4 w-4 mr-1" /> Confirmar</>}
               </Button>
             )}
           </div>

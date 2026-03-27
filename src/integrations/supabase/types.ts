@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      club_facilities: {
+        Row: {
+          club_id: string
+          created_at: string
+          facility_type: string
+          id: string
+          level: number
+          upgraded_at: string | null
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          facility_type: string
+          id?: string
+          level?: number
+          upgraded_at?: string | null
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          facility_type?: string
+          id?: string
+          level?: number
+          upgraded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_facilities_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_finances: {
         Row: {
           balance: number
@@ -95,6 +130,8 @@ export type Database = {
           city: string | null
           created_at: string
           id: string
+          is_bot_managed: boolean
+          league_id: string | null
           manager_profile_id: string
           name: string
           primary_color: string
@@ -107,6 +144,8 @@ export type Database = {
           city?: string | null
           created_at?: string
           id?: string
+          is_bot_managed?: boolean
+          league_id?: string | null
           manager_profile_id: string
           name: string
           primary_color?: string
@@ -119,6 +158,8 @@ export type Database = {
           city?: string | null
           created_at?: string
           id?: string
+          is_bot_managed?: boolean
+          league_id?: string | null
           manager_profile_id?: string
           name?: string
           primary_color?: string
@@ -129,10 +170,55 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "clubs_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "clubs_manager_profile_id_fkey"
             columns: ["manager_profile_id"]
             isOneToOne: true
             referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_mutual_agreements: {
+        Row: {
+          contract_id: string
+          created_at: string
+          id: string
+          requested_by: string
+          requested_by_id: string
+          resolved_at: string | null
+          status: string
+        }
+        Insert: {
+          contract_id: string
+          created_at?: string
+          id?: string
+          requested_by: string
+          requested_by_id: string
+          resolved_at?: string | null
+          status?: string
+        }
+        Update: {
+          contract_id?: string
+          created_at?: string
+          id?: string
+          requested_by?: string
+          requested_by_id?: string
+          resolved_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_mutual_agreements_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
             referencedColumns: ["id"]
           },
         ]
@@ -214,6 +300,8 @@ export type Database = {
           release_clause: number
           start_date: string
           status: string
+          terminated_at: string | null
+          termination_type: string | null
           updated_at: string
           weekly_salary: number
         }
@@ -226,6 +314,8 @@ export type Database = {
           release_clause?: number
           start_date?: string
           status?: string
+          terminated_at?: string | null
+          termination_type?: string | null
           updated_at?: string
           weekly_salary?: number
         }
@@ -238,6 +328,8 @@ export type Database = {
           release_clause?: number
           start_date?: string
           status?: string
+          terminated_at?: string | null
+          termination_type?: string | null
           updated_at?: string
           weekly_salary?: number
         }
@@ -250,6 +342,285 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      league_matches: {
+        Row: {
+          away_club_id: string
+          created_at: string
+          home_club_id: string
+          id: string
+          match_id: string | null
+          round_id: string
+        }
+        Insert: {
+          away_club_id: string
+          created_at?: string
+          home_club_id: string
+          id?: string
+          match_id?: string | null
+          round_id: string
+        }
+        Update: {
+          away_club_id?: string
+          created_at?: string
+          home_club_id?: string
+          id?: string
+          match_id?: string | null
+          round_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_matches_away_club_id_fkey"
+            columns: ["away_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_matches_home_club_id_fkey"
+            columns: ["home_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_matches_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_matches_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "league_rounds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_rounds: {
+        Row: {
+          created_at: string
+          id: string
+          round_number: number
+          scheduled_at: string
+          season_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          round_number: number
+          scheduled_at: string
+          season_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          round_number?: number
+          scheduled_at?: string
+          season_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_rounds_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_schedule_votes: {
+        Row: {
+          created_at: string
+          id: string
+          league_id: string
+          manager_profile_id: string
+          preferred_day_1: string
+          preferred_day_2: string
+          preferred_time: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          league_id: string
+          manager_profile_id: string
+          preferred_day_1?: string
+          preferred_day_2?: string
+          preferred_time?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          league_id?: string
+          manager_profile_id?: string
+          preferred_day_1?: string
+          preferred_day_2?: string
+          preferred_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_schedule_votes_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_schedule_votes_manager_profile_id_fkey"
+            columns: ["manager_profile_id"]
+            isOneToOne: false
+            referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_seasons: {
+        Row: {
+          created_at: string
+          finished_at: string | null
+          id: string
+          league_id: string
+          next_season_at: string | null
+          season_number: number
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          league_id: string
+          next_season_at?: string | null
+          season_number?: number
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          league_id?: string
+          next_season_at?: string | null
+          season_number?: number
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_seasons_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_standings: {
+        Row: {
+          club_id: string
+          created_at: string
+          drawn: number
+          goals_against: number
+          goals_for: number
+          id: string
+          lost: number
+          played: number
+          points: number
+          season_id: string
+          updated_at: string
+          won: number
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          drawn?: number
+          goals_against?: number
+          goals_for?: number
+          id?: string
+          lost?: number
+          played?: number
+          points?: number
+          season_id: string
+          updated_at?: string
+          won?: number
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          drawn?: number
+          goals_against?: number
+          goals_for?: number
+          id?: string
+          lost?: number
+          played?: number
+          points?: number
+          season_id?: string
+          updated_at?: string
+          won?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_standings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_standings_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leagues: {
+        Row: {
+          country: string
+          created_at: string
+          division: number
+          id: string
+          match_day_1: string
+          match_day_2: string
+          match_time: string
+          max_teams: number
+          name: string
+          status: string
+        }
+        Insert: {
+          country?: string
+          created_at?: string
+          division?: number
+          id?: string
+          match_day_1?: string
+          match_day_2?: string
+          match_time?: string
+          max_teams?: number
+          name: string
+          status?: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          division?: number
+          id?: string
+          match_day_1?: string
+          match_day_2?: string
+          match_time?: string
+          max_teams?: number
+          name?: string
+          status?: string
+        }
+        Relationships: []
       }
       lineup_slots: {
         Row: {
@@ -339,6 +710,7 @@ export type Database = {
       }
       manager_profiles: {
         Row: {
+          coach_type: string | null
           created_at: string
           full_name: string
           id: string
@@ -348,6 +720,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          coach_type?: string | null
           created_at?: string
           full_name: string
           id?: string
@@ -357,6 +730,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          coach_type?: string | null
           created_at?: string
           full_name?: string
           id?: string

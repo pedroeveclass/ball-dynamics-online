@@ -3,8 +3,15 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, DollarSign, Trophy, Building2, Star, TrendingUp } from 'lucide-react';
+import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+const COACH_TYPE_MAP: Record<string, { label: string; icon: typeof Shield }> = {
+  defensive: { label: 'Defensivo', icon: Shield },
+  offensive: { label: 'Ofensivo', icon: Swords },
+  technical: { label: 'Técnico', icon: Brain },
+  complete: { label: 'Completo', icon: CircleDot },
+};
 
 export default function ManagerDashboard() {
   const { managerProfile, club } = useAuth();
@@ -27,7 +34,28 @@ export default function ManagerDashboard() {
     fetchData();
   }, [club]);
 
-  if (!managerProfile || !club) return null;
+  if (!managerProfile) return null;
+
+  if (!club) {
+    return (
+      <ManagerLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
+          <Trophy className="h-16 w-16 text-muted-foreground/40" />
+          <h2 className="font-display text-2xl font-bold">Você ainda não gerencia nenhum time.</h2>
+          <p className="text-muted-foreground max-w-md">
+            Visite a Liga para ver times disponíveis e assumir um.
+          </p>
+          <Link
+            to="/league"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-pitch text-white font-display font-semibold hover:bg-pitch/90 transition-colors"
+          >
+            <Trophy className="h-4 w-4" />
+            Ir para a Liga
+          </Link>
+        </div>
+      </ManagerLayout>
+    );
+  }
 
   return (
     <ManagerLayout>
@@ -44,6 +72,16 @@ export default function ManagerDashboard() {
                 Manager: {managerProfile.full_name}
                 {club.city && <> • {club.city}</>}
               </p>
+              {managerProfile.coach_type && COACH_TYPE_MAP[managerProfile.coach_type] && (() => {
+                const ct = COACH_TYPE_MAP[managerProfile.coach_type];
+                const CoachIcon = ct.icon;
+                return (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <CoachIcon className="h-3 w-3" />
+                    Estilo: {ct.label}
+                  </p>
+                );
+              })()}
             </div>
           </div>
           <div className="text-right">
@@ -130,6 +168,23 @@ export default function ManagerDashboard() {
               <span className="font-display font-semibold text-sm">Mercado</span>
             </div>
             <p className="text-sm text-muted-foreground">Encontre agentes livres e envie propostas de contrato.</p>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Link to="/manager/facilities" className="stat-card block hover:border-tactical/40 transition-colors">
+            <div className="flex items-center gap-2 mb-3">
+              <Wrench className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Facilities</span>
+            </div>
+            <p className="text-sm text-muted-foreground">Gerencie suas instalações</p>
+          </Link>
+          <Link to="/league" className="stat-card block hover:border-tactical/40 transition-colors">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Liga</span>
+            </div>
+            <p className="text-sm text-muted-foreground">Classificação e rodadas</p>
           </Link>
         </div>
       </div>
