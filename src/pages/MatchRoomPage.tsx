@@ -521,6 +521,22 @@ export default function MatchRoomPage() {
     setTurnActions(nextActions);
   }, []);
 
+  const pushOptimisticTurnAction = useCallback((action: Omit<MatchAction, 'id'>) => {
+    const optimisticAction: MatchAction = {
+      ...action,
+      id: `optimistic-${action.participant_id}-${action.match_turn_id}-${action.turn_phase || 'unknown'}-${Date.now()}`,
+    };
+
+    setTurnActionsState([
+      ...turnActionsRef.current.filter(existing => !(
+        existing.participant_id === optimisticAction.participant_id
+        && existing.turn_phase === optimisticAction.turn_phase
+        && String(existing.id).startsWith('optimistic-')
+      )),
+      optimisticAction,
+    ]);
+  }, [setTurnActionsState]);
+
   const appendEventLog = useCallback((event: EventLog) => {
     setEvents(prev => {
       const nextEvents = [...prev, event];
@@ -1322,6 +1338,20 @@ export default function MatchRoomPage() {
     };
   }, [activeTurn?.id, invokeMatchEngine, match?.status, matchId, phaseTimeLeft]);
 
+  useEffect(() => {
+    if (!matchId || match?.status !== 'live' || !activeTurn || phaseTimeLeft > 0) return;
+
+    void loadLiveSnapshot();
+    scheduleTurnActionsReconcile(true);
+
+    const interval = setInterval(() => {
+      void loadLiveSnapshot();
+      scheduleTurnActionsReconcile(true);
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [activeTurn?.id, activeTurn?.phase, loadLiveSnapshot, match?.status, matchId, phaseTimeLeft, scheduleTurnActionsReconcile]);
+
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
     if (!matchId || !pid) return;
@@ -1347,7 +1377,27 @@ export default function MatchRoomPage() {
         }
       }
       else {
+        const currentTurn = activeTurnRef.current;
+        if (currentTurn) {
+          pushOptimisticTurnAction({
+            match_id: matchId,
+            match_turn_id: currentTurn.id,
+            participant_id: pid,
+            controlled_by_type: myRole === 'manager' ? 'manager' : 'player',
+            controlled_by_user_id: user?.id ?? null,
+            action_type: actionType,
+            target_x: targetX ?? null,
+            target_y: targetY ?? null,
+            target_participant_id: targetParticipantId ?? null,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            turn_phase: currentTurn.phase,
+            turn_number: currentTurn.turn_number,
+            payload: payload ?? null,
+          });
+        }
         setSubmittedActions(prev => new Set([...prev, pid]));
+        scheduleTurnActionsReconcile(true);
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
         // Sound effects
         if (actionType === 'shoot_controlled' || actionType === 'shoot_power') sounds.kick();
