@@ -761,6 +761,12 @@ function pickBestPassTarget(
 }
 
 // ─── Bot AI: generate smart fallback actions ─────────────────
+// ─── Tick-level cache for data that doesn't change within a tick ──
+interface TickCache {
+  clubSettings?: { homeFormation: string; awayFormation: string };
+  attrByProfile?: Record<string, any>;
+}
+
 async function generateBotActions(
   supabase: any,
   matchId: string,
@@ -772,6 +778,7 @@ async function generateBotActions(
   isLooseBall: boolean,
   phase: string,
   match?: any,
+  tickCache?: TickCache,
 ) {
   const botsToAct: any[] = [];
 
@@ -793,10 +800,13 @@ async function generateBotActions(
 
   const homeClubId = match?.home_club_id;
 
-  // Load formations
+  // Load formations (use cache if available)
   let homeFormation = '4-4-2';
   let awayFormation = '4-4-2';
-  if (match) {
+  if (tickCache?.clubSettings) {
+    homeFormation = tickCache.clubSettings.homeFormation;
+    awayFormation = tickCache.clubSettings.awayFormation;
+  } else if (match) {
     const clubIds = [match.home_club_id, match.away_club_id].filter(Boolean);
     if (clubIds.length > 0) {
       const { data: settings } = await supabase.from('club_settings').select('club_id, default_formation').in('club_id', clubIds);
@@ -805,6 +815,7 @@ async function generateBotActions(
         if (s.club_id === match.away_club_id && s.default_formation) awayFormation = s.default_formation;
       }
     }
+    if (tickCache) tickCache.clubSettings = { homeFormation, awayFormation };
   }
 
   // Helper: get ball position
@@ -822,12 +833,17 @@ async function generateBotActions(
   // Track loose ball chasers (max 2 per team)
   const looseBallChasersByClub = new Map<string, number>();
 
-  // Pre-load attributes for max move range calculation
-  const botProfileIds = botsToAct.filter(b => b.player_profile_id).map(b => b.player_profile_id);
+  // Pre-load attributes for max move range calculation (use cache if available)
   let botAttrMap: Record<string, any> = {};
-  if (botProfileIds.length > 0) {
-    const { data: botAttrRows } = await supabase.from('player_attributes').select('*').in('player_profile_id', botProfileIds);
-    for (const row of (botAttrRows || [])) botAttrMap[row.player_profile_id] = row;
+  if (tickCache?.attrByProfile) {
+    // Use cached attributes — filter to only bot profiles
+    botAttrMap = tickCache.attrByProfile;
+  } else {
+    const botProfileIds = botsToAct.filter(b => b.player_profile_id).map(b => b.player_profile_id);
+    if (botProfileIds.length > 0) {
+      const { data: botAttrRows } = await supabase.from('player_attributes').select('*').in('player_profile_id', botProfileIds);
+      for (const row of (botAttrRows || [])) botAttrMap[row.player_profile_id] = row;
+    }
   }
   const turnNumber = match?.current_turn_number ?? 1;
 
@@ -2319,7 +2335,7 @@ async function processDueMatches(supabase: any, functionUrl: string, matchId?: s
 
   for (const dueMatchId of dueMatchIds) {
     try {
-      const { response, result } = await invokeTickForMatch(functionUrl, String(dueMatchId));
+      const result = await executeTickForMatch(supabase, String(dueMatchId), false);
       if (result?.status === 'busy') {
         busy += 1;
         continue;
@@ -2327,12 +2343,7 @@ async function processDueMatches(supabase: any, functionUrl: string, matchId?: s
       if (result?.status === 'waiting') {
         continue;
       }
-      if (response.ok) {
-        advanced += 1;
-      } else {
-        failed += 1;
-        console.error('[ENGINE] process_due_matches failed', { matchId: dueMatchId, result });
-      }
+      advanced += 1;
     } catch (error) {
       failed += 1;
       console.error('[ENGINE] process_due_matches tick error', { matchId: dueMatchId, error });
@@ -2347,6 +2358,1071 @@ async function processDueMatches(supabase: any, functionUrl: string, matchId?: s
     failed,
   };
 }
+
+async function executeTickForMatch(supabase: any, match_id: string, forceTick: boolean): Promise<any> {
+  const { data: match } = await supabase.from('matches').select('*').eq('id', match_id).eq('status', 'live').single();
+  if (!match) return { error: 'Match not found or not live', httpStatus: 404 };
+
+  let { data: activeTurn } = await supabase.from('match_turns').select('*').eq('match_id', match_id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).single();
+  if (!activeTurn) return { error: 'No active turn', httpStatus: 400 };
+
+  const now = new Date();
+  const endsAt = new Date(activeTurn.ends_at);
+  if (!forceTick && now < endsAt) return { status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime() };
+
+  // ── Concurrency lock: only one request processes a turn at a time ──
+  const processingToken = crypto.randomUUID();
+  const { data: claimedTurns } = await supabase.rpc('claim_match_turn_for_processing', {
+    p_match_id: match_id,
+    p_processing_token: processingToken,
+    p_now: new Date().toISOString(),
+    p_stale_after: '15 seconds',
+  });
+  if (!claimedTurns || claimedTurns.length === 0) {
+    return { status: 'busy' };
+  }
+  // Use the claimed turn data (most up-to-date)
+  activeTurn = claimedTurns[0];
+
+  try {
+
+  // ── Tick-level cache: avoid reloading the same data multiple times ──
+  const tickCache: TickCache = {};
+
+  // ── POSITIONING PHASES ──
+  if (isPositioningPhase(activeTurn.phase)) {
+    const { data: rawParticipants } = await supabase
+      .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+    const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
+
+    const possClubId = activeTurn.possession_club_id;
+    const isAttackPhase = activeTurn.phase === 'positioning_attack';
+
+    // Load actions for this phase turn
+    const { data: rawActions } = await supabase
+      .from('match_actions').select('*')
+      .eq('match_turn_id', activeTurn.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    // Dedup: keep highest-priority action per participant (human > bot)
+    const priorityByCtrl: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+    const sortedMoveRaw = [...(rawActions || [])].filter(a => a.action_type === 'move').sort((a, b) => {
+      const pa = priorityByCtrl[a.controlled_by_type] ?? 0;
+      const pb = priorityByCtrl[b.controlled_by_type] ?? 0;
+      if (pa !== pb) return pb - pa;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+    const seen = new Set<string>();
+    const moveActions = sortedMoveRaw.filter(a => {
+      if (seen.has(a.participant_id)) return false;
+      seen.add(a.participant_id);
+      return true;
+    });
+
+    // Determine if this is a kickoff (ball holder at center)
+    const bhId = activeTurn.ball_holder_participant_id;
+    const submittedParticipantIds = new Set((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
+    await generateBotActions(
+      supabase,
+      match_id,
+      activeTurn.id,
+      participants || [],
+      submittedParticipantIds,
+      bhId,
+      possClubId,
+      !bhId,
+      activeTurn.phase,
+      match,
+      tickCache,
+    );
+
+    const bh = bhId ? (participants || []).find((p: any) => p.id === bhId) : null;
+    const isKickoff = bh && Math.abs(Number(bh.pos_x ?? 50) - 50) < 5 && Math.abs(Number(bh.pos_y ?? 50) - 50) < 5;
+
+    // Apply move actions (batched)
+    const positioningUpdates: Promise<any>[] = [];
+    for (const a of moveActions) {
+      const part = (participants || []).find((p: any) => p.id === a.participant_id);
+      if (!part) continue;
+
+      // Don't move the ball holder (kicker)
+      if (part.id === bhId) continue;
+
+      // Check team phase constraint
+      const isAttacker = part.club_id === possClubId;
+      if (isAttackPhase && !isAttacker) continue;
+      if (!isAttackPhase && isAttacker) continue;
+
+      let targetX = Number(a.target_x ?? part.pos_x ?? 50);
+      let targetY = Number(a.target_y ?? part.pos_y ?? 50);
+
+      // GK constraint: keep goalkeeper inside the box
+      const partSlotPos = part._slot_position || part.slot_position || '';
+      const partIsGK = partSlotPos === 'GK';
+      if (partIsGK) {
+        const isHome = part.club_id === match.home_club_id;
+        if (isHome) {
+          targetX = Math.min(targetX, 18);
+          targetY = Math.max(20, Math.min(80, targetY));
+        } else {
+          targetX = Math.max(targetX, 82);
+          targetY = Math.max(20, Math.min(80, targetY));
+        }
+      }
+
+      // Kickoff half-field constraint
+      if (isKickoff) {
+        const isHome = part.club_id === match.home_club_id;
+        if (isHome) targetX = Math.min(targetX, 49);
+        else targetX = Math.max(targetX, 51);
+      }
+
+      // Clamp to field
+      targetX = Math.max(1, Math.min(99, targetX));
+      targetY = Math.max(1, Math.min(99, targetY));
+
+      positioningUpdates.push(
+        supabase.from('match_participants').update({
+          pos_x: targetX, pos_y: targetY,
+        }).eq('id', part.id)
+      );
+
+      console.log(`[ENGINE] Positioning move: ${part.id.slice(0,8)} → (${targetX.toFixed(1)},${targetY.toFixed(1)})`);
+    }
+    if (positioningUpdates.length > 0) await Promise.all(positioningUpdates);
+
+    // Mark actions as used
+    const actionIds = moveActions.map(a => a.id);
+    if (actionIds.length > 0) {
+      await supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds);
+    }
+
+    // Resolve current positioning turn
+    await supabase.from('match_turns')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', activeTurn.id);
+
+    const nextPhaseStart = new Date().toISOString();
+
+    if (isAttackPhase) {
+      // Advance to positioning_defense
+      const nextPhaseEnd = new Date(Date.now() + POSITIONING_PHASE_DURATION_MS).toISOString();
+      await supabase.from('matches').update({ current_phase: 'positioning_defense' }).eq('id', match_id);
+      await supabase.from('match_turns').insert({
+        match_id, turn_number: activeTurn.turn_number,
+        phase: 'positioning_defense',
+        possession_club_id: possClubId,
+        ball_holder_participant_id: bhId,
+        started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+        status: 'active',
+        set_piece_type: activeTurn.set_piece_type ?? null,
+      });
+
+      await supabase.from('match_event_logs').insert({
+        match_id, event_type: 'positioning',
+        title: '📍 Posicionamento — Ataque concluído',
+        body: 'Agora a defesa posiciona seus jogadores.',
+      });
+    } else {
+      // Advance to ball_holder (normal turn starts)
+      const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+      await supabase.from('matches').update({ current_phase: 'ball_holder' }).eq('id', match_id);
+      await supabase.from('match_turns').insert({
+        match_id, turn_number: activeTurn.turn_number,
+        phase: 'ball_holder',
+        possession_club_id: possClubId,
+        ball_holder_participant_id: bhId,
+        started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+        status: 'active',
+        set_piece_type: activeTurn.set_piece_type ?? null,
+      });
+
+      await supabase.from('match_event_logs').insert({
+        match_id, event_type: 'positioning',
+        title: '📍 Posicionamento concluído',
+        body: 'A partida continua!',
+      });
+    }
+
+    return { status: 'advanced' };
+  }
+
+  const { data: rawParticipants2 } = await supabase
+    .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+  const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
+
+  const possClubId = activeTurn.possession_club_id;
+  const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
+  const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
+
+  const ballHolder = activeTurn.ball_holder_participant_id
+    ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
+    : null;
+
+  const isLooseBall = !activeTurn.ball_holder_participant_id;
+
+  if (activeTurn.phase !== 'resolution') {
+    const submittedParticipantIds = new Set((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
+    await generateBotActions(
+      supabase,
+      match_id,
+      activeTurn.id,
+      participants || [],
+      submittedParticipantIds,
+      activeTurn.ball_holder_participant_id,
+      possClubId,
+      isLooseBall,
+      activeTurn.phase,
+      match,
+      tickCache,
+    );
+  }
+
+  // ── RESOLUTION ──
+  let newPossessionClubId = possClubId;
+  let homeScore = match.home_score;
+  let awayScore = match.away_score;
+  let nextBallHolderParticipantId = ballHolder?.id || null;
+  let ballEndPos: { x: number; y: number } | null = null;
+  const lastTouchClubId = possClubId;
+  let nextSetPieceType: string | null = null;
+
+  if (activeTurn.phase === 'resolution') {
+    console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
+    const { data: turnRows } = await supabase
+      .from('match_turns')
+      .select('id, phase')
+      .eq('match_id', match_id)
+      .eq('turn_number', activeTurn.turn_number);
+
+    const allTurnIds = (turnRows || []).map(t => t.id);
+
+    // ── Bot AI fallback: generate actions for inactive players ──
+    {
+      const { data: existingActions } = await supabase
+        .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds).eq('status', 'pending');
+      const submittedIds = new Set((existingActions || []).map((a: any) => a.participant_id));
+      const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
+
+      // Generate bot actions for each phase that had a turn
+      for (const turnRow of (turnRows || [])) {
+        await generateBotActions(
+          supabase, match_id, turnRow.id, participants || [],
+          submittedIds, activeTurn.ball_holder_participant_id,
+          possClubId, isLooseBall, turnRow.phase, match,
+          tickCache,
+        );
+      }
+    }
+
+    const { data: rawActions } = await supabase
+      .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    // Dedup: keep latest action per participant, BUT allow ball holder to have
+    // BOTH a pass/shoot (from phase 1) AND a move (from phase 2)
+    // CRITICAL: human actions (player/manager) ALWAYS override ALL bot actions for that participant
+    const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
+
+    // Step 1: Find all participants that have at least one human action
+    const humanControlledParticipants = new Set<string>();
+    for (const a of (rawActions || [])) {
+      if (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager') {
+        humanControlledParticipants.add(a.participant_id);
+      }
+    }
+
+    // Step 2: Filter out ALL bot actions for participants that have human actions
+    const filteredRaw = (rawActions || []).filter(a => {
+      if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
+        return false; // Human controls this participant — discard bot action entirely
+      }
+      return true;
+    });
+
+    // Step 3: Sort remaining by priority (human first), then by created_at desc
+    const sortedRaw = [...filteredRaw].sort((a, b) => {
+      const pa = priorityByController[a.controlled_by_type] ?? 0;
+      const pb = priorityByController[b.controlled_by_type] ?? 0;
+      if (pa !== pb) return pb - pa;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+
+    // Step 4: Dedup — BH can have ball action + move; others get one action
+    const seenParticipants = new Map<string, { types: string[]; actions: any[] }>();
+    const allActions: any[] = [];
+
+    for (const a of sortedRaw) {
+      const existing = seenParticipants.get(a.participant_id);
+      const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
+      if (isBH) {
+        const isBallAction = isPassType(a.action_type) || isShootType(a.action_type);
+        const isMoveAction = a.action_type === 'move';
+        if (existing) {
+          const hasBallAction = existing.types.some(t => isPassType(t) || isShootType(t));
+          const hasMoveAction = existing.types.some(t => t === 'move');
+          if (isBallAction && hasBallAction) continue;
+          if (isMoveAction && hasMoveAction) continue;
+          if (!isBallAction && !isMoveAction) continue;
+          existing.types.push(a.action_type);
+          existing.actions.push(a);
+          allActions.push(a);
+          continue;
+        }
+        seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
+        allActions.push(a);
+      } else {
+        if (existing) continue;
+        seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
+        allActions.push(a);
+      }
+    }
+
+    // ── Load player attributes for physics (use cache if available) ──
+    let attrByProfile: Record<string, any> = {};
+    if (tickCache.attrByProfile) {
+      attrByProfile = tickCache.attrByProfile;
+    } else {
+      const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
+      const { data: attrRows } = profileIds.length > 0
+        ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
+        : { data: [] };
+      for (const row of (attrRows || [])) {
+        attrByProfile[row.player_profile_id] = row;
+      }
+      tickCache.attrByProfile = attrByProfile;
+    }
+    const getAttrs = (participant: any) => {
+      const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+      return {
+        aceleracao: Number(raw?.aceleracao ?? 40),
+        agilidade: Number(raw?.agilidade ?? 40),
+        velocidade: Number(raw?.velocidade ?? 40),
+        forca: Number(raw?.forca ?? 40),
+        stamina: Number(raw?.stamina ?? 40),
+        passe_baixo: Number(raw?.passe_baixo ?? 40),
+        passe_alto: Number(raw?.passe_alto ?? 40),
+        forca_chute: Number(raw?.forca_chute ?? 40),
+        acuracia_chute: Number(raw?.acuracia_chute ?? 40),
+        controle_bola: Number(raw?.controle_bola ?? 40),
+        um_toque: Number(raw?.um_toque ?? 40),
+      };
+    };
+
+    // ── Apply accuracy deviation to ball actions before resolution ──
+    if (ballHolder) {
+      const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
+      if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
+        // Check if deviation was already applied at phase transition
+        const alreadyDeviated = bhAction.payload && typeof bhAction.payload === 'object' && (bhAction.payload as any).deviated;
+        if (!alreadyDeviated) {
+          const bhAttrs = getAttrs(ballHolder);
+          const startX = Number(ballHolder.pos_x ?? 50);
+          const startY = Number(ballHolder.pos_y ?? 50);
+          const deviation = computeDeviation(
+            Number(bhAction.target_x),
+            Number(bhAction.target_y),
+            startX,
+            startY,
+            bhAction.action_type,
+            bhAttrs,
+          );
+          bhAction.target_x = deviation.actualX;
+          bhAction.target_y = deviation.actualY;
+
+          if (deviation.overGoal) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'shot_over',
+              title: '💨 Chute para fora!',
+              body: 'A bola foi por cima do gol.',
+            });
+          }
+        } else {
+          console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
+        }
+      }
+    }
+
+    // ── Apply movement ──
+    // Check if ball holder has a ball action (pass/shoot) — if so, defer their move until after resolution
+    const bhHasBallAction = ballHolder && allActions.some(a =>
+      a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+
+    console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction}`);
+    const resolutionMoveUpdates: Promise<any>[] = [];
+    for (const a of allActions) {
+      console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
+      if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
+        // Skip ball holder's move if they have a ball action — defer it after ball resolution
+        if (a.participant_id === ballHolder?.id && a.action_type === 'move' && bhHasBallAction) {
+          console.log(`[ENGINE] Deferring BH move until after ball resolution`);
+          continue;
+        }
+        const part = (participants || []).find(p => p.id === a.participant_id);
+        const startX = Number(part?.pos_x ?? 50);
+        const startY = Number(part?.pos_y ?? 50);
+        let finalX = Number(a.target_x);
+        let finalY = Number(a.target_y);
+
+        // ── Apply physics movement limits ──
+        const attrs = getAttrs(part);
+        const maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
+        const dx = finalX - startX;
+        const dy = finalY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > maxRange) {
+          const scale = maxRange / dist;
+          finalX = startX + dx * scale;
+          finalY = startY + dy * scale;
+        }
+
+        console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
+
+        resolutionMoveUpdates.push(
+          supabase.from('match_participants').update({
+            pos_x: finalX,
+            pos_y: finalY,
+          }).eq('id', a.participant_id)
+        );
+      }
+    }
+    if (resolutionMoveUpdates.length > 0) await Promise.all(resolutionMoveUpdates);
+
+    if (ballHolder) {
+      // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
+      const ballHolderAction = allActions
+        .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+        || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+
+      if (ballHolderAction) {
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1);
+
+        if (result.goal) {
+          // Check if the shot is actually on target
+          const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
+          const shotTargetY = Number(ballHolderAction.target_y ?? 50);
+          const isOnTarget = shotTargetY >= 38 && shotTargetY <= 62 && !isOverGoal;
+
+          if (isOnTarget) {
+            if (possClubId === match.home_club_id) homeScore++;
+            else awayScore++;
+
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'goal',
+              title: `⚽ GOL! ${homeScore} – ${awayScore}`,
+              body: `Turno ${match.current_turn_number}`,
+            });
+
+            newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+            nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+            nextSetPieceType = 'kickoff';
+          } else {
+            // Shot missed — ball goes out of bounds
+            nextBallHolderParticipantId = null;
+            ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'shot_missed',
+              title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
+              body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
+            });
+            console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
+          }
+        } else if (result.looseBallPos) {
+          // Shot blocked — ball deflects to random position
+          nextBallHolderParticipantId = null;
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'blocked',
+            title: result.description,
+            body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
+          });
+        } else if (result.newBallHolderId) {
+          nextBallHolderParticipantId = result.newBallHolderId;
+          newPossessionClubId = result.newPossessionClubId || possClubId;
+
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'),
+            title: result.possession_change ? `🔄 Troca de posse` : result.description,
+            body: result.description,
+          });
+        } else if (result.foul && result.foulPosition) {
+          // Check if foul is inside penalty area
+          const foulX = result.foulPosition.x;
+          const foulY = result.foulPosition.y;
+          const isHomeAttacking = possClubId === match.home_club_id;
+          const inPenaltyArea = isHomeAttacking
+            ? (foulX >= 82 && foulY >= 20 && foulY <= 80)
+            : (foulX <= 18 && foulY >= 20 && foulY <= 80);
+
+          if (inPenaltyArea) {
+            // PENALTY!
+            const penaltyX = isHomeAttacking ? 88 : 12;
+            const penaltyY = 50;
+            nextBallHolderParticipantId = ballHolder.id;
+            await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', ballHolder.id);
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'penalty', title: '🟥 PÊNALTI!', body: 'Falta dentro da área! Pênalti marcado.',
+            });
+            nextSetPieceType = 'penalty';
+            ballEndPos = { x: penaltyX, y: penaltyY };
+          } else {
+            nextBallHolderParticipantId = ballHolder.id;
+            await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', ballHolder.id);
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
+            });
+            nextSetPieceType = 'free_kick';
+            ballEndPos = { x: foulX, y: foulY };
+          }
+          if (result.failedContestLog) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
+            });
+          }
+        } else if (result.event === 'dribble') {
+          // Tackle failed, dribble succeeded
+          nextBallHolderParticipantId = ballHolder.id;
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'dribble',
+            title: result.description,
+            body: 'O desarme falhou e o jogador seguiu com a bola.',
+          });
+          // Log the failed contest too
+          if (result.failedContestLog) {
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'tackle_failed',
+              title: result.failedContestLog,
+              body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
+            });
+          }
+          // Apply movement penalty to failed tackler: reduce their effective movement by 25%
+          if (result.failedContestParticipantId) {
+            const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
+            if (failedPart) {
+              const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
+              if (failMoveAct) {
+                // Reduce their movement by 25% — move them only 75% of the way
+                const startX = Number(failedPart.pos_x ?? 50);
+                const startY = Number(failedPart.pos_y ?? 50);
+                const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
+                const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.75;
+                await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', failedPart.id);
+                console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 25%`);
+              }
+            }
+          }
+        } else if (isPassType(ballHolderAction.action_type)) {
+          if (ballHolderAction.target_participant_id) {
+            nextBallHolderParticipantId = ballHolderAction.target_participant_id;
+          } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
+            let closestDist = Infinity;
+            let closestId: string | null = null;
+            for (const p of (participants || [])) {
+              if (p.id === ballHolder.id) continue;
+              const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive'));
+              const px = moveAction?.target_x ?? p.pos_x ?? 50;
+              const py = moveAction?.target_y ?? p.pos_y ?? 50;
+              const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
+              if (dist < closestDist) { closestDist = dist; closestId = p.id; }
+            }
+            if (closestId && closestDist <= 8) {
+              nextBallHolderParticipantId = closestId;
+              const closestPlayer = (participants || []).find(p => p.id === closestId);
+              if (closestPlayer && closestPlayer.club_id !== possClubId) {
+                newPossessionClubId = closestPlayer.club_id;
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
+              }
+            } else {
+              nextBallHolderParticipantId = null;
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Passe para área vazia. Ninguém está com a bola.' });
+            }
+          }
+        } else if (ballHolderAction.action_type === 'move') {
+          nextBallHolderParticipantId = ballHolder.id;
+        }
+
+        if (ballHolderAction && isPassType(ballHolderAction.action_type) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
+          const receiver = (participants || []).find(p => p.id === nextBallHolderParticipantId);
+          if (receiver && receiver.club_id === possClubId && checkOffside(receiver, ballHolder, participants || [], possClubId || '', match)) {
+            const defClub = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+            const defPlayersForFK = (participants || []).filter(p => p.club_id === defClub && p.role_type === 'player');
+            const offsideX = Number(receiver.pos_x ?? 50);
+            const offsideY = Number(receiver.pos_y ?? 50);
+            defPlayersForFK.sort((a: any, b: any) => {
+              const dA = Math.sqrt((Number(a.pos_x ?? 50) - offsideX) ** 2 + (Number(a.pos_y ?? 50) - offsideY) ** 2);
+              const dB = Math.sqrt((Number(b.pos_x ?? 50) - offsideX) ** 2 + (Number(b.pos_y ?? 50) - offsideY) ** 2);
+              return dA - dB;
+            });
+            const fkTaker = defPlayersForFK[0];
+            if (fkTaker) {
+              await supabase.from('match_participants').update({ pos_x: offsideX, pos_y: offsideY }).eq('id', fkTaker.id);
+              nextBallHolderParticipantId = fkTaker.id;
+            } else {
+              nextBallHolderParticipantId = null;
+            }
+            newPossessionClubId = defClub;
+            nextSetPieceType = 'free_kick';
+            ballEndPos = { x: offsideX, y: offsideY };
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'offside', title: '🚩 Impedimento!', body: 'Jogador em posição irregular. Tiro livre indireto.',
+            });
+          }
+        }
+      }
+    } else {
+      // ── LOOSE BALL HANDLING ──
+      // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
+      const { data: prevTurnData } = await supabase
+        .from('match_turns')
+        .select('ball_holder_participant_id')
+        .eq('match_id', match_id)
+        .eq('turn_number', match.current_turn_number - 1)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
+
+      const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1);
+
+      if (looseBallClaimer) {
+        nextBallHolderParticipantId = looseBallClaimer.id;
+        newPossessionClubId = looseBallClaimer.club_id;
+
+        await supabase.from('match_event_logs').insert({
+          match_id,
+          event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
+          title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
+          body: 'Quem chegou primeiro na bola solta ficou com a posse.',
+        });
+      } else {
+        nextBallHolderParticipantId = null;
+        if (wasAlreadyLoose) {
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'ball_stopped',
+            title: '⚽ Bola parada',
+            body: 'A bola perdeu a inércia e está parada no campo.',
+          });
+        } else {
+          const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
+          let inertiaBallX = ballEndPos ? ballEndPos.x : 50;
+          let inertiaBallY = ballEndPos ? ballEndPos.y : 50;
+          if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
+            const startX = Number(ballHolder.pos_x ?? 50);
+            const startY = Number(ballHolder.pos_y ?? 50);
+            const dirX = Number(prevBhAction.target_x) - startX;
+            const dirY = Number(prevBhAction.target_y) - startY;
+            inertiaBallX = Math.max(0, Math.min(100, Number(prevBhAction.target_x) + dirX * 0.15));
+            inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
+          }
+          ballEndPos = { x: inertiaBallX, y: inertiaBallY };
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'ball_inertia',
+            title: '⚽ Bola continua rolando...',
+            body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+            payload: { ball_x: inertiaBallX, ball_y: inertiaBallY },
+          });
+        }
+      }
+    }
+
+    // ── Apply deferred ball holder move (after ball resolution) ──
+    if (bhHasBallAction && ballHolder) {
+      const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+      if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
+        const bhAttrs = getAttrs(ballHolder);
+        const bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
+        const bhStartX = Number(ballHolder.pos_x ?? 50);
+        const bhStartY = Number(ballHolder.pos_y ?? 50);
+        let bhFinalX = Number(bhMoveAction.target_x);
+        let bhFinalY = Number(bhMoveAction.target_y);
+        const bhDx = bhFinalX - bhStartX;
+        const bhDy = bhFinalY - bhStartY;
+        const bhDist = Math.sqrt(bhDx * bhDx + bhDy * bhDy);
+        if (bhDist > bhMaxRange) {
+          const scale = bhMaxRange / bhDist;
+          bhFinalX = bhStartX + bhDx * scale;
+          bhFinalY = bhStartY + bhDy * scale;
+        }
+        await supabase.from('match_participants').update({
+          pos_x: bhFinalX, pos_y: bhFinalY,
+        }).eq('id', ballHolder.id);
+        console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
+      }
+    }
+
+    const allRawIds = (rawActions || []).map(a => a.id);
+    if (allRawIds.length > 0) {
+      const usedIds = allActions.map(a => a.id);
+      const overriddenIds = allRawIds.filter(id => !usedIds.includes(id));
+      const actionStatusUpdates: Promise<any>[] = [];
+      if (usedIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds));
+      if (overriddenIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds));
+      if (actionStatusUpdates.length > 0) await Promise.all(actionStatusUpdates);
+    }
+
+    // ── Compute ball end position for out-of-bounds check ──
+    if (!ballEndPos) {
+      if (nextBallHolderParticipantId) {
+        const holder = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
+        if (holder) {
+          const moveAct = allActions.find((a: any) => a.participant_id === holder.id && (a.action_type === 'move' || a.action_type === 'receive'));
+          ballEndPos = {
+            x: Number(moveAct?.target_x ?? holder.pos_x ?? 50),
+            y: Number(moveAct?.target_y ?? holder.pos_y ?? 50),
+          };
+        }
+      } else if (ballHolder) {
+        // Loose ball — ball is at the pass/shot target
+        const bhAction = allActions.find((a: any) => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+        if (bhAction?.target_x != null && bhAction?.target_y != null) {
+          ballEndPos = { x: Number(bhAction.target_x), y: Number(bhAction.target_y) };
+        }
+      }
+    }
+
+    // ── Goal from pass/move ending in goal area (before OOB) ──
+    if (nextBallHolderParticipantId === null && ballEndPos) {
+      const inHomeGoal = ballEndPos.x <= 1 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
+      const inAwayGoal = ballEndPos.x >= 99 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
+      if (inHomeGoal || inAwayGoal) {
+        const ballAction = ballHolder
+          ? allActions.find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type) || a.action_type === 'move'))
+          : null;
+        const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
+        if (!isOverGoal) {
+          if (inAwayGoal) {
+            if (possClubId === match.home_club_id) homeScore++; else awayScore++;
+          } else {
+            if (possClubId === match.away_club_id) awayScore++; else homeScore++;
+          }
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Bola no fundo da rede!`,
+          });
+          newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+          nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+          nextSetPieceType = 'kickoff';
+        }
+      }
+    }
+
+    if (ballHolder && nextBallHolderParticipantId === ballHolder.id) {
+      const bhMoveAct = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
+      if (bhMoveAct?.target_x != null && bhMoveAct?.target_y != null) {
+        const moveEndX = Number(bhMoveAct.target_x);
+        const moveEndY = Number(bhMoveAct.target_y);
+        const inHomeGoal = moveEndX <= 2 && moveEndY >= 38 && moveEndY <= 62;
+        const inAwayGoal = moveEndX >= 98 && moveEndY >= 38 && moveEndY <= 62;
+        if (inHomeGoal || inAwayGoal) {
+          if (inAwayGoal) {
+            if (possClubId === match.home_club_id) homeScore++; else awayScore++;
+          } else {
+            if (possClubId === match.away_club_id) awayScore++; else homeScore++;
+          }
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
+          });
+          newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+          nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+          nextSetPieceType = 'kickoff';
+        }
+      }
+    }
+
+    const goalScored = homeScore > match.home_score || awayScore > match.away_score;
+    if (ballEndPos && !goalScored && nextBallHolderParticipantId === null) {
+      const oob = detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match);
+      if (oob) {
+        const restart = await handleSetPiece(supabase, match_id, oob, participants || [], match, allActions);
+        if (restart) {
+          nextBallHolderParticipantId = restart.playerId;
+          newPossessionClubId = restart.clubId;
+          nextSetPieceType = oob.type;
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: oob.type,
+            title: restart.title,
+            body: restart.body,
+          });
+        }
+      }
+    }
+
+    const newTurnNumber = match.current_turn_number + 1;
+
+    await supabase.from('match_turns')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', activeTurn.id);
+
+    // ── Halftime check ──
+    if (newTurnNumber === TURNS_PER_HALF + 1 && match.current_turn_number <= TURNS_PER_HALF) {
+      const matchMinute = computeMatchMinute(match.current_turn_number);
+      await supabase.from('match_event_logs').insert({
+        match_id, event_type: 'halftime',
+        title: `⏸ Intervalo! ${homeScore} – ${awayScore}`,
+        body: `Fim do primeiro tempo (${matchMinute}'). Intervalo de 5 minutos.`,
+      });
+
+      // Create a halftime pause turn
+      const halftimeEnd = new Date(Date.now() + HALFTIME_PAUSE_MS).toISOString();
+      const halftimeStart = new Date().toISOString();
+
+      // Swap possession for second half kickoff
+      const secondHalfPossession = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+      const secondHalfKicker = await pickCenterKickoffPlayer(supabase, match_id, secondHalfPossession, participants || []);
+
+      await supabase.from('matches').update({
+        current_turn_number: newTurnNumber,
+        current_phase: 'positioning_attack',
+        possession_club_id: secondHalfPossession,
+        home_score: homeScore, away_score: awayScore,
+      }).eq('id', match_id);
+
+      await supabase.from('match_turns').insert({
+        match_id, turn_number: newTurnNumber,
+        phase: 'positioning_attack',
+        possession_club_id: secondHalfPossession,
+        ball_holder_participant_id: secondHalfKicker,
+        started_at: halftimeStart, ends_at: halftimeEnd,
+        status: 'active',
+        set_piece_type: 'kickoff',
+      });
+
+      await supabase.from('match_event_logs').insert({
+        match_id, event_type: 'second_half',
+        title: '⚽ Segundo tempo!',
+        body: 'Posicionamento para o início do segundo tempo.',
+      });
+    } else if (newTurnNumber > MAX_TURNS) {
+      const matchMinute = computeMatchMinute(match.current_turn_number);
+      await supabase.from('matches').update({
+        status: 'finished', finished_at: new Date().toISOString(),
+        home_score: homeScore, away_score: awayScore,
+      }).eq('id', match_id);
+
+      await supabase.from('match_event_logs').insert({
+        match_id, event_type: 'final_whistle',
+        title: `🏁 Apito final! ${homeScore} – ${awayScore}`,
+        body: `Partida encerrada aos ${matchMinute}'.`,
+      });
+    } else {
+      // ── Post-goal reset: move all players to formation positions ──
+      if (nextSetPieceType === 'kickoff') {
+        const isTestMatch = !match.home_lineup_id && !match.away_lineup_id;
+        let homeFormation = 'test-home';
+        let awayFormation = 'test-away';
+        if (!isTestMatch) {
+          if (tickCache.clubSettings) {
+            homeFormation = tickCache.clubSettings.homeFormation;
+            awayFormation = tickCache.clubSettings.awayFormation;
+          } else {
+            const [{ data: homeSettings }, { data: awaySettings }] = await Promise.all([
+              supabase.from('club_settings').select('default_formation').eq('club_id', match.home_club_id).maybeSingle(),
+              supabase.from('club_settings').select('default_formation').eq('club_id', match.away_club_id).maybeSingle(),
+            ]);
+            homeFormation = homeSettings?.default_formation || '4-4-2';
+            awayFormation = awaySettings?.default_formation || '4-4-2';
+            tickCache.clubSettings = { homeFormation, awayFormation };
+          }
+        }
+
+        const resetTeam = async (clubId: string, formation: string, isHome: boolean) => {
+          const teamParts = (participants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && p.id !== nextBallHolderParticipantId);
+          const positions = getFormationForFill(formation, isHome);
+          const updates: Promise<any>[] = [];
+          teamParts.forEach((p: any, i: number) => {
+            const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
+            let x = pos.x;
+            // Clamp to own half for kickoff
+            x = isHome ? Math.min(x, 48) : Math.max(x, 52);
+            updates.push(supabase.from('match_participants').update({ pos_x: x, pos_y: pos.y }).eq('id', p.id));
+          });
+          await Promise.all(updates);
+        };
+        await Promise.all([
+          resetTeam(match.home_club_id, homeFormation, true),
+          resetTeam(match.away_club_id, awayFormation, false),
+        ]);
+        console.log(`[ENGINE] Post-goal reset: all players moved to formation positions`);
+      }
+
+      const nextPhaseStart = new Date().toISOString();
+      const isNextLooseBall = nextBallHolderParticipantId === null;
+
+      // Penalty: skip positioning, go directly to ball_holder phase
+      const isPenalty = nextSetPieceType === 'penalty';
+      const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType) && !isPenalty;
+      const usePositioning = hasDeadBallRestart;
+      const nextPhase = isPenalty ? 'ball_holder' : (isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder'));
+      const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
+      const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
+
+      await supabase.from('matches').update({
+        current_turn_number: newTurnNumber,
+        current_phase: nextPhase,
+        possession_club_id: newPossessionClubId,
+        home_score: homeScore, away_score: awayScore,
+      }).eq('id', match_id);
+
+      const { data: insertedTurn } = await supabase.from('match_turns').insert({
+        match_id, turn_number: newTurnNumber,
+        phase: nextPhase,
+        possession_club_id: newPossessionClubId,
+        ball_holder_participant_id: nextBallHolderParticipantId,
+        started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+        status: 'active',
+        set_piece_type: nextSetPieceType || null,
+      }).select('id').single();
+
+      // ── One-touch auto-action (same approach as 11x11 engine) ──
+      if (nextBallHolderParticipantId && insertedTurn?.id) {
+        const oneTouchAction = allActions.find(a =>
+          a.participant_id === nextBallHolderParticipantId &&
+          a.action_type === 'receive' &&
+          a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch === true
+        );
+        if (oneTouchAction) {
+          const otPayload = oneTouchAction.payload as any;
+          if (otPayload.next_action_type) {
+            await supabase.from('match_actions').insert({
+              match_id, match_turn_id: insertedTurn.id,
+              participant_id: nextBallHolderParticipantId,
+              controlled_by_type: oneTouchAction.controlled_by_type || 'bot',
+              controlled_by_user_id: oneTouchAction.controlled_by_user_id || null,
+              action_type: otPayload.next_action_type,
+              target_x: otPayload.next_target_x ?? null,
+              target_y: otPayload.next_target_y ?? null,
+              target_participant_id: otPayload.next_target_participant_id || null,
+              payload: { one_touch_executed: true },
+              status: 'pending',
+            });
+            console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type}`);
+            await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque de primeira!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
+          }
+        }
+      }
+
+      if (isNextLooseBall) {
+        await supabase.from('match_event_logs').insert({
+          match_id, event_type: 'loose_ball_phase',
+          title: '⚽ Bola solta — Fase 1 pulada',
+          body: 'Todos os jogadores se movimentam para disputar a bola.',
+        });
+      } else if (usePositioning) {
+        await supabase.from('match_event_logs').insert({
+          match_id, event_type: 'positioning',
+          title: '📍 Posicionamento',
+          body: 'Time com a bola posiciona seus jogadores primeiro.',
+        });
+      } else if (isPenalty) {
+        await supabase.from('match_event_logs').insert({
+          match_id, event_type: 'penalty_kick',
+          title: '🎯 Cobrança de pênalti',
+          body: 'O jogador que sofreu a falta cobra o pênalti.',
+        });
+      }
+    }
+  } else if (activeTurn.phase === 'ball_holder' && isLooseBall) {
+    await supabase.from('match_turns')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', activeTurn.id);
+
+    const nextPhaseStart = new Date().toISOString();
+    const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+
+    await supabase.from('matches').update({ current_phase: 'attacking_support' }).eq('id', match_id);
+
+    await supabase.from('match_turns').insert({
+      match_id, turn_number: activeTurn.turn_number,
+      phase: 'attacking_support',
+      possession_club_id: possClubId,
+      ball_holder_participant_id: null,
+      started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+      status: 'active',
+    });
+  } else {
+    // ── Early deviation at ball_holder → attacking_support transition ──
+    if (activeTurn.phase === 'ball_holder' && ballHolder) {
+      const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
+      const { data: devAttrRows } = profileIds.length > 0
+        ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
+        : { data: [] };
+      const devAttrByProfile: Record<string, any> = {};
+      for (const row of (devAttrRows || [])) devAttrByProfile[row.player_profile_id] = row;
+
+      const { data: bhActions } = await supabase.from('match_actions')
+        .select('*')
+        .eq('match_turn_id', activeTurn.id)
+        .eq('participant_id', ballHolder.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const bhAction = bhActions?.[0];
+      if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
+        const raw = ballHolder.player_profile_id ? devAttrByProfile[ballHolder.player_profile_id] : null;
+        const devAttrs: Record<string, number> = {
+          passe_baixo: Number(raw?.passe_baixo ?? 40),
+          passe_alto: Number(raw?.passe_alto ?? 40),
+          forca_chute: Number(raw?.forca_chute ?? 40),
+          acuracia_chute: Number(raw?.acuracia_chute ?? 40),
+        };
+        const startX = Number(ballHolder.pos_x ?? 50);
+        const startY = Number(ballHolder.pos_y ?? 50);
+        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs);
+
+        await supabase.from('match_actions').update({
+          target_x: deviation.actualX,
+          target_y: deviation.actualY,
+          payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal },
+        }).eq('id', bhAction.id);
+
+        console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
+
+        if (deviation.overGoal) {
+          await supabase.from('match_event_logs').insert({
+            match_id, event_type: 'shot_over',
+            title: '💨 Chute para fora!',
+            body: 'A bola foi por cima do gol.',
+          });
+        }
+      }
+    }
+
+    const currentPhaseIndex = PHASES.indexOf(activeTurn.phase as Phase);
+    const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
+
+    const nextPhaseStart = new Date().toISOString();
+    const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
+    const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
+
+    await supabase.from('match_turns')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', activeTurn.id);
+
+    await supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id);
+
+    await supabase.from('match_turns').insert({
+      match_id, turn_number: activeTurn.turn_number,
+      phase: nextPhase,
+      possession_club_id: possClubId,
+      ball_holder_participant_id: activeTurn.ball_holder_participant_id,
+      started_at: nextPhaseStart, ends_at: nextPhaseEnd,
+      status: 'active',
+      set_piece_type: activeTurn.set_piece_type ?? null,
+    });
+  }
+
+  return { status: 'advanced' };
+
+  } finally {
+    // ── Release concurrency lock ──
+    await supabase.rpc('release_match_turn_processing', {
+      p_turn_id: activeTurn.id,
+      p_processing_token: processingToken,
+    }).catch(() => {}); // best-effort release; stale lock auto-expires after 15s
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -2398,1022 +3474,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ ...result, server_now: Date.now() });
     }
     if (action === 'tick' && match_id) {
-      const { data: match } = await supabase
-        .from('matches').select('*').eq('id', match_id).eq('status', 'live').single();
-
-      if (!match) {
-        return new Response(JSON.stringify({ error: 'Match not found or not live' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const result = await executeTickForMatch(supabase, match_id, forceTick);
+      if (result.error) {
+        return new Response(JSON.stringify({ error: result.error }), { status: result.httpStatus || 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
-
-      let { data: activeTurn } = await supabase
-        .from('match_turns').select('*').eq('match_id', match_id).eq('status', 'active')
-        .order('created_at', { ascending: false }).limit(1).single();
-
-      if (!activeTurn) {
-        return new Response(JSON.stringify({ error: 'No active turn' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      const now = new Date();
-      const endsAt = new Date(activeTurn.ends_at);
-
-      if (!forceTick && now < endsAt) {
-        return new Response(JSON.stringify({ status: 'waiting', remaining_ms: endsAt.getTime() - now.getTime(), server_now: now.getTime() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-        // ── POSITIONING PHASES ──
-        if (isPositioningPhase(activeTurn.phase)) {
-        const { data: rawParticipants } = await supabase
-          .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
-        const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
-
-        const possClubId = activeTurn.possession_club_id;
-        const isAttackPhase = activeTurn.phase === 'positioning_attack';
-
-        // Load actions for this phase turn
-        const { data: rawActions } = await supabase
-          .from('match_actions').select('*')
-          .eq('match_turn_id', activeTurn.id)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false });
-
-        // Dedup: keep highest-priority action per participant (human > bot)
-        const priorityByCtrl: Record<string, number> = { player: 3, manager: 2, bot: 1 };
-        const sortedMoveRaw = [...(rawActions || [])].filter(a => a.action_type === 'move').sort((a, b) => {
-          const pa = priorityByCtrl[a.controlled_by_type] ?? 0;
-          const pb = priorityByCtrl[b.controlled_by_type] ?? 0;
-          if (pa !== pb) return pb - pa;
-          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-        });
-        const seen = new Set<string>();
-        const moveActions = sortedMoveRaw.filter(a => {
-          if (seen.has(a.participant_id)) return false;
-          seen.add(a.participant_id);
-          return true;
-        });
-
-        // Determine if this is a kickoff (ball holder at center)
-        const bhId = activeTurn.ball_holder_participant_id;
-        const submittedParticipantIds = new Set((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
-        await generateBotActions(
-          supabase,
-          match_id,
-          activeTurn.id,
-          participants || [],
-          submittedParticipantIds,
-          bhId,
-          possClubId,
-          !bhId,
-          activeTurn.phase,
-          match,
-        );
-
-        const bh = bhId ? (participants || []).find((p: any) => p.id === bhId) : null;
-        const isKickoff = bh && Math.abs(Number(bh.pos_x ?? 50) - 50) < 5 && Math.abs(Number(bh.pos_y ?? 50) - 50) < 5;
-
-        // Apply move actions
-        for (const a of moveActions) {
-          const part = (participants || []).find((p: any) => p.id === a.participant_id);
-          if (!part) continue;
-
-          // Don't move the ball holder (kicker)
-          if (part.id === bhId) continue;
-
-          // Check team phase constraint
-          const isAttacker = part.club_id === possClubId;
-          if (isAttackPhase && !isAttacker) continue;
-          if (!isAttackPhase && isAttacker) continue;
-
-          let targetX = Number(a.target_x ?? part.pos_x ?? 50);
-          let targetY = Number(a.target_y ?? part.pos_y ?? 50);
-
-          // GK constraint: keep goalkeeper inside the box
-          const partSlotPos = part._slot_position || part.slot_position || '';
-          const partIsGK = partSlotPos === 'GK';
-          if (partIsGK) {
-            const isHome = part.club_id === match.home_club_id;
-            if (isHome) {
-              targetX = Math.min(targetX, 18);
-              targetY = Math.max(20, Math.min(80, targetY));
-            } else {
-              targetX = Math.max(targetX, 82);
-              targetY = Math.max(20, Math.min(80, targetY));
-            }
-          }
-
-          // Kickoff half-field constraint
-          if (isKickoff) {
-            const isHome = part.club_id === match.home_club_id;
-            if (isHome) targetX = Math.min(targetX, 49);
-            else targetX = Math.max(targetX, 51);
-          }
-
-          // Clamp to field
-          targetX = Math.max(1, Math.min(99, targetX));
-          targetY = Math.max(1, Math.min(99, targetY));
-
-          await supabase.from('match_participants').update({
-            pos_x: targetX, pos_y: targetY,
-          }).eq('id', part.id);
-
-          console.log(`[ENGINE] Positioning move: ${part.id.slice(0,8)} → (${targetX.toFixed(1)},${targetY.toFixed(1)})`);
-        }
-
-        // Mark actions as used
-        const actionIds = moveActions.map(a => a.id);
-        if (actionIds.length > 0) {
-          await supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds);
-        }
-
-        // Resolve current positioning turn
-        await supabase.from('match_turns')
-          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-          .eq('id', activeTurn.id);
-
-        const nextPhaseStart = new Date().toISOString();
-
-        if (isAttackPhase) {
-          // Advance to positioning_defense
-          const nextPhaseEnd = new Date(Date.now() + POSITIONING_PHASE_DURATION_MS).toISOString();
-          await supabase.from('matches').update({ current_phase: 'positioning_defense' }).eq('id', match_id);
-          await supabase.from('match_turns').insert({
-            match_id, turn_number: activeTurn.turn_number,
-            phase: 'positioning_defense',
-            possession_club_id: possClubId,
-            ball_holder_participant_id: bhId,
-            started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-            status: 'active',
-            set_piece_type: activeTurn.set_piece_type ?? null,
-          });
-
-          await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'positioning',
-            title: '📍 Posicionamento — Ataque concluído',
-            body: 'Agora a defesa posiciona seus jogadores.',
-          });
-        } else {
-          // Advance to ball_holder (normal turn starts)
-          const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
-          await supabase.from('matches').update({ current_phase: 'ball_holder' }).eq('id', match_id);
-          await supabase.from('match_turns').insert({
-            match_id, turn_number: activeTurn.turn_number,
-            phase: 'ball_holder',
-            possession_club_id: possClubId,
-            ball_holder_participant_id: bhId,
-            started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-            status: 'active',
-            set_piece_type: activeTurn.set_piece_type ?? null,
-          });
-
-          await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'positioning',
-            title: '📍 Posicionamento concluído',
-            body: 'A partida continua!',
-          });
-        }
-
-        return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      const { data: rawParticipants2 } = await supabase
-        .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
-      const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
-
-      const possClubId = activeTurn.possession_club_id;
-      const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
-      const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
-
-      const ballHolder = activeTurn.ball_holder_participant_id
-        ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
-        : null;
-
-      const isLooseBall = !activeTurn.ball_holder_participant_id;
-
-        if (activeTurn.phase !== 'resolution') {
-          const submittedParticipantIds = new Set((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
-          await generateBotActions(
-            supabase,
-            match_id,
-            activeTurn.id,
-            participants || [],
-            submittedParticipantIds,
-            activeTurn.ball_holder_participant_id,
-            possClubId,
-            isLooseBall,
-            activeTurn.phase,
-            match,
-          );
-        }
-
-        // ── RESOLUTION ──
-      let newPossessionClubId = possClubId;
-      let homeScore = match.home_score;
-      let awayScore = match.away_score;
-      let nextBallHolderParticipantId = ballHolder?.id || null;
-      let ballEndPos: { x: number; y: number } | null = null;
-        const lastTouchClubId = possClubId;
-        let nextSetPieceType: string | null = null;
-
-      if (activeTurn.phase === 'resolution') {
-        console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
-        const { data: turnRows } = await supabase
-          .from('match_turns')
-          .select('id, phase')
-          .eq('match_id', match_id)
-          .eq('turn_number', activeTurn.turn_number);
-
-        const allTurnIds = (turnRows || []).map(t => t.id);
-
-        // ── Bot AI fallback: generate actions for inactive players ──
-        {
-          const { data: existingActions } = await supabase
-            .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds).eq('status', 'pending');
-          const submittedIds = new Set((existingActions || []).map((a: any) => a.participant_id));
-          const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
-
-          // Generate bot actions for each phase that had a turn
-          for (const turnRow of (turnRows || [])) {
-            await generateBotActions(
-              supabase, match_id, turnRow.id, participants || [],
-              submittedIds, activeTurn.ball_holder_participant_id,
-              possClubId, isLooseBall, turnRow.phase, match,
-            );
-          }
-        }
-
-        const { data: rawActions } = await supabase
-          .from('match_actions').select('*').in('match_turn_id', allTurnIds).eq('status', 'pending')
-          .order('created_at', { ascending: false });
-
-        // Dedup: keep latest action per participant, BUT allow ball holder to have
-        // BOTH a pass/shoot (from phase 1) AND a move (from phase 2)
-        // CRITICAL: human actions (player/manager) ALWAYS override ALL bot actions for that participant
-        const priorityByController: Record<string, number> = { player: 3, manager: 2, bot: 1 };
-        
-        // Step 1: Find all participants that have at least one human action
-        const humanControlledParticipants = new Set<string>();
-        for (const a of (rawActions || [])) {
-          if (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager') {
-            humanControlledParticipants.add(a.participant_id);
-          }
-        }
-        
-        // Step 2: Filter out ALL bot actions for participants that have human actions
-        const filteredRaw = (rawActions || []).filter(a => {
-          if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
-            return false; // Human controls this participant — discard bot action entirely
-          }
-          return true;
-        });
-        
-        // Step 3: Sort remaining by priority (human first), then by created_at desc
-        const sortedRaw = [...filteredRaw].sort((a, b) => {
-          const pa = priorityByController[a.controlled_by_type] ?? 0;
-          const pb = priorityByController[b.controlled_by_type] ?? 0;
-          if (pa !== pb) return pb - pa;
-          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-        });
-        
-        // Step 4: Dedup — BH can have ball action + move; others get one action
-        const seenParticipants = new Map<string, { types: string[]; actions: any[] }>();
-        const allActions: any[] = [];
-        
-        for (const a of sortedRaw) {
-          const existing = seenParticipants.get(a.participant_id);
-          const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
-          if (isBH) {
-            const isBallAction = isPassType(a.action_type) || isShootType(a.action_type);
-            const isMoveAction = a.action_type === 'move';
-            if (existing) {
-              const hasBallAction = existing.types.some(t => isPassType(t) || isShootType(t));
-              const hasMoveAction = existing.types.some(t => t === 'move');
-              if (isBallAction && hasBallAction) continue;
-              if (isMoveAction && hasMoveAction) continue;
-              if (!isBallAction && !isMoveAction) continue;
-              existing.types.push(a.action_type);
-              existing.actions.push(a);
-              allActions.push(a);
-              continue;
-            }
-            seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
-            allActions.push(a);
-          } else {
-            if (existing) continue;
-            seenParticipants.set(a.participant_id, { types: [a.action_type], actions: [a] });
-            allActions.push(a);
-          }
-        }
-
-        // ── Load player attributes for physics ──
-        const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
-        const { data: attrRows } = profileIds.length > 0
-          ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
-          : { data: [] };
-        const attrByProfile: Record<string, any> = {};
-        for (const row of (attrRows || [])) {
-          attrByProfile[row.player_profile_id] = row;
-        }
-        const getAttrs = (participant: any) => {
-          const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
-          return {
-            aceleracao: Number(raw?.aceleracao ?? 40),
-            agilidade: Number(raw?.agilidade ?? 40),
-            velocidade: Number(raw?.velocidade ?? 40),
-            forca: Number(raw?.forca ?? 40),
-            stamina: Number(raw?.stamina ?? 40),
-            passe_baixo: Number(raw?.passe_baixo ?? 40),
-            passe_alto: Number(raw?.passe_alto ?? 40),
-            forca_chute: Number(raw?.forca_chute ?? 40),
-            acuracia_chute: Number(raw?.acuracia_chute ?? 40),
-            controle_bola: Number(raw?.controle_bola ?? 40),
-            um_toque: Number(raw?.um_toque ?? 40),
-          };
-        };
-
-        // ── Apply accuracy deviation to ball actions before resolution ──
-        if (ballHolder) {
-          const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
-          if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
-            // Check if deviation was already applied at phase transition
-            const alreadyDeviated = bhAction.payload && typeof bhAction.payload === 'object' && (bhAction.payload as any).deviated;
-            if (!alreadyDeviated) {
-              const bhAttrs = getAttrs(ballHolder);
-              const startX = Number(ballHolder.pos_x ?? 50);
-              const startY = Number(ballHolder.pos_y ?? 50);
-              const deviation = computeDeviation(
-                Number(bhAction.target_x),
-                Number(bhAction.target_y),
-                startX,
-                startY,
-                bhAction.action_type,
-                bhAttrs,
-              );
-              bhAction.target_x = deviation.actualX;
-              bhAction.target_y = deviation.actualY;
-
-              if (deviation.overGoal) {
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'shot_over',
-                  title: '💨 Chute para fora!',
-                  body: 'A bola foi por cima do gol.',
-                });
-              }
-            } else {
-              console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
-            }
-          }
-        }
-
-        // ── Apply movement ──
-        // Check if ball holder has a ball action (pass/shoot) — if so, defer their move until after resolution
-        const bhHasBallAction = ballHolder && allActions.some(a =>
-          a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
-
-        console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction}`);
-        for (const a of allActions) {
-          console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
-          if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
-            // Skip ball holder's move if they have a ball action — defer it after ball resolution
-            if (a.participant_id === ballHolder?.id && a.action_type === 'move' && bhHasBallAction) {
-              console.log(`[ENGINE] Deferring BH move until after ball resolution`);
-              continue;
-            }
-            const part = (participants || []).find(p => p.id === a.participant_id);
-            const startX = Number(part?.pos_x ?? 50);
-            const startY = Number(part?.pos_y ?? 50);
-            let finalX = Number(a.target_x);
-            let finalY = Number(a.target_y);
-
-            // ── Apply physics movement limits ──
-            const attrs = getAttrs(part);
-            const maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
-            const dx = finalX - startX;
-            const dy = finalY - startY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist > maxRange) {
-              const scale = maxRange / dist;
-              finalX = startX + dx * scale;
-              finalY = startY + dy * scale;
-            }
-
-            console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
-
-            await supabase.from('match_participants').update({
-              pos_x: finalX,
-              pos_y: finalY,
-            }).eq('id', a.participant_id);
-          }
-        }
-
-        if (ballHolder) {
-          // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
-          const ballHolderAction = allActions
-            .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
-            || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
-
-          if (ballHolderAction) {
-            const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1);
-
-            if (result.goal) {
-              // Check if the shot is actually on target
-              const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
-              const shotTargetY = Number(ballHolderAction.target_y ?? 50);
-              const isOnTarget = shotTargetY >= 38 && shotTargetY <= 62 && !isOverGoal;
-
-              if (isOnTarget) {
-                if (possClubId === match.home_club_id) homeScore++;
-                else awayScore++;
-
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'goal',
-                  title: `⚽ GOL! ${homeScore} – ${awayScore}`,
-                  body: `Turno ${match.current_turn_number}`,
-                });
-
-                newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-                nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
-                nextSetPieceType = 'kickoff';
-              } else {
-                // Shot missed — ball goes out of bounds
-                nextBallHolderParticipantId = null;
-                ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'shot_missed',
-                  title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
-                  body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
-                });
-                console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
-              }
-            } else if (result.looseBallPos) {
-              // Shot blocked — ball deflects to random position
-              nextBallHolderParticipantId = null;
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'blocked',
-                title: result.description,
-                body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
-              });
-            } else if (result.newBallHolderId) {
-              nextBallHolderParticipantId = result.newBallHolderId;
-              newPossessionClubId = result.newPossessionClubId || possClubId;
-
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'),
-                title: result.possession_change ? `🔄 Troca de posse` : result.description,
-                body: result.description,
-              });
-            } else if (result.foul && result.foulPosition) {
-              // Check if foul is inside penalty area
-              const foulX = result.foulPosition.x;
-              const foulY = result.foulPosition.y;
-              const isHomeAttacking = possClubId === match.home_club_id;
-              const inPenaltyArea = isHomeAttacking
-                ? (foulX >= 82 && foulY >= 20 && foulY <= 80)
-                : (foulX <= 18 && foulY >= 20 && foulY <= 80);
-
-              if (inPenaltyArea) {
-                // PENALTY!
-                const penaltyX = isHomeAttacking ? 88 : 12;
-                const penaltyY = 50;
-                nextBallHolderParticipantId = ballHolder.id;
-                await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', ballHolder.id);
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'penalty', title: '🟥 PÊNALTI!', body: 'Falta dentro da área! Pênalti marcado.',
-                });
-                nextSetPieceType = 'penalty';
-                ballEndPos = { x: penaltyX, y: penaltyY };
-              } else {
-                nextBallHolderParticipantId = ballHolder.id;
-                await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', ballHolder.id);
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
-                });
-                nextSetPieceType = 'free_kick';
-                ballEndPos = { x: foulX, y: foulY };
-              }
-              if (result.failedContestLog) {
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
-                });
-              }
-            } else if (result.event === 'dribble') {
-              // Tackle failed, dribble succeeded
-              nextBallHolderParticipantId = ballHolder.id;
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'dribble',
-                title: result.description,
-                body: 'O desarme falhou e o jogador seguiu com a bola.',
-              });
-              // Log the failed contest too
-              if (result.failedContestLog) {
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'tackle_failed',
-                  title: result.failedContestLog,
-                  body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
-                });
-              }
-              // Apply movement penalty to failed tackler: reduce their effective movement by 25%
-              if (result.failedContestParticipantId) {
-                const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
-                if (failedPart) {
-                  const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
-                  if (failMoveAct) {
-                    // Reduce their movement by 25% — move them only 75% of the way
-                    const startX = Number(failedPart.pos_x ?? 50);
-                    const startY = Number(failedPart.pos_y ?? 50);
-                    const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
-                    const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.75;
-                    await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', failedPart.id);
-                    console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 25%`);
-                  }
-                }
-              }
-            } else if (isPassType(ballHolderAction.action_type)) {
-              if (ballHolderAction.target_participant_id) {
-                nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-              } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
-                let closestDist = Infinity;
-                let closestId: string | null = null;
-                for (const p of (participants || [])) {
-                  if (p.id === ballHolder.id) continue;
-                  const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive'));
-                  const px = moveAction?.target_x ?? p.pos_x ?? 50;
-                  const py = moveAction?.target_y ?? p.pos_y ?? 50;
-                  const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
-                  if (dist < closestDist) { closestDist = dist; closestId = p.id; }
-                }
-                if (closestId && closestDist <= 8) {
-                  nextBallHolderParticipantId = closestId;
-                  const closestPlayer = (participants || []).find(p => p.id === closestId);
-                  if (closestPlayer && closestPlayer.club_id !== possClubId) {
-                    newPossessionClubId = closestPlayer.club_id;
-                    await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
-                  }
-                } else {
-                  nextBallHolderParticipantId = null;
-                  await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Passe para área vazia. Ninguém está com a bola.' });
-                }
-              }
-            } else if (ballHolderAction.action_type === 'move') {
-              nextBallHolderParticipantId = ballHolder.id;
-            }
-
-            if (ballHolderAction && isPassType(ballHolderAction.action_type) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
-              const receiver = (participants || []).find(p => p.id === nextBallHolderParticipantId);
-              if (receiver && receiver.club_id === possClubId && checkOffside(receiver, ballHolder, participants || [], possClubId || '', match)) {
-                const defClub = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-                const defPlayersForFK = (participants || []).filter(p => p.club_id === defClub && p.role_type === 'player');
-                const offsideX = Number(receiver.pos_x ?? 50);
-                const offsideY = Number(receiver.pos_y ?? 50);
-                defPlayersForFK.sort((a: any, b: any) => {
-                  const dA = Math.sqrt((Number(a.pos_x ?? 50) - offsideX) ** 2 + (Number(a.pos_y ?? 50) - offsideY) ** 2);
-                  const dB = Math.sqrt((Number(b.pos_x ?? 50) - offsideX) ** 2 + (Number(b.pos_y ?? 50) - offsideY) ** 2);
-                  return dA - dB;
-                });
-                const fkTaker = defPlayersForFK[0];
-                if (fkTaker) {
-                  await supabase.from('match_participants').update({ pos_x: offsideX, pos_y: offsideY }).eq('id', fkTaker.id);
-                  nextBallHolderParticipantId = fkTaker.id;
-                } else {
-                  nextBallHolderParticipantId = null;
-                }
-                newPossessionClubId = defClub;
-                nextSetPieceType = 'free_kick';
-                ballEndPos = { x: offsideX, y: offsideY };
-                await supabase.from('match_event_logs').insert({
-                  match_id, event_type: 'offside', title: '🚩 Impedimento!', body: 'Jogador em posição irregular. Tiro livre indireto.',
-                });
-              }
-            }
-          }
-        } else {
-          // ── LOOSE BALL HANDLING ──
-          // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
-          const { data: prevTurnData } = await supabase
-            .from('match_turns')
-            .select('ball_holder_participant_id')
-            .eq('match_id', match_id)
-            .eq('turn_number', match.current_turn_number - 1)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
-
-          const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1);
-
-          if (looseBallClaimer) {
-            nextBallHolderParticipantId = looseBallClaimer.id;
-            newPossessionClubId = looseBallClaimer.club_id;
-
-            await supabase.from('match_event_logs').insert({
-              match_id,
-              event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
-              title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
-              body: 'Quem chegou primeiro na bola solta ficou com a posse.',
-            });
-          } else {
-            nextBallHolderParticipantId = null;
-            if (wasAlreadyLoose) {
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'ball_stopped',
-                title: '⚽ Bola parada',
-                body: 'A bola perdeu a inércia e está parada no campo.',
-              });
-            } else {
-              const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
-              let inertiaBallX = ballEndPos ? ballEndPos.x : 50;
-              let inertiaBallY = ballEndPos ? ballEndPos.y : 50;
-              if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
-                const startX = Number(ballHolder.pos_x ?? 50);
-                const startY = Number(ballHolder.pos_y ?? 50);
-                const dirX = Number(prevBhAction.target_x) - startX;
-                const dirY = Number(prevBhAction.target_y) - startY;
-                inertiaBallX = Math.max(0, Math.min(100, Number(prevBhAction.target_x) + dirX * 0.15));
-                inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
-              }
-              ballEndPos = { x: inertiaBallX, y: inertiaBallY };
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'ball_inertia',
-                title: '⚽ Bola continua rolando...',
-                body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-                payload: { ball_x: inertiaBallX, ball_y: inertiaBallY },
-              });
-            }
-          }
-        }
-
-        // ── Apply deferred ball holder move (after ball resolution) ──
-        if (bhHasBallAction && ballHolder) {
-          const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
-          if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
-            const bhAttrs = getAttrs(ballHolder);
-            const bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
-            const bhStartX = Number(ballHolder.pos_x ?? 50);
-            const bhStartY = Number(ballHolder.pos_y ?? 50);
-            let bhFinalX = Number(bhMoveAction.target_x);
-            let bhFinalY = Number(bhMoveAction.target_y);
-            const bhDx = bhFinalX - bhStartX;
-            const bhDy = bhFinalY - bhStartY;
-            const bhDist = Math.sqrt(bhDx * bhDx + bhDy * bhDy);
-            if (bhDist > bhMaxRange) {
-              const scale = bhMaxRange / bhDist;
-              bhFinalX = bhStartX + bhDx * scale;
-              bhFinalY = bhStartY + bhDy * scale;
-            }
-            await supabase.from('match_participants').update({
-              pos_x: bhFinalX, pos_y: bhFinalY,
-            }).eq('id', ballHolder.id);
-            console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
-          }
-        }
-
-        const allRawIds = (rawActions || []).map(a => a.id);
-        if (allRawIds.length > 0) {
-          const usedIds = allActions.map(a => a.id);
-          const overriddenIds = allRawIds.filter(id => !usedIds.includes(id));
-          if (usedIds.length > 0) await supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds);
-          if (overriddenIds.length > 0) await supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds);
-        }
-
-        // ── Compute ball end position for out-of-bounds check ──
-        if (!ballEndPos) {
-          if (nextBallHolderParticipantId) {
-            const holder = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
-            if (holder) {
-              const moveAct = allActions.find((a: any) => a.participant_id === holder.id && (a.action_type === 'move' || a.action_type === 'receive'));
-              ballEndPos = {
-                x: Number(moveAct?.target_x ?? holder.pos_x ?? 50),
-                y: Number(moveAct?.target_y ?? holder.pos_y ?? 50),
-              };
-            }
-          } else if (ballHolder) {
-            // Loose ball — ball is at the pass/shot target
-            const bhAction = allActions.find((a: any) => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
-            if (bhAction?.target_x != null && bhAction?.target_y != null) {
-              ballEndPos = { x: Number(bhAction.target_x), y: Number(bhAction.target_y) };
-            }
-          }
-        }
-
-        // ── Goal from pass/move ending in goal area (before OOB) ──
-        if (nextBallHolderParticipantId === null && ballEndPos) {
-          const inHomeGoal = ballEndPos.x <= 1 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
-          const inAwayGoal = ballEndPos.x >= 99 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
-          if (inHomeGoal || inAwayGoal) {
-            const ballAction = ballHolder
-              ? allActions.find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type) || a.action_type === 'move'))
-              : null;
-            const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
-            if (!isOverGoal) {
-              if (inAwayGoal) {
-                if (possClubId === match.home_club_id) homeScore++; else awayScore++;
-              } else {
-                if (possClubId === match.away_club_id) awayScore++; else homeScore++;
-              }
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Bola no fundo da rede!`,
-              });
-              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
-              nextSetPieceType = 'kickoff';
-            }
-          }
-        }
-
-        if (ballHolder && nextBallHolderParticipantId === ballHolder.id) {
-          const bhMoveAct = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
-          if (bhMoveAct?.target_x != null && bhMoveAct?.target_y != null) {
-            const moveEndX = Number(bhMoveAct.target_x);
-            const moveEndY = Number(bhMoveAct.target_y);
-            const inHomeGoal = moveEndX <= 2 && moveEndY >= 38 && moveEndY <= 62;
-            const inAwayGoal = moveEndX >= 98 && moveEndY >= 38 && moveEndY <= 62;
-            if (inHomeGoal || inAwayGoal) {
-              if (inAwayGoal) {
-                if (possClubId === match.home_club_id) homeScore++; else awayScore++;
-              } else {
-                if (possClubId === match.away_club_id) awayScore++; else homeScore++;
-              }
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
-              });
-              newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-              nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
-              nextSetPieceType = 'kickoff';
-            }
-          }
-        }
-
-        const goalScored = homeScore > match.home_score || awayScore > match.away_score;
-        if (ballEndPos && !goalScored && nextBallHolderParticipantId === null) {
-          const oob = detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match);
-          if (oob) {
-            const restart = await handleSetPiece(supabase, match_id, oob, participants || [], match, allActions);
-            if (restart) {
-              nextBallHolderParticipantId = restart.playerId;
-              newPossessionClubId = restart.clubId;
-              nextSetPieceType = oob.type;
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: oob.type,
-                title: restart.title,
-                body: restart.body,
-              });
-            }
-          }
-        }
-
-        const newTurnNumber = match.current_turn_number + 1;
-
-        await supabase.from('match_turns')
-          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-          .eq('id', activeTurn.id);
-
-        // ── Halftime check ──
-        if (newTurnNumber === TURNS_PER_HALF + 1 && match.current_turn_number <= TURNS_PER_HALF) {
-          const matchMinute = computeMatchMinute(match.current_turn_number);
-          await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'halftime',
-            title: `⏸ Intervalo! ${homeScore} – ${awayScore}`,
-            body: `Fim do primeiro tempo (${matchMinute}'). Intervalo de 5 minutos.`,
-          });
-
-          // Create a halftime pause turn
-          const halftimeEnd = new Date(Date.now() + HALFTIME_PAUSE_MS).toISOString();
-          const halftimeStart = new Date().toISOString();
-
-          // Swap possession for second half kickoff
-          const secondHalfPossession = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
-          const secondHalfKicker = await pickCenterKickoffPlayer(supabase, match_id, secondHalfPossession, participants || []);
-
-          await supabase.from('matches').update({
-            current_turn_number: newTurnNumber,
-            current_phase: 'positioning_attack',
-            possession_club_id: secondHalfPossession,
-            home_score: homeScore, away_score: awayScore,
-          }).eq('id', match_id);
-
-          await supabase.from('match_turns').insert({
-            match_id, turn_number: newTurnNumber,
-            phase: 'positioning_attack',
-            possession_club_id: secondHalfPossession,
-            ball_holder_participant_id: secondHalfKicker,
-            started_at: halftimeStart, ends_at: halftimeEnd,
-            status: 'active',
-            set_piece_type: 'kickoff',
-          });
-
-          await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'second_half',
-            title: '⚽ Segundo tempo!',
-            body: 'Posicionamento para o início do segundo tempo.',
-          });
-        } else if (newTurnNumber > MAX_TURNS) {
-          const matchMinute = computeMatchMinute(match.current_turn_number);
-          await supabase.from('matches').update({
-            status: 'finished', finished_at: new Date().toISOString(),
-            home_score: homeScore, away_score: awayScore,
-          }).eq('id', match_id);
-
-          await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'final_whistle',
-            title: `🏁 Apito final! ${homeScore} – ${awayScore}`,
-            body: `Partida encerrada aos ${matchMinute}'.`,
-          });
-        } else {
-          // ── Post-goal reset: move all players to formation positions ──
-          if (nextSetPieceType === 'kickoff') {
-            const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.home_club_id).maybeSingle();
-            const { data: awaySettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', match.away_club_id).maybeSingle();
-            const isTestMatch = !match.home_lineup_id && !match.away_lineup_id;
-            const homeFormation = isTestMatch ? 'test-home' : (homeSettings?.default_formation || '4-4-2');
-            const awayFormation = isTestMatch ? 'test-away' : (awaySettings?.default_formation || '4-4-2');
-
-            const resetTeam = async (clubId: string, formation: string, isHome: boolean) => {
-              const teamParts = (participants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && p.id !== nextBallHolderParticipantId);
-              const positions = getFormationForFill(formation, isHome);
-              const updates: Promise<any>[] = [];
-              teamParts.forEach((p: any, i: number) => {
-                const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
-                let x = pos.x;
-                // Clamp to own half for kickoff
-                x = isHome ? Math.min(x, 48) : Math.max(x, 52);
-                updates.push(supabase.from('match_participants').update({ pos_x: x, pos_y: pos.y }).eq('id', p.id));
-              });
-              await Promise.all(updates);
-            };
-            await Promise.all([
-              resetTeam(match.home_club_id, homeFormation, true),
-              resetTeam(match.away_club_id, awayFormation, false),
-            ]);
-            console.log(`[ENGINE] Post-goal reset: all players moved to formation positions`);
-          }
-
-          const nextPhaseStart = new Date().toISOString();
-          const isNextLooseBall = nextBallHolderParticipantId === null;
-
-          // Penalty: skip positioning, go directly to ball_holder phase
-          const isPenalty = nextSetPieceType === 'penalty';
-          const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType) && !isPenalty;
-          const usePositioning = hasDeadBallRestart;
-          const nextPhase = isPenalty ? 'ball_holder' : (isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder'));
-          const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
-          const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
-
-          await supabase.from('matches').update({
-            current_turn_number: newTurnNumber,
-            current_phase: nextPhase,
-            possession_club_id: newPossessionClubId,
-            home_score: homeScore, away_score: awayScore,
-          }).eq('id', match_id);
-
-          const { data: insertedTurn } = await supabase.from('match_turns').insert({
-            match_id, turn_number: newTurnNumber,
-            phase: nextPhase,
-            possession_club_id: newPossessionClubId,
-            ball_holder_participant_id: nextBallHolderParticipantId,
-            started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-            status: 'active',
-            set_piece_type: nextSetPieceType || null,
-          }).select('id').single();
-
-          // ── One-touch auto-action (same approach as 11x11 engine) ──
-          if (nextBallHolderParticipantId && insertedTurn?.id) {
-            const oneTouchAction = allActions.find(a =>
-              a.participant_id === nextBallHolderParticipantId &&
-              a.action_type === 'receive' &&
-              a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch === true
-            );
-            if (oneTouchAction) {
-              const otPayload = oneTouchAction.payload as any;
-              if (otPayload.next_action_type) {
-                await supabase.from('match_actions').insert({
-                  match_id, match_turn_id: insertedTurn.id,
-                  participant_id: nextBallHolderParticipantId,
-                  controlled_by_type: oneTouchAction.controlled_by_type || 'bot',
-                  controlled_by_user_id: oneTouchAction.controlled_by_user_id || null,
-                  action_type: otPayload.next_action_type,
-                  target_x: otPayload.next_target_x ?? null,
-                  target_y: otPayload.next_target_y ?? null,
-                  target_participant_id: otPayload.next_target_participant_id || null,
-                  payload: { one_touch_executed: true },
-                  status: 'pending',
-                });
-                console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type}`);
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque de primeira!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
-              }
-            }
-          }
-
-          if (isNextLooseBall) {
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'loose_ball_phase',
-              title: '⚽ Bola solta — Fase 1 pulada',
-              body: 'Todos os jogadores se movimentam para disputar a bola.',
-            });
-          } else if (usePositioning) {
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'positioning',
-              title: '📍 Posicionamento',
-              body: 'Time com a bola posiciona seus jogadores primeiro.',
-            });
-          } else if (isPenalty) {
-            await supabase.from('match_event_logs').insert({
-              match_id, event_type: 'penalty_kick',
-              title: '🎯 Cobrança de pênalti',
-              body: 'O jogador que sofreu a falta cobra o pênalti.',
-            });
-          }
-        }
-      } else if (activeTurn.phase === 'ball_holder' && isLooseBall) {
-        await supabase.from('match_turns')
-          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-          .eq('id', activeTurn.id);
-
-        const nextPhaseStart = new Date().toISOString();
-        const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
-
-        await supabase.from('matches').update({ current_phase: 'attacking_support' }).eq('id', match_id);
-
-        await supabase.from('match_turns').insert({
-          match_id, turn_number: activeTurn.turn_number,
-          phase: 'attacking_support',
-          possession_club_id: possClubId,
-          ball_holder_participant_id: null,
-          started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-          status: 'active',
-        });
-      } else {
-        // ── Early deviation at ball_holder → attacking_support transition ──
-        if (activeTurn.phase === 'ball_holder' && ballHolder) {
-          const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
-          const { data: devAttrRows } = profileIds.length > 0
-            ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
-            : { data: [] };
-          const devAttrByProfile: Record<string, any> = {};
-          for (const row of (devAttrRows || [])) devAttrByProfile[row.player_profile_id] = row;
-
-          const { data: bhActions } = await supabase.from('match_actions')
-            .select('*')
-            .eq('match_turn_id', activeTurn.id)
-            .eq('participant_id', ballHolder.id)
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-          const bhAction = bhActions?.[0];
-          if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
-            const raw = ballHolder.player_profile_id ? devAttrByProfile[ballHolder.player_profile_id] : null;
-            const devAttrs: Record<string, number> = {
-              passe_baixo: Number(raw?.passe_baixo ?? 40),
-              passe_alto: Number(raw?.passe_alto ?? 40),
-              forca_chute: Number(raw?.forca_chute ?? 40),
-              acuracia_chute: Number(raw?.acuracia_chute ?? 40),
-            };
-            const startX = Number(ballHolder.pos_x ?? 50);
-            const startY = Number(ballHolder.pos_y ?? 50);
-            const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs);
-
-            await supabase.from('match_actions').update({
-              target_x: deviation.actualX,
-              target_y: deviation.actualY,
-              payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal },
-            }).eq('id', bhAction.id);
-
-            console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
-
-            if (deviation.overGoal) {
-              await supabase.from('match_event_logs').insert({
-                match_id, event_type: 'shot_over',
-                title: '💨 Chute para fora!',
-                body: 'A bola foi por cima do gol.',
-              });
-            }
-          }
-        }
-
-        const currentPhaseIndex = PHASES.indexOf(activeTurn.phase as Phase);
-        const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
-
-        const nextPhaseStart = new Date().toISOString();
-        const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
-        const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
-
-        await supabase.from('match_turns')
-          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-          .eq('id', activeTurn.id);
-
-        await supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id);
-
-        await supabase.from('match_turns').insert({
-          match_id, turn_number: activeTurn.turn_number,
-          phase: nextPhase,
-          possession_club_id: possClubId,
-          ball_holder_participant_id: activeTurn.ball_holder_participant_id,
-          started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-          status: 'active',
-          set_piece_type: activeTurn.set_piece_type ?? null,
-        });
-      }
-
-      return new Response(JSON.stringify({ status: 'advanced', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ...result, server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ─── SUBMIT HUMAN ACTION ───

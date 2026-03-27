@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { sounds } from '@/lib/sounds';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -181,6 +181,16 @@ const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, 
   const cy = ay + dy * t;
   return Math.hypot(px - cx, py - cy);
 };
+
+const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
+const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+
+// ─── Field constants (module-level for use in hooks and render) ──
+const FIELD_W = 900;
+const FIELD_H = 580;
+const PAD = 20;
+const INNER_W = FIELD_W - PAD * 2;
+const INNER_H = FIELD_H - PAD * 2;
 
 // ─── Drawing state ────────────────────────────────────────────
 interface DrawingState {
@@ -402,6 +412,9 @@ export default function MatchRoomPage() {
   const [myClubId, setMyClubId] = useState<string | null>(null);
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [phaseTimeLeft, setPhaseTimeLeft] = useState(PHASE_DURATION);
+  const phaseTimeLeftRef = useRef(PHASE_DURATION);
+  const timerDisplayRef = useRef<HTMLSpanElement>(null);
+  const timerBarRef = useRef<HTMLDivElement>(null);
   const [preMatchCountdownLeft, setPreMatchCountdownLeft] = useState(PRE_MATCH_COUNTDOWN_SECONDS);
   const [submittingAction, setSubmittingAction] = useState(false);
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
@@ -437,6 +450,7 @@ export default function MatchRoomPage() {
   // Animation state for phase 4
   const [animating, setAnimating] = useState(false);
   const [animProgress, setAnimProgress] = useState(0);
+  const animProgressRef = useRef(0);
   const [resolutionStartPositions, setResolutionStartPositions] = useState<Record<string, { x: number; y: number }>>({});
   // Final positions after animation (locked until next turn)
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -467,6 +481,9 @@ export default function MatchRoomPage() {
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
   const animatedResolutionIdRef = useRef<string | null>(null);
+  const playerGroupRefsMap = useRef<Map<string, SVGGElement>>(new Map());
+  const ballGroupRef = useRef<SVGGElement>(null);
+  const lastMouseMoveTimeRef = useRef(0);
   const resolvedMatchEngineRef = useRef(getInitialMatchEngineFunction());
   const matchRef = useRef<MatchData | null>(null);
   const homeClubRef = useRef<ClubInfo | null>(null);
@@ -943,23 +960,64 @@ export default function MatchRoomPage() {
     return () => clearInterval(interval);
   }, [ensureScheduledMatchStarted, match?.status, match?.scheduled_at, serverNow]);
 
-  // ── Phase countdown timer ────────────────────────────────────
+  // ── Phase countdown timer (rAF + ref, no per-tick setState) ──
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
+    tickRef.current = null;
     if (!activeTurn || match?.status !== 'live') return;
-    
+
     // Validate ends_at before using
     const endsAt = new Date(activeTurn.ends_at);
     if (isNaN(endsAt.getTime())) {
       setPhaseTimeLeft(0);
+      phaseTimeLeftRef.current = 0;
       return;
     }
-    
-    tickRef.current = setInterval(() => {
+
+    let rafId: number | null = null;
+    let hitZero = false;
+
+    const tick = () => {
       const remaining = Math.max(0, endsAt.getTime() - serverNow());
-      setPhaseTimeLeft(Math.ceil(remaining / 1000));
-    }, 100);
-    return () => { if (tickRef.current) clearInterval(tickRef.current); };
+      const seconds = Math.ceil(remaining / 1000);
+      phaseTimeLeftRef.current = seconds;
+
+      // Update DOM directly for countdown display
+      if (timerDisplayRef.current) {
+        timerDisplayRef.current.textContent = `${seconds}s`;
+        timerDisplayRef.current.className = `font-display font-bold text-sm tabular-nums ${seconds <= 2 ? 'text-destructive animate-pulse' : 'text-foreground'}`;
+      }
+
+      // Update timer bar width directly
+      if (timerBarRef.current) {
+        const phase = activeTurnRef.current?.phase;
+        const dur = phase === 'resolution' ? RESOLUTION_PHASE_DURATION
+          : (phase === 'positioning_attack' || phase === 'positioning_defense') ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
+        const pct = dur > 0 ? (seconds / dur) * 100 : 0;
+        timerBarRef.current.style.width = `${pct}%`;
+        timerBarRef.current.style.background = seconds <= 2
+          ? 'hsl(var(--destructive))'
+          : 'linear-gradient(90deg, hsl(var(--pitch-green)), hsl(var(--warning-amber)))';
+      }
+
+      if (seconds <= 0 && !hitZero) {
+        hitZero = true;
+        setPhaseTimeLeft(0);
+      }
+
+      if (!hitZero) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
+    // Initial sync: set state once so effects that read phaseTimeLeft work
+    const initialRemaining = Math.max(0, endsAt.getTime() - serverNow());
+    const initialSeconds = Math.ceil(initialRemaining / 1000);
+    phaseTimeLeftRef.current = initialSeconds;
+    setPhaseTimeLeft(initialSeconds);
+
+    rafId = requestAnimationFrame(tick);
+    return () => { if (rafId) cancelAnimationFrame(rafId); };
   }, [activeTurn, match?.status]);
 
   // Reset local submission cache only when a brand-new turn starts
@@ -1008,6 +1066,7 @@ export default function MatchRoomPage() {
     if (activeTurn?.phase !== 'resolution') {
       setAnimating(false);
       setAnimProgress(0);
+      animProgressRef.current = 0;
     }
     // Track if this turn follows a positioning turn (dead ball)
     if (activeTurn?.phase === 'ball_holder') {
@@ -1717,6 +1776,134 @@ export default function MatchRoomPage() {
       animatedResolutionIdRef.current = activeTurn.id;
       setAnimating(true);
       setAnimProgress(0);
+      animProgressRef.current = 0;
+
+      // Helper: compute eased position for a participant during animation
+      const computeAnimPos = (pId: string, raw: number, actionsSnap: MatchAction[]) => {
+        const startPos = snapshot[pId];
+        if (!startPos) return null;
+        const moveAction = actionsSnap.find(
+          a => a.participant_id === pId && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null
+        );
+        if (!moveAction || moveAction.target_x == null || moveAction.target_y == null) {
+          return startPos;
+        }
+        let t: number;
+        if (raw < 0.3) {
+          const seg = raw / 0.3;
+          t = seg * seg * 0.3;
+        } else if (raw < 0.8) {
+          const seg = (raw - 0.3) / 0.5;
+          t = 0.3 + seg * 0.55;
+        } else {
+          const seg = (raw - 0.8) / 0.2;
+          t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
+        }
+        const effectiveTarget = getEffectiveActionTarget(moveAction, startPos, actionsSnap);
+        return {
+          x: startPos.x + ((effectiveTarget?.x ?? moveAction.target_x) - startPos.x) * t,
+          y: startPos.y + ((effectiveTarget?.y ?? moveAction.target_y) - startPos.y) * t,
+        };
+      };
+
+      // Helper: compute ball position during animation using refs
+      const computeAnimBallPos = (raw: number, actionsSnap: MatchAction[]) => {
+        const bhId = activeTurn?.ball_holder_participant_id ?? null;
+        const bhPart = bhId ? participantsRef.current.find(p => p.id === bhId) : null;
+
+        if (!bhPart) {
+          // Loose ball with inertia
+          if (ballInertiaDir && carriedLooseBallPos) {
+            const INERTIA_DISPLAY = 0.15;
+            const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+            const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+            const ballEaseK = 3;
+            const expDecay = 1 - Math.exp(-ballEaseK * raw);
+            const normFactor = 1 - Math.exp(-ballEaseK);
+            const t = expDecay / normFactor;
+            return {
+              x: carriedLooseBallPos.x + (endX - carriedLooseBallPos.x) * t,
+              y: carriedLooseBallPos.y + (endY - carriedLooseBallPos.y) * t,
+            };
+          }
+          return null;
+        }
+
+        const holderPos = computeAnimPos(bhPart.id, raw, actionsSnap);
+        const startPos = snapshot[bhPart.id] ?? { x: bhPart.field_x ?? 50, y: bhPart.field_y ?? 50 };
+        const ballStartX = startPos.x + 1.2;
+        const ballStartY = startPos.y - 1.2;
+        const defaultBallPos = holderPos ? { x: holderPos.x + 1.2, y: holderPos.y - 1.2 } : { x: ballStartX, y: ballStartY };
+
+        const bhAllActions = actionsSnap
+          .filter(a => a.participant_id === bhPart.id)
+          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type)) || bhAllActions[0];
+        if (!ballAction) return defaultBallPos;
+
+        const ballEaseK = (isShootAction(ballAction.action_type) && ballAction.action_type !== 'shoot_controlled') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
+        const expDecay = 1 - Math.exp(-ballEaseK * raw);
+        const normFactor = 1 - Math.exp(-ballEaseK);
+        const t = expDecay / normFactor;
+
+        const interceptAction = actionsSnap.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
+
+        if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
+          const effectiveTarget = getEffectiveActionTarget(ballAction, startPos, actionsSnap);
+          const endX = effectiveTarget?.x ?? ballAction.target_x;
+          const endY = effectiveTarget?.y ?? ballAction.target_y;
+          const dx = endX - startPos.x;
+          const dy = endY - startPos.y;
+          if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+            const len2 = dx * dx + dy * dy;
+            const interceptT = len2 > 0 ? clamp(((interceptAction.target_x - startPos.x) * dx + (interceptAction.target_y - startPos.y) * dy) / len2, 0, 1) : 1;
+            const effectiveT = Math.min(t, interceptT);
+            return { x: startPos.x + dx * effectiveT + 1.2, y: startPos.y + dy * effectiveT - 1.2 };
+          }
+          return holderPos ? { x: holderPos.x + 1.2, y: holderPos.y - 1.2 } : defaultBallPos;
+        }
+
+        const isBallPass = isPassAction(ballAction.action_type);
+        const isBallShoot = isShootAction(ballAction.action_type);
+        if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
+          if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+            const dx = ballAction.target_x - ballStartX;
+            const dy = ballAction.target_y - ballStartY;
+            const len2 = dx * dx + dy * dy;
+            let interceptT = 1;
+            if (len2 > 0) interceptT = clamp(((interceptAction.target_x - ballStartX) * dx + (interceptAction.target_y - ballStartY) * dy) / len2, 0, 1);
+            const effectiveT = Math.min(t, interceptT);
+            return { x: ballStartX + dx * effectiveT, y: ballStartY + dy * effectiveT };
+          }
+          if (isBallShoot) {
+            const isHome = bhPart.club_id === matchRef.current?.home_club_id;
+            const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
+            return { x: ballStartX + (goalX - ballStartX) * t, y: ballStartY + (ballAction.target_y - ballStartY) * t };
+          }
+          return { x: ballStartX + (ballAction.target_x - ballStartX) * t, y: ballStartY + (ballAction.target_y - ballStartY) * t };
+        }
+        return defaultBallPos;
+      };
+
+      // Helper: compute ball arc lift
+      const computeBallArcLift = (raw: number, actionsSnap: MatchAction[]) => {
+        const bhId = activeTurn?.ball_holder_participant_id ?? null;
+        const bhPart = bhId ? participantsRef.current.find(p => p.id === bhId) : null;
+        if (!bhPart) return 0;
+        const bhAllActions = actionsSnap
+          .filter(a => a.participant_id === bhPart.id)
+          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type));
+        if (!ballAction) return 0;
+        const actionType = ballAction.action_type;
+        let arcHeight = 0;
+        if (actionType === 'pass_high') arcHeight = 30;
+        else if (actionType === 'pass_launch') arcHeight = 45;
+        else if (actionType === 'shoot_controlled') arcHeight = 14;
+        else if (actionType === 'shoot_power') arcHeight = 9;
+        else return 0;
+        return Math.sin(raw * Math.PI) * arcHeight;
+      };
 
       const duration = 2500;
       let startTime: number | null = null;
@@ -1724,11 +1911,43 @@ export default function MatchRoomPage() {
       const animate = (now: number) => {
         if (startTime === null) startTime = now;
         const progress = Math.min(1, (now - startTime) / duration);
-        setAnimProgress(progress);
+        animProgressRef.current = progress;
+
+        // --- DOM manipulation for player positions during animation via transform ---
+        const actionsSnap = turnActionsRef.current;
+        const allParts = participantsRef.current;
+        for (const p of allParts) {
+          if (p.field_x == null || p.field_y == null) continue;
+          const animPos = computeAnimPos(p.id, progress, actionsSnap);
+          if (!animPos) continue;
+          const gEl = playerGroupRefsMap.current.get(p.id);
+          if (gEl) {
+            const baseX = parseFloat(gEl.getAttribute('data-base-x') || '0');
+            const baseY = parseFloat(gEl.getAttribute('data-base-y') || '0');
+            const svgPos = { x: PAD + (animPos.x / 100) * INNER_W, y: PAD + (animPos.y / 100) * INNER_H };
+            gEl.setAttribute('transform', `translate(${svgPos.x - baseX},${svgPos.y - baseY})`);
+          }
+        }
+
+        // Update ball position via DOM transform
+        const ballGEl = ballGroupRef.current;
+        if (ballGEl) {
+          const ballPos = computeAnimBallPos(progress, actionsSnap);
+          if (ballPos) {
+            const arcLift = computeBallArcLift(progress, actionsSnap);
+            const bsvg = { x: PAD + (ballPos.x / 100) * INNER_W, y: PAD + (ballPos.y / 100) * INNER_H };
+            const baseBallX = parseFloat(ballGEl.getAttribute('data-base-x') || '0');
+            const baseBallY = parseFloat(ballGEl.getAttribute('data-base-y') || '0');
+            ballGEl.setAttribute('transform', `translate(${bsvg.x - baseBallX},${bsvg.y - baseBallY - arcLift})`);
+          }
+        }
 
         if (progress < 1) {
           animFrameRef.current = requestAnimationFrame(animate);
         } else {
+          // Final state update via React setState
+          setAnimProgress(1);
+          animProgressRef.current = 1;
           // Animation done: lock final positions
           const latestActions = turnActionsRef.current;
           const finals: Record<string, { x: number; y: number }> = {};
@@ -1867,12 +2086,12 @@ export default function MatchRoomPage() {
   }, [activeTurn?.phase, activeTurn?.id]);
 
   // ── Compute animated positions (physics-based easing) ───────
-  const getAnimatedPos = (p: Participant): { x: number; y: number } => {
+  const getAnimatedPos = useCallback((p: Participant): { x: number; y: number } => {
     // If we have final locked positions (post-animation), use them
     if (finalPositions[p.id] && !animating) {
       return finalPositions[p.id];
     }
-    
+
     if (!animating || activeTurn?.phase !== 'resolution') {
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
@@ -1890,31 +2109,36 @@ export default function MatchRoomPage() {
     }
 
     // Physics-based easing: slow start (acceleration), fast mid, slight decel at end
-    // Simulates inertia — player needs to accelerate and can't change direction instantly
-    const raw = animProgress;
-    // Multi-segment ease: slow acceleration phase (0-0.3), cruise (0.3-0.8), slight decel (0.8-1)
+    const raw = animProgressRef.current;
     let t: number;
     if (raw < 0.3) {
-      // Acceleration phase: quadratic ease-in
       const seg = raw / 0.3;
       t = seg * seg * 0.3;
     } else if (raw < 0.8) {
-      // Cruise phase: linear
       const seg = (raw - 0.3) / 0.5;
       t = 0.3 + seg * 0.55;
     } else {
-      // Deceleration phase: ease-out
       const seg = (raw - 0.8) / 0.2;
       t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
     }
 
-      const effectiveTarget = getEffectiveActionTarget(moveAction, { x: startX, y: startY }, turnActions);
+    const effectiveTarget = getEffectiveActionTarget(moveAction, { x: startX, y: startY }, turnActions);
 
-      return {
-        x: startX + ((effectiveTarget?.x ?? moveAction.target_x) - startX) * t,
-        y: startY + ((effectiveTarget?.y ?? moveAction.target_y) - startY) * t,
-      };
-  };
+    return {
+      x: startX + ((effectiveTarget?.x ?? moveAction.target_x) - startX) * t,
+      y: startY + ((effectiveTarget?.y ?? moveAction.target_y) - startY) * t,
+    };
+  }, [finalPositions, animating, activeTurn?.phase, turnActions, resolutionStartPositions, getEffectiveActionTarget]);
+
+  // ─── Memoized player lists ─────────────────────────────────
+  const homePlayersMemo = useMemo(
+    () => participants.filter(p => p.club_id === match?.home_club_id && p.role_type === 'player'),
+    [participants, match?.home_club_id]
+  );
+  const awayPlayersMemo = useMemo(
+    () => participants.filter(p => p.club_id === match?.away_club_id && p.role_type === 'player'),
+    [participants, match?.away_club_id]
+  );
 
   // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
@@ -1930,8 +2154,8 @@ export default function MatchRoomPage() {
   const isManager = myRole === 'manager';
   const isPlayer = myRole === 'player';
 
-  const homePlayers = participants.filter(p => p.club_id === match.home_club_id && p.role_type === 'player');
-  const awayPlayers = participants.filter(p => p.club_id === match.away_club_id && p.role_type === 'player');
+  const homePlayers = homePlayersMemo;
+  const awayPlayers = awayPlayersMemo;
 
   const possClubId = activeTurn?.possession_club_id ?? match.possession_club_id;
   const isTestMatch = !match.home_lineup_id && !match.away_lineup_id;
@@ -1991,12 +2215,7 @@ export default function MatchRoomPage() {
     return [];
   };
 
-  // ─── Field constants ───────────────────────────────────────
-  const FIELD_W = 900;
-  const FIELD_H = 580;
-  const PAD = 20;
-  const INNER_W = FIELD_W - PAD * 2;
-  const INNER_H = FIELD_H - PAD * 2;
+  // ─── Field constants (use module-level) ────────────────────
 
   const toSVG = (pctX: number, pctY: number) => ({
     x: PAD + (pctX / 100) * INNER_W,
@@ -2033,6 +2252,10 @@ export default function MatchRoomPage() {
 
   const handleSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!drawingAction || !svgRef.current) return;
+    // Throttle to ~30fps (33ms) to avoid re-renders on every pixel
+    const now = performance.now();
+    if (now - lastMouseMoveTimeRef.current < 33) return;
+    lastMouseMoveTimeRef.current = now;
     const rect = svgRef.current.getBoundingClientRect();
     const totalW = FIELD_W + PAD * 2;
     const totalH = FIELD_H + PAD * 2;
@@ -2138,8 +2361,7 @@ export default function MatchRoomPage() {
     return null;
   })();
 
-  const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
-  const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+
 
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
     // Use locked final ball position if available (post-animation)
@@ -2153,7 +2375,7 @@ export default function MatchRoomPage() {
         const INERTIA_DISPLAY = 0.15;
         const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
         const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
-        const raw = animProgress;
+        const raw = animProgressRef.current;
         const ballEaseK = 3;
         const expDecay = 1 - Math.exp(-ballEaseK * raw);
         const normFactor = 1 - Math.exp(-ballEaseK);
@@ -2193,7 +2415,7 @@ export default function MatchRoomPage() {
 
     // Physics-based ball easing: exponential decay (fast launch, decelerating)
     const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
-    const rawT = animProgress;
+    const rawT = animProgressRef.current;
     const expDecay = 1 - Math.exp(-ballEaseK * rawT);
     const normFactor = 1 - Math.exp(-ballEaseK);
     const t = expDecay / normFactor; // normalized to [0, 1]
@@ -2292,7 +2514,7 @@ export default function MatchRoomPage() {
     else if (actionType === 'shoot_power') arcHeight = 9;
     else return 0;
 
-    return Math.sin(animProgress * Math.PI) * arcHeight;
+    return Math.sin(animProgressRef.current * Math.PI) * arcHeight;
   })();
 
   // Arrow from drawing action
@@ -2454,68 +2676,15 @@ export default function MatchRoomPage() {
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
       {/* ── Top scoreboard bar ── */}
-      <div className="bg-[hsl(140,20%,8%)] border-b border-[hsl(140,10%,20%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
-            {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
-            {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
-          </Badge>
-          {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">3v3</Badge>}
-          {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
-          {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
-          {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">POSICIONAMENTO</Badge>}
-        </div>
-
-        <div className="flex items-center gap-4">
-          <ClubBadgeInline club={homeClub} />
-          <div className="flex items-center gap-2">
-            <div className="font-display text-3xl font-extrabold tracking-widest">
-              <span style={{ color: homeClub?.primary_color }}>{match.home_score}</span>
-              <span className="text-muted-foreground mx-2 text-lg">:</span>
-              <span style={{ color: awayClub?.primary_color }}>{match.away_score}</span>
-            </div>
-            {isLive && (() => {
-              const minute = computeMatchMinute(match.current_turn_number);
-              const half = match.current_turn_number <= TURNS_PER_HALF ? '1T' : '2T';
-              const isHalftime = activeTurn?.phase === 'positioning_attack' && match.current_turn_number === TURNS_PER_HALF + 1;
-              return (
-                <div className="flex items-center gap-1.5 ml-2 bg-[hsl(140,10%,15%)] rounded px-2 py-0.5">
-                  {isHalftime ? (
-                    <span className="text-[11px] font-display font-bold text-warning animate-pulse">⏸ INT</span>
-                  ) : (
-                    <>
-                      <span className="text-[9px] font-display text-muted-foreground">{half}</span>
-                      <span className="font-display font-bold text-sm text-foreground tabular-nums">{minute}'</span>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-          <ClubBadgeInline club={awayClub} right />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={exitToDashboard} className="h-8 text-[10px] font-display">
-            <LogOut className="h-3 w-3" /> Sair
-          </Button>
-          {isManager && isTestMatch && isLive && (
-            <button
-              onClick={finishMatch}
-              className="flex items-center gap-1 text-[10px] font-display bg-destructive/20 text-destructive border border-destructive/40 px-2 py-1 rounded hover:bg-destructive/30 transition-colors"
-            >
-              <Square className="h-3 w-3" /> Finalizar
-            </button>
-          )}
-          {myRole === 'spectator' && <Badge variant="secondary" className="text-[10px] font-display"><Eye className="h-3 w-3 mr-1" />Espectador</Badge>}
-          {isPlayer && <Badge className="bg-pitch/20 text-pitch text-[10px] border border-pitch/40 font-display"><User className="h-3 w-3 mr-1" />Jogador</Badge>}
-          {isManager && (
-            <Badge className="bg-tactical/20 text-tactical text-[10px] border border-tactical/40 font-display">
-              <User className="h-3 w-3 mr-1" />Manager
-            </Badge>
-          )}
-        </div>
-      </div>
+      <MatchScoreboard
+        isLive={isLive} isFinished={isFinished} isTestMatch={isTestMatch}
+        isLooseBall={!!isLooseBall} isPhaseProcessing={isPhaseProcessing} isPositioningTurn={isPositioningTurn}
+        homeClub={homeClub} awayClub={awayClub}
+        homeScore={match.home_score} awayScore={match.away_score}
+        currentTurnNumber={match.current_turn_number} activeTurnPhase={activeTurn?.phase ?? null}
+        myRole={myRole} isManager={isManager} isPlayer={isPlayer}
+        onFinishMatch={finishMatch} onExit={exitToDashboard}
+      />
 
       {/* ── Main layout ── */}
       <div className="flex flex-1 overflow-hidden">
@@ -3105,7 +3274,12 @@ export default function MatchRoomPage() {
               {[...homePlayers, ...awayPlayers].map((p, idx) => {
                 if (p.field_x == null || p.field_y == null) return null;
                 const animPos = getAnimatedPos(p);
-                const { x, y } = toSVG(animPos.x, animPos.y);
+                const basePos = toSVG(p.field_x ?? 50, p.field_y ?? 50);
+                const svgAnimPos = toSVG(animPos.x, animPos.y);
+                const tx = svgAnimPos.x - basePos.x;
+                const ty = svgAnimPos.y - basePos.y;
+                const x = basePos.x;
+                const y = basePos.y;
                 const isHome = p.club_id === match.home_club_id;
                 const clubData = isHome ? homeClub : awayClub;
                 const isBH = activeTurn?.ball_holder_participant_id === p.id;
@@ -3118,6 +3292,11 @@ export default function MatchRoomPage() {
 
                 return (
                   <g key={p.id}
+                    ref={(el) => { if (el) playerGroupRefsMap.current.set(p.id, el); }}
+                    transform={`translate(${tx},${ty})`}
+                    data-player-id={p.id}
+                    data-base-x={basePos.x}
+                    data-base-y={basePos.y}
                     onClick={(e) => { if (!drawingAction) e.stopPropagation(); handlePlayerClick(p.id); }}
                     style={{ cursor: isControllable ? 'pointer' : 'default' }}
                   >
@@ -3167,7 +3346,7 @@ export default function MatchRoomPage() {
                 const shadowScale = ballArcLift > 0 ? Math.max(0.4, 1 - ballArcLift / 60) : 1;
                 const shadowOpacity = ballArcLift > 0 ? Math.max(0.1, 0.3 - ballArcLift / 150) : 0.3;
                 return (
-                  <g pointerEvents="none">
+                  <g pointerEvents="none" ref={ballGroupRef} data-base-x={x} data-base-y={y}>
                     {/* Shadow (stays on ground) */}
                     <ellipse cx={x + 0.8} cy={y + 2.5} rx={r * 0.9 * shadowScale} ry={r * 0.35 * shadowScale} fill={`rgba(0,0,0,${shadowOpacity})`} />
                     {/* Ball body (lifts with arc) */}
@@ -3225,87 +3404,22 @@ export default function MatchRoomPage() {
               if (!menuPos) return null;
               const actions = getActionsForParticipant(showActionMenu);
               if (actions.length === 0) return null;
-
               const containerRect = svgRef.current?.parentElement?.getBoundingClientRect();
               if (!containerRect) return null;
-              const left = menuPos.left - containerRect.left + 16;
-              const top = menuPos.top - containerRect.top - 10;
-
               return (
-                <div
-                  className="absolute z-50 bg-[hsl(45,30%,90%)] border border-[hsl(45,20%,60%)] rounded shadow-lg py-1 min-w-[140px]"
-                  style={{ left, top, transform: 'translateY(-50%)' }}
-                >
-                  {actions.map(a => {
-                    // Context-aware label for 'receive' action
-                    let label = ACTION_LABELS[a];
-                    let icon = '';
-                    if (a === 'move') icon = '↗';
-                    else if (a === 'pass_low') icon = '➡';
-                    else if (a === 'pass_high') icon = '⤴';
-                    else if (a === 'pass_launch') icon = '🚀';
-                    else if (a === 'shoot_controlled') icon = '🎯';
-                    else if (a === 'shoot_power') icon = '💥';
-                    else if (a === 'no_action') icon = '⊘';
-                    else if (a === 'receive') {
-                      icon = '🤲';
-                      // Determine context
-                      const menuPlayer = participants.find(p => p.id === showActionMenu);
-                      const bhAction = ballTrajectoryAction;
-                      const bhPlayer = ballTrajectoryHolder;
-                      if (bhAction && bhPlayer && menuPlayer) {
-                        const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
-                        if (bhAction.action_type === 'move' && isOpponent) {
-                          label = 'DESARME';
-                          icon = '🦵';
-                        } else if (isShootAction(bhAction.action_type) && isOpponent) {
-                          const isGK = menuPlayer.field_pos === 'GK';
-                          if (isGK) {
-                            const gkX = menuPlayer.field_x ?? 50;
-                            const gkY = menuPlayer.field_y ?? 50;
-                            const isHome = menuPlayer.club_id === match?.home_club_id;
-                            const inBox = isHome
-                              ? (gkX <= 18 && gkY >= 20 && gkY <= 80)
-                              : (gkX >= 82 && gkY >= 20 && gkY <= 80);
-                            if (inBox) {
-                              label = 'DEFENDER';
-                              icon = '🧤';
-                            } else {
-                              label = 'BLOQUEAR';
-                              icon = '🛡️';
-                            }
-                          } else {
-                            label = 'BLOQUEAR';
-                            icon = '🛡️';
-                          }
-                        }
-                      }
-                    }
-                    // One-touch labels
-                    const isOneTouchOption = pendingInterceptChoice?.participantId === showActionMenu &&
-                      (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
-                    if (isOneTouchOption) {
-                      const baseLabel = ACTION_LABELS[a] || a;
-                      label = `${baseLabel} (1a)`;
-                      if (a === 'pass_low') icon = '⚡➡';
-                      else if (a === 'pass_high') icon = '⚡⤴';
-                      else if (a === 'pass_launch') icon = '⚡🚀';
-                      else if (a === 'shoot_controlled') icon = '⚡🎯';
-                      else if (a === 'shoot_power') icon = '⚡💥';
-                    }
-                    return (
-                      <button
-                        key={a}
-                        disabled={submittingAction}
-                        onClick={() => handleActionMenuSelect(a, showActionMenu)}
-                        className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
-                      >
-                        <span className="text-[10px]">{icon}</span>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <MatchActionMenu
+                  actions={actions}
+                  menuPos={menuPos}
+                  containerRect={containerRect}
+                  showActionMenu={showActionMenu}
+                  submittingAction={submittingAction}
+                  onSelect={handleActionMenuSelect}
+                  participants={participants}
+                  ballTrajectoryAction={ballTrajectoryAction}
+                  ballTrajectoryHolder={ballTrajectoryHolder}
+                  pendingInterceptChoice={pendingInterceptChoice}
+                  match={match}
+                />
               );
             })()}
 
@@ -3387,95 +3501,33 @@ export default function MatchRoomPage() {
         </div>
 
         {/* ── Right sidebar ── */}
-        <div className="w-72 shrink-0 bg-[hsl(140,10%,10%)] border-l border-[hsl(140,10%,18%)] flex flex-col overflow-hidden">
-
-          {/* Turn Wheel */}
-          <div className="p-3 border-b border-[hsl(140,10%,18%)]">
-            <TurnWheel
-              currentPhase={activeTurn?.phase ?? null}
-              timeLeft={phaseTimeLeft}
-              turnNumber={match.current_turn_number}
-              possessionClub={possClubId === match.home_club_id ? homeClub : awayClub}
-              phaseDuration={currentPhaseDuration}
-              isLooseBall={!!isLooseBall}
-            />
-          </div>
-
-          {/* Accordion: Home team */}
-          <AccordionSection
-            title={homeClub?.name || 'Time Casa'}
-            badge={`${homePlayers.filter(p => !p.id.startsWith('virtual')).length}`}
-            color={homeClub?.primary_color}
-            open={homeAccOpen}
-            onToggle={() => setHomeAccOpen(!homeAccOpen)}
-          >
-            <TeamList
-              players={homePlayers}
-              ballHolderId={activeTurn?.ball_holder_participant_id ?? null}
-              myId={myParticipant?.id ?? null}
-              selectedId={selectedParticipantId}
-              onSelect={handlePlayerClick}
-              submittedIds={allSubmittedIds}
-            />
-          </AccordionSection>
-
-          {/* Accordion: Away team */}
-          <AccordionSection
-            title={awayClub?.name || 'Time Fora'}
-            badge={`${awayPlayers.filter(p => !p.id.startsWith('virtual')).length}`}
-            color={awayClub?.primary_color}
-            open={awayAccOpen}
-            onToggle={() => setAwayAccOpen(!awayAccOpen)}
-          >
-            <TeamList
-              players={awayPlayers}
-              ballHolderId={activeTurn?.ball_holder_participant_id ?? null}
-              myId={myParticipant?.id ?? null}
-              selectedId={selectedParticipantId}
-              onSelect={handlePlayerClick}
-              submittedIds={allSubmittedIds}
-            />
-          </AccordionSection>
-
-          {/* Accordion: Match Flow */}
-          <AccordionSection
-            title="Match Flow"
-            open={logAccOpen}
-            onToggle={() => setLogAccOpen(!logAccOpen)}
-            className="flex-1"
-          >
-            <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 bg-card/90 rounded-md p-2">
-              {events.length === 0 && (
-                <p className="text-[10px] text-primary/50 px-1">Aguardando eventos...</p>
-              )}
-               {events.slice(-30).map(e => (
-                 <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
-                   e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-                   e.event_type === 'kickoff' ? 'border-tactical text-primary' :
-                   e.event_type === 'possession_change' ? 'border-warning/60 text-primary/80' :
-                   e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
-                   e.event_type === 'tackle' ? 'border-red-500 text-red-700' :
-                   e.event_type === 'dribble' ? 'border-green-500 text-green-700' :
-                   e.event_type === 'blocked' ? 'border-orange-500 text-orange-700' :
-                   e.event_type === 'saved' ? 'border-blue-500 text-blue-700' :
-                   e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-500 text-yellow-700' :
-                   e.event_type === 'offside' ? 'border-purple-500 text-purple-700' :
-                   e.event_type === 'one_touch' ? 'border-cyan-500 text-cyan-700' :
-                   'border-border text-primary/70'
-                 }`}>
-                   <p className="font-display font-semibold">{e.title}</p>
-                   {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
-                 </div>
-               ))}
-              <div ref={eventsEndRef} />
-            </div>
-          </AccordionSection>
-
-          {/* Chat placeholder */}
-          <div className="p-3 border-t border-[hsl(140,10%,18%)] mt-auto">
-            <p className="text-[9px] font-display text-muted-foreground/40 uppercase tracking-widest text-center">Chat (em breve)</p>
-          </div>
-        </div>
+        <MatchSidebar
+          activeTurn={activeTurn}
+          phaseTimeLeft={phaseTimeLeft}
+          currentTurnNumber={match.current_turn_number}
+          possessionClub={possClubId === match.home_club_id ? homeClub : awayClub}
+          currentPhaseDuration={currentPhaseDuration}
+          isLooseBall={!!isLooseBall}
+          timerDisplayRef={timerDisplayRef}
+          timerBarRef={timerBarRef}
+          homeClub={homeClub}
+          awayClub={awayClub}
+          homePlayers={homePlayers}
+          awayPlayers={awayPlayers}
+          ballHolderId={activeTurn?.ball_holder_participant_id ?? null}
+          myId={myParticipant?.id ?? null}
+          selectedId={selectedParticipantId}
+          onSelectPlayer={handlePlayerClick}
+          submittedIds={allSubmittedIds}
+          homeAccOpen={homeAccOpen}
+          awayAccOpen={awayAccOpen}
+          logAccOpen={logAccOpen}
+          onToggleHome={() => setHomeAccOpen(!homeAccOpen)}
+          onToggleAway={() => setAwayAccOpen(!awayAccOpen)}
+          onToggleLog={() => setLogAccOpen(!logAccOpen)}
+          events={events}
+          eventsEndRef={eventsEndRef}
+        />
       </div>
     </div>
   );
@@ -3491,10 +3543,324 @@ function computeMatchMinute(turnNumber: number): number {
   return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
 }
 
+// ─── MatchScoreboard (extracted, memoized) ─────────────────────
+interface MatchScoreboardProps {
+  isLive: boolean; isFinished: boolean; isTestMatch: boolean;
+  isLooseBall: boolean; isPhaseProcessing: boolean; isPositioningTurn: boolean;
+  homeClub: ClubInfo | null; awayClub: ClubInfo | null;
+  homeScore: number; awayScore: number;
+  currentTurnNumber: number; activeTurnPhase: string | null;
+  myRole: 'player' | 'manager' | 'spectator';
+  isManager: boolean; isPlayer: boolean;
+  onFinishMatch: () => void; onExit: () => void;
+}
+
+const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboardProps) {
+  const {
+    isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
+    homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
+    myRole, isManager, isPlayer, onFinishMatch, onExit,
+  } = props;
+
+  return (
+    <div className="bg-[hsl(140,20%,8%)] border-b border-[hsl(140,10%,20%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
+          {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
+          {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
+        </Badge>
+        {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">3v3</Badge>}
+        {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
+        {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
+        {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">POSICIONAMENTO</Badge>}
+      </div>
+
+      <div className="flex items-center gap-4">
+        <ClubBadgeInline club={homeClub} />
+        <div className="flex items-center gap-2">
+          <div className="font-display text-3xl font-extrabold tracking-widest">
+            <span style={{ color: homeClub?.primary_color }}>{homeScore}</span>
+            <span className="text-muted-foreground mx-2 text-lg">:</span>
+            <span style={{ color: awayClub?.primary_color }}>{awayScore}</span>
+          </div>
+          {isLive && (() => {
+            const minute = computeMatchMinute(currentTurnNumber);
+            const half = currentTurnNumber <= TURNS_PER_HALF ? '1T' : '2T';
+            const isHalftime = activeTurnPhase === 'positioning_attack' && currentTurnNumber === TURNS_PER_HALF + 1;
+            return (
+              <div className="flex items-center gap-1.5 ml-2 bg-[hsl(140,10%,15%)] rounded px-2 py-0.5">
+                {isHalftime ? (
+                  <span className="text-[11px] font-display font-bold text-warning animate-pulse">⏸ INT</span>
+                ) : (
+                  <>
+                    <span className="text-[9px] font-display text-muted-foreground">{half}</span>
+                    <span className="font-display font-bold text-sm text-foreground tabular-nums">{minute}'</span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+        <ClubBadgeInline club={awayClub} right />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onExit} className="h-8 text-[10px] font-display">
+          <LogOut className="h-3 w-3" /> Sair
+        </Button>
+        {isManager && isTestMatch && isLive && (
+          <button
+            onClick={onFinishMatch}
+            className="flex items-center gap-1 text-[10px] font-display bg-destructive/20 text-destructive border border-destructive/40 px-2 py-1 rounded hover:bg-destructive/30 transition-colors"
+          >
+            <Square className="h-3 w-3" /> Finalizar
+          </button>
+        )}
+        {myRole === 'spectator' && <Badge variant="secondary" className="text-[10px] font-display"><Eye className="h-3 w-3 mr-1" />Espectador</Badge>}
+        {isPlayer && <Badge className="bg-pitch/20 text-pitch text-[10px] border border-pitch/40 font-display"><User className="h-3 w-3 mr-1" />Jogador</Badge>}
+        {isManager && (
+          <Badge className="bg-tactical/20 text-tactical text-[10px] border border-tactical/40 font-display">
+            <User className="h-3 w-3 mr-1" />Manager
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ─── MatchSidebar (extracted, memoized) ─────────────────────
+interface MatchSidebarProps {
+  activeTurn: MatchTurn | null;
+  phaseTimeLeft: number;
+  currentTurnNumber: number;
+  possessionClub: ClubInfo | null;
+  currentPhaseDuration: number;
+  isLooseBall: boolean;
+  timerDisplayRef: React.RefObject<HTMLSpanElement | null>;
+  timerBarRef: React.RefObject<HTMLDivElement | null>;
+  homeClub: ClubInfo | null;
+  awayClub: ClubInfo | null;
+  homePlayers: Participant[];
+  awayPlayers: Participant[];
+  ballHolderId: string | null;
+  myId: string | null;
+  selectedId: string | null;
+  onSelectPlayer: (id: string) => void;
+  submittedIds: Set<string>;
+  homeAccOpen: boolean; awayAccOpen: boolean; logAccOpen: boolean;
+  onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void;
+  events: EventLog[];
+  eventsEndRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) {
+  const {
+    activeTurn, phaseTimeLeft, currentTurnNumber, possessionClub, currentPhaseDuration,
+    isLooseBall, timerDisplayRef, timerBarRef,
+    homeClub, awayClub, homePlayers, awayPlayers,
+    ballHolderId, myId, selectedId, onSelectPlayer, submittedIds,
+    homeAccOpen, awayAccOpen, logAccOpen,
+    onToggleHome, onToggleAway, onToggleLog,
+    events, eventsEndRef,
+  } = props;
+
+  return (
+    <div className="w-72 shrink-0 bg-[hsl(140,10%,10%)] border-l border-[hsl(140,10%,18%)] flex flex-col overflow-hidden">
+      {/* Turn Wheel */}
+      <div className="p-3 border-b border-[hsl(140,10%,18%)]">
+        <TurnWheel
+          currentPhase={activeTurn?.phase ?? null}
+          timeLeft={phaseTimeLeft}
+          turnNumber={currentTurnNumber}
+          possessionClub={possessionClub}
+          phaseDuration={currentPhaseDuration}
+          isLooseBall={isLooseBall}
+          timerDisplayRef={timerDisplayRef}
+          timerBarRef={timerBarRef}
+        />
+      </div>
+
+      <AccordionSection
+        title={homeClub?.name || 'Time Casa'}
+        badge={`${homePlayers.filter(p => !p.id.startsWith('virtual')).length}`}
+        color={homeClub?.primary_color}
+        open={homeAccOpen}
+        onToggle={onToggleHome}
+      >
+        <TeamList
+          players={homePlayers}
+          ballHolderId={ballHolderId}
+          myId={myId}
+          selectedId={selectedId}
+          onSelect={onSelectPlayer}
+          submittedIds={submittedIds}
+        />
+      </AccordionSection>
+
+      <AccordionSection
+        title={awayClub?.name || 'Time Fora'}
+        badge={`${awayPlayers.filter(p => !p.id.startsWith('virtual')).length}`}
+        color={awayClub?.primary_color}
+        open={awayAccOpen}
+        onToggle={onToggleAway}
+      >
+        <TeamList
+          players={awayPlayers}
+          ballHolderId={ballHolderId}
+          myId={myId}
+          selectedId={selectedId}
+          onSelect={onSelectPlayer}
+          submittedIds={submittedIds}
+        />
+      </AccordionSection>
+
+      <AccordionSection
+        title="Match Flow"
+        open={logAccOpen}
+        onToggle={onToggleLog}
+        className="flex-1"
+      >
+        <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 bg-card/90 rounded-md p-2">
+          {events.length === 0 && (
+            <p className="text-[10px] text-primary/50 px-1">Aguardando eventos...</p>
+          )}
+          {events.slice(-30).map(e => (
+            <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
+              e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
+              e.event_type === 'kickoff' ? 'border-tactical text-primary' :
+              e.event_type === 'possession_change' ? 'border-warning/60 text-primary/80' :
+              e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
+              e.event_type === 'tackle' ? 'border-red-500 text-red-700' :
+              e.event_type === 'dribble' ? 'border-green-500 text-green-700' :
+              e.event_type === 'blocked' ? 'border-orange-500 text-orange-700' :
+              e.event_type === 'saved' ? 'border-blue-500 text-blue-700' :
+              e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-500 text-yellow-700' :
+              e.event_type === 'offside' ? 'border-purple-500 text-purple-700' :
+              e.event_type === 'one_touch' ? 'border-cyan-500 text-cyan-700' :
+              'border-border text-primary/70'
+            }`}>
+              <p className="font-display font-semibold">{e.title}</p>
+              {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
+            </div>
+          ))}
+          <div ref={eventsEndRef} />
+        </div>
+      </AccordionSection>
+
+      <div className="p-3 border-t border-[hsl(140,10%,18%)] mt-auto">
+        <p className="text-[9px] font-display text-muted-foreground/40 uppercase tracking-widest text-center">Chat (em breve)</p>
+      </div>
+    </div>
+  );
+});
+
+// ─── MatchActionMenu (extracted, memoized) ─────────────────────
+interface MatchActionMenuProps {
+  actions: string[];
+  menuPos: { left: number; top: number };
+  containerRect: DOMRect;
+  showActionMenu: string;
+  submittingAction: boolean;
+  onSelect: (actionType: string, participantId: string) => void;
+  participants: Participant[];
+  ballTrajectoryAction: MatchAction | null;
+  ballTrajectoryHolder: Participant | null;
+  pendingInterceptChoice: PendingInterceptChoice | null;
+  match: MatchData;
+}
+
+const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchActionMenuProps) {
+  const {
+    actions, menuPos, containerRect, showActionMenu, submittingAction,
+    onSelect, participants, ballTrajectoryAction, ballTrajectoryHolder,
+    pendingInterceptChoice, match,
+  } = props;
+
+  if (actions.length === 0) return null;
+
+  const left = menuPos.left - containerRect.left + 16;
+  const top = menuPos.top - containerRect.top - 10;
+
+  return (
+    <div
+      className="absolute z-50 bg-[hsl(45,30%,90%)] border border-[hsl(45,20%,60%)] rounded shadow-lg py-1 min-w-[140px]"
+      style={{ left, top, transform: 'translateY(-50%)' }}
+    >
+      {actions.map(a => {
+        let label = ACTION_LABELS[a];
+        let icon = '';
+        if (a === 'move') icon = '↗';
+        else if (a === 'pass_low') icon = '➡';
+        else if (a === 'pass_high') icon = '⤴';
+        else if (a === 'pass_launch') icon = '🚀';
+        else if (a === 'shoot_controlled') icon = '🎯';
+        else if (a === 'shoot_power') icon = '💥';
+        else if (a === 'no_action') icon = '⊘';
+        else if (a === 'receive') {
+          icon = '🤲';
+          const menuPlayer = participants.find(p => p.id === showActionMenu);
+          const bhAction = ballTrajectoryAction;
+          const bhPlayer = ballTrajectoryHolder;
+          if (bhAction && bhPlayer && menuPlayer) {
+            const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
+            if (bhAction.action_type === 'move' && isOpponent) {
+              label = 'DESARME';
+              icon = '🦵';
+            } else if (isShootAction(bhAction.action_type) && isOpponent) {
+              const isGK = menuPlayer.field_pos === 'GK';
+              if (isGK) {
+                const gkX = menuPlayer.field_x ?? 50;
+                const gkY = menuPlayer.field_y ?? 50;
+                const isHome = menuPlayer.club_id === match?.home_club_id;
+                const inBox = isHome
+                  ? (gkX <= 18 && gkY >= 20 && gkY <= 80)
+                  : (gkX >= 82 && gkY >= 20 && gkY <= 80);
+                if (inBox) {
+                  label = 'DEFENDER';
+                  icon = '🧤';
+                } else {
+                  label = 'BLOQUEAR';
+                  icon = '🛡️';
+                }
+              } else {
+                label = 'BLOQUEAR';
+                icon = '🛡️';
+              }
+            }
+          }
+        }
+        const isOneTouchOption = pendingInterceptChoice?.participantId === showActionMenu &&
+          (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power');
+        if (isOneTouchOption) {
+          const baseLabel = ACTION_LABELS[a] || a;
+          label = `${baseLabel} (1a)`;
+          if (a === 'pass_low') icon = '⚡➡';
+          else if (a === 'pass_high') icon = '⚡⤴';
+          else if (a === 'pass_launch') icon = '⚡🚀';
+          else if (a === 'shoot_controlled') icon = '⚡🎯';
+          else if (a === 'shoot_power') icon = '⚡💥';
+        }
+        return (
+          <button
+            key={a}
+            disabled={submittingAction}
+            onClick={() => onSelect(a, showActionMenu)}
+            className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
+          >
+            <span className="text-[10px]">{icon}</span>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+});
+
 // ─── TurnWheel (horizontal segmented bar) ─────────────────────
-function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall }: {
+function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall, timerDisplayRef, timerBarRef }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
+  timerDisplayRef?: React.RefObject<HTMLSpanElement | null>; timerBarRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
   const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
@@ -3574,7 +3940,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         <div className="flex items-center gap-2 ml-auto">
           <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
           {currentPhase && timeLeft > 0 && (
-            <span className={`font-display font-bold text-sm tabular-nums ${timeLeft <= 2 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
+            <span ref={timerDisplayRef} className={`font-display font-bold text-sm tabular-nums ${timeLeft <= 2 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
               {timeLeft}s
             </span>
           )}
@@ -3585,6 +3951,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
       {currentPhase && (
         <div className="h-1 rounded-full bg-muted/40 overflow-hidden">
           <div
+            ref={timerBarRef}
             className="h-full rounded-full transition-all duration-100"
             style={{
               width: `${(timeLeft / phaseDuration) * 100}%`,
