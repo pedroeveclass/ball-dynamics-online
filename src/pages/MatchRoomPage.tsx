@@ -411,7 +411,7 @@ function buildParticipantAttrsMap(parts: Participant[], attrRows: any[]) {
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, club } = useAuth();
+  const { user, club, profile } = useAuth();
 
   const [match, setMatch] = useState<MatchData | null>(null);
   const [homeClub, setHomeClub] = useState<ClubInfo | null>(null);
