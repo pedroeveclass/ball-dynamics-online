@@ -3951,7 +3951,7 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
   const handleSendChat = async () => {
     if (!chatInput.trim() || !userId || !username || sendingChat) return;
     setSendingChat(true);
-    await supabase.from('match_chat_messages').insert({ match_id: matchId, user_id: userId, username, message: chatInput.trim() });
+    await (supabase.from('match_chat_messages') as any).insert({ match_id: matchId, user_id: userId, username, message: chatInput.trim() });
     setChatInput('');
     setSendingChat(false);
   };
