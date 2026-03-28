@@ -2300,17 +2300,85 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         fillBots(m.away_club_id, awayParts.length, awayFormation, false),
       ]);
 
-      // ── Position ALL existing players to formation positions ──
+      // ── Position ALL existing players to formation positions (match by slot position) ──
       const positionExistingPlayers = async (parts: any[], formation: string, isHome: boolean) => {
         if (parts.length === 0) return;
         const positions = getFormationForFill(formation, isHome);
+
+        // Load slot positions for matching
+        const slotIds = parts.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id);
+        let slotPosMap = new Map<string, string>();
+        if (slotIds.length > 0) {
+          const { data: slots } = await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds);
+          slotPosMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+        }
+
+        // Also load player profiles for primary_position fallback
+        const profileIds = parts.filter((p: any) => p.player_profile_id).map((p: any) => p.player_profile_id);
+        let profilePosMap = new Map<string, string>();
+        if (profileIds.length > 0) {
+          const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position').in('id', profileIds);
+          profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+        }
+
         const updates: Promise<any>[] = [];
-        parts.forEach((p: any, i: number) => {
-          const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
-          updates.push(
-            supabase.from('match_participants').update({ pos_x: pos.x, pos_y: pos.y }).eq('id', p.id)
-          );
-        });
+        const usedPositionIndices = new Set<number>();
+
+        // First pass: match players to formation positions by their actual position
+        for (const p of parts) {
+          const playerPos = (p.lineup_slot_id && slotPosMap.get(p.lineup_slot_id))
+            || (p.player_profile_id && profilePosMap.get(p.player_profile_id))
+            || '';
+          const normalizedPos = playerPos.replace(/[0-9]/g, '').toUpperCase(); // CB2 → CB
+
+          // Find best matching formation position
+          let bestIdx = -1;
+          for (let i = 0; i < positions.length; i++) {
+            if (usedPositionIndices.has(i)) continue;
+            if (positions[i].pos.toUpperCase() === normalizedPos) {
+              bestIdx = i;
+              break;
+            }
+          }
+
+          if (bestIdx >= 0) {
+            usedPositionIndices.add(bestIdx);
+            updates.push(
+              supabase.from('match_participants').update({ pos_x: positions[bestIdx].x, pos_y: positions[bestIdx].y }).eq('id', p.id)
+            );
+          }
+        }
+
+        // Second pass: assign remaining players to unused positions (by index)
+        for (const p of parts) {
+          const alreadyAssigned = updates.some((u: any) => false); // check via usedPositionIndices
+          const playerPos = (p.lineup_slot_id && slotPosMap.get(p.lineup_slot_id))
+            || (p.player_profile_id && profilePosMap.get(p.player_profile_id))
+            || '';
+          const normalizedPos = playerPos.replace(/[0-9]/g, '').toUpperCase();
+
+          // Check if this player was already matched
+          let wasMatched = false;
+          for (let i = 0; i < positions.length; i++) {
+            if (usedPositionIndices.has(i) && positions[i].pos.toUpperCase() === normalizedPos) {
+              wasMatched = true;
+              break;
+            }
+          }
+          if (wasMatched) continue;
+
+          // Find first unused position
+          for (let i = 0; i < positions.length; i++) {
+            if (!usedPositionIndices.has(i)) {
+              usedPositionIndices.add(i);
+              updates.push(
+                supabase.from('match_participants').update({ pos_x: positions[i].x, pos_y: positions[i].y }).eq('id', p.id)
+              );
+              break;
+            }
+          }
+        }
+
         if (updates.length > 0) await Promise.all(updates);
       };
 

@@ -359,13 +359,34 @@ export default function ManagerChallengesPage() {
           : { data: [] };
         const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-        // Get formation positions for initial placement
+        // Get formation positions for initial placement — match by slot position
         const formPositions = getFormationPos(formation, true);
+        const usedPosIndices = new Set<number>();
 
-        for (let si = 0; si < starterSlots.length; si++) {
-          const slot = starterSlots[si];
+        for (const slot of starterSlots) {
           const pUserId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
-          const fPos = formPositions[si] || { x: 30, y: 50 };
+          const slotPos = (slot.slot_position || '').replace(/[0-9]/g, '').toUpperCase();
+
+          // Find matching formation position
+          let fPos = { x: 30, y: 50 };
+          for (let fi = 0; fi < formPositions.length; fi++) {
+            if (!usedPosIndices.has(fi) && formPositions[fi].pos.toUpperCase() === slotPos) {
+              fPos = formPositions[fi];
+              usedPosIndices.add(fi);
+              break;
+            }
+          }
+          // Fallback: first unused position
+          if (fPos.x === 30 && fPos.y === 50) {
+            for (let fi = 0; fi < formPositions.length; fi++) {
+              if (!usedPosIndices.has(fi)) {
+                fPos = formPositions[fi];
+                usedPosIndices.add(fi);
+                break;
+              }
+            }
+          }
+
           participantsToInsert.push({
             match_id: match.id, player_profile_id: slot.player_profile_id || null,
             club_id: club.id, lineup_slot_id: slot.id, role_type: 'player',
