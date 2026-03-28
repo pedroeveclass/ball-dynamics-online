@@ -3,6 +3,7 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
@@ -140,6 +141,21 @@ const FORMATIONS: Record<string, SlotDef[]> = {
 
 const MAX_BENCH = 7;
 
+const SHIRT_COLORS = [
+  '#FF0000', '#0000FF', '#008000', '#FFD700', '#800080',
+  '#FF4500', '#00CED1', '#DC143C', '#006400', '#191970',
+  '#8B0000', '#2F4F4F', '#FF1493', '#1E90FF', '#FFFFFF',
+  '#000000', '#FF6347', '#4B0082', '#228B22', '#708090',
+];
+const NUMBER_COLORS = ['#FFFFFF', '#000000', '#FFD700', '#FF0000', '#0000FF', '#00FF00'];
+
+interface UniformData {
+  id: string;
+  uniform_number: number;
+  shirt_color: string;
+  number_color: string;
+}
+
 export default function ManagerLineupPage() {
   const { club } = useAuth();
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
@@ -151,6 +167,11 @@ export default function ManagerLineupPage() {
   const [saving, setSaving] = useState(false);
   const [pickSlot, setPickSlot] = useState<string | null>(null);
   const [pickType, setPickType] = useState<'starter' | 'bench'>('starter');
+
+  // Uniform state
+  const [uniforms, setUniforms] = useState<UniformData[]>([]);
+  const [uniformEdits, setUniformEdits] = useState<Record<number, { shirt_color: string; number_color: string }>>({});
+  const [savingUniform, setSavingUniform] = useState<number | null>(null);
 
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
@@ -215,7 +236,47 @@ export default function ManagerLineupPage() {
       }
     }
 
+    // Load uniforms
+    const { data: uniformsData } = await supabase
+      .from('club_uniforms')
+      .select('id, uniform_number, shirt_color, number_color')
+      .eq('club_id', club.id)
+      .order('uniform_number');
+
+    if (uniformsData) {
+      setUniforms(uniformsData);
+      const edits: Record<number, { shirt_color: string; number_color: string }> = {};
+      uniformsData.forEach(u => {
+        edits[u.uniform_number] = { shirt_color: u.shirt_color, number_color: u.number_color };
+      });
+      setUniformEdits(edits);
+    }
+
     setLoading(false);
+  };
+
+  const saveUniform = async (uniformNumber: number) => {
+    const edit = uniformEdits[uniformNumber];
+    const uniform = uniforms.find(u => u.uniform_number === uniformNumber);
+    if (!edit || !uniform) return;
+
+    setSavingUniform(uniformNumber);
+    try {
+      const { error } = await supabase
+        .from('club_uniforms')
+        .update({ shirt_color: edit.shirt_color, number_color: edit.number_color, updated_at: new Date().toISOString() })
+        .eq('id', uniform.id);
+
+      if (error) throw error;
+
+      setUniforms(prev => prev.map(u => u.id === uniform.id ? { ...u, shirt_color: edit.shirt_color, number_color: edit.number_color } : u));
+      toast({ title: 'Uniforme salvo!', description: `Uniforme ${uniformNumber} atualizado com sucesso.` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao salvar uniforme.';
+      toast({ title: 'Erro', description: message, variant: 'destructive' });
+    } finally {
+      setSavingUniform(null);
+    }
   };
 
   const assignedPlayerIds = new Set([
@@ -533,6 +594,82 @@ export default function ManagerLineupPage() {
             </div>
           </div>
         </div>
+
+        {/* Uniformes */}
+        {uniforms.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="font-display text-xl font-bold">Uniformes</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2].map(num => {
+                const uniform = uniforms.find(u => u.uniform_number === num);
+                const edit = uniformEdits[num];
+                if (!uniform || !edit) return null;
+
+                const hasChanges = edit.shirt_color !== uniform.shirt_color || edit.number_color !== uniform.number_color;
+
+                return (
+                  <Card key={num}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="font-display text-base">
+                        Uniforme {num} ({num === 1 ? 'Casa' : 'Fora'})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Jersey preview */}
+                      <div className="flex justify-center">
+                        <div
+                          className="w-20 h-24 rounded-lg relative flex items-center justify-center border border-border/50"
+                          style={{ backgroundColor: edit.shirt_color }}
+                        >
+                          <span className="font-display text-2xl font-extrabold" style={{ color: edit.number_color }}>10</span>
+                        </div>
+                      </div>
+
+                      {/* Shirt color */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-display font-semibold text-muted-foreground">Cor da Camisa</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {SHIRT_COLORS.map(color => (
+                            <button
+                              key={color}
+                              className={`w-7 h-7 rounded-md border-2 transition-all ${edit.shirt_color === color ? 'border-tactical scale-110' : 'border-border/50 hover:border-muted-foreground'}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], shirt_color: color } }))}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Number color */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-display font-semibold text-muted-foreground">Cor do Numero</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {NUMBER_COLORS.map(color => (
+                            <button
+                              key={color}
+                              className={`w-7 h-7 rounded-md border-2 transition-all ${edit.number_color === color ? 'border-tactical scale-110' : 'border-border/50 hover:border-muted-foreground'}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], number_color: color } }))}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={() => saveUniform(num)}
+                        disabled={savingUniform === num || !hasChanges}
+                        className="w-full gap-1.5"
+                      >
+                        <Save className="h-4 w-4" />
+                        {savingUniform === num ? 'Salvando...' : 'Salvar'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Player picker dialog */}

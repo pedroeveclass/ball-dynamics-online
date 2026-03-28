@@ -90,6 +90,44 @@ export type Database = {
           },
         ]
       }
+      club_uniforms: {
+        Row: {
+          id: string
+          club_id: string
+          uniform_number: number
+          shirt_color: string
+          number_color: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          club_id: string
+          uniform_number: number
+          shirt_color: string
+          number_color: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          club_id?: string
+          uniform_number?: number
+          shirt_color?: string
+          number_color?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_uniforms_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_settings: {
         Row: {
           club_id: string
@@ -1089,6 +1127,7 @@ export type Database = {
           away_club_id: string
           away_lineup_id: string | null
           away_score: number
+          away_uniform: number
           created_at: string
           current_phase: string | null
           current_turn_number: number
@@ -1096,6 +1135,7 @@ export type Database = {
           home_club_id: string
           home_lineup_id: string | null
           home_score: number
+          home_uniform: number
           id: string
           possession_club_id: string | null
           scheduled_at: string
@@ -1107,6 +1147,7 @@ export type Database = {
           away_club_id: string
           away_lineup_id?: string | null
           away_score?: number
+          away_uniform?: number
           created_at?: string
           current_phase?: string | null
           current_turn_number?: number
@@ -1114,6 +1155,7 @@ export type Database = {
           home_club_id: string
           home_lineup_id?: string | null
           home_score?: number
+          home_uniform?: number
           id?: string
           possession_club_id?: string | null
           scheduled_at?: string
@@ -1125,6 +1167,7 @@ export type Database = {
           away_club_id?: string
           away_lineup_id?: string | null
           away_score?: number
+          away_uniform?: number
           created_at?: string
           current_phase?: string | null
           current_turn_number?: number
@@ -1132,6 +1175,7 @@ export type Database = {
           home_club_id?: string
           home_lineup_id?: string | null
           home_score?: number
+          home_uniform?: number
           id?: string
           possession_club_id?: string | null
           scheduled_at?: string

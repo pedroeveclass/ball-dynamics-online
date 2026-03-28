@@ -64,6 +64,7 @@ interface MatchData {
   home_club_id: string; away_club_id: string;
   home_lineup_id: string | null; away_lineup_id: string | null;
   possession_club_id: string | null;
+  home_uniform?: number; away_uniform?: number;
 }
 
 interface ClubInfo {
@@ -108,6 +109,12 @@ interface MatchAction {
   turn_phase?: string | null;
   turn_number?: number;
   payload?: any;
+}
+
+interface ClubUniform {
+  uniform_number: number;
+  shirt_color: string;
+  number_color: string;
 }
 
 interface PendingInterceptChoice {
@@ -403,6 +410,8 @@ export default function MatchRoomPage() {
   const [match, setMatch] = useState<MatchData | null>(null);
   const [homeClub, setHomeClub] = useState<ClubInfo | null>(null);
   const [awayClub, setAwayClub] = useState<ClubInfo | null>(null);
+  const [homeUniforms, setHomeUniforms] = useState<ClubUniform[]>([]);
+  const [awayUniforms, setAwayUniforms] = useState<ClubUniform[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeTurn, setActiveTurn] = useState<MatchTurn | null>(null);
   const [events, setEvents] = useState<EventLog[]>([]);
@@ -695,6 +704,15 @@ export default function MatchRoomPage() {
     awayClubRef.current = nextAwayClub;
     setHomeClub(nextHomeClub);
     setAwayClub(nextAwayClub);
+
+    // Fetch club uniforms (non-blocking, falls back to club colors if table is empty or missing)
+    Promise.all([
+      supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', matchData.home_club_id),
+      supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', matchData.away_club_id),
+    ]).then(([homeUniformsRes, awayUniformsRes]) => {
+      if (homeUniformsRes.data) setHomeUniforms(homeUniformsRes.data as ClubUniform[]);
+      if (awayUniformsRes.data) setAwayUniforms(awayUniformsRes.data as ClubUniform[]);
+    }).catch(() => { /* silently fall back to club colors */ });
 
     const { data: participantRows } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
     let nextParticipantRows = ((participantRows || []) as Participant[]);
@@ -2229,6 +2247,12 @@ export default function MatchRoomPage() {
 
   const possClubId = activeTurn?.possession_club_id ?? match.possession_club_id;
   const isTestMatch = !match.home_lineup_id && !match.away_lineup_id;
+
+  // Active uniform colors (fall back to club colors if no uniform data)
+  const homeActiveUniform = homeUniforms.find(u => u.uniform_number === (match.home_uniform ?? 1))
+    || { shirt_color: homeClub?.primary_color ?? '#dc2626', number_color: homeClub?.secondary_color ?? '#fff' };
+  const awayActiveUniform = awayUniforms.find(u => u.uniform_number === (match.away_uniform ?? 2))
+    || { shirt_color: awayClub?.primary_color ?? '#16a34a', number_color: awayClub?.secondary_color ?? '#fff' };
   const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
   // Get actions for current phase
@@ -2743,6 +2767,24 @@ export default function MatchRoomPage() {
       : participants.find(p => p.id === ballTrajectoryAction.participant_id) || null)
     : null;
 
+  const handleToggleUniform = async (side: 'home' | 'away') => {
+    if (!match) return;
+    const uniforms = side === 'home' ? homeUniforms : awayUniforms;
+    const currentNum = side === 'home' ? (match.home_uniform ?? 1) : (match.away_uniform ?? 2);
+    // Cycle through available uniform numbers, or toggle between 1 and 2
+    const availableNums = uniforms.map(u => u.uniform_number).sort((a, b) => a - b);
+    let nextNum: number;
+    if (availableNums.length > 1) {
+      const idx = availableNums.indexOf(currentNum);
+      nextNum = availableNums[(idx + 1) % availableNums.length];
+    } else {
+      nextNum = currentNum === 1 ? 2 : 1;
+    }
+    const updateField = side === 'home' ? { home_uniform: nextNum } : { away_uniform: nextNum };
+    setMatch(prev => prev ? { ...prev, ...updateField } : prev);
+    await supabase.from('matches').update(updateField).eq('id', match.id);
+  };
+
   return (
     <div className="h-screen bg-[hsl(140,15%,12%)] text-foreground flex flex-col overflow-hidden">
       {/* ── Top scoreboard bar ── */}
@@ -2754,6 +2796,10 @@ export default function MatchRoomPage() {
         currentTurnNumber={match.current_turn_number} activeTurnPhase={activeTurn?.phase ?? null}
         myRole={myRole} isManager={isManager} isPlayer={isPlayer}
         onFinishMatch={finishMatch} onExit={exitToDashboard}
+        homeUniformNum={match.home_uniform ?? 1} awayUniformNum={match.away_uniform ?? 2}
+        homeActiveUniform={homeActiveUniform} awayActiveUniform={awayActiveUniform}
+        onToggleUniform={handleToggleUniform}
+        myClubId={myClubId}
       />
 
       {/* ── Main layout ── */}
@@ -3354,7 +3400,6 @@ export default function MatchRoomPage() {
                 const x = basePos.x;
                 const y = basePos.y;
                 const isHome = p.club_id === match.home_club_id;
-                const clubData = isHome ? homeClub : awayClub;
                 const isBH = activeTurn?.ball_holder_participant_id === p.id;
                 const isMe = p.id === myParticipant?.id;
                 const isSelected = p.id === selectedParticipantId;
@@ -3396,7 +3441,7 @@ export default function MatchRoomPage() {
                     )}
                     <circle
                       cx={x} cy={y} r={R}
-                      fill={p.field_pos === 'GK' ? '#111' : (clubData?.primary_color || (isHome ? '#dc2626' : '#16a34a'))}
+                      fill={p.field_pos === 'GK' ? '#111' : (isHome ? homeActiveUniform.shirt_color : awayActiveUniform.shirt_color)}
                       stroke={isMe ? '#fff' : 'rgba(0,0,0,0.4)'}
                       strokeWidth={isMe ? 1.5 : 0.8}
                       filter="url(#shadow)"
@@ -3404,7 +3449,7 @@ export default function MatchRoomPage() {
                     <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
                       fontSize="7" fontWeight="800"
                       fontFamily="'Barlow Condensed', sans-serif"
-                      fill={p.field_pos === 'GK' ? '#fff' : (clubData?.secondary_color || '#fff')}
+                      fill={p.field_pos === 'GK' ? '#fff' : (isHome ? homeActiveUniform.number_color : awayActiveUniform.number_color)}
                     >
                       {p.jersey_number || idx + 1}
                     </text>
@@ -3626,6 +3671,11 @@ interface MatchScoreboardProps {
   myRole: 'player' | 'manager' | 'spectator';
   isManager: boolean; isPlayer: boolean;
   onFinishMatch: () => void; onExit: () => void;
+  homeUniformNum: number; awayUniformNum: number;
+  homeActiveUniform: { shirt_color: string; number_color: string };
+  awayActiveUniform: { shirt_color: string; number_color: string };
+  onToggleUniform: (side: 'home' | 'away') => void;
+  myClubId: string | null;
 }
 
 const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboardProps) {
@@ -3633,6 +3683,7 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
     isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
     homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
     myRole, isManager, isPlayer, onFinishMatch, onExit,
+    homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
   } = props;
 
   return (
@@ -3649,7 +3700,19 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
       </div>
 
       <div className="flex items-center gap-4">
-        <ClubBadgeInline club={homeClub} />
+        <div className="flex items-center gap-1">
+          <ClubBadgeInline club={homeClub} />
+          {isManager && isTestMatch && myClubId === homeClub?.id && (
+            <button
+              onClick={() => onToggleUniform('home')}
+              title={`Uniforme ${homeUniformNum}`}
+              className="w-5 h-5 rounded text-[8px] font-display font-bold border border-white/20 hover:border-white/50 transition-colors flex items-center justify-center"
+              style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
+            >
+              {homeUniformNum}
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <div className="font-display text-3xl font-extrabold tracking-widest text-white">
             <span>{homeScore}</span>
@@ -3674,7 +3737,19 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
             );
           })()}
         </div>
-        <ClubBadgeInline club={awayClub} right />
+        <div className="flex items-center gap-1">
+          {isManager && isTestMatch && myClubId === awayClub?.id && (
+            <button
+              onClick={() => onToggleUniform('away')}
+              title={`Uniforme ${awayUniformNum}`}
+              className="w-5 h-5 rounded text-[8px] font-display font-bold border border-white/20 hover:border-white/50 transition-colors flex items-center justify-center"
+              style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
+            >
+              {awayUniformNum}
+            </button>
+          )}
+          <ClubBadgeInline club={awayClub} right />
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
