@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const PHASE_DURATION_MS = 10000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
-const RESOLUTION_PHASE_DURATION_MS = 3000;
+const RESOLUTION_PHASE_DURATION_MS = 2000;
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
 const MAX_TURNS = 144;
 const TURNS_PER_HALF = 72;
@@ -2604,7 +2604,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
 }
 
 async function processDueMatches(supabase: any, functionUrl: string, matchId?: string | null) {
-  const started = await autoStartDueMatches(supabase, matchId);
+  const started = matchId ? [] : await autoStartDueMatches(supabase, matchId);
   const now = new Date().toISOString();
   let query = supabase
     .from('match_turns')
@@ -2681,19 +2681,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   // ── POSITIONING PHASES ──
   if (isPositioningPhase(activeTurn.phase)) {
-    const { data: rawParticipants } = await supabase
-      .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+    // Parallelize: load participants and actions simultaneously
+    const [{ data: rawParticipants }, { data: rawActions }] = await Promise.all([
+      supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
+      supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending').order('created_at', { ascending: false }),
+    ]);
     const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
 
     const possClubId = activeTurn.possession_club_id;
     const isAttackPhase = activeTurn.phase === 'positioning_attack';
-
-    // Load actions for this phase turn
-    const { data: rawActions } = await supabase
-      .from('match_actions').select('*')
-      .eq('match_turn_id', activeTurn.id)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
 
     // Dedup: keep highest-priority action per participant (human > bot)
     const priorityByCtrl: Record<string, number> = { player: 3, manager: 2, bot: 1 };
@@ -2839,8 +2835,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     return { status: 'advanced' };
   }
 
-  const { data: rawParticipants2 } = await supabase
-    .from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+  // Parallelize: load participants + turnRows (for resolution) simultaneously
+  const isResolution = activeTurn.phase === 'resolution';
+  const [{ data: rawParticipants2 }, turnRowsResult] = await Promise.all([
+    supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
+    isResolution
+      ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
+      : Promise.resolve({ data: null }),
+  ]);
   const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
 
   const possClubId = activeTurn.possession_club_id;
@@ -2862,7 +2864,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   const isLooseBall = !activeTurn.ball_holder_participant_id;
 
-  if (activeTurn.phase !== 'resolution') {
+  if (!isResolution) {
     const submittedParticipantIds = new Set<string>((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
     await generateBotActions(
       supabase,
@@ -2889,13 +2891,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   const lastTouchClubId = possClubId;
   let nextSetPieceType: string | null = null;
 
-  if (activeTurn.phase === 'resolution') {
+  if (isResolution) {
     console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
-    const { data: turnRows } = await supabase
-      .from('match_turns')
-      .select('id, phase')
-      .eq('match_id', match_id)
-      .eq('turn_number', activeTurn.turn_number);
+    const turnRows = turnRowsResult?.data;
 
     const allTurnIds = (turnRows || []).map((t: any) => t.id);
 
@@ -2906,14 +2904,28 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const submittedIds = new Set<string>((existingActions || []).map((a: any) => a.participant_id));
       const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
 
-      // Generate bot actions for each phase that had a turn
+      // Generate bot actions for each phase that had a turn — skip if all bots already have actions
       for (const turnRow of (turnRows || [])) {
-        await generateBotActions(
-          supabase, match_id, turnRow.id, participants || [],
-          submittedIds, activeTurn.ball_holder_participant_id,
-          possClubId, isLooseBall, turnRow.phase, match,
-          tickCache, activeTurn.set_piece_type,
+        const existingActionsForTurn = (existingActions || []).filter(
+          (a: any) => a.match_turn_id === turnRow.id
         );
+        const participantsWithActions = new Set(existingActionsForTurn.map((a: any) => a.participant_id));
+
+        // Only generate for bots that don't have actions yet
+        const botsNeedingActions = (participants || []).filter((p: any) => {
+          if (p.role_type !== 'player') return false;
+          if (participantsWithActions.has(p.id)) return false;
+          return true;
+        });
+
+        if (botsNeedingActions.length > 0) {
+          await generateBotActions(
+            supabase, match_id, turnRow.id, participants || [],
+            submittedIds, activeTurn.ball_holder_participant_id,
+            possClubId, isLooseBall, turnRow.phase, match,
+            tickCache, activeTurn.set_piece_type,
+          );
+        }
       }
     }
 

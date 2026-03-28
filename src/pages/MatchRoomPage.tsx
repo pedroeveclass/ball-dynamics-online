@@ -170,7 +170,7 @@ const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
 const LIVE_EVENT_LIMIT = 60;
 const TURN_ACTION_RECONCILE_DELAY_MS = 300;
-const CLIENT_MATCH_PROCESSOR_RETRY_MS = 1500;
+const CLIENT_MATCH_PROCESSOR_RETRY_MS = 500;
 const ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK =
   import.meta.env.VITE_ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK !== 'false';
 const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
@@ -521,6 +521,8 @@ export default function MatchRoomPage() {
   const realtimeNeedsRecoveryRef = useRef(false);
   const phaseProcessorInFlightRef = useRef(false);
   const phaseProcessorLastAttemptRef = useRef<{ turnId: string | null; at: number }>({ turnId: null, at: 0 });
+  const invokeMatchEngineRef = useRef(invokeMatchEngine);
+  invokeMatchEngineRef.current = invokeMatchEngine;
 
   // ── Load match data ──────────────────────────────────────────
   const currentTurnNumber = activeTurn?.turn_number ?? match?.current_turn_number ?? null;
@@ -1046,6 +1048,14 @@ export default function MatchRoomPage() {
         timerBarRef.current.style.background = seconds <= 2
           ? 'hsl(var(--destructive))'
           : 'linear-gradient(90deg, hsl(var(--pitch-green)), hsl(var(--warning-amber)))';
+      }
+
+      // Pre-trigger processing 300ms before timer expires
+      if (ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK && remaining <= 300 && remaining > 0 && !phaseProcessorInFlightRef.current && matchId) {
+        phaseProcessorInFlightRef.current = true;
+        invokeMatchEngineRef.current({ action: 'process_due_matches', match_id: matchId })
+          .catch(() => {})
+          .finally(() => { phaseProcessorInFlightRef.current = false; });
       }
 
       if (seconds <= 0 && !hitZero) {
