@@ -805,6 +805,7 @@ async function generateBotActions(
   phase: string,
   match?: any,
   tickCache?: TickCache,
+  setPieceType?: string | null,
 ) {
   const botsToAct: any[] = [];
 
@@ -1341,7 +1342,57 @@ async function generateBotActions(
     } else {
       // ── Positioning phases or fallback ──
       const isDefending = phase === 'positioning_defense';
-      const target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex);
+      let target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex);
+
+      // ── Set piece specific positioning ──
+      if (setPieceType && isDefending) {
+        // Free kick wall: 2-3 closest defenders line up between ball and goal
+        if (setPieceType === 'free_kick' || setPieceType === 'penalty') {
+          const ownGoalX = isHome ? 0 : 100;
+          const distToBall = Math.sqrt((Number(bot.pos_x ?? 50) - ballPos.x) ** 2 + (Number(bot.pos_y ?? 50) - ballPos.y) ** 2);
+          // Find how many teammates are closer to the ball
+          const closerTeammates = participants.filter(
+            (p: any) => p.club_id === bot.club_id && p.role_type === 'player' && p.id !== bot.id && !p.is_sent_off &&
+            Math.sqrt((Number(p.pos_x ?? 50) - ballPos.x) ** 2 + (Number(p.pos_y ?? 50) - ballPos.y) ** 2) < distToBall
+          ).length;
+          // Top 3 closest non-GK defenders form a wall
+          if (closerTeammates < 3 && role !== 'goalkeeper') {
+            const wallDist = 8; // ~8 units from ball (10-yard rule in scaled coords)
+            const angleToBall = Math.atan2(ballPos.y - 50, ballPos.x - ownGoalX);
+            const wallSpread = closerTeammates * 2.5; // spread players across wall
+            target = {
+              x: ballPos.x + Math.cos(angleToBall + Math.PI) * wallDist + (Math.random() - 0.5) * wallSpread,
+              y: ballPos.y + Math.sin(angleToBall + Math.PI) * wallDist + (closerTeammates - 1) * 2.5,
+            };
+          }
+        }
+      }
+
+      // ── Kickoff: enforce half-field + center circle exclusion ──
+      if (setPieceType === 'kickoff') {
+        // Half-field constraint
+        if (isHome) target.x = Math.min(target.x, 49);
+        else target.x = Math.max(target.x, 51);
+
+        // Center circle exclusion for non-possession team during positioning
+        if (isDefending) {
+          const distToCenter = Math.sqrt((target.x - 50) ** 2 + (target.y - 50) ** 2);
+          if (distToCenter < 12) { // center circle radius ~12 units
+            // Push outside the circle
+            const angle = Math.atan2(target.y - 50, target.x - 50);
+            target.x = 50 + Math.cos(angle) * 13;
+            target.y = 50 + Math.sin(angle) * 13;
+            // Re-enforce half constraint
+            if (isHome) target.x = Math.min(target.x, 49);
+            else target.x = Math.max(target.x, 51);
+          }
+        }
+      }
+
+      // Clamp to field
+      target.x = Math.max(2, Math.min(98, target.x));
+      target.y = Math.max(2, Math.min(98, target.y));
+
       actions.push({
         match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
         controlled_by_type: 'bot', action_type: 'move',
@@ -2575,6 +2626,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       activeTurn.phase,
       match,
       tickCache,
+      activeTurn.set_piece_type,
     );
 
     const bh = bhId ? (participants || []).find((p: any) => p.id === bhId) : null;
@@ -2725,6 +2777,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       activeTurn.phase,
       match,
       tickCache,
+      activeTurn.set_piece_type,
     );
   }
 
@@ -2760,7 +2813,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           supabase, match_id, turnRow.id, participants || [],
           submittedIds, activeTurn.ball_holder_participant_id,
           possClubId, isLooseBall, turnRow.phase, match,
-          tickCache,
+          tickCache, activeTurn.set_piece_type,
         );
       }
     }
