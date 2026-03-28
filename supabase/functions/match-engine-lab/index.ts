@@ -1908,6 +1908,15 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor})`);
             continue;
           }
+          // Timing check: interceptor must reach the point by the time the ball/carrier arrives
+          // At progress=0 the ball just left — interceptor needs to already be there
+          // At progress=1 the ball arrived — interceptor has full turn to get there
+          // Scale allowed range by progress: early intercepts require being closer
+          const timingRange = adjustedMaxRange * Math.max(0.15, t);
+          if (distToIntercept > timingRange) {
+            console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
+            continue;
+          }
         }
         interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy });
       } else {
