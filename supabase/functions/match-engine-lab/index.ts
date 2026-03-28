@@ -1391,50 +1391,48 @@ function computeDeviation(
 
   switch (actionType) {
     case 'pass_low': {
-      // Short passes (≤20) are easy, long passes (>30) get exponentially harder
-      const longPenalty = dist > 30 ? Math.pow((dist - 30) / 70, 1.2) * 4 : 0;
-      difficultyMultiplier = 8 + longPenalty;
+      // Short passes (<15) are easy; medium (15-30) moderate; long (>30) very hard
+      difficultyMultiplier = 20;
       skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
-      minRandomDeviation = dist > 25 ? 0.8 + (dist / 100) * 2.0 : 0.3;
+      minRandomDeviation = dist < 15 ? 0.3 : dist < 30 ? 1.5 + (dist / 50) * 3.0 : 3.0 + (dist / 50) * 5.0;
       break;
     }
     case 'pass_high':
-      difficultyMultiplier = 14;
+      difficultyMultiplier = 28;
       skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
-      minRandomDeviation = 1.0 + (dist / 100) * 1.5;
+      minRandomDeviation = 2.0 + (dist / 50) * 4.0;
       break;
     case 'pass_launch':
-      difficultyMultiplier = 12;
+      difficultyMultiplier = 25;
       skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
-      minRandomDeviation = 0.8 + (dist / 100) * 1.2;
+      minRandomDeviation = 2.5 + (dist / 50) * 5.0;
       break;
     case 'shoot_controlled': {
-      // Distance to goal penalty — shots from midfield are very hard
       const goalX = targetX > 50 ? 100 : 0;
       const distToGoal = Math.abs(startX - goalX);
-      const distPenalty = distToGoal > 25 ? Math.pow((distToGoal - 25) / 75, 1.5) * 5 : 0;
-      difficultyMultiplier = 7 + distPenalty;
+      const distPenalty = distToGoal > 20 ? Math.pow((distToGoal - 20) / 60, 1.5) * 8 : 0;
+      difficultyMultiplier = 15 + distPenalty;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
-      minRandomDeviation = 0.4 + (dist / 100) * 0.8;
+      minRandomDeviation = 0.5 + (dist / 80) * 2.0;
       break;
     }
     case 'shoot_power':
-      difficultyMultiplier = 10;
+      difficultyMultiplier = 22;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
-      minRandomDeviation = 0.8 + (dist / 100) * 0.6;
+      minRandomDeviation = 1.5 + (dist / 80) * 2.5;
       break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
   }
 
-  // Exponential distance factor instead of linear
-  const distFactor = Math.pow(dist / 100, 1.4) * difficultyMultiplier;
-  // Skill curve: even 99 skill has some deviation via minRandomDeviation
-  const skillCurve = Math.pow(1 - skillFactor, 1.8);
-  // Distance amplifier: long passes/shots (40+ units) get extra deviation
-  const distAmplifier = dist > 40 ? 1 + (dist - 40) / 30 : 1;
-  // Final deviation = skill-based + random floor
-  const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.5 + Math.random() * 0.5);
+  // Aggressive distance factor — long distances punish heavily
+  const distFactor = Math.pow(dist / 80, 1.8) * difficultyMultiplier;
+  // Skill curve: lower exponent = worse for medium-skill players
+  const skillCurve = Math.pow(1 - skillFactor, 1.5);
+  // Distance amplifier: 30+ units get progressively worse (2x at 60, 3x at 90)
+  const distAmplifier = dist > 30 ? 1 + Math.pow((dist - 30) / 30, 1.3) : 1;
+  // Final deviation = skill-based + guaranteed random floor
+  const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
