@@ -3613,7 +3613,7 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
   } = props;
 
   return (
-    <div className="bg-[hsl(140,20%,8%)] border-b border-[hsl(140,10%,20%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
+    <div className="bg-[hsl(220,15%,16%)] border-b border-[hsl(220,10%,25%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
       <div className="flex items-center gap-2">
         <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
           {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
@@ -3628,23 +3628,23 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
       <div className="flex items-center gap-4">
         <ClubBadgeInline club={homeClub} />
         <div className="flex items-center gap-2">
-          <div className="font-display text-3xl font-extrabold tracking-widest">
-            <span style={{ color: homeClub?.primary_color }}>{homeScore}</span>
-            <span className="text-muted-foreground mx-2 text-lg">:</span>
-            <span style={{ color: awayClub?.primary_color }}>{awayScore}</span>
+          <div className="font-display text-3xl font-extrabold tracking-widest text-white">
+            <span>{homeScore}</span>
+            <span className="text-white/40 mx-2 text-lg">:</span>
+            <span>{awayScore}</span>
           </div>
           {isLive && (() => {
             const minute = computeMatchMinute(currentTurnNumber);
             const half = currentTurnNumber <= TURNS_PER_HALF ? '1T' : '2T';
             const isHalftime = activeTurnPhase === 'positioning_attack' && currentTurnNumber === TURNS_PER_HALF + 1;
             return (
-              <div className="flex items-center gap-1.5 ml-2 bg-[hsl(140,10%,15%)] rounded px-2 py-0.5">
+              <div className="flex items-center gap-1.5 ml-2 bg-[hsl(220,15%,22%)] rounded px-2 py-0.5">
                 {isHalftime ? (
                   <span className="text-[11px] font-display font-bold text-warning animate-pulse">⏸ INT</span>
                 ) : (
                   <>
-                    <span className="text-[9px] font-display text-muted-foreground">{half}</span>
-                    <span className="font-display font-bold text-sm text-foreground tabular-nums">{minute}'</span>
+                    <span className="text-[9px] font-display text-white/50">{half}</span>
+                    <span className="font-display font-bold text-sm text-white tabular-nums">{minute}'</span>
                   </>
                 )}
               </div>
@@ -3715,9 +3715,9 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
   } = props;
 
   return (
-    <div className="w-72 shrink-0 bg-[hsl(140,10%,10%)] border-l border-[hsl(140,10%,18%)] flex flex-col overflow-hidden">
+    <div className="w-72 shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-hidden">
       {/* Turn Wheel */}
-      <div className="p-3 border-b border-[hsl(140,10%,18%)]">
+      <div className="p-3 border-b border-[hsl(220,10%,22%)]">
         <TurnWheel
           currentPhase={activeTurn?.phase ?? null}
           timeLeft={phaseTimeLeft}
@@ -3772,22 +3772,22 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
       >
         <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 bg-card/90 rounded-md p-2">
           {events.length === 0 && (
-            <p className="text-[10px] text-primary/50 px-1">Aguardando eventos...</p>
+            <p className="text-[10px] text-white/40 px-1">Aguardando eventos...</p>
           )}
           {events.slice(-30).map(e => (
             <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
               e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-              e.event_type === 'kickoff' ? 'border-tactical text-primary' :
-              e.event_type === 'possession_change' ? 'border-warning/60 text-primary/80' :
+              e.event_type === 'kickoff' ? 'border-tactical text-tactical/90' :
+              e.event_type === 'possession_change' ? 'border-warning/60 text-warning/80' :
               e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
-              e.event_type === 'tackle' ? 'border-red-500 text-red-700' :
-              e.event_type === 'dribble' ? 'border-green-500 text-green-700' :
-              e.event_type === 'blocked' ? 'border-orange-500 text-orange-700' :
-              e.event_type === 'saved' ? 'border-blue-500 text-blue-700' :
-              e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-500 text-yellow-700' :
-              e.event_type === 'offside' ? 'border-purple-500 text-purple-700' :
-              e.event_type === 'one_touch' ? 'border-cyan-500 text-cyan-700' :
-              'border-border text-primary/70'
+              e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
+              e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
+              e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
+              e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
+              e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
+              e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
+              e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
+              'border-border text-foreground/60'
             }`}>
               <p className="font-display font-semibold">{e.title}</p>
               {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
@@ -3797,8 +3797,8 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
         </div>
       </AccordionSection>
 
-      <div className="p-3 border-t border-[hsl(140,10%,18%)] mt-auto">
-        <p className="text-[9px] font-display text-muted-foreground/40 uppercase tracking-widest text-center">Chat (em breve)</p>
+      <div className="p-3 border-t border-[hsl(220,10%,22%)] mt-auto">
+        <p className="text-[9px] font-display text-white/20 uppercase tracking-widest text-center">Chat (em breve)</p>
       </div>
     </div>
   );
@@ -3948,12 +3948,12 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
             <div key={phase.key} className="flex-1 relative">
               <div
                 className={`h-7 rounded-md flex items-center justify-center gap-1 text-[9px] font-display font-bold transition-all relative overflow-hidden ${
-                  isSkipped ? 'bg-muted/30 text-muted-foreground/30' :
-                  isActive ? 'border border-foreground/30 text-foreground' :
-                  isPast ? 'bg-pitch/20 text-pitch/80' :
-                  'bg-muted/40 text-muted-foreground/50'
+                  isSkipped ? 'bg-muted/20 text-muted-foreground/30' :
+                  isActive ? 'border border-foreground/40 text-foreground' :
+                  isPast ? 'bg-pitch/25 text-pitch' :
+                  'bg-[hsl(220,15%,20%)] text-foreground/50'
                 }`}
-                style={isActive ? { backgroundColor: 'hsl(140,20%,18%)' } : undefined}
+                style={isActive ? { backgroundColor: 'hsl(220,15%,22%)' } : undefined}
               >
                 {/* Active progress fill */}
                 {isActive && (
@@ -3982,13 +3982,13 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         {possessionClub && (
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
-            <span className="text-[10px] font-display font-semibold text-foreground/80">
+            <span className="text-[10px] font-display font-semibold text-white/80">
               {isLooseBall ? 'BOLA SOLTA' : possessionClub.short_name}
             </span>
           </div>
         )}
         <div className="flex items-center gap-2 ml-auto">
-          <span className="text-[9px] font-display text-muted-foreground">T{turnNumber || '—'}</span>
+          <span className="text-[9px] font-display text-white/40">T{turnNumber || '—'}</span>
           {currentPhase && timeLeft > 0 && (
             <span ref={timerDisplayRef} className={`font-display font-bold text-sm tabular-nums ${timeLeft <= 2 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
               {timeLeft}s
@@ -4023,14 +4023,14 @@ function AccordionSection({ title, badge, color, open, onToggle, children, class
   children: React.ReactNode; className?: string;
 }) {
   return (
-    <div className={`border-b border-[hsl(140,10%,18%)] ${className || ''}`}>
+    <div className={`border-b border-[hsl(220,10%,22%)] ${className || ''}`}>
       <button onClick={onToggle}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[hsl(140,10%,14%)] transition-colors text-left"
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[hsl(220,15%,18%)] transition-colors text-left"
       >
         {color && <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
         {open ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-        <span className="font-display text-[11px] font-bold text-foreground flex-1 truncate">{title}</span>
-        {badge && <span className="text-[9px] text-muted-foreground font-display">{badge}</span>}
+        <span className="font-display text-[11px] font-bold text-white flex-1 truncate">{title}</span>
+        {badge && <span className="text-[9px] text-white/50 font-display">{badge}</span>}
       </button>
       {open && <div className="px-3 pb-2">{children}</div>}
     </div>
@@ -4048,14 +4048,14 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
         <button key={p.id}
           onClick={() => onSelect(p.id)}
           className={`w-full flex items-center gap-1.5 text-[9px] px-1.5 py-0.5 rounded transition-colors text-left ${
-            selectedId === p.id ? 'bg-tactical/15 text-tactical' : myId === p.id ? 'bg-pitch/10 text-pitch' : 'hover:bg-[hsl(140,10%,16%)] text-muted-foreground'
+            selectedId === p.id ? 'bg-tactical/20 text-tactical' : myId === p.id ? 'bg-pitch/15 text-pitch' : 'hover:bg-[hsl(220,15%,18%)] text-white/80'
           }`}
         >
           {p.is_bot
             ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
             : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
-          <span className="font-display w-5 shrink-0">{p.jersey_number || '?'}</span>
-          <span className="font-display w-6 text-muted-foreground shrink-0">{p.field_pos || '?'}</span>
+          <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
+          <span className="font-display w-6 text-white/50 shrink-0">{p.field_pos || '?'}</span>
           <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
           {ballHolderId === p.id && <span className="text-[8px]">⚽</span>}
           {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">✓</span>}
@@ -4076,7 +4076,7 @@ function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boole
       >
         {club.short_name.substring(0, 3)}
       </div>
-      <span className="font-display font-bold text-[11px] text-foreground/90 hidden sm:block max-w-20 truncate">{club.name}</span>
+      <span className="font-display font-bold text-[11px] text-white hidden sm:block max-w-24 truncate">{club.name}</span>
     </div>
   );
 }
