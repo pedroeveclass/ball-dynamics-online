@@ -1014,150 +1014,85 @@ async function generateBotActions(
           }
         }
       } else if (role === 'defensiveMid') {
-        // CDM: distribute — short passes or long balls to free attackers
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
-        if (passResult) {
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: passResult.actionType,
-            target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-            target_participant_id: passResult.target.id, status: 'pending',
-          });
+        // CDM: aggressive distribution — shoot if very close, dribble forward, or long pass to attackers
+        if (distToGoal < 25 && Math.random() < 0.25) {
+          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'shoot_power', target_x: goalX, target_y: goalY, status: 'pending' });
         } else {
-          const moveX = isHome ? Math.min(55, posX + 3) : Math.max(45, posX - 3);
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: 'move',
-            target_x: moveX, target_y: posY + (Math.random() - 0.5) * 4, status: 'pending',
-          });
-        }
-      } else if (role === 'centralMid' || role === 'attackingMid' || role === 'wideMid') {
-        // Midfielders: shoot if close, dribble if space, pass forward
-        if (distToGoal < 30 && Math.random() < 0.35) {
-          const shootType = Math.random() < 0.6 ? 'shoot_controlled' : 'shoot_power';
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: shootType,
-            target_x: goalX, target_y: goalY, status: 'pending',
-          });
-        } else {
-          // Check if space to dribble
-          const nearestOpp = opponents.reduce((best: any, opp: any) => {
-            const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2);
-            return d < (best?.dist ?? 999) ? { opp, dist: d } : best;
-          }, null as any);
-
-          if (nearestOpp && nearestOpp.dist > 12 && Math.random() < 0.3) {
-            // Space to dribble forward
-            const moveX = isHome ? Math.min(98, posX + 6 + Math.random() * 4) : Math.max(2, posX - 6 - Math.random() * 4);
-            actions.push({
-              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'move',
-              target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending',
-            });
+          const nearestOpp = opponents.reduce((best: any, opp: any) => { const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2); return d < (best?.dist ?? 999) ? { opp, dist: d } : best; }, null as any);
+          if (nearestOpp && nearestOpp.dist > 10 && Math.random() < 0.35) {
+            const moveX = isHome ? Math.min(98, posX + 8 + Math.random() * 5) : Math.max(2, posX - 8 - Math.random() * 5);
+            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
           } else {
             const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
             if (passResult) {
-              actions.push({
-                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: passResult.actionType,
-                target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-                target_participant_id: passResult.target.id, status: 'pending',
-              });
+              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
-              const moveX = isHome ? Math.min(98, posX + 4) : Math.max(2, posX - 4);
-              actions.push({
-                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: 'move',
-                target_x: moveX, target_y: posY + (Math.random() - 0.5) * 5, status: 'pending',
-              });
+              const moveX = isHome ? Math.min(98, posX + 6) : Math.max(2, posX - 6);
+              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 5, status: 'pending' });
+            }
+          }
+        }
+      } else if (role === 'centralMid' || role === 'attackingMid' || role === 'wideMid') {
+        // Midfielders: AGGRESSIVE — shoot often, dribble hard toward goal, pass as last resort
+        if (distToGoal < 35 && Math.random() < 0.55) {
+          const shootType = distToGoal < 20 ? (Math.random() < 0.6 ? 'shoot_controlled' : 'shoot_power') : 'shoot_power';
+          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
+        } else {
+          const nearestOpp = opponents.reduce((best: any, opp: any) => { const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2); return d < (best?.dist ?? 999) ? { opp, dist: d } : best; }, null as any);
+          if (nearestOpp && nearestOpp.dist > 8 && Math.random() < 0.50) {
+            const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
+            const moveY = posY + (goalY - posY) * 0.3 + (Math.random() - 0.5) * 6;
+            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
+          } else {
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+            if (passResult) {
+              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
+            } else {
+              const moveX = isHome ? Math.min(98, posX + 8) : Math.max(2, posX - 8);
+              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 5, status: 'pending' });
             }
           }
         }
       } else if (role === 'winger') {
-        // Winger: shoot if near goal, cut inside, or cross
-        if (distToGoal < 25 && Math.random() < 0.5) {
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: Math.random() < 0.5 ? 'shoot_controlled' : 'shoot_power',
-            target_x: goalX, target_y: goalY, status: 'pending',
-          });
-        } else if (distToGoal < 35 && Math.random() < 0.3) {
-          // Cross to striker
-          const strikers = teammates.filter(t => {
-            const tRole = getPositionRole((t._slot_position || '').toUpperCase());
-            return tRole === 'striker';
-          });
+        // Winger: VERY AGGRESSIVE — shoot often, dribble hard, cross to strikers
+        if (distToGoal < 30 && Math.random() < 0.60) {
+          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: Math.random() < 0.5 ? 'shoot_controlled' : 'shoot_power', target_x: goalX, target_y: goalY, status: 'pending' });
+        } else if (distToGoal < 40 && Math.random() < 0.35) {
+          const strikers = teammates.filter(t => { const tRole = getPositionRole((t._slot_position || '').toUpperCase()); return tRole === 'striker'; });
           if (strikers.length > 0) {
             const st = strikers[Math.floor(Math.random() * strikers.length)];
-            actions.push({
-              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'pass_high',
-              target_x: Number(st.pos_x ?? 50), target_y: Number(st.pos_y ?? 50),
-              target_participant_id: st.id, status: 'pending',
-            });
+            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'pass_high', target_x: Number(st.pos_x ?? 50), target_y: Number(st.pos_y ?? 50), target_participant_id: st.id, status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
-            if (passResult) {
-              actions.push({
-                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: passResult.actionType,
-                target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-                target_participant_id: passResult.target.id, status: 'pending',
-              });
-            }
+            const moveX = isHome ? Math.min(98, posX + 12) : Math.max(2, posX - 12);
+            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 8, status: 'pending' });
           }
         } else {
-          // Dribble forward along wing
-          const moveX = isHome ? Math.min(98, posX + 5 + Math.random() * 4) : Math.max(2, posX - 5 - Math.random() * 4);
-          const cutInside = Math.random() < 0.3;
-          const moveY = cutInside ? posY + (posY < 50 ? 8 : -8) : posY + (Math.random() - 0.5) * 4;
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: 'move',
-            target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending',
-          });
+          // Dribble aggressively forward — big moves toward goal
+          const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
+          const cutInside = Math.random() < 0.4;
+          const moveY = cutInside ? posY + (posY < 50 ? 10 : -10) : posY + (Math.random() - 0.5) * 6;
+          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
         }
       } else if (role === 'striker') {
-        // Striker: shoot if close enough, dribble for 1v1, pass if blocked
-        if (distToGoal < 25) {
-          const shootType = distToGoal < 15 ? (Math.random() < 0.7 ? 'shoot_controlled' : 'shoot_power') : (Math.random() < 0.4 ? 'shoot_controlled' : 'shoot_power');
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: shootType,
-            target_x: goalX, target_y: goalY, status: 'pending',
-          });
+        // Striker: MOST AGGRESSIVE — always trying to score
+        if (distToGoal < 40) {
+          // In shooting range — SHOOT
+          const shootType = distToGoal < 18 ? (Math.random() < 0.7 ? 'shoot_controlled' : 'shoot_power') : 'shoot_power';
+          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
         } else {
-          // Check 1v1 situation
-          const nearestOpp = opponents.reduce((best: any, opp: any) => {
-            const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2);
-            return d < (best?.dist ?? 999) ? { opp, dist: d } : best;
-          }, null as any);
-
-          if (nearestOpp && nearestOpp.dist > 8 && Math.random() < 0.5) {
-            // Dribble toward goal
-            const moveX = isHome ? Math.min(98, posX + 7 + Math.random() * 5) : Math.max(2, posX - 7 - Math.random() * 5);
-            actions.push({
-              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'move',
-              target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending',
-            });
+          // Too far — dribble aggressively toward goal or pass to attacking teammate
+          const nearestOpp = opponents.reduce((best: any, opp: any) => { const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2); return d < (best?.dist ?? 999) ? { opp, dist: d } : best; }, null as any);
+          if (nearestOpp && nearestOpp.dist > 6 && Math.random() < 0.65) {
+            const moveX = isHome ? Math.min(98, posX + 12 + Math.random() * 5) : Math.max(2, posX - 12 - Math.random() * 5);
+            const moveY = posY + (50 - posY) * 0.2 + (Math.random() - 0.5) * 6;
+            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
           } else {
             const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
             if (passResult) {
-              actions.push({
-                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: passResult.actionType,
-                target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-                target_participant_id: passResult.target.id, status: 'pending',
-              });
+              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
-              const moveX = isHome ? Math.min(98, posX + 6) : Math.max(2, posX - 6);
-              actions.push({
-                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: 'move',
-                target_x: moveX, target_y: posY + (Math.random() - 0.5) * 5, status: 'pending',
-              });
+              const moveX = isHome ? Math.min(98, posX + 10) : Math.max(2, posX - 10);
+              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
             }
           }
         }
