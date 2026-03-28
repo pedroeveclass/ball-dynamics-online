@@ -3743,6 +3743,9 @@ export default function MatchRoomPage() {
           onToggleLog={() => setLogAccOpen(!logAccOpen)}
           events={events}
           eventsEndRef={eventsEndRef}
+          matchId={matchId!}
+          userId={user?.id ?? null}
+          username={profile?.username ?? null}
         />
       </div>
     </div>
@@ -3905,6 +3908,9 @@ interface MatchSidebarProps {
   onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void;
   events: EventLog[];
   eventsEndRef: React.RefObject<HTMLDivElement | null>;
+  matchId: string;
+  userId: string | null;
+  username: string | null;
 }
 
 const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) {
@@ -3916,7 +3922,39 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
     homeAccOpen, awayAccOpen, logAccOpen,
     onToggleHome, onToggleAway, onToggleLog,
     events, eventsEndRef,
+    matchId, userId, username,
   } = props;
+
+  // ── Chat state ──
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; user_id: string; username: string; message: string; created_at: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Load initial messages + subscribe to realtime
+  useEffect(() => {
+    if (!matchId) return;
+    supabase.from('match_chat_messages').select('*').eq('match_id', matchId).order('created_at', { ascending: true }).limit(100)
+      .then(({ data }) => { if (data) setChatMessages(data as any); });
+
+    const channel = supabase.channel(`chat-${matchId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_chat_messages', filter: `match_id=eq.${matchId}` },
+        (payload: any) => { setChatMessages(prev => [...prev.slice(-99), payload.new as any]); })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [matchId]);
+
+  // Auto-scroll chat
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || !userId || !username || sendingChat) return;
+    setSendingChat(true);
+    await supabase.from('match_chat_messages').insert({ match_id: matchId, user_id: userId, username, message: chatInput.trim() });
+    setChatInput('');
+    setSendingChat(false);
+  };
 
   return (
     <div className="w-72 shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-hidden">
@@ -3975,7 +4013,7 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
         onToggle={onToggleLog}
         className="flex-1"
       >
-        <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 bg-card/90 rounded-md p-2">
+        <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 rounded-md p-2">
           {events.length === 0 && (
             <p className="text-[10px] text-white/40 px-1">Aguardando eventos...</p>
           )}
@@ -3994,7 +4032,7 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
               e.event_type === 'red_card' ? 'border-red-500 text-red-400 font-bold' :
               e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
               e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
-              'border-border text-foreground/60'
+              'border-white/20 text-white/70'
             }`}>
               <p className="font-display font-semibold">{e.title}</p>
               {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
@@ -4004,8 +4042,41 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
         </div>
       </AccordionSection>
 
-      <div className="p-3 border-t border-[hsl(220,10%,22%)] mt-auto">
-        <p className="text-[9px] font-display text-white/20 uppercase tracking-widest text-center">Chat (em breve)</p>
+      {/* ── Chat ── */}
+      <div className="border-t border-[hsl(220,10%,22%)] mt-auto flex flex-col" style={{ maxHeight: '180px' }}>
+        <div className="px-2 py-1 text-[9px] font-display text-white/40 uppercase tracking-wider">Chat</div>
+        <div className="flex-1 overflow-y-auto px-2 space-y-0.5 min-h-0" style={{ maxHeight: '120px' }}>
+          {chatMessages.length === 0 && (
+            <p className="text-[9px] text-white/20 text-center py-2">Sem mensagens</p>
+          )}
+          {chatMessages.map(m => (
+            <div key={m.id} className="text-[9px] leading-tight">
+              <span className={`font-bold ${m.user_id === userId ? 'text-pitch' : 'text-white/70'}`}>{m.username}: </span>
+              <span className="text-white/60">{m.message}</span>
+            </div>
+          ))}
+          <div ref={chatEndRef} />
+        </div>
+        {userId && (
+          <div className="flex gap-1 p-1.5 border-t border-[hsl(220,10%,22%)]">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSendChat(); }}
+              placeholder="Mensagem..."
+              maxLength={120}
+              className="flex-1 bg-[hsl(220,15%,18%)] text-white/80 text-[10px] rounded px-2 py-1 outline-none placeholder:text-white/20 focus:ring-1 focus:ring-tactical/50"
+            />
+            <button
+              onClick={handleSendChat}
+              disabled={sendingChat || !chatInput.trim()}
+              className="text-[9px] font-display bg-tactical/20 text-tactical px-2 py-1 rounded hover:bg-tactical/30 disabled:opacity-30 transition-colors"
+            >
+              Enviar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
