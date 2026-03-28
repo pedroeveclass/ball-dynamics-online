@@ -1064,6 +1064,8 @@ export type Database = {
           match_id: string
           phase: string
           possession_club_id: string | null
+          processing_started_at: string | null
+          processing_token: string | null
           resolved_at: string | null
           set_piece_type: string | null
           started_at: string
@@ -1078,6 +1080,8 @@ export type Database = {
           match_id: string
           phase?: string
           possession_club_id?: string | null
+          processing_started_at?: string | null
+          processing_token?: string | null
           resolved_at?: string | null
           set_piece_type?: string | null
           started_at?: string
@@ -1092,6 +1096,8 @@ export type Database = {
           match_id?: string
           phase?: string
           possession_club_id?: string | null
+          processing_started_at?: string | null
+          processing_token?: string | null
           resolved_at?: string | null
           set_piece_type?: string | null
           started_at?: string
@@ -1621,6 +1627,36 @@ export type Database = {
           ticket_price: number
         }[]
       }
+      claim_match_turn_for_processing: {
+        Args: {
+          p_match_id: string
+          p_now?: string
+          p_processing_token: string
+          p_stale_after?: string
+        }
+        Returns: {
+          ball_holder_participant_id: string | null
+          created_at: string
+          ends_at: string
+          id: string
+          match_id: string
+          phase: string
+          possession_club_id: string | null
+          processing_started_at: string | null
+          processing_token: string | null
+          resolved_at: string | null
+          set_piece_type: string | null
+          started_at: string
+          status: string
+          turn_number: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "match_turns"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       current_user_active_club_id_uuid: { Args: never; Returns: string }
       current_user_managed_club_id: { Args: never; Returns: string }
       current_user_manager_profile_id: { Args: never; Returns: string }
@@ -1642,6 +1678,10 @@ export type Database = {
         Returns: boolean
       }
       release_club_to_bot: { Args: { p_club_id: string }; Returns: undefined }
+      release_match_turn_processing: {
+        Args: { p_processing_token: string; p_turn_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
