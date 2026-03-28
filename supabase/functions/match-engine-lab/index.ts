@@ -3775,10 +3775,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   } finally {
     // ── Release concurrency lock ──
-    await supabase.rpc('release_match_turn_processing', {
-      p_turn_id: activeTurn.id,
-      p_processing_token: processingToken,
-    }).catch(() => {}); // best-effort release; stale lock auto-expires after 15s
+    try {
+      await supabase.rpc('release_match_turn_processing', {
+        p_turn_id: activeTurn.id,
+        p_processing_token: processingToken,
+      });
+    } catch (_e) { /* best-effort release; stale lock auto-expires after 15s */ }
   }
 }
 
