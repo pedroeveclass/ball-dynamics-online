@@ -42,11 +42,11 @@ const FACILITY_STATS: Record<string, Record<number, { rev: number; cost: number;
     5: { rev: 0, cost: 10000, boost: 40 },
   },
   stadium: {
-    1: { rev: 4000, cost: 2000 },
-    2: { rev: 8000, cost: 4000 },
-    3: { rev: 15000, cost: 7000 },
-    4: { rev: 28000, cost: 12000 },
-    5: { rev: 50000, cost: 20000 },
+    1: { rev: 0, cost: 2000 },
+    2: { rev: 0, cost: 4000 },
+    3: { rev: 0, cost: 7000 },
+    4: { rev: 0, cost: 12000 },
+    5: { rev: 0, cost: 20000 },
   },
 };
 

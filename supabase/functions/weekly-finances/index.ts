@@ -10,7 +10,7 @@ const FACILITY_STATS: Record<string, Record<number, { revenue: number; cost: num
   souvenir_shop: { 1: { revenue: 3000, cost: 500 }, 2: { revenue: 6000, cost: 1000 }, 3: { revenue: 12000, cost: 2000 }, 4: { revenue: 22000, cost: 4000 }, 5: { revenue: 40000, cost: 7000 } },
   sponsorship: { 1: { revenue: 5000, cost: 800 }, 2: { revenue: 10000, cost: 1500 }, 3: { revenue: 20000, cost: 3000 }, 4: { revenue: 38000, cost: 6000 }, 5: { revenue: 70000, cost: 10000 } },
   training_center: { 1: { revenue: 0, cost: 700 }, 2: { revenue: 0, cost: 1500 }, 3: { revenue: 0, cost: 3000 }, 4: { revenue: 0, cost: 6000 }, 5: { revenue: 0, cost: 10000 } },
-  stadium: { 1: { revenue: 4000, cost: 2000 }, 2: { revenue: 8000, cost: 4000 }, 3: { revenue: 15000, cost: 7000 }, 4: { revenue: 28000, cost: 12000 }, 5: { revenue: 50000, cost: 20000 } },
+  stadium: { 1: { revenue: 0, cost: 2000 }, 2: { revenue: 0, cost: 4000 }, 3: { revenue: 0, cost: 7000 }, 4: { revenue: 0, cost: 12000 }, 5: { revenue: 0, cost: 20000 } },
 };
 
 Deno.serve(async (req) => {
