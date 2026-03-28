@@ -823,6 +823,7 @@ async function generateBotActions(
   match?: any,
   tickCache?: TickCache,
   setPieceType?: string | null,
+  looseBallPosition?: { x: number; y: number } | null,
 ) {
   const botsToAct: any[] = [];
 
@@ -863,12 +864,13 @@ async function generateBotActions(
     if (tickCache) tickCache.clubSettings = { homeFormation, awayFormation };
   }
 
-  // Helper: get ball position
+  // Helper: get ball position (uses loose ball position when available)
   const getBallPos = (): { x: number; y: number } => {
     if (ballHolderId) {
       const bh = participants.find((p: any) => p.id === ballHolderId);
       if (bh) return { x: Number(bh.pos_x ?? 50), y: Number(bh.pos_y ?? 50) };
     }
+    if (looseBallPosition) return looseBallPosition;
     return { x: 50, y: 50 };
   };
   const ballPos = getBallPos();
@@ -2679,6 +2681,33 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   // ── Tick-level cache: avoid reloading the same data multiple times ──
   const tickCache: TickCache = {};
 
+  // ── Compute loose ball position if ball is loose ──
+  let looseBallPos: { x: number; y: number } | null = null;
+  if (!activeTurn.ball_holder_participant_id) {
+    // Look at the last event log for ball position hints
+    const { data: lastEvents } = await supabase
+      .from('match_event_logs')
+      .select('event_type, payload, body')
+      .eq('match_id', match_id)
+      .in('event_type', ['loose_ball', 'block', 'shot_missed', 'blocked', 'loose_ball_phase'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (lastEvents && lastEvents.length > 0) {
+      const evt = lastEvents[0];
+      const payload = evt.payload as any;
+      if (payload?.x != null && payload?.y != null) {
+        looseBallPos = { x: Number(payload.x), y: Number(payload.y) };
+      } else if (evt.body) {
+        // Try parsing coordinates from body like "Bola espirrou para (45,67)"
+        const coordMatch = evt.body.match(/\((\d+),\s*(\d+)\)/);
+        if (coordMatch) {
+          looseBallPos = { x: Number(coordMatch[1]), y: Number(coordMatch[2]) };
+        }
+      }
+    }
+    if (looseBallPos) console.log(`[ENGINE] Loose ball position: (${looseBallPos.x.toFixed(1)}, ${looseBallPos.y.toFixed(1)})`);
+  }
+
   // ── POSITIONING PHASES ──
   if (isPositioningPhase(activeTurn.phase)) {
     // Parallelize: load participants and actions simultaneously
@@ -2722,6 +2751,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       match,
       tickCache,
       activeTurn.set_piece_type,
+      looseBallPos,
     );
 
     const bh = bhId ? (participants || []).find((p: any) => p.id === bhId) : null;
@@ -2879,6 +2909,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       match,
       tickCache,
       activeTurn.set_piece_type,
+      looseBallPos,
     );
   }
 
@@ -2923,7 +2954,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             supabase, match_id, turnRow.id, participants || [],
             submittedIds, activeTurn.ball_holder_participant_id,
             possClubId, isLooseBall, turnRow.phase, match,
-            tickCache, activeTurn.set_piece_type,
+            tickCache, activeTurn.set_piece_type, looseBallPos,
           );
         }
       }
@@ -3315,9 +3346,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               nextBallHolderParticipantId = null;
             }
           } else {
-            // Nobody did receive — ball is loose
+            // Nobody did receive — ball is loose at the pass destination
             nextBallHolderParticipantId = null;
-            await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Ninguém dominou a bola.' });
+            const looseDest = { x: Number(ballHolderAction.target_x ?? 50), y: Number(ballHolderAction.target_y ?? 50) };
+            ballEndPos = looseDest;
+            await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: `Ninguém dominou a bola.`, payload: { x: looseDest.x, y: looseDest.y } });
           }
         } else if (ballHolderAction.action_type === 'move') {
           nextBallHolderParticipantId = ballHolder.id;
