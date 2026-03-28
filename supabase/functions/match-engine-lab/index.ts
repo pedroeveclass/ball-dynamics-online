@@ -3525,6 +3525,58 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
+    // ── Save turn snapshot for replay ──
+    try {
+      const snapshotPlayers = (participants || []).filter((p: any) => p.role_type === 'player').map((p: any) => {
+        // Find this player's move action to get their final position
+        const moveAction = allActions.find((a: any) => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
+        const finalX = moveAction?.target_x != null ? Number(moveAction.target_x) : Number(p.pos_x ?? 50);
+        const finalY = moveAction?.target_y != null ? Number(moveAction.target_y) : Number(p.pos_y ?? 50);
+        return {
+          id: p.id,
+          club_id: p.club_id,
+          pos_x: finalX,
+          pos_y: finalY,
+          jersey_number: p.jersey_number || null,
+          player_name: p.player_name || null,
+          field_pos: p._slot_position || p.slot_position || null,
+          is_bot: p.is_bot,
+        };
+      });
+
+      // Get the ball position
+      const snapshotBallHolder = nextBallHolderParticipantId
+        ? snapshotPlayers.find((p: any) => p.id === nextBallHolderParticipantId)
+        : null;
+      const snapshotBallPos = snapshotBallHolder
+        ? { x: snapshotBallHolder.pos_x, y: snapshotBallHolder.pos_y }
+        : (ballEndPos || { x: 50, y: 50 });
+
+      // Get recent events for this turn
+      const { data: turnEvents } = await supabase
+        .from('match_event_logs')
+        .select('event_type, title, body')
+        .eq('match_id', match_id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      await supabase.from('match_snapshots').insert({
+        match_id,
+        turn_number: match.current_turn_number,
+        snapshot: {
+          players: snapshotPlayers,
+          ball: snapshotBallPos,
+          ball_holder_id: nextBallHolderParticipantId,
+          possession_club_id: newPossessionClubId,
+          home_score: homeScore,
+          away_score: awayScore,
+          events: (turnEvents || []).reverse(),
+        },
+      });
+    } catch (snapErr) {
+      console.error('[ENGINE] Snapshot save failed:', snapErr);
+    }
+
     const newTurnNumber = match.current_turn_number + 1;
 
     await supabase.from('match_turns')
