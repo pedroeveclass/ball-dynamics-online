@@ -34,6 +34,7 @@ import LeagueScheduleVotePage from "./pages/LeagueScheduleVotePage";
 import ManagerFacilitiesPage from "./pages/ManagerFacilitiesPage";
 import AccountProfilePage from "./pages/AccountProfilePage";
 import NotificationsPage from "./pages/NotificationsPage";
+import MatchReplayPage from "./pages/MatchReplayPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -76,6 +77,7 @@ const App = () => (
             <Route path="/manager/lineup" element={<ManagerRoute><ManagerLineupPage /></ManagerRoute>} />
             <Route path="/manager/challenges" element={<ManagerRoute><ManagerChallengesPage /></ManagerRoute>} />
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
+            <Route path="/match/:id/replay" element={<MatchReplayPage />} />
             <Route path="/match-lab/solo" element={<ProtectedRoute><SoloPhysicsLabPage /></ProtectedRoute>} />
             <Route path="/league" element={<LeaguePage />} />
             <Route path="/club/:clubId" element={<PublicClubPage />} />

@@ -582,11 +582,18 @@ export default function LeaguePage() {
                         </div>
 
                         {/* Score */}
-                        <div className="px-4 min-w-[80px] text-center">
+                        <div className="px-4 min-w-[80px] text-center flex flex-col items-center">
                           {hasResult || isLive ? (
-                            <span className={`font-display font-bold text-lg ${isLive ? 'text-pitch' : ''}`}>
-                              {lm.match.home_score} - {lm.match.away_score}
-                            </span>
+                            <>
+                              <span className={`font-display font-bold text-lg ${isLive ? 'text-pitch' : ''}`}>
+                                {lm.match.home_score} - {lm.match.away_score}
+                              </span>
+                              {hasResult && lm.match_id && (
+                                <Link to={`/match/${lm.match_id}/replay`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-0.5">
+                                  Ver Replay
+                                </Link>
+                              )}
+                            </>
                           ) : (
                             <span className="text-muted-foreground text-sm">vs</span>
                           )}
