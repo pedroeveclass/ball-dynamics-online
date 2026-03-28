@@ -156,6 +156,28 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     } else if (gkIdByClub.get(p.club_id) === p.id) {
       p._slot_position = 'GK';
     }
+    // If still no position, try to infer from initial field position
+    // (bots created by fillBots have pos_x/pos_y matching formation slots)
+    if (!p._slot_position && p.is_bot && p.pos_x != null) {
+      // Find the closest formation position based on coordinates
+      const px = Number(p.pos_x);
+      const py = Number(p.pos_y);
+      const formSlots = FORMATION_POSITIONS['4-4-2']; // default
+      let bestDist = Infinity;
+      let bestPos = 'CM';
+      for (const slot of formSlots) {
+        const sx = p.club_id === participants.find((pp: any) => pp.club_id === p.club_id)?.club_id
+          ? slot.x : 100 - slot.x; // approximate home/away
+        const d = Math.sqrt((px - slot.x) ** 2 + (py - slot.y) ** 2);
+        const dMirror = Math.sqrt((px - (100 - slot.x)) ** 2 + (py - slot.y) ** 2);
+        const minD = Math.min(d, dMirror);
+        if (minD < bestDist) {
+          bestDist = minD;
+          bestPos = slot.pos;
+        }
+      }
+      p._slot_position = bestPos;
+    }
     return p;
   });
 }
@@ -545,40 +567,48 @@ function getFormationAnchor(
   isHome: boolean,
   match?: any,
 ): { x: number; y: number; slotIndex: number } {
-  const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
   const formSlots = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
-  
+
+  // Get the bot's position — try _slot_position, then primary_position from profile
+  const slotPos = (bot._slot_position || bot.slot_position || '').replace(/[0-9]/g, '').toUpperCase();
+
+  // If we have a slot position, match it to the formation (works for any team size)
+  if (slotPos) {
+    // Find all players on this team with the same position (to handle duplicates like CB, CB)
+    const teamPartsOfSamePos = participants.filter(
+      (p: any) => p.club_id === bot.club_id &&
+        (p._slot_position || p.slot_position || '').replace(/[0-9]/g, '').toUpperCase() === slotPos &&
+        p.role_type === 'player'
+    ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+    const indexInPos = Math.max(0, teamPartsOfSamePos.findIndex((p: any) => p.id === bot.id));
+
+    // Find matching formation slots for this position
+    const matchingSlots = formSlots
+      .map((s, i) => ({ ...s, slotIndex: i }))
+      .filter(s => s.pos.toUpperCase() === slotPos);
+
+    if (matchingSlots.length > 0) {
+      const matched = matchingSlots[Math.min(indexInPos, matchingSlots.length - 1)];
+      if (isHome) return { x: matched.x, y: matched.y, slotIndex: matched.slotIndex };
+      return { x: 100 - matched.x, y: matched.y, slotIndex: matched.slotIndex };
+    }
+  }
+
+  // Fallback: no slot position or no matching formation slot
+  // Distribute proportionally across formation based on team index
   const teamParts = participants.filter(
     (p: any) => p.club_id === bot.club_id && p.role_type === 'player'
   ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
-  
   const teamSize = teamParts.length;
-  const botIndexInTeam = teamParts.findIndex((p: any) => p.id === bot.id);
-  
-  // For small teams (3x3, etc), distribute across formation proportionally
-  if (teamSize < 11 && teamSize > 0) {
-    const slotIndex = Math.round((botIndexInTeam / Math.max(1, teamSize - 1)) * (formSlots.length - 1));
-    const si = Math.max(0, Math.min(formSlots.length - 1, slotIndex));
-    const slot = formSlots[si];
-    if (isHome) return { x: slot.x, y: slot.y, slotIndex: si };
-    return { x: 100 - slot.x, y: slot.y, slotIndex: si };
-  }
-  
-  // For 11v11, match by position
-  const teamPartsOfSamePos = participants.filter(
-    (p: any) => p.club_id === bot.club_id && (p._slot_position || '').toUpperCase() === slotPos && p.role_type === 'player'
-  ).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
-  const indexInPos = teamPartsOfSamePos.findIndex((p: any) => p.id === bot.id);
+  const botIndexInTeam = Math.max(0, teamParts.findIndex((p: any) => p.id === bot.id));
 
-  const matchingSlots = formSlots.map((s, i) => ({ ...s, slotIndex: i })).filter(s => s.pos.toUpperCase() === slotPos);
-  let matched = matchingSlots[Math.max(0, Math.min(indexInPos, matchingSlots.length - 1))];
-  if (!matched) {
-    const fallbackIdx = Math.min(formSlots.length - 1, Math.max(0, Math.floor(formSlots.length / 2)));
-    matched = { ...formSlots[fallbackIdx], slotIndex: fallbackIdx };
-  }
-
-  if (isHome) return { x: matched.x, y: matched.y, slotIndex: matched.slotIndex };
-  return { x: 100 - matched.x, y: matched.y, slotIndex: matched.slotIndex };
+  const si = teamSize <= 1
+    ? Math.floor(formSlots.length / 2)
+    : Math.round((botIndexInTeam / (teamSize - 1)) * (formSlots.length - 1));
+  const clampedSi = Math.max(0, Math.min(formSlots.length - 1, si));
+  const slot = formSlots[clampedSi];
+  if (isHome) return { x: slot.x, y: slot.y, slotIndex: clampedSi };
+  return { x: 100 - slot.x, y: slot.y, slotIndex: clampedSi };
 }
 
 // ─── Compute max movement range based on attributes ──────────
