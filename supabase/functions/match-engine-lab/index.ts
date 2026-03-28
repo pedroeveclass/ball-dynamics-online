@@ -136,7 +136,7 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
   const { data: slots } = slotIds.length > 0
     ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
     : { data: [] };
-  const slotMap = new Map((slots || []).map((s: any) => [s.id, s.slot_position]));
+  const slotMap = new Map<string, string>((slots || []).map((s: any) => [s.id, s.slot_position]));
 
   // Also load player profiles for primary_position fallback
   const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
@@ -1937,8 +1937,8 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
       : Promise.resolve({ data: [] }),
   ]);
 
-  const slotMap = new Map((slots || []).map((slot: any) => [slot.id, slot.slot_position]));
-  const profilePosMap = new Map((profiles || []).map((profile: any) => [profile.id, profile.primary_position]));
+  const slotMap = new Map<string, string>((slots || []).map((slot: any) => [slot.id, slot.slot_position]));
+  const profilePosMap = new Map<string, string>((profiles || []).map((profile: any) => [profile.id, profile.primary_position]));
   const gkIdByClub = getGoalkeeperIdsByClub(candidates, slotMap, profilePosMap);
   const clubGoalkeeperId = gkIdByClub.get(clubId);
   const nonGoalkeeperCandidates = candidates.filter((participant: any) => participant.id !== clubGoalkeeperId);
@@ -2691,7 +2691,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     // Determine if this is a kickoff (ball holder at center)
     const bhId = activeTurn.ball_holder_participant_id;
-    const submittedParticipantIds = new Set((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
+    const submittedParticipantIds = new Set<string>((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
     await generateBotActions(
       supabase,
       match_id,
@@ -2842,7 +2842,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   const isLooseBall = !activeTurn.ball_holder_participant_id;
 
   if (activeTurn.phase !== 'resolution') {
-    const submittedParticipantIds = new Set((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
+    const submittedParticipantIds = new Set<string>((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
     await generateBotActions(
       supabase,
       match_id,
@@ -2876,13 +2876,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .eq('match_id', match_id)
       .eq('turn_number', activeTurn.turn_number);
 
-    const allTurnIds = (turnRows || []).map(t => t.id);
+    const allTurnIds = (turnRows || []).map((t: any) => t.id);
 
     // ── Bot AI fallback: generate actions for inactive players ──
     {
       const { data: existingActions } = await supabase
         .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds).eq('status', 'pending');
-      const submittedIds = new Set((existingActions || []).map((a: any) => a.participant_id));
+      const submittedIds = new Set<string>((existingActions || []).map((a: any) => a.participant_id));
       const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
 
       // Generate bot actions for each phase that had a turn
@@ -2914,7 +2914,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
 
     // Step 2: Filter out ALL bot actions for participants that have human actions
-    const filteredRaw = (rawActions || []).filter(a => {
+    const filteredRaw = (rawActions || []).filter((a: any) => {
       if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
         return false; // Human controls this participant — discard bot action entirely
       }
@@ -3345,8 +3345,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           });
         } else {
           const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
-          let inertiaBallX = ballEndPos ? ballEndPos.x : 50;
-          let inertiaBallY = ballEndPos ? ballEndPos.y : 50;
+          let inertiaBallX = ballEndPos ? (ballEndPos as { x: number; y: number }).x : 50;
+          let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
           if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
             const startX = Number(ballHolder.pos_x ?? 50);
             const startY = Number(ballHolder.pos_y ?? 50);
@@ -3391,10 +3391,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
-    const allRawIds = (rawActions || []).map(a => a.id);
+    const allRawIds = (rawActions || []).map((a: any) => a.id);
     if (allRawIds.length > 0) {
-      const usedIds = allActions.map(a => a.id);
-      const overriddenIds = allRawIds.filter(id => !usedIds.includes(id));
+      const usedIds = allActions.map((a: any) => a.id);
+      const overriddenIds = allRawIds.filter((id: any) => !usedIds.includes(id));
       const actionStatusUpdates: Promise<any>[] = [];
       if (usedIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds));
       if (overriddenIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds));
@@ -3775,10 +3775,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   } finally {
     // ── Release concurrency lock ──
-    await supabase.rpc('release_match_turn_processing', {
-      p_turn_id: activeTurn.id,
-      p_processing_token: processingToken,
-    }).catch(() => {}); // best-effort release; stale lock auto-expires after 15s
+    try {
+      await supabase.rpc('release_match_turn_processing', {
+        p_turn_id: activeTurn.id,
+        p_processing_token: processingToken,
+      });
+    } catch (_e) { /* best-effort release; stale lock auto-expires after 15s */ }
   }
 }
 
