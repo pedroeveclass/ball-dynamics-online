@@ -3735,7 +3735,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: { one_touch_executed: true },
               status: 'pending',
             });
-            console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type}`);
+            // Shorten ball_holder phase to 2s since action is pre-determined
+            const oneTouchEnd = new Date(Date.now() + 2000).toISOString();
+            await supabase.from('match_turns').update({ ends_at: oneTouchEnd }).eq('id', insertedTurn.id);
+            console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type} (phase shortened to 2s)`);
             await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque de primeira!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
           }
         }
