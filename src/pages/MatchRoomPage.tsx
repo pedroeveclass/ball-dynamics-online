@@ -65,6 +65,10 @@ interface MatchData {
   home_lineup_id: string | null; away_lineup_id: string | null;
   possession_club_id: string | null;
   home_uniform?: number; away_uniform?: number;
+  half_started_at?: string | null;
+  current_half?: number;
+  injury_time_turns?: number;
+  injury_time_start_turn?: number | null;
 }
 
 interface ClubInfo {
@@ -475,6 +479,8 @@ export default function MatchRoomPage() {
   const inertiaConsumedRef = useRef<boolean>(false);
   const prevTurnWasPositioningRef = useRef<boolean>(false);
   const oneTouchPendingForRef = useRef<string | null>(null);
+  // Track resolution event logs so the animation end-state can incorporate actual results
+  const resolutionEventsRef = useRef<EventLog[]>([]);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -550,6 +556,11 @@ export default function MatchRoomPage() {
   }, [setTurnActionsState]);
 
   const appendEventLog = useCallback((event: EventLog) => {
+    // Track resolution-relevant events so animation can incorporate actual results
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal'];
+    if (resolutionEventTypes.includes(event.event_type)) {
+      resolutionEventsRef.current = [...resolutionEventsRef.current, event];
+    }
     setEvents(prev => {
       const nextEvents = [...prev, event];
       return nextEvents.length > LIVE_EVENT_LIMIT ? nextEvents.slice(-LIVE_EVENT_LIMIT) : nextEvents;
@@ -1062,6 +1073,7 @@ export default function MatchRoomPage() {
     setSubmittedActions(new Set());
     setResolutionStartPositions({});
     setFinalPositions({});
+    resolutionEventsRef.current = [];
 
     if (activeTurn?.ball_holder_participant_id == null) {
       if (carriedLooseBallPos) {
@@ -1091,7 +1103,7 @@ export default function MatchRoomPage() {
     }
 
     setFinalBallPos(null);
-    // Don't clear finalBallPosRef here — it's consumed above
+    finalBallPosRef.current = null;
     animatedResolutionIdRef.current = null;
   }, [activeTurn?.turn_number]);
 
@@ -2138,8 +2150,42 @@ export default function MatchRoomPage() {
                   }
                   lastBallDirRef.current = null; // No inertia for dribble
                 }
-                
+
                 if (fbp) {
+                  // Check if a new turn has already arrived with the actual result.
+                  // If so, snap the ball to the actual holder's position so the
+                  // visual matches the server-resolved outcome (block/intercept).
+                  const nextTurn = activeTurnRef.current;
+                  const isNextTurnReady = nextTurn && nextTurn.id !== activeTurn?.id;
+                  if (isNextTurnReady && nextTurn.ball_holder_participant_id) {
+                    const actualHolder = participantsRef.current.find(
+                      p => p.id === nextTurn.ball_holder_participant_id
+                    );
+                    if (actualHolder) {
+                      const actualPos = finals[actualHolder.id]
+                        ?? { x: actualHolder.field_x ?? actualHolder.pos_x ?? 50, y: actualHolder.field_y ?? actualHolder.pos_y ?? 50 };
+                      fbp = { x: actualPos.x + 1.2, y: actualPos.y - 1.2 };
+                    }
+                  } else if (!isNextTurnReady) {
+                    // Next turn hasn't arrived yet -- check resolution event logs
+                    // for blocks/intercepts to correct the end position early
+                    const resEvents = resolutionEventsRef.current;
+                    const hasBlock = resEvents.some(e => e.event_type === 'blocked' || e.event_type === 'saved');
+                    const hasIntercept = resEvents.some(e => e.event_type === 'intercepted');
+                    if (hasBlock || hasIntercept) {
+                      // Ball was blocked/intercepted -- use intercept point if
+                      // available, otherwise snap to ball holder's end position
+                      if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                        fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                      } else if (bhId) {
+                        const holderFinal = finals[bhId];
+                        if (holderFinal) {
+                          fbp = { x: holderFinal.x + 1.2, y: holderFinal.y - 1.2 };
+                        }
+                      }
+                    }
+                  }
+
                   setFinalBallPos(fbp);
                   finalBallPosRef.current = fbp;
                 }
@@ -2830,6 +2876,7 @@ export default function MatchRoomPage() {
         homeClub={homeClub} awayClub={awayClub}
         homeScore={match.home_score} awayScore={match.away_score}
         currentTurnNumber={match.current_turn_number} activeTurnPhase={activeTurn?.phase ?? null}
+        halfStartedAt={match.half_started_at ?? null} currentHalf={match.current_half ?? 1}
         myRole={myRole} isManager={isManager} isPlayer={isPlayer}
         onFinishMatch={finishMatch} onExit={exitToDashboard}
         homeUniformNum={match.home_uniform ?? 1} awayUniformNum={match.away_uniform ?? 2}
@@ -3666,6 +3713,7 @@ export default function MatchRoomPage() {
           possessionClub={possClubId === match.home_club_id ? homeClub : awayClub}
           currentPhaseDuration={currentPhaseDuration}
           isLooseBall={!!isLooseBall}
+          isHalftime={match.current_half === 2 && !!match.half_started_at && new Date(match.half_started_at).getTime() > Date.now()}
           timerDisplayRef={timerDisplayRef}
           timerBarRef={timerBarRef}
           homeClub={homeClub}
@@ -3691,14 +3739,17 @@ export default function MatchRoomPage() {
   );
 }
 
-// ─── Match minute calculation ─────────────────────────────────
-const TURNS_PER_HALF = 72;
+// ─── Match minute calculation (real-time clock) ──────────────
+const HALF_DURATION_MS_CLIENT = 25 * 60 * 1000; // 25 real minutes per half
 
-function computeMatchMinute(turnNumber: number): number {
-  if (turnNumber <= TURNS_PER_HALF) {
-    return Math.floor((turnNumber / TURNS_PER_HALF) * 45);
-  }
-  return 45 + Math.floor(((turnNumber - TURNS_PER_HALF) / TURNS_PER_HALF) * 45);
+function computeMatchMinute(match: { half_started_at?: string | null; current_half?: number } | null): number {
+  if (!match?.half_started_at) return 0;
+  const elapsed = Date.now() - new Date(match.half_started_at).getTime();
+  // During halftime, elapsed may be negative (half_started_at set in the future)
+  if (elapsed < 0) return match.current_half === 1 ? 45 : 90;
+  const halfMinutes = Math.min(45, Math.floor((elapsed / HALF_DURATION_MS_CLIENT) * 45));
+  const half = match.current_half || 1;
+  return half === 1 ? halfMinutes : 45 + halfMinutes;
 }
 
 // ─── MatchScoreboard (extracted, memoized) ─────────────────────
@@ -3708,6 +3759,7 @@ interface MatchScoreboardProps {
   homeClub: ClubInfo | null; awayClub: ClubInfo | null;
   homeScore: number; awayScore: number;
   currentTurnNumber: number; activeTurnPhase: string | null;
+  halfStartedAt: string | null; currentHalf: number;
   myRole: 'player' | 'manager' | 'spectator';
   isManager: boolean; isPlayer: boolean;
   onFinishMatch: () => void; onExit: () => void;
@@ -3722,6 +3774,7 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
   const {
     isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
     homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
+    halfStartedAt, currentHalf,
     myRole, isManager, isPlayer, onFinishMatch, onExit,
     homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
   } = props;
@@ -3760,9 +3813,11 @@ const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboa
             <span>{awayScore}</span>
           </div>
           {isLive && (() => {
-            const minute = computeMatchMinute(currentTurnNumber);
-            const half = currentTurnNumber <= TURNS_PER_HALF ? '1T' : '2T';
-            const isHalftime = activeTurnPhase === 'positioning_attack' && currentTurnNumber === TURNS_PER_HALF + 1;
+            const matchClock = { half_started_at: halfStartedAt, current_half: currentHalf };
+            const minute = computeMatchMinute(matchClock);
+            const half = currentHalf === 1 ? '1T' : '2T';
+            // Halftime: half_started_at is in the future (second half hasn't started yet)
+            const isHalftime = currentHalf === 2 && halfStartedAt && new Date(halfStartedAt).getTime() > Date.now();
             return (
               <div className="flex items-center gap-1.5 ml-2 bg-[hsl(220,15%,22%)] rounded px-2 py-0.5">
                 {isHalftime ? (
@@ -3824,6 +3879,7 @@ interface MatchSidebarProps {
   possessionClub: ClubInfo | null;
   currentPhaseDuration: number;
   isLooseBall: boolean;
+  isHalftime: boolean;
   timerDisplayRef: React.RefObject<HTMLSpanElement | null>;
   timerBarRef: React.RefObject<HTMLDivElement | null>;
   homeClub: ClubInfo | null;
@@ -3844,7 +3900,7 @@ interface MatchSidebarProps {
 const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) {
   const {
     activeTurn, phaseTimeLeft, currentTurnNumber, possessionClub, currentPhaseDuration,
-    isLooseBall, timerDisplayRef, timerBarRef,
+    isLooseBall, isHalftime, timerDisplayRef, timerBarRef,
     homeClub, awayClub, homePlayers, awayPlayers,
     ballHolderId, myId, selectedId, onSelectPlayer, submittedIds,
     homeAccOpen, awayAccOpen, logAccOpen,
@@ -3863,6 +3919,7 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
           possessionClub={possessionClub}
           phaseDuration={currentPhaseDuration}
           isLooseBall={isLooseBall}
+          isHalftime={isHalftime}
           timerDisplayRef={timerDisplayRef}
           timerBarRef={timerBarRef}
         />
@@ -4045,13 +4102,14 @@ const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchActionMe
 });
 
 // ─── TurnWheel (horizontal segmented bar) ─────────────────────
-function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall, timerDisplayRef, timerBarRef }: {
+function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall, isHalftime: isHalftimeProp, timerDisplayRef, timerBarRef }: {
   currentPhase: string | null; timeLeft: number; turnNumber: number;
   possessionClub: ClubInfo | null; phaseDuration: number; isLooseBall: boolean;
+  isHalftime?: boolean;
   timerDisplayRef?: React.RefObject<HTMLSpanElement | null>; timerBarRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
-  const isHalftime = currentPhase === 'positioning_attack' && turnNumber === TURNS_PER_HALF + 1;
+  const isHalftime = isHalftimeProp ?? false;
 
   const phases = isPositioning
     ? [

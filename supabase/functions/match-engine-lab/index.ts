@@ -13,8 +13,25 @@ const MAX_TURNS = 144;
 const TURNS_PER_HALF = 72;
 const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
 
-// ─── Match minute calculation ────────────────────────────────
-function computeMatchMinute(turnNumber: number): number {
+// ─── Real-time clock constants ──────────────────────────────
+const HALF_DURATION_MS = 25 * 60 * 1000;       // 25 real minutes per half
+const HALFTIME_DURATION_MS = 5 * 60 * 1000;    // 5 min halftime break
+const MAX_INJURY_TIME_TURNS = 3;               // 1-3 extra turns after time is up
+const MAX_TURNS_SAFETY = 200;                  // absolute safety cap to prevent infinite games
+
+// ─── Match minute calculation (real-time clock) ─────────────
+function computeMatchMinute(match: any): number {
+  if (!match.half_started_at) return 0;
+  const elapsed = Date.now() - new Date(match.half_started_at).getTime();
+  // During halftime, elapsed may be negative (half_started_at set in the future)
+  if (elapsed < 0) return match.current_half === 1 ? 45 : 90;
+  const halfMinutes = Math.min(45, Math.floor((elapsed / HALF_DURATION_MS) * 45));
+  const half = match.current_half || 1;
+  return half === 1 ? halfMinutes : 45 + halfMinutes;
+}
+
+// Legacy fallback for turn-based calculation (used nowhere now, kept for safety)
+function computeMatchMinuteFromTurn(turnNumber: number): number {
   if (turnNumber <= TURNS_PER_HALF) {
     return Math.floor((turnNumber / TURNS_PER_HALF) * 45);
   }
@@ -2413,6 +2430,10 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       current_phase: 'positioning_attack',
       current_turn_number: 1,
       possession_club_id: possessionClubId,
+      half_started_at: now,
+      current_half: 1,
+      injury_time_turns: 0,
+      injury_time_start_turn: null,
     }).eq('id', m.id).eq('status', 'scheduled').lte('scheduled_at', now).select('id').maybeSingle();
 
     if (!claimedMatch) {
@@ -3521,9 +3542,41 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .update({ status: 'resolved', resolved_at: new Date().toISOString() })
       .eq('id', activeTurn.id);
 
-    // ── Halftime check ──
-    if (newTurnNumber === TURNS_PER_HALF + 1 && match.current_turn_number <= TURNS_PER_HALF) {
-      const matchMinute = computeMatchMinute(match.current_turn_number);
+    // ── Real-time clock: halftime / end-of-match check ──
+    const currentHalf = match.current_half || 1;
+    const halfElapsed = match.half_started_at
+      ? Date.now() - new Date(match.half_started_at).getTime()
+      : 0;
+    const isTimeUp = halfElapsed >= HALF_DURATION_MS;
+    const injuryTurns = match.injury_time_turns || 0;
+    const injuryStartTurn = match.injury_time_start_turn || null;
+
+    // Determine if we should end the half
+    let shouldEndHalf = false;
+    if (isTimeUp && injuryTurns === 0) {
+      // First detection that time is up — set injury time
+      const extraTurns = 1 + Math.floor(Math.random() * MAX_INJURY_TIME_TURNS);
+      await supabase.from('matches').update({
+        injury_time_turns: extraTurns,
+        injury_time_start_turn: match.current_turn_number,
+      }).eq('id', match_id);
+      console.log(`[ENGINE] Injury time started: ${extraTurns} extra turns from turn ${match.current_turn_number} (half ${currentHalf})`);
+    } else if (isTimeUp && injuryTurns > 0 && injuryStartTurn !== null) {
+      // Check if injury time turns have been played
+      if (match.current_turn_number >= injuryStartTurn + injuryTurns) {
+        shouldEndHalf = true;
+      }
+    }
+
+    // Safety cap: prevent infinite games
+    if (newTurnNumber > MAX_TURNS_SAFETY) {
+      shouldEndHalf = true;
+      console.log(`[ENGINE] Safety cap reached (${MAX_TURNS_SAFETY} turns), forcing end`);
+    }
+
+    if (shouldEndHalf && currentHalf === 1) {
+      // ── HALFTIME ──
+      const matchMinute = computeMatchMinute(match);
       await supabase.from('match_event_logs').insert({
         match_id, event_type: 'halftime',
         title: `⏸ Intervalo! ${homeScore} – ${awayScore}`,
@@ -3531,8 +3584,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       });
 
       // Create a halftime pause turn
-      const halftimeEnd = new Date(Date.now() + HALFTIME_PAUSE_MS).toISOString();
       const halftimeStart = new Date().toISOString();
+      const halftimeEnd = new Date(Date.now() + HALFTIME_DURATION_MS).toISOString();
+      // Second half clock starts after halftime
+      const secondHalfStartAt = halftimeEnd;
 
       // Swap possession for second half kickoff
       const secondHalfPossession = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
@@ -3543,6 +3598,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         current_phase: 'positioning_attack',
         possession_club_id: secondHalfPossession,
         home_score: homeScore, away_score: awayScore,
+        current_half: 2,
+        half_started_at: secondHalfStartAt,
+        injury_time_turns: 0,
+        injury_time_start_turn: null,
       }).eq('id', match_id);
 
       await supabase.from('match_turns').insert({
@@ -3560,8 +3619,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         title: '⚽ Segundo tempo!',
         body: 'Posicionamento para o início do segundo tempo.',
       });
-    } else if (newTurnNumber > MAX_TURNS) {
-      const matchMinute = computeMatchMinute(match.current_turn_number);
+    } else if (shouldEndHalf && currentHalf === 2) {
+      // ── FULL TIME ──
+      const matchMinute = computeMatchMinute(match);
       await supabase.from('matches').update({
         status: 'finished', finished_at: new Date().toISOString(),
         home_score: homeScore, away_score: awayScore,
