@@ -13,6 +13,34 @@ import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, F
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+
+// Formation positions for initial player placement (must match engine FORMATION_POSITIONS)
+const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
+  '4-4-2': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 42, y: 15, pos: 'LM' }, { x: 42, y: 37, pos: 'CM' }, { x: 42, y: 63, pos: 'CM' }, { x: 42, y: 85, pos: 'RM' },
+    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
+  ],
+  '4-3-3': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 40, y: 25, pos: 'CM' }, { x: 40, y: 50, pos: 'CM' }, { x: 40, y: 75, pos: 'CM' },
+    { x: 60, y: 15, pos: 'LW' }, { x: 62, y: 50, pos: 'ST' }, { x: 60, y: 85, pos: 'RW' },
+  ],
+  '4-2-3-1': [
+    { x: 5, y: 50, pos: 'GK' },
+    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
+    { x: 36, y: 35, pos: 'CDM' }, { x: 36, y: 65, pos: 'CDM' },
+    { x: 50, y: 15, pos: 'LM' }, { x: 50, y: 50, pos: 'CAM' }, { x: 50, y: 85, pos: 'RM' },
+    { x: 63, y: 50, pos: 'ST' },
+  ],
+};
+
+function getFormationPos(formation: string, isHome: boolean): Array<{ x: number; y: number; pos: string }> {
+  const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
+  return isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
+}
 import { ptBR } from 'date-fns/locale';
 
 interface Challenge {
@@ -327,12 +355,18 @@ export default function ManagerChallengesPage() {
           : { data: [] };
         const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-        for (const slot of starterSlots) {
+        // Get formation positions for initial placement
+        const formPositions = getFormationPos(formation, true);
+
+        for (let si = 0; si < starterSlots.length; si++) {
+          const slot = starterSlots[si];
           const pUserId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
+          const fPos = formPositions[si] || { x: 30, y: 50 };
           participantsToInsert.push({
             match_id: match.id, player_profile_id: slot.player_profile_id || null,
             club_id: club.id, lineup_slot_id: slot.id, role_type: 'player',
             is_bot: !pUserId, is_ready: false, connected_user_id: pUserId || null,
+            pos_x: fPos.x, pos_y: fPos.y,
           });
         }
       }
