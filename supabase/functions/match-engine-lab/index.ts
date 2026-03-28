@@ -3255,23 +3255,42 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           if (ballHolderAction.target_participant_id) {
             nextBallHolderParticipantId = ballHolderAction.target_participant_id;
           } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
-            let closestDist = Infinity;
-            let closestId: string | null = null;
+            // Find closest player to pass destination — prioritize same team (receive/block actions only)
+            // then fallback to opponents only if they explicitly did receive/block
+            let closestTeammateDist = Infinity;
+            let closestTeammateId: string | null = null;
+            let closestOpponentDist = Infinity;
+            let closestOpponentId: string | null = null;
+
             for (const p of (participants || [])) {
               if (p.id === ballHolder.id) continue;
-              const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
-              const px = moveAction?.target_x ?? p.pos_x ?? 50;
-              const py = moveAction?.target_y ?? p.pos_y ?? 50;
+              if (p.role_type !== 'player') continue;
+              const moveAction = allActions.find((a: any) => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
+              const px = Number(moveAction?.target_x ?? p.pos_x ?? 50);
+              const py = Number(moveAction?.target_y ?? p.pos_y ?? 50);
               const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
-              if (dist < closestDist) { closestDist = dist; closestId = p.id; }
-            }
-            if (closestId && closestDist <= 8) {
-              nextBallHolderParticipantId = closestId;
-              const closestPlayer = (participants || []).find(p => p.id === closestId);
-              if (closestPlayer && closestPlayer.club_id !== possClubId) {
-                newPossessionClubId = closestPlayer.club_id;
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
+
+              if (p.club_id === possClubId) {
+                // Teammates: can claim with move or receive
+                if (dist < closestTeammateDist) { closestTeammateDist = dist; closestTeammateId = p.id; }
+              } else {
+                // Opponents: can only claim if they explicitly did receive/block (not just move)
+                const hasReceiveOrBlock = allActions.some((a: any) => a.participant_id === p.id && (a.action_type === 'receive' || a.action_type === 'block'));
+                if (hasReceiveOrBlock && dist < closestOpponentDist) { closestOpponentDist = dist; closestOpponentId = p.id; }
               }
+            }
+
+            // Teammate within 10 units gets priority
+            if (closestTeammateId && closestTeammateDist <= 10) {
+              nextBallHolderParticipantId = closestTeammateId;
+            } else if (closestOpponentId && closestOpponentDist <= 6) {
+              // Opponent only if very close AND did receive/block
+              nextBallHolderParticipantId = closestOpponentId;
+              newPossessionClubId = (participants || []).find((p: any) => p.id === closestOpponentId)?.club_id || possClubId;
+              await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
+            } else if (closestTeammateId && closestTeammateDist <= 15) {
+              // Teammate further away but still reachable
+              nextBallHolderParticipantId = closestTeammateId;
             } else {
               nextBallHolderParticipantId = null;
               await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Passe para área vazia. Ninguém está com a bola.' });
