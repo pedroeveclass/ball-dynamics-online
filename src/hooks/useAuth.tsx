@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
@@ -29,6 +29,11 @@ const AuthContext = createContext<AuthContextType>({
   refreshManagerProfile: async () => {},
 });
 
+// Deep compare to avoid new object references when data hasn't changed
+function stableSet<T>(setter: React.Dispatch<React.SetStateAction<T>>, newVal: T) {
+  setter(prev => JSON.stringify(prev) === JSON.stringify(newVal) ? prev : newVal);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -37,27 +42,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [managerProfile, setManagerProfile] = useState<any | null>(null);
   const [club, setClub] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const dataLoadedRef = useRef(false);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    setProfile(data);
+    stableSet(setProfile, data);
     return data;
   };
 
   const fetchPlayerProfile = async (userId: string) => {
     const { data } = await supabase.from('player_profiles').select('*').eq('user_id', userId).single();
-    setPlayerProfile(data);
+    stableSet(setPlayerProfile, data);
     return data;
   };
 
   const fetchManagerProfile = async (userId: string) => {
     const { data } = await supabase.from('manager_profiles').select('*').eq('user_id', userId).maybeSingle();
-    setManagerProfile(data);
+    stableSet(setManagerProfile, data);
     if (data) {
       const { data: clubData } = await supabase.from('clubs').select('*').eq('manager_profile_id', data.id).maybeSingle();
-      setClub(clubData ?? null);
+      stableSet(setClub, clubData ?? null);
     } else {
-      setClub(null);
+      stableSet(setClub, null);
     }
     return data;
   };
@@ -77,6 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       await fetchPlayerProfile(userId);
     }
+    dataLoadedRef.current = true;
+    currentUserIdRef.current = userId;
     setLoading(false);
   };
 
@@ -89,11 +98,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        setLoading(true);
-        setTimeout(() => {
-          if (mounted) loadUserData(session.user.id);
-        }, 0);
+        // Only do a full reload if:
+        // - Data hasn't been loaded yet (first load)
+        // - A different user signed in
+        const isNewUser = currentUserIdRef.current !== session.user.id;
+        if (!dataLoadedRef.current || isNewUser) {
+          setLoading(true);
+          setTimeout(() => {
+            if (mounted) loadUserData(session.user.id);
+          }, 0);
+        }
+        // For TOKEN_REFRESHED, SIGNED_IN (same user), etc. — do nothing.
+        // Data is already loaded and object refs are stable.
       } else {
+        dataLoadedRef.current = false;
+        currentUserIdRef.current = null;
         setProfile(null);
         setPlayerProfile(null);
         setManagerProfile(null);
@@ -102,16 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserData(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
+    // No separate getSession() call — onAuthStateChange with INITIAL_SESSION handles it.
+    // This avoids a race condition between getSession and the subscription.
 
     return () => {
       mounted = false;
@@ -121,6 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    dataLoadedRef.current = false;
+    currentUserIdRef.current = null;
     setSession(null);
     setUser(null);
     setProfile(null);
