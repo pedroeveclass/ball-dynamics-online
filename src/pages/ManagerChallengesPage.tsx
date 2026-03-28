@@ -215,11 +215,16 @@ export default function ManagerChallengesPage() {
       const { data: players } = playerIds.length > 0 ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds) : { data: [] };
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-      // Create participants from lineup slots
+      // Create participants from lineup slots with formation positions
       const slotParticipants = friendlySlots.map(slot => {
         const clubId = homeLineupId && slot.lineup_id === homeLineupId ? challenge.challenger_club_id : challenge.challenged_club_id;
+        const isHome = clubId === challenge.challenger_club_id;
         const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
-        return { match_id: match!.id, player_profile_id: slot.player_profile_id || null, club_id: clubId, lineup_slot_id: slot.id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId || null };
+        // Find matching position from FRIENDLY_3V3_COORDS
+        const role = getFriendlySlotRole(slot.slot_position);
+        const coords = FRIENDLY_3V3_COORDS.find(c => c.pos === role) || { x: 30, y: 50 };
+        const posX = isHome ? coords.x : 100 - coords.x;
+        return { match_id: match!.id, player_profile_id: slot.player_profile_id || null, club_id: clubId, lineup_slot_id: slot.id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId || null, pos_x: posX, pos_y: coords.y };
       });
 
       const botParticipants: any[] = [];
@@ -298,13 +303,12 @@ export default function ManagerChallengesPage() {
       }).select('id').single();
       if (matchError || !match) throw matchError || new Error('Falha');
       const userId = (await supabase.auth.getUser()).data.user?.id;
+      // 3v3 test: GK + CB + ST per team
+      const testHome = [{ x: 5, y: 50 }, { x: 25, y: 50 }, { x: 45, y: 50 }];
+      const testAway = testHome.map(p => ({ x: 100 - p.x, y: p.y }));
       await supabase.from('match_participants').insert([
-        { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 5, pos_y: 50 },
-        { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 25, pos_y: 50 },
-        { match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: 45, pos_y: 50 },
-        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 95, pos_y: 50 },
-        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 75, pos_y: 50 },
-        { match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: 55, pos_y: 50 },
+        ...testHome.map(p => ({ match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),
+        ...testAway.map(p => ({ match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),
         { match_id: match.id, club_id: club.id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: userId },
       ]);
       await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '3v3 — GK + CB + ST vs GK + CB + ST' });
