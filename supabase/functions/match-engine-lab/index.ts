@@ -2812,6 +2812,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               match_id, event_type: 'goal',
               title: `⚽ GOL! ${homeScore} – ${awayScore}`,
               body: `Turno ${match.current_turn_number}`,
+              payload: {
+                scorer_participant_id: ballHolder.id,
+                scorer_club_id: possClubId,
+                assister_participant_id: null,
+                goal_type: 'shot',
+              },
             });
 
             newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
@@ -2825,6 +2831,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               match_id, event_type: 'shot_missed',
               title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
               body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
+              payload: {
+                shooter_participant_id: ballHolder.id,
+              },
             });
             console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
           }
@@ -2840,10 +2849,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           nextBallHolderParticipantId = result.newBallHolderId;
           newPossessionClubId = result.newPossessionClubId || possClubId;
 
+          const resolvedEventType = result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete');
+          const resolvedPayload: Record<string, any> = {};
+          if (resolvedEventType === 'tackle') {
+            resolvedPayload.tackler_participant_id = result.newBallHolderId;
+            resolvedPayload.tackled_participant_id = ballHolder.id;
+          }
           await supabase.from('match_event_logs').insert({
-            match_id, event_type: result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete'),
+            match_id, event_type: resolvedEventType,
             title: result.possession_change ? `🔄 Troca de posse` : result.description,
             body: result.description,
+            ...(Object.keys(resolvedPayload).length > 0 ? { payload: resolvedPayload } : {}),
           });
         } else if (result.foul && result.foulPosition) {
           // Check if foul is inside penalty area
@@ -2862,6 +2878,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', ballHolder.id);
             await supabase.from('match_event_logs').insert({
               match_id, event_type: 'penalty', title: '🟥 PÊNALTI!', body: 'Falta dentro da área! Pênalti marcado.',
+              payload: {
+                fouler_participant_id: result.failedContestParticipantId,
+                fouled_participant_id: ballHolder.id,
+              },
             });
             nextSetPieceType = 'penalty';
             ballEndPos = { x: penaltyX, y: penaltyY };
@@ -2870,6 +2890,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', ballHolder.id);
             await supabase.from('match_event_logs').insert({
               match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
+              payload: {
+                fouler_participant_id: result.failedContestParticipantId,
+                fouled_participant_id: ballHolder.id,
+              },
             });
             nextSetPieceType = 'free_kick';
             ballEndPos = { x: foulX, y: foulY };
@@ -3096,8 +3120,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           } else {
             if (possClubId === match.away_club_id) awayScore++; else homeScore++;
           }
+          const ballGoalAction = ballHolder
+            ? allActions.find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+            : null;
+          const ballGoalType = ballGoalAction && isShootType(ballGoalAction.action_type) ? 'shot'
+            : (ballGoalAction && (ballGoalAction.action_type === 'pass_high' || ballGoalAction.action_type === 'pass_launch') ? 'header' : 'shot');
+          const isBallGoalOwnGoal = (inAwayGoal && possClubId !== match.home_club_id && possClubId !== match.away_club_id)
+            || (inHomeGoal && possClubId === match.home_club_id);
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Bola no fundo da rede!`,
+            payload: {
+              scorer_participant_id: ballHolder?.id || null,
+              scorer_club_id: possClubId,
+              assister_participant_id: null,
+              goal_type: isBallGoalOwnGoal ? 'own_goal' : ballGoalType,
+            },
           });
           newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
           nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
@@ -3121,6 +3158,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
+            payload: {
+              scorer_participant_id: ballHolder.id,
+              scorer_club_id: possClubId,
+              assister_participant_id: null,
+              goal_type: 'dribble',
+            },
           });
           newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
           nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);

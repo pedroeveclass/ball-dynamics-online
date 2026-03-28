@@ -1,9 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Trophy, Calendar, ArrowLeft, Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { ManagerLayout } from '@/components/ManagerLayout';
+import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 interface Club {
   id: string;
@@ -44,7 +51,24 @@ interface Round {
   league_matches: LeagueMatch[];
 }
 
+interface AvailableClub {
+  id: string;
+  name: string;
+  short_name: string;
+  primary_color: string;
+  secondary_color: string;
+  city: string | null;
+  stadiums: { id: string; name: string }[];
+}
+
+const PRESET_COLORS = [
+  '#1a5276', '#c0392b', '#27ae60', '#f39c12', '#8e44ad',
+  '#2c3e50', '#e74c3c', '#3498db', '#1abc9c', '#d35400',
+];
+
 export default function LeaguePage() {
+  const { user, managerProfile, club, refreshManagerProfile } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [leagueName, setLeagueName] = useState('');
   const [seasonNumber, setSeasonNumber] = useState(0);
@@ -53,9 +77,31 @@ export default function LeaguePage() {
   const [selectedRound, setSelectedRound] = useState<string | null>(null);
   const roundsRef = useRef<HTMLDivElement>(null);
 
+  // Available teams state
+  const [availableClubs, setAvailableClubs] = useState<AvailableClub[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<AvailableClub | null>(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [clubName, setClubName] = useState('');
+  const [shortName, setShortName] = useState('');
+  const [primaryColor, setPrimaryColor] = useState('#1a5276');
+  const [secondaryColor, setSecondaryColor] = useState('#FFFFFF');
+  const [cityName, setCityName] = useState('');
+  const [stadiumName, setStadiumName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Statistics state
+  const [topScorers, setTopScorers] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; goals: number }[]>([]);
+  const [topAssisters, setTopAssisters] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; assists: number }[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsLoaded, setStatsLoaded] = useState(false);
+  const [seasonId, setSeasonId] = useState<string | null>(null);
+
+  const isManagerWithoutClub = !!managerProfile && !club;
+
   useEffect(() => {
     fetchLeagueData();
-  }, []);
+    if (isManagerWithoutClub) fetchAvailableClubs();
+  }, [managerProfile, club]);
 
   async function fetchLeagueData() {
     try {
@@ -81,6 +127,7 @@ export default function LeaguePage() {
 
       if (!season) { setLoading(false); return; }
       setSeasonNumber(season.season_number);
+      setSeasonId(season.id);
 
       // 3. Fetch standings and rounds in parallel
       const [standingsRes, roundsRes] = await Promise.all([
@@ -154,6 +201,167 @@ export default function LeaguePage() {
     }
   }
 
+  async function fetchAvailableClubs() {
+    const { data } = await supabase
+      .from('clubs')
+      .select('id, name, short_name, primary_color, secondary_color, city, stadiums(id, name)')
+      .eq('is_bot_managed', true)
+      .not('league_id', 'is', null);
+    setAvailableClubs((data as any) || []);
+  }
+
+  async function fetchStatistics() {
+    if (!seasonId || statsLoaded) return;
+    setStatsLoading(true);
+    try {
+      // Get all league match IDs for this season
+      const { data: leagueMatches } = await supabase
+        .from('league_matches')
+        .select('match_id, league_rounds!inner(season_id)')
+        .eq('league_rounds.season_id', seasonId)
+        .not('match_id', 'is', null);
+
+      if (!leagueMatches || leagueMatches.length === 0) {
+        setStatsLoaded(true);
+        setStatsLoading(false);
+        return;
+      }
+
+      const matchIds = leagueMatches.map((lm: any) => lm.match_id).filter(Boolean);
+
+      // Fetch all goal events for these matches
+      const { data: goalEvents } = await supabase
+        .from('match_event_logs')
+        .select('payload, match_id')
+        .eq('event_type', 'goal')
+        .in('match_id', matchIds);
+
+      if (!goalEvents || goalEvents.length === 0) {
+        setStatsLoaded(true);
+        setStatsLoading(false);
+        return;
+      }
+
+      // Aggregate scorers and assisters
+      const scorerMap: Record<string, number> = {};
+      const assisterMap: Record<string, number> = {};
+      const participantIds = new Set<string>();
+
+      for (const ev of goalEvents) {
+        const payload = ev.payload as any;
+        if (!payload) continue;
+        if (payload.scorer_participant_id) {
+          scorerMap[payload.scorer_participant_id] = (scorerMap[payload.scorer_participant_id] || 0) + 1;
+          participantIds.add(payload.scorer_participant_id);
+        }
+        if (payload.assister_participant_id) {
+          assisterMap[payload.assister_participant_id] = (assisterMap[payload.assister_participant_id] || 0) + 1;
+          participantIds.add(payload.assister_participant_id);
+        }
+      }
+
+      if (participantIds.size === 0) {
+        setStatsLoaded(true);
+        setStatsLoading(false);
+        return;
+      }
+
+      // Fetch participant details (player name, club)
+      const { data: participantsData } = await supabase
+        .from('match_participants')
+        .select('id, club_id, player_profiles(display_name), clubs(name, short_name, primary_color, secondary_color)')
+        .in('id', Array.from(participantIds));
+
+      // Build lookup
+      const participantLookup: Record<string, { player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string }> = {};
+      // Deduplicate: same player may appear in multiple matches; use the first found
+      const seenProfiles = new Set<string>();
+      for (const p of (participantsData || [])) {
+        const profile = p.player_profiles as any;
+        const clubData = p.clubs as any;
+        const key = `${profile?.display_name}_${clubData?.name}`;
+        if (seenProfiles.has(key)) continue;
+        seenProfiles.add(key);
+        participantLookup[p.id] = {
+          player_name: profile?.display_name || 'Desconhecido',
+          club_name: clubData?.name || '',
+          club_short_name: clubData?.short_name || '',
+          club_primary_color: clubData?.primary_color || '#333',
+          club_secondary_color: clubData?.secondary_color || '#fff',
+        };
+      }
+
+      // Build sorted lists
+      const scorers = Object.entries(scorerMap)
+        .map(([pid, goals]) => ({ participant_id: pid, goals, ...(participantLookup[pid] || { player_name: 'Desconhecido', club_name: '', club_short_name: '', club_primary_color: '#333', club_secondary_color: '#fff' }) }))
+        .sort((a, b) => b.goals - a.goals)
+        .slice(0, 10);
+
+      const assisters = Object.entries(assisterMap)
+        .map(([pid, assists]) => ({ participant_id: pid, assists, ...(participantLookup[pid] || { player_name: 'Desconhecido', club_name: '', club_short_name: '', club_primary_color: '#333', club_secondary_color: '#fff' }) }))
+        .sort((a, b) => b.assists - a.assists)
+        .slice(0, 10);
+
+      setTopScorers(scorers);
+      setTopAssisters(assisters);
+    } catch (err) {
+      console.error('Error fetching statistics:', err);
+    } finally {
+      setStatsLoading(false);
+      setStatsLoaded(true);
+    }
+  }
+
+  function openCustomize(club: AvailableClub) {
+    setSelectedTeam(club);
+    setClubName(club.name);
+    setShortName(club.short_name);
+    setPrimaryColor(club.primary_color);
+    setSecondaryColor(club.secondary_color);
+    setCityName(club.city || '');
+    setStadiumName(club.stadiums?.[0]?.name || '');
+    setCustomizeOpen(true);
+  }
+
+  async function handleAssumeTeam() {
+    if (!selectedTeam || !managerProfile) return;
+    setSubmitting(true);
+    try {
+      // Update club with manager info
+      const { error: clubError } = await supabase
+        .from('clubs')
+        .update({
+          manager_profile_id: managerProfile.id,
+          name: clubName.trim(),
+          short_name: shortName.trim().toUpperCase(),
+          primary_color: primaryColor,
+          secondary_color: secondaryColor,
+          city: cityName.trim() || null,
+          is_bot_managed: false,
+        })
+        .eq('id', selectedTeam.id);
+      if (clubError) throw clubError;
+
+      // Update stadium name if changed
+      const originalStadium = selectedTeam.stadiums?.[0];
+      if (originalStadium && stadiumName.trim() !== originalStadium.name) {
+        await supabase.from('stadiums')
+          .update({ name: stadiumName.trim() })
+          .eq('id', originalStadium.id);
+      }
+
+      await refreshManagerProfile();
+      toast.success('Time assumido com sucesso!');
+      setCustomizeOpen(false);
+      navigate('/manager', { replace: true });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Erro ao assumir time');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function getStatusBadge(status: string) {
     switch (status) {
       case 'scheduled':
@@ -171,36 +379,39 @@ export default function LeaguePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      <ManagerLayout>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </ManagerLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation bar */}
-      <nav className="border-b bg-card">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-tactical" />
-              <h1 className="font-display text-lg font-bold">{leagueName || 'Liga'}</h1>
-            </div>
+    <ManagerLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-tactical" />
+            <h1 className="font-display text-2xl font-bold">{leagueName || 'Liga'}</h1>
           </div>
           <span className="text-sm text-muted-foreground">Temporada {seasonNumber}</span>
         </div>
-      </nav>
-
-      {/* Content */}
-      <div className="max-w-5xl mx-auto px-4 py-6">
         <Tabs defaultValue="standings" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 max-w-xs">
+          <TabsList className={`grid w-full ${isManagerWithoutClub ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
             <TabsTrigger value="standings">Classificação</TabsTrigger>
             <TabsTrigger value="rounds">Rodadas</TabsTrigger>
+            <TabsTrigger value="stats" onClick={() => fetchStatistics()}>Estatísticas</TabsTrigger>
+            {isManagerWithoutClub && (
+              <TabsTrigger value="available" className="relative">
+                Times
+                {availableClubs.length > 0 && (
+                  <span className="ml-1.5 bg-pitch text-white text-[10px] rounded-full px-1.5 py-0.5">
+                    {availableClubs.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Classificação tab */}
@@ -389,8 +600,292 @@ export default function LeaguePage() {
               </p>
             )}
           </TabsContent>
+          {/* Estatísticas tab */}
+          <TabsContent value="stats" className="space-y-6">
+            {statsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !statsLoaded || (topScorers.length === 0 && topAssisters.length === 0) ? (
+              <div className="text-center py-12">
+                <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground font-medium">Dados disponíveis após próximos jogos</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  As estatísticas detalhadas serão exibidas conforme as partidas forem jogadas.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                {standings.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {(() => {
+                      const bestAttack = [...standings].sort((a, b) => b.goals_for - a.goals_for)[0];
+                      const bestDefense = [...standings].sort((a, b) => a.goals_against - b.goals_against)[0];
+                      const mostWins = [...standings].sort((a, b) => b.won - a.won)[0];
+                      return (
+                        <>
+                          <div className="stat-card flex items-center gap-3 p-4">
+                            <div className="p-2 rounded-lg bg-green-500/10">
+                              <Swords className="h-5 w-5 text-green-500" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Melhor Ataque</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <div
+                                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                                  style={{ backgroundColor: bestAttack.clubs?.primary_color, color: bestAttack.clubs?.secondary_color }}
+                                >
+                                  {bestAttack.clubs?.short_name}
+                                </div>
+                                <span className="font-display font-bold text-sm">{bestAttack.clubs?.name}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">{bestAttack.goals_for} gols</p>
+                            </div>
+                          </div>
+                          <div className="stat-card flex items-center gap-3 p-4">
+                            <div className="p-2 rounded-lg bg-blue-500/10">
+                              <Shield className="h-5 w-5 text-blue-500" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Melhor Defesa</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <div
+                                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                                  style={{ backgroundColor: bestDefense.clubs?.primary_color, color: bestDefense.clubs?.secondary_color }}
+                                >
+                                  {bestDefense.clubs?.short_name}
+                                </div>
+                                <span className="font-display font-bold text-sm">{bestDefense.clubs?.name}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">{bestDefense.goals_against} gols sofridos</p>
+                            </div>
+                          </div>
+                          <div className="stat-card flex items-center gap-3 p-4">
+                            <div className="p-2 rounded-lg bg-yellow-500/10">
+                              <Award className="h-5 w-5 text-yellow-500" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Mais Vitórias</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <div
+                                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                                  style={{ backgroundColor: mostWins.clubs?.primary_color, color: mostWins.clubs?.secondary_color }}
+                                >
+                                  {mostWins.clubs?.short_name}
+                                </div>
+                                <span className="font-display font-bold text-sm">{mostWins.clubs?.name}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">{mostWins.won} vitórias</p>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Top Scorers */}
+                {topScorers.length > 0 && (
+                  <div className="stat-card overflow-x-auto">
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                      <Trophy className="h-4 w-4 text-tactical" />
+                      <h3 className="font-display font-bold text-sm">Artilharia</h3>
+                    </div>
+                    <table className="data-table w-full">
+                      <thead>
+                        <tr>
+                          <th className="w-8">#</th>
+                          <th>Jogador</th>
+                          <th className="w-10"></th>
+                          <th className="text-center w-16">Gols</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topScorers.map((s, i) => (
+                          <tr key={s.participant_id}>
+                            <td className="font-display font-bold text-center">{i + 1}</td>
+                            <td>
+                              <span className="font-medium text-sm">{s.player_name}</span>
+                            </td>
+                            <td>
+                              <div
+                                className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                                style={{ backgroundColor: s.club_primary_color, color: s.club_secondary_color }}
+                              >
+                                {s.club_short_name}
+                              </div>
+                            </td>
+                            <td className="text-center font-display text-lg font-bold">{s.goals}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Top Assists */}
+                {topAssisters.length > 0 && (
+                  <div className="stat-card overflow-x-auto">
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                      <Users className="h-4 w-4 text-tactical" />
+                      <h3 className="font-display font-bold text-sm">Assistências</h3>
+                    </div>
+                    <table className="data-table w-full">
+                      <thead>
+                        <tr>
+                          <th className="w-8">#</th>
+                          <th>Jogador</th>
+                          <th className="w-10"></th>
+                          <th className="text-center w-16">Assist.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topAssisters.map((a, i) => (
+                          <tr key={a.participant_id}>
+                            <td className="font-display font-bold text-center">{i + 1}</td>
+                            <td>
+                              <span className="font-medium text-sm">{a.player_name}</span>
+                            </td>
+                            <td>
+                              <div
+                                className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                                style={{ backgroundColor: a.club_primary_color, color: a.club_secondary_color }}
+                              >
+                                {a.club_short_name}
+                              </div>
+                            </td>
+                            <td className="text-center font-display text-lg font-bold">{a.assists}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          {/* Times Disponíveis tab */}
+          {isManagerWithoutClub && (
+            <TabsContent value="available" className="space-y-4">
+              {availableClubs.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {availableClubs.map((ac) => (
+                    <div key={ac.id} className="stat-card flex flex-col items-center text-center gap-3 p-4">
+                      <div
+                        className="h-14 w-14 rounded-lg flex items-center justify-center text-lg font-bold"
+                        style={{ backgroundColor: ac.primary_color, color: ac.secondary_color }}
+                      >
+                        {ac.short_name}
+                      </div>
+                      <div>
+                        <h3 className="font-display font-bold">{ac.name}</h3>
+                        {ac.city && <p className="text-xs text-muted-foreground">{ac.city}</p>}
+                      </div>
+                      <Button
+                        onClick={() => openCustomize(ac)}
+                        className="w-full bg-tactical hover:bg-tactical/90 text-white"
+                        size="sm"
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                        Assumir Time
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground">Nenhum time disponível no momento.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Você será notificado quando houver vagas.</p>
+                </div>
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       </div>
-    </div>
+
+      {/* Customize team dialog */}
+      <Dialog open={customizeOpen} onOpenChange={setCustomizeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Personalizar Time</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Badge preview */}
+            <div className="flex justify-center">
+              <div
+                className="h-16 w-16 rounded-lg flex items-center justify-center text-xl font-bold"
+                style={{ backgroundColor: primaryColor, color: secondaryColor }}
+              >
+                {shortName.toUpperCase() || '???'}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do Time</Label>
+              <Input value={clubName} onChange={e => setClubName(e.target.value)} maxLength={40} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Abreviação (3 letras)</Label>
+              <Input value={shortName} onChange={e => setShortName(e.target.value.slice(0, 3).toUpperCase())} maxLength={3} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Cor Principal</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_COLORS.map(c => (
+                    <button
+                      key={c}
+                      className={`h-6 w-6 rounded-full border-2 ${primaryColor === c ? 'border-foreground' : 'border-transparent'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setPrimaryColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Cor Secundária</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['#FFFFFF', '#000000', '#FFD700', '#FF6347', '#00FA9A', '#FF4500'].map(c => (
+                    <button
+                      key={c}
+                      className={`h-6 w-6 rounded-full border-2 ${secondaryColor === c ? 'border-foreground' : 'border-transparent'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setSecondaryColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cidade</Label>
+              <Input value={cityName} onChange={e => setCityName(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do Estádio</Label>
+              <Input value={stadiumName} onChange={e => setStadiumName(e.target.value)} />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomizeOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={handleAssumeTeam}
+              disabled={submitting || !clubName.trim() || shortName.trim().length !== 3}
+              className="bg-pitch hover:bg-pitch/90 text-white"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </ManagerLayout>
   );
 }

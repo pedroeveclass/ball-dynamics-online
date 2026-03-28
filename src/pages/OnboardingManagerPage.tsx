@@ -112,16 +112,35 @@ export default function OnboardingManagerPage() {
     if (!user) return;
     setSubmitting(true);
     try {
-      const { error: managerError } = await supabase
+      // Set role_selected = 'manager' on profiles table
+      const { error: roleError } = await supabase.from('profiles').update({ role_selected: 'manager' }).eq('id', user.id);
+      if (roleError) console.error('Failed to update role_selected:', roleError);
+
+      // Create or reuse existing ManagerProfile
+      const { data: existingManager } = await supabase
         .from('manager_profiles')
-        .insert({
-          user_id: user.id,
-          full_name: managerName.trim(),
-          coach_type: coachType,
-          reputation: 30,
-          money: 50000,
-        });
-      if (managerError) throw managerError;
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingManager) {
+        const { error: updateError } = await supabase
+          .from('manager_profiles')
+          .update({ full_name: managerName.trim(), coach_type: coachType })
+          .eq('id', existingManager.id);
+        if (updateError) throw updateError;
+      } else {
+        const { error: managerError } = await supabase
+          .from('manager_profiles')
+          .insert({
+            user_id: user.id,
+            full_name: managerName.trim(),
+            coach_type: coachType,
+            reputation: 30,
+            money: 50000,
+          });
+        if (managerError) throw managerError;
+      }
 
       await refreshManagerProfile();
       toast.success('Perfil criado com sucesso! Você será notificado quando houver vagas.');
@@ -139,19 +158,43 @@ export default function OnboardingManagerPage() {
     setSubmitting(true);
 
     try {
-      // 1. Create ManagerProfile
-      const { data: managerData, error: managerError } = await supabase
+      // 0. Set role_selected = 'manager' on profiles table
+      const { error: roleError2 } = await supabase.from('profiles').update({ role_selected: 'manager' }).eq('id', user.id);
+      if (roleError2) console.error('Failed to update role_selected:', roleError2);
+
+      // 1. Create or reuse existing ManagerProfile
+      let managerData: any;
+      const { data: existingManager } = await supabase
         .from('manager_profiles')
-        .insert({
-          user_id: user.id,
-          full_name: managerName.trim(),
-          coach_type: coachType,
-          reputation: 30,
-          money: 50000,
-        })
-        .select()
-        .single();
-      if (managerError) throw managerError;
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingManager) {
+        // Reuse existing — update name and coach type
+        const { data: updated, error: updateError } = await supabase
+          .from('manager_profiles')
+          .update({ full_name: managerName.trim(), coach_type: coachType })
+          .eq('id', existingManager.id)
+          .select()
+          .single();
+        if (updateError) throw updateError;
+        managerData = updated;
+      } else {
+        const { data: created, error: managerError } = await supabase
+          .from('manager_profiles')
+          .insert({
+            user_id: user.id,
+            full_name: managerName.trim(),
+            coach_type: coachType,
+            reputation: 30,
+            money: 50000,
+          })
+          .select()
+          .single();
+        if (managerError) throw managerError;
+        managerData = created;
+      }
 
       // 2. Update the selected club
       const { error: clubError } = await supabase

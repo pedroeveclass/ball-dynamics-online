@@ -51,11 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchManagerProfile = async (userId: string) => {
-    const { data } = await supabase.from('manager_profiles').select('*').eq('user_id', userId).single();
+    const { data } = await supabase.from('manager_profiles').select('*').eq('user_id', userId).maybeSingle();
     setManagerProfile(data);
     if (data) {
-      const { data: clubData } = await supabase.from('clubs').select('*').eq('manager_profile_id', data.id).single();
-      setClub(clubData);
+      const { data: clubData } = await supabase.from('clubs').select('*').eq('manager_profile_id', data.id).maybeSingle();
+      setClub(clubData ?? null);
     } else {
       setClub(null);
     }

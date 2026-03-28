@@ -31,6 +31,7 @@ export function ManagerRoute({ children }: { children: React.ReactNode }) {
   const { user, managerProfile, club, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
-  if (!managerProfile || !club) return <Navigate to="/onboarding/manager" replace />;
+  if (!managerProfile) return <Navigate to="/onboarding/manager" replace />;
+  // Manager without club is allowed — dashboard shows "no team" state
   return <>{children}</>;
 }

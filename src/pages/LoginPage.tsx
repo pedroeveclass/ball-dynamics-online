@@ -18,7 +18,7 @@ export default function LoginPage() {
   // Smart redirect based on role
   if (user && profile) {
     if (profile.role_selected === 'manager') {
-      if (managerProfile && club) return <Navigate to="/manager" replace />;
+      if (managerProfile) return <Navigate to="/manager" replace />;
       return <Navigate to="/onboarding/manager" replace />;
     } else {
       if (playerProfile) return <Navigate to="/player" replace />;
