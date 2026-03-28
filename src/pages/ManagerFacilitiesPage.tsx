@@ -17,7 +17,12 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
-const MAX_LEVEL = 5;
+const MAX_LEVEL: Record<string, number> = {
+  souvenir_shop: 5,
+  sponsorship: 5,
+  training_center: 5,
+  stadium: 10,
+};
 
 const FACILITY_STATS: Record<string, Record<number, { rev: number; cost: number; boost?: number }>> = {
   souvenir_shop: {
@@ -43,10 +48,15 @@ const FACILITY_STATS: Record<string, Record<number, { rev: number; cost: number;
   },
   stadium: {
     1: { rev: 0, cost: 2000 },
-    2: { rev: 0, cost: 4000 },
-    3: { rev: 0, cost: 7000 },
-    4: { rev: 0, cost: 12000 },
-    5: { rev: 0, cost: 20000 },
+    2: { rev: 0, cost: 3500 },
+    3: { rev: 0, cost: 5500 },
+    4: { rev: 0, cost: 8000 },
+    5: { rev: 0, cost: 12000 },
+    6: { rev: 0, cost: 18000 },
+    7: { rev: 0, cost: 25000 },
+    8: { rev: 0, cost: 35000 },
+    9: { rev: 0, cost: 48000 },
+    10: { rev: 0, cost: 65000 },
   },
 };
 
@@ -55,6 +65,11 @@ const UPGRADE_COSTS: Record<number, number> = {
   2: 150000,
   3: 400000,
   4: 1000000,
+  5: 2500000,
+  6: 5000000,
+  7: 10000000,
+  8: 20000000,
+  9: 50000000,
 };
 
 const FACILITY_META: { key: string; label: string; icon: React.ElementType }[] = [
@@ -210,7 +225,8 @@ export default function ManagerFacilitiesPage() {
             const level = getFacilityLevel(meta.key);
             const stats = getStats(meta.key);
             const netProfit = stats.rev - stats.cost;
-            const isMaxLevel = level >= MAX_LEVEL;
+            const maxLvl = MAX_LEVEL[meta.key] || 5;
+            const isMaxLevel = level >= maxLvl;
             const upgradeCost = UPGRADE_COSTS[level];
             const canAfford = upgradeCost ? balance >= upgradeCost : false;
 
@@ -235,10 +251,10 @@ export default function ManagerFacilitiesPage() {
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-muted-foreground">Nível</span>
                       <span className="font-display font-bold">
-                        {level} / {MAX_LEVEL}
+                        {level} / {maxLvl}
                       </span>
                     </div>
-                    <Progress value={(level / MAX_LEVEL) * 100} className="h-2" />
+                    <Progress value={(level / maxLvl) * 100} className="h-2" />
                   </div>
 
                   {/* Stats */}

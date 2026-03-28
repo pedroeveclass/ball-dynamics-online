@@ -29,6 +29,7 @@ import PlayerMatchesPage from "./pages/PlayerMatchesPage";
 import MatchRoomPage from "./pages/MatchRoomPage";
 import SoloPhysicsLabPage from "./pages/SoloPhysicsLabPage";
 import LeaguePage from "./pages/LeaguePage";
+import PublicClubPage from "./pages/PublicClubPage";
 import LeagueScheduleVotePage from "./pages/LeagueScheduleVotePage";
 import ManagerFacilitiesPage from "./pages/ManagerFacilitiesPage";
 import AccountProfilePage from "./pages/AccountProfilePage";
@@ -75,6 +76,7 @@ const App = () => (
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
             <Route path="/match-lab/solo" element={<ProtectedRoute><SoloPhysicsLabPage /></ProtectedRoute>} />
             <Route path="/league" element={<LeaguePage />} />
+            <Route path="/club/:clubId" element={<PublicClubPage />} />
             <Route path="/league/vote" element={<ManagerRoute><LeagueScheduleVotePage /></ManagerRoute>} />
             <Route path="/manager/facilities" element={<ManagerRoute><ManagerFacilitiesPage /></ManagerRoute>} />
             <Route path="/account/profile" element={<ProtectedRoute><AccountProfilePage /></ProtectedRoute>} />
