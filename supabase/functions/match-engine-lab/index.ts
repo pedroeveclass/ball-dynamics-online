@@ -3252,49 +3252,39 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
         } else if (isPassType(ballHolderAction.action_type)) {
-          if (ballHolderAction.target_participant_id) {
-            nextBallHolderParticipantId = ballHolderAction.target_participant_id;
-          } else if (ballHolderAction.target_x != null && ballHolderAction.target_y != null) {
-            // Find closest player to pass destination — prioritize same team (receive/block actions only)
-            // then fallback to opponents only if they explicitly did receive/block
-            let closestTeammateDist = Infinity;
-            let closestTeammateId: string | null = null;
-            let closestOpponentDist = Infinity;
-            let closestOpponentId: string | null = null;
+          // RULE: Only players who explicitly did 'receive' can get possession.
+          // If nobody did receive on the ball trajectory, it's a loose ball.
+          const receiversOnTrajectory = allActions.filter((a: any) =>
+            a.participant_id !== ballHolder.id &&
+            a.action_type === 'receive' &&
+            a.target_x != null && a.target_y != null
+          );
 
-            for (const p of (participants || [])) {
-              if (p.id === ballHolder.id) continue;
-              if (p.role_type !== 'player') continue;
-              const moveAction = allActions.find((a: any) => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
-              const px = Number(moveAction?.target_x ?? p.pos_x ?? 50);
-              const py = Number(moveAction?.target_y ?? p.pos_y ?? 50);
-              const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
-
-              if (p.club_id === possClubId) {
-                // Teammates: can claim with move or receive
-                if (dist < closestTeammateDist) { closestTeammateDist = dist; closestTeammateId = p.id; }
-              } else {
-                // Opponents: can only claim if they explicitly did receive/block (not just move)
-                const hasReceiveOrBlock = allActions.some((a: any) => a.participant_id === p.id && (a.action_type === 'receive' || a.action_type === 'block'));
-                if (hasReceiveOrBlock && dist < closestOpponentDist) { closestOpponentDist = dist; closestOpponentId = p.id; }
-              }
+          if (receiversOnTrajectory.length > 0) {
+            // Find the receiver closest to the pass destination
+            let bestDist = Infinity;
+            let bestId: string | null = null;
+            for (const rcv of receiversOnTrajectory) {
+              const dist = Math.sqrt(
+                (Number(rcv.target_x) - ballHolderAction.target_x) ** 2 +
+                (Number(rcv.target_y) - ballHolderAction.target_y) ** 2
+              );
+              if (dist < bestDist) { bestDist = dist; bestId = rcv.participant_id; }
             }
-
-            // Teammate within 10 units gets priority
-            if (closestTeammateId && closestTeammateDist <= 10) {
-              nextBallHolderParticipantId = closestTeammateId;
-            } else if (closestOpponentId && closestOpponentDist <= 6) {
-              // Opponent only if very close AND did receive/block
-              nextBallHolderParticipantId = closestOpponentId;
-              newPossessionClubId = (participants || []).find((p: any) => p.id === closestOpponentId)?.club_id || possClubId;
-              await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado pelo adversário mais próximo.' });
-            } else if (closestTeammateId && closestTeammateDist <= 15) {
-              // Teammate further away but still reachable
-              nextBallHolderParticipantId = closestTeammateId;
+            if (bestId) {
+              nextBallHolderParticipantId = bestId;
+              const receiver = (participants || []).find((p: any) => p.id === bestId);
+              if (receiver && receiver.club_id !== possClubId) {
+                newPossessionClubId = receiver.club_id;
+                await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado!' });
+              }
             } else {
               nextBallHolderParticipantId = null;
-              await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Passe para área vazia. Ninguém está com a bola.' });
             }
+          } else {
+            // Nobody did receive — ball is loose
+            nextBallHolderParticipantId = null;
+            await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: 'Ninguém dominou a bola.' });
           }
         } else if (ballHolderAction.action_type === 'move') {
           nextBallHolderParticipantId = ballHolder.id;
