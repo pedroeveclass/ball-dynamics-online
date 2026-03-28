@@ -1179,19 +1179,19 @@ async function generateBotActions(
       const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
       const clubChasers = looseBallChasersByClub.get(bot.club_id) ?? 0;
 
-      if (distToBall < 10 && clubChasers < 2) {
-        // Close enough and can chase: try to dominate
+      if (distToBall < 12 && clubChasers < 2) {
         looseBallChasersByClub.set(bot.club_id, clubChasers + 1);
-        if (distToBall < 8) {
+        if (distToBall <= 3) {
+          // Already on top of the ball — can receive
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: 'receive',
             target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
           });
         } else {
-          // Move toward ball
-          const targetX = posX + (ballPos.x - posX) * 0.5;
-          const targetY = posY + (ballPos.y - posY) * 0.5;
+          // Move toward ball first — need to get there before receiving
+          const targetX = posX + (ballPos.x - posX) * 0.7;
+          const targetY = posY + (ballPos.y - posY) * 0.7;
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: 'move',
