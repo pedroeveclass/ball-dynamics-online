@@ -1,9 +1,30 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
-import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award } from 'lucide-react';
+import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft } from 'lucide-react';
+
+// Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
+function LeagueLayout({ children }: { children: ReactNode }) {
+  const { managerProfile, loading } = useAuth();
+  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+  if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
+  return (
+    <div className="min-h-screen bg-background">
+      <nav className="border-b bg-card">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <Trophy className="h-5 w-5 text-tactical" />
+          <span className="font-display text-lg font-bold">Liga</span>
+        </div>
+      </nav>
+      <div className="max-w-5xl mx-auto px-4 py-6">{children}</div>
+    </div>
+  );
+}
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -379,16 +400,16 @@ export default function LeaguePage() {
 
   if (loading) {
     return (
-      <ManagerLayout>
+      <LeagueLayout>
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      </ManagerLayout>
+      </LeagueLayout>
     );
   }
 
   return (
-    <ManagerLayout>
+    <LeagueLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -460,7 +481,7 @@ export default function LeaguePage() {
                             >
                               {club?.short_name}
                             </div>
-                            <span className="font-medium text-sm">{club?.name}</span>
+                            <Link to={`/club/${club?.id}`} className="font-medium text-sm hover:text-tactical hover:underline transition-colors">{club?.name}</Link>
                           </div>
                         </td>
                         <td className="text-center">{s.played}</td>
@@ -886,6 +907,6 @@ export default function LeaguePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </ManagerLayout>
+    </LeagueLayout>
   );
 }
