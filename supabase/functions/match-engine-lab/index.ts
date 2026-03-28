@@ -1406,20 +1406,17 @@ function computeDeviation(
       minRandomDeviation = 5.0 + (dist / 50) * 10.0;
       break;
     case 'shoot_controlled': {
-      // dist=20: ~5u | dist=35: ~10u
-      const goalX = targetX > 50 ? 100 : 0;
-      const distToGoal = Math.abs(startX - goalX);
-      const distPenalty = distToGoal > 20 ? Math.pow((distToGoal - 20) / 60, 1.5) * 10 : 0;
-      difficultyMultiplier = 20 + distPenalty;
+      // Same curve as pass_low
+      difficultyMultiplier = 25;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
-      minRandomDeviation = 1.5 + (dist / 80) * 5.0;
+      minRandomDeviation = dist < 15 ? 0.5 : dist < 30 ? 3.0 + (dist / 50) * 6.0 : 6.0 + (dist / 50) * 10.0;
       break;
     }
     case 'shoot_power':
-      // Keep aggressive — shoot_power already feels good
-      difficultyMultiplier = 88;
+      // Same curve as pass_high
+      difficultyMultiplier = 40;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
-      minRandomDeviation = 6.0 + (dist / 80) * 10.0;
+      minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
