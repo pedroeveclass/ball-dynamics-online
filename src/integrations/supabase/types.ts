@@ -934,6 +934,41 @@ export type Database = {
           },
         ]
       }
+      match_chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          match_id: string
+          message: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          match_id: string
+          message: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          match_id?: string
+          message?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_chat_messages_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_event_logs: {
         Row: {
           body: string
@@ -1051,6 +1086,38 @@ export type Database = {
             columns: ["player_profile_id"]
             isOneToOne: false
             referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_snapshots: {
+        Row: {
+          created_at: string
+          id: string
+          match_id: string
+          snapshot: Json
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          match_id: string
+          snapshot: Json
+          turn_number: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          match_id?: string
+          snapshot?: Json
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_snapshots_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
             referencedColumns: ["id"]
           },
         ]
@@ -1669,6 +1736,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cleanup_old_snapshots: { Args: never; Returns: undefined }
       current_user_active_club_id_uuid: { Args: never; Returns: string }
       current_user_managed_club_id: { Args: never; Returns: string }
       current_user_manager_profile_id: { Args: never; Returns: string }
