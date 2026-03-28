@@ -1159,10 +1159,15 @@ export default function MatchRoomPage() {
       // Check if a one-touch action was already injected for this ball holder
       const hasOneTouchAction = turnActions.some(a =>
         a.participant_id === activeTurn.ball_holder_participant_id &&
-        a.payload && typeof a.payload === 'object' && (a.payload as any).one_touch_executed === true
+        a.payload && typeof a.payload === 'object' &&
+        ((a.payload as any).one_touch_executed === true || (a.payload as any).one_touch === true)
       );
-      if (hasOneTouchAction) {
-        // One-touch action already set — skip auto-open, the action is pre-determined
+      if (hasOneTouchAction) return;
+
+      // Don't open if one-touch pending for this ball holder (set when user submitted one-touch last turn)
+      if (oneTouchPendingForRef.current === activeTurn.ball_holder_participant_id) {
+        oneTouchPendingForRef.current = null;
+        // Also block with a delayed recheck in case realtime hasn't delivered the action yet
         return;
       }
 
@@ -1175,12 +1180,6 @@ export default function MatchRoomPage() {
         a.action_type !== 'receive'
       );
       if (bhHasAction) return;
-
-      // Don't open if one-touch pending for this ball holder
-      if (oneTouchPendingForRef.current === activeTurn.ball_holder_participant_id) {
-        oneTouchPendingForRef.current = null;
-        return;
-      }
 
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
       const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;

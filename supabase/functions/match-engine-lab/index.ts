@@ -2306,6 +2306,26 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         fillBots(m.home_club_id, homeParts.length, homeFormation, true),
         fillBots(m.away_club_id, awayParts.length, awayFormation, false),
       ]);
+
+      // ── Position ALL existing players to formation positions ──
+      const positionExistingPlayers = async (parts: any[], formation: string, isHome: boolean) => {
+        if (parts.length === 0) return;
+        const positions = getFormationForFill(formation, isHome);
+        const updates: Promise<any>[] = [];
+        parts.forEach((p: any, i: number) => {
+          const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
+          updates.push(
+            supabase.from('match_participants').update({ pos_x: pos.x, pos_y: pos.y }).eq('id', p.id)
+          );
+        });
+        if (updates.length > 0) await Promise.all(updates);
+      };
+
+      await Promise.all([
+        positionExistingPlayers(homeParts, homeFormation, true),
+        positionExistingPlayers(awayParts, awayFormation, false),
+      ]);
+      console.log(`[ENGINE] Positioned existing players: home=${homeParts.length} away=${awayParts.length}`);
     }
 
     // ── Ensure each team has a GK (including test matches / 3x3) ──
