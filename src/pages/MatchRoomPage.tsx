@@ -3934,8 +3934,8 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
   // Load initial messages + subscribe to realtime
   useEffect(() => {
     if (!matchId) return;
-    supabase.from('match_chat_messages').select('*').eq('match_id', matchId).order('created_at', { ascending: true }).limit(100)
-      .then(({ data }) => { if (data) setChatMessages(data as any); });
+    (supabase.from('match_chat_messages') as any).select('*').eq('match_id', matchId).order('created_at', { ascending: true }).limit(100)
+      .then(({ data }: any) => { if (data) setChatMessages(data); });
 
     const channel = supabase.channel(`chat-${matchId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_chat_messages', filter: `match_id=eq.${matchId}` },
