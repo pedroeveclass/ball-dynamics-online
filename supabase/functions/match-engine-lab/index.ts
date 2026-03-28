@@ -1937,8 +1937,8 @@ async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: s
       : Promise.resolve({ data: [] }),
   ]);
 
-  const slotMap = new Map((slots || []).map((slot: any) => [slot.id, slot.slot_position]));
-  const profilePosMap = new Map((profiles || []).map((profile: any) => [profile.id, profile.primary_position]));
+  const slotMap = new Map<string, string>((slots || []).map((slot: any) => [slot.id, slot.slot_position]));
+  const profilePosMap = new Map<string, string>((profiles || []).map((profile: any) => [profile.id, profile.primary_position]));
   const gkIdByClub = getGoalkeeperIdsByClub(candidates, slotMap, profilePosMap);
   const clubGoalkeeperId = gkIdByClub.get(clubId);
   const nonGoalkeeperCandidates = candidates.filter((participant: any) => participant.id !== clubGoalkeeperId);
