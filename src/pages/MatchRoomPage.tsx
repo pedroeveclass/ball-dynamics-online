@@ -121,6 +121,8 @@ interface PendingInterceptChoice {
   participantId: string;
   targetX: number;
   targetY: number;
+  trajectoryActionType?: string;
+  trajectoryProgress?: number;
 }
 
 interface PlayerProfileSummary {
@@ -154,7 +156,7 @@ const ACTION_LABELS: Record<string, string> = {
   pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
   shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
   press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
-  block_lane: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
+  block_lane: 'BLOQUEAR ROTA', block: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
 
 const PHASE_DURATION = 10;
@@ -1466,11 +1468,11 @@ export default function MatchRoomPage() {
       setPendingInterceptChoice(null);
       return;
     }
-    if (actionType === 'receive') {
+    if (actionType === 'receive' || actionType === 'block') {
       if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
-        submitAction('receive', participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
+        submitAction(actionType, participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
       } else {
-        submitAction('receive', participantId);
+        submitAction(actionType, participantId);
       }
       setShowActionMenu(null);
       setPendingInterceptChoice(null);
@@ -1523,7 +1525,10 @@ export default function MatchRoomPage() {
         next_target_participant_id: nearPlayer?.id || null,
       };
       oneTouchPendingForRef.current = drawingAction.fromParticipantId;
-      submitAction('receive', drawingAction.fromParticipantId, pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY, undefined, oneTouchNextPayload);
+      // Use block or receive based on trajectory context
+      const oneTouchReceiveActions = getReceiveActions(drawingAction.fromParticipantId);
+      const oneTouchActionType = oneTouchReceiveActions.includes('block') && !oneTouchReceiveActions.includes('receive') ? 'block' : 'receive';
+      submitAction(oneTouchActionType, drawingAction.fromParticipantId, pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY, undefined, oneTouchNextPayload);
     } else if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
@@ -1639,7 +1644,7 @@ export default function MatchRoomPage() {
         }
         
         if (!isRedZone && canReach) {
-          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: interceptTargetX, targetY: interceptTargetY });
+          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: interceptTargetX, targetY: interceptTargetY, trajectoryActionType: ballPathAction.action_type, trajectoryProgress: _t });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
           setMouseFieldPct(null);
@@ -1667,7 +1672,7 @@ export default function MatchRoomPage() {
               const tlen2 = tdx * tdx + tdy * tdy;
               const tCursor = tlen2 > 0 ? clamp(((pctX - looseBallPos.x) * tdx + (pctY - looseBallPos.y) * tdy) / tlen2, 0, 1) : 0;
               if (movePct <= tCursor) {
-                setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+                setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY, trajectoryActionType: ballTrajectoryAction.action_type, trajectoryProgress: tCursor });
                 setShowActionMenu(drawingAction.fromParticipantId);
                 setDrawingAction(null);
                 setMouseFieldPct(null);
@@ -2255,6 +2260,31 @@ export default function MatchRoomPage() {
     || { shirt_color: awayClub?.primary_color ?? '#16a34a', number_color: awayClub?.secondary_color ?? '#fff' };
   const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
+  // Determine receive/block actions based on ball trajectory type
+  const getReceiveActions = (participantId: string): string[] => {
+    const pic = pendingInterceptChoice;
+    if (!pic || pic.participantId !== participantId) return ['receive'];
+    const trajType = pic.trajectoryActionType;
+    const trajProgress = pic.trajectoryProgress ?? 0.5;
+    const p = participants.find(x => x.id === participantId);
+    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
+    const isHome = p?.club_id === match.home_club_id;
+    const gkX = p?.field_x ?? 50;
+    const inBox = isGK && (isHome ? (gkX <= 18) : (gkX >= 82));
+
+    // Shoot trajectory
+    if (trajType && isShootAction(trajType)) {
+      if (isGK && inBox) return ['receive', 'block']; // Agarrar + Espalmar
+      return ['block']; // Bloquear for outfield (and GK outside box)
+    }
+    // pass_high or pass_launch in initial zone (progress < 0.2)
+    if (trajType && (trajType === 'pass_high' || trajType === 'pass_launch') && trajProgress < 0.2) {
+      return ['block'];
+    }
+    // pass_high or pass_launch in final zone (progress > 0.8) or pass_low: normal receive
+    return ['receive'];
+  };
+
   // Get actions for current phase
   const getActionsForParticipant = (participantId: string): string[] => {
     if (!activeTurn || isPhaseProcessing) return [];
@@ -2276,6 +2306,9 @@ export default function MatchRoomPage() {
       return actions.filter(a => a !== 'shoot_controlled' && a !== 'shoot_power');
     };
 
+    // Build receive/block actions based on trajectory context
+    const receiveActions = getReceiveActions(participantId);
+
     // Positioning turn: move only, ball holder can't move
     if (isPositioningTurn) {
       if (isBH) return []; // Ball holder (kicker) can't reposition
@@ -2287,8 +2320,8 @@ export default function MatchRoomPage() {
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
-      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots(['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
-      if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
+      if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? [...receiveActions, 'move', 'no_action'] : ['no_action', 'move'];
       return [];
     }
 
@@ -2304,8 +2337,8 @@ export default function MatchRoomPage() {
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
-    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots(['receive', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
-    if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? ['receive', 'move', 'no_action'] : ['no_action', 'move'];
+    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
+    if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? [...receiveActions, 'move', 'no_action'] : ['no_action', 'move'];
     return [];
   };
 
@@ -2703,6 +2736,9 @@ export default function MatchRoomPage() {
     }
     if (action.action_type === 'receive') {
       return { color: '#1a1a2e', markerId: 'ah-cyan', strokeW: 2 };
+    }
+    if (action.action_type === 'block') {
+      return { color: '#f59e0b', markerId: 'ah-yellow', strokeW: 2.5 };
     }
     if (isShootAction(action.action_type)) {
       const color = action.target_x != null && action.target_y != null
@@ -3577,7 +3613,11 @@ export default function MatchRoomPage() {
             {/* Intercept zone hint */}
             {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
               <div className="absolute bottom-2 right-2 bg-background/80 border border-blue-500/30 rounded px-3 py-1 z-30">
-                <span className="text-[9px] font-display text-blue-400">Mova para a zona azul para DOMINAR BOLA</span>
+                <span className="text-[9px] font-display text-blue-400">
+                  {isShootAction(ballTrajectoryAction.action_type)
+                    ? 'Mova para a zona azul para BLOQUEAR / DEFENDER'
+                    : 'Mova para a zona azul para DOMINAR BOLA'}
+                </span>
               </div>
             )}
 
@@ -3946,6 +3986,17 @@ const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchActionMe
         else if (a === 'shoot_controlled') icon = '🎯';
         else if (a === 'shoot_power') icon = '💥';
         else if (a === 'no_action') icon = '⊘';
+        else if (a === 'block') {
+          const menuPlayer = participants.find(p => p.id === showActionMenu);
+          const isGK = menuPlayer?.field_pos === 'GK' || menuPlayer?.slot_position === 'GK';
+          if (isGK) {
+            label = 'ESPALMAR';
+            icon = '🧤';
+          } else {
+            label = 'BLOQUEAR';
+            icon = '🛡️';
+          }
+        }
         else if (a === 'receive') {
           icon = '🤲';
           const menuPlayer = participants.find(p => p.id === showActionMenu);
@@ -3956,25 +4007,12 @@ const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchActionMe
             if (bhAction.action_type === 'move' && isOpponent) {
               label = 'DESARME';
               icon = '🦵';
-            } else if (isShootAction(bhAction.action_type) && isOpponent) {
-              const isGK = menuPlayer.field_pos === 'GK';
+            } else if (isShootAction(bhAction.action_type)) {
+              // When receive appears alongside block for GK on shoots, it means "Agarrar" (catch)
+              const isGK = menuPlayer.field_pos === 'GK' || menuPlayer?.slot_position === 'GK';
               if (isGK) {
-                const gkX = menuPlayer.field_x ?? 50;
-                const gkY = menuPlayer.field_y ?? 50;
-                const isHome = menuPlayer.club_id === match?.home_club_id;
-                const inBox = isHome
-                  ? (gkX <= 18 && gkY >= 20 && gkY <= 80)
-                  : (gkX >= 82 && gkY >= 20 && gkY <= 80);
-                if (inBox) {
-                  label = 'DEFENDER';
-                  icon = '🧤';
-                } else {
-                  label = 'BLOQUEAR';
-                  icon = '🛡️';
-                }
-              } else {
-                label = 'BLOQUEAR';
-                icon = '🛡️';
+                label = 'AGARRAR';
+                icon = '🧤';
               }
             }
           }

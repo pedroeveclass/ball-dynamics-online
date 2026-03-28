@@ -858,6 +858,22 @@ async function generateBotActions(
 
   const actions: any[] = [];
 
+  // Query ball holder's action type for defending_response decisions (block vs receive)
+  let bhActionType: string | null = null;
+  if (phase === 'defending_response' && ballHolderId) {
+    const { data: bhActions } = await supabase
+      .from('match_actions')
+      .select('action_type')
+      .eq('match_id', matchId)
+      .eq('participant_id', ballHolderId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (bhActions && bhActions.length > 0) {
+      bhActionType = bhActions[0].action_type;
+    }
+  }
+
   // Track loose ball chasers (max 2 per team)
   const looseBallChasersByClub = new Map<string, number>();
 
@@ -1198,10 +1214,11 @@ async function generateBotActions(
             const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
             
             if (distToIntercept <= maxMoveRange) {
-              // Can reach — submit receive action to try to save/intercept
+              // Can reach — GK prefers block (espalmar) 70% for shoots, receive (agarrar) 30%
+              const gkActionType = (bhActionType && isShootType(bhActionType) && Math.random() < 0.7) ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: 'receive',
+                controlled_by_type: 'bot', action_type: gkActionType,
                 target_x: interceptX, target_y: interceptY, status: 'pending',
               });
             } else {
@@ -1224,10 +1241,11 @@ async function generateBotActions(
         } else if (role === 'centerBack' || role === 'fullBack') {
           // ── Defenders: tackle if close, otherwise mark attackers ──
           if (bhDist <= maxMoveRange) {
-            // Close enough to tackle — submit receive to intercept the ball carrier
+            // Close enough to tackle — use block for shoots or early zone of high passes, receive otherwise
+            const defActionType = (bhActionType && (isShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch') && bhDist < 8))) ? 'block' : 'receive';
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'receive',
+              controlled_by_type: 'bot', action_type: defActionType,
               target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
             });
           } else {
@@ -1268,10 +1286,11 @@ async function generateBotActions(
         } else if (role === 'defensiveMid' || role === 'centralMid') {
           // ── Midfielders: press if close, tackle if very close ──
           if (bhDist <= maxMoveRange) {
-            // Very close — try to tackle
+            // Very close — use block for shoots or early zone of high passes, receive otherwise
+            const midActionType = (bhActionType && (isShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch') && bhDist < 8))) ? 'block' : 'receive';
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'receive',
+              controlled_by_type: 'bot', action_type: midActionType,
               target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
             });
           } else if (bhDist < 18) {
@@ -1403,7 +1422,7 @@ async function generateBotActions(
 
   // ── Clamp all bot move actions to max movement range ──
   for (const action of actions) {
-    if ((action.action_type === 'move' || action.action_type === 'receive') && action.target_x != null && action.target_y != null) {
+    if ((action.action_type === 'move' || action.action_type === 'receive' || action.action_type === 'block') && action.target_x != null && action.target_y != null) {
       const bot = botsToAct.find(b => b.id === action.participant_id);
       if (bot) {
         const botRaw = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
@@ -1532,7 +1551,24 @@ function computeDeviation(
 }
 
 // ─── Height-based interception zones ─────────────────────────────
-function getInterceptableRanges(actionType: string): Array<[number, number]> {
+function getInterceptableRanges(actionType: string, interceptActionType?: string): Array<[number, number]> {
+  // Block actions have different interceptable zones than receive
+  if (interceptActionType === 'block') {
+    switch (actionType) {
+      case 'shoot_controlled':
+      case 'shoot_power':
+      case 'shoot':
+        return [[0, 1]]; // entire trajectory is blockable for shoots
+      case 'pass_high':
+      case 'pass_launch':
+        return [[0, 0.2]]; // block-only zone at start of high passes
+      case 'pass_low':
+        return []; // no block needed for pass_low (use receive instead)
+      default:
+        return [];
+    }
+  }
+  // Receive actions (default)
   switch (actionType) {
     case 'pass_low':
       return [[0, 1]]; // fully interceptable
@@ -1559,14 +1595,26 @@ function isShootType(action: string): boolean {
   return action === 'shoot' || action === 'shoot_controlled' || action === 'shoot_power';
 }
 
+function isBlockType(t: string): boolean { return t === 'block'; }
+
 // ─── Skill-based interception probability ────────────────────
 interface InterceptContext {
-  type: 'tackle' | 'receive_pass' | 'block_shot' | 'gk_save';
+  type: 'tackle' | 'receive_pass' | 'block_shot' | 'gk_save' | 'block';
   baseChance: number;
+  defenderRole?: string;
 }
 
-function getInterceptContext(bhActionType: string, interceptorClubId: string, bhClubId: string, interceptorRoleType: string): InterceptContext {
+function getInterceptContext(bhActionType: string, interceptorClubId: string, bhClubId: string, interceptorRoleType: string, interceptorActionType?: string): InterceptContext {
   const isOpponent = interceptorClubId !== bhClubId;
+
+  // If interceptor explicitly chose 'block' action
+  if (interceptorActionType === 'block') {
+    const isGK = interceptorRoleType === 'GK';
+    if (isGK) {
+      return { type: 'block', baseChance: 0.50, defenderRole: 'goalkeeper' };
+    }
+    return { type: 'block', baseChance: 0.30, defenderRole: 'outfield' };
+  }
 
   if (bhActionType === 'move' && isOpponent) {
     return { type: 'tackle', baseChance: 0.45 };
@@ -1591,6 +1639,7 @@ function computeInterceptSuccess(
   defenderAttrs: Record<string, number>,
   ballHeightZone?: 'green' | 'yellow' | 'red',
   defenderHeight?: string,
+  ballActionType?: string,
 ): { success: boolean; chance: number; foul: boolean; card?: 'yellow' } {
   let attackerSkill: number;
   let defenderSkill: number;
@@ -1620,6 +1669,19 @@ function computeInterceptSuccess(
         normalizeAttr(attackerAttrs.curva ?? 40) * 0.3);
       defenderSkill = (normalizeAttr(defenderAttrs.reflexo ?? 40) * 0.3 + normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) * 0.25 +
         normalizeAttr(defenderAttrs.um_contra_um ?? 40) * 0.25 + normalizeAttr(defenderAttrs.tempo_reacao ?? 40) * 0.2);
+      break;
+    case 'block':
+      if (context.defenderRole === 'goalkeeper') {
+        // GK espalmar: easier than agarrar
+        attackerSkill = (normalizeAttr(attackerAttrs.acuracia_chute ?? 40) + normalizeAttr(attackerAttrs.forca_chute ?? 40)) / 2;
+        defenderSkill = (normalizeAttr(defenderAttrs.reflexo ?? 40) + normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) + normalizeAttr(defenderAttrs.pegada ?? 40)) / 3;
+      } else {
+        // Outfield block: much harder
+        attackerSkill = isShootType(ballActionType || '')
+          ? (normalizeAttr(attackerAttrs.forca_chute ?? 40) + normalizeAttr(attackerAttrs.acuracia_chute ?? 40)) / 2
+          : (normalizeAttr(attackerAttrs.passe_alto ?? 40) + normalizeAttr(attackerAttrs.passe_baixo ?? 40)) / 2;
+        defenderSkill = (normalizeAttr(defenderAttrs.antecipacao ?? 40) + normalizeAttr(defenderAttrs.coragem ?? 40) + normalizeAttr(defenderAttrs.posicionamento_defensivo ?? 40)) / 3;
+      }
       break;
   }
 
@@ -1689,7 +1751,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const keys = ['drible','controle_bola','forca','agilidade','desarme','marcacao','antecipacao',
       'passe_baixo','passe_alto','visao_jogo','tomada_decisao','um_toque','acuracia_chute',
       'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao',
-      'cabeceio','pulo','defesa_aerea'];
+      'cabeceio','pulo','defesa_aerea','posicionamento_defensivo','pegada'];
     for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
     return result;
   };
@@ -1708,7 +1770,10 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const defAttrs = getFullAttrs(candidate.participant);
     const slotPos = candidate.participant.slot_position || candidate.participant._slot_position || candidate.participant.field_pos || '';
     const isGK = slotPos === 'GK';
-    const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player');
+    // Find the interceptor's action to check if they used 'block'
+    const interceptorAction = allActions.find((a: any) => a.participant_id === candidate.participant.id && (a.action_type === 'receive' || a.action_type === 'block'));
+    const interceptorActionType = interceptorAction?.action_type;
+    const context = getInterceptContext(bhActionType, candidate.participant.club_id, bh?.club_id || possClubId, isGK ? 'GK' : 'player', interceptorActionType);
     let ballHeightZone: 'green' | 'yellow' | 'red' = 'green';
     const t = candidate.progress;
     if (bhActionType === 'pass_high') {
@@ -1719,21 +1784,26 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       else if (t > 0.05 && t < 0.95) ballHeightZone = 'yellow';
     }
     const defHeight = getPlayerHeight(candidate.participant);
-    const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight);
+    const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType);
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
       if (context.type === 'tackle') {
         return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       }
-      if (context.type === 'block_shot') {
+      if (context.type === 'block' || context.type === 'block_shot') {
+        // Block: ball deflects opposite to shot direction + randomness (loose ball)
         const blockX = candidate.interceptX ?? 50;
         const blockY = candidate.interceptY ?? 50;
-        const deflectAngle = Math.random() * 2 * Math.PI;
-        const deflectDist = 3 + Math.random() * 5;
-        const looseBallX = Math.max(0, Math.min(100, blockX + Math.cos(deflectAngle) * deflectDist));
-        const looseBallY = Math.max(0, Math.min(100, blockY + Math.sin(deflectAngle) * deflectDist));
-        return { success: false, event: 'blocked', description: `🛡️ Bloqueio! (${chancePct})`, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
+        const shotDx = _attacker.target_x - Number(bh?.pos_x ?? 50);
+        const shotDy = _attacker.target_y - Number(bh?.pos_y ?? 50);
+        const shotAngle = Math.atan2(shotDy, shotDx);
+        const deflectAngle = shotAngle + Math.PI + (Math.random() - 0.5) * Math.PI; // opposite + up to ±90°
+        const deflectDist = 5 + Math.random() * 15; // 5-20 units
+        const looseBallX = Math.max(1, Math.min(99, blockX + Math.cos(deflectAngle) * deflectDist));
+        const looseBallY = Math.max(1, Math.min(99, blockY + Math.sin(deflectAngle) * deflectDist));
+        const blockDesc = (context.type === 'block' && context.defenderRole === 'goalkeeper') ? `🧤 Goleiro espalmou! (${chancePct})` : `🛡️ Bloqueio! (${chancePct})`;
+        return { success: false, event: 'block', description: blockDesc, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
       }
       if (context.type === 'gk_save') {
         return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
@@ -1748,7 +1818,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `🦵 Desarme falhou! (${chancePct})` };
     }
 
-    if (context.type === 'block_shot') console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Chute continua.`);
+    if (context.type === 'block_shot' || context.type === 'block') console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Bola continua.`);
     else if (context.type === 'gk_save') console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
     else console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
   }
@@ -1770,12 +1840,17 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
   const endY = ballHolderAction.target_y;
 
   const bhActionType = ballHolderAction.action_type || 'move';
-  const interceptableRanges = getInterceptableRanges(bhActionType);
+
+  // Ball speed: faster ball = less time to move = reduced interception range
+  const ballSpeedFactor =
+    isShootType(bhActionType) ? (bhActionType === 'shoot_power' ? 0.3 : 0.5) :
+    (bhActionType === 'pass_high' || bhActionType === 'pass_launch') ? 0.65 :
+    1.0; // pass_low = normal speed
 
   const interceptors: Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> = [];
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
-    if (a.action_type !== 'receive' || a.target_x == null || a.target_y == null) continue;
+    if ((a.action_type !== 'receive' && a.action_type !== 'block') || a.target_x == null || a.target_y == null) continue;
     const actionParticipant = participants.find((p: any) => p.id === a.participant_id);
     if (actionParticipant?.is_sent_off) continue;
 
@@ -1790,6 +1865,8 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
 
     const threshold = 2;
     if (dist <= threshold) {
+      // Use per-action interceptable ranges (block vs receive have different zones)
+      const interceptableRanges = getInterceptableRanges(bhActionType, a.action_type);
       const isInInterceptableZone = interceptableRanges.some(([lo, hi]) => t >= lo && t <= hi);
       if (isInInterceptableZone) {
         // ── Physical reach validation ──
@@ -1804,11 +1881,12 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             forca: Number(pRaw?.forca ?? 40),
           };
           const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+          const adjustedMaxRange = maxRange * ballSpeedFactor;
           const posX = Number(interceptor.pos_x ?? 50);
           const posY = Number(interceptor.pos_y ?? 50);
           const distToIntercept = Math.sqrt((posX - cx) ** 2 + (posY - cy) ** 2);
-          if (distToIntercept > maxRange) {
-            console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+          if (distToIntercept > adjustedMaxRange) {
+            console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor})`);
             continue;
           }
         }
@@ -2020,7 +2098,7 @@ function computeBallControlDifficulty(
 }
 
 function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number): any | null {
-  const receiveActions = allActions.filter((a) => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
+  const receiveActions = allActions.filter((a) => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
 
   for (const action of receiveActions) {
@@ -2123,7 +2201,7 @@ async function handleSetPiece(
 
   const getSlotPos = (p: any): string => String(slotMap.get(p.lineup_slot_id) || p._slot_position || '');
   const getPlayerFinalPos = (p: any) => {
-    const moveAct = allActions.find((ac: any) => ac.participant_id === p.id && (ac.action_type === 'move' || ac.action_type === 'receive'));
+    const moveAct = allActions.find((ac: any) => ac.participant_id === p.id && (ac.action_type === 'move' || ac.action_type === 'receive' || ac.action_type === 'block'));
     return { x: Number(moveAct?.target_x ?? p.pos_x ?? 50), y: Number(moveAct?.target_y ?? p.pos_y ?? 50) };
   };
 
@@ -2955,7 +3033,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const resolutionMoveUpdates: Promise<any>[] = [];
     for (const a of allActions) {
       console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
-      if ((a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null) {
+      if ((a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null) {
         // Skip ball holder's move if they have a ball action — defer it after ball resolution
         if (a.participant_id === ballHolder?.id && a.action_type === 'move' && bhHasBallAction) {
           console.log(`[ENGINE] Deferring BH move until after ball resolution`);
@@ -3040,10 +3118,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
           }
         } else if (result.looseBallPos) {
-          // Shot blocked — ball deflects to random position
+          // Shot/pass blocked — ball deflects to random position
           nextBallHolderParticipantId = null;
           await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'blocked',
+            match_id, event_type: result.event || 'blocked',
             title: result.description,
             body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
           });
@@ -3161,7 +3239,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           if (result.failedContestParticipantId) {
             const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
             if (failedPart) {
-              const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
+              const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
               if (failMoveAct) {
                 // Reduce their movement by 25% — move them only 75% of the way
                 const startX = Number(failedPart.pos_x ?? 50);
@@ -3181,7 +3259,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             let closestId: string | null = null;
             for (const p of (participants || [])) {
               if (p.id === ballHolder.id) continue;
-              const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive'));
+              const moveAction = allActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
               const px = moveAction?.target_x ?? p.pos_x ?? 50;
               const py = moveAction?.target_y ?? p.pos_y ?? 50;
               const dist = Math.sqrt((px - ballHolderAction.target_x) ** 2 + (py - ballHolderAction.target_y) ** 2);
@@ -3328,7 +3406,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (nextBallHolderParticipantId) {
         const holder = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
         if (holder) {
-          const moveAct = allActions.find((a: any) => a.participant_id === holder.id && (a.action_type === 'move' || a.action_type === 'receive'));
+          const moveAct = allActions.find((a: any) => a.participant_id === holder.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
           ballEndPos = {
             x: Number(moveAct?.target_x ?? holder.pos_x ?? 50),
             y: Number(moveAct?.target_y ?? holder.pos_y ?? 50),
