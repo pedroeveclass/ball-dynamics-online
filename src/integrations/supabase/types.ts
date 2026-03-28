@@ -1135,14 +1135,18 @@ export type Database = {
           away_score: number
           away_uniform: number
           created_at: string
+          current_half: number
           current_phase: string | null
           current_turn_number: number
           finished_at: string | null
+          half_started_at: string | null
           home_club_id: string
           home_lineup_id: string | null
           home_score: number
           home_uniform: number
           id: string
+          injury_time_start_turn: number | null
+          injury_time_turns: number
           possession_club_id: string | null
           scheduled_at: string
           started_at: string | null
@@ -1155,14 +1159,18 @@ export type Database = {
           away_score?: number
           away_uniform?: number
           created_at?: string
+          current_half?: number
           current_phase?: string | null
           current_turn_number?: number
           finished_at?: string | null
+          half_started_at?: string | null
           home_club_id: string
           home_lineup_id?: string | null
           home_score?: number
           home_uniform?: number
           id?: string
+          injury_time_start_turn?: number | null
+          injury_time_turns?: number
           possession_club_id?: string | null
           scheduled_at?: string
           started_at?: string | null
@@ -1175,14 +1183,18 @@ export type Database = {
           away_score?: number
           away_uniform?: number
           created_at?: string
+          current_half?: number
           current_phase?: string | null
           current_turn_number?: number
           finished_at?: string | null
+          half_started_at?: string | null
           home_club_id?: string
           home_lineup_id?: string | null
           home_score?: number
           home_uniform?: number
           id?: string
+          injury_time_start_turn?: number | null
+          injury_time_turns?: number
           possession_club_id?: string | null
           scheduled_at?: string
           started_at?: string | null
