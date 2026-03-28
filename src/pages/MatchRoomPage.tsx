@@ -463,6 +463,7 @@ export default function MatchRoomPage() {
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
   const prevTurnWasPositioningRef = useRef<boolean>(false);
+  const oneTouchPendingForRef = useRef<string | null>(null);
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -1165,6 +1166,22 @@ export default function MatchRoomPage() {
         return;
       }
 
+      // Don't reopen if ball holder already submitted
+      const bhAlreadySubmitted = submittedActions.has(activeTurn.ball_holder_participant_id);
+      if (bhAlreadySubmitted) return;
+
+      const bhHasAction = turnActions.some(a =>
+        a.participant_id === activeTurn.ball_holder_participant_id &&
+        a.action_type !== 'receive'
+      );
+      if (bhHasAction) return;
+
+      // Don't open if one-touch pending for this ball holder
+      if (oneTouchPendingForRef.current === activeTurn.ball_holder_participant_id) {
+        oneTouchPendingForRef.current = null;
+        return;
+      }
+
       const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
       const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
       const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
@@ -1178,7 +1195,7 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
@@ -1488,6 +1505,7 @@ export default function MatchRoomPage() {
           : pctY,
         next_target_participant_id: nearPlayer?.id || null,
       };
+      oneTouchPendingForRef.current = drawingAction.fromParticipantId;
       submitAction('receive', drawingAction.fromParticipantId, pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY, undefined, oneTouchNextPayload);
     } else if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
@@ -1537,10 +1555,13 @@ export default function MatchRoomPage() {
         ballPathAction.target_y != null &&
         (canContestBallPath || canContestCarrierMove)
       ) {
-        const _tdx = ballPathAction.target_x - ballHolderNow.field_x;
-        const _tdy = ballPathAction.target_y - ballHolderNow.field_y;
+        const _bhIsBH = ballPathAction.participant_id === activeTurn?.ball_holder_participant_id;
+        const _bhOriginX = _bhIsBH ? (ballHolderNow.field_x + 1.2) : ballHolderNow.field_x;
+        const _bhOriginY = _bhIsBH ? (ballHolderNow.field_y - 1.2) : ballHolderNow.field_y;
+        const _tdx = ballPathAction.target_x - _bhOriginX;
+        const _tdy = ballPathAction.target_y - _bhOriginY;
         const _tlen2 = _tdx * _tdx + _tdy * _tdy;
-        const _t = _tlen2 > 0 ? clamp(((pctX - ballHolderNow.field_x) * _tdx + (pctY - ballHolderNow.field_y) * _tdy) / _tlen2, 0, 1) : 0;
+        const _t = _tlen2 > 0 ? clamp(((pctX - _bhOriginX) * _tdx + (pctY - _bhOriginY) * _tdy) / _tlen2, 0, 1) : 0;
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
@@ -1555,8 +1576,8 @@ export default function MatchRoomPage() {
           const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
           const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
           
-          const bfx = ballHolderNow.field_x;
-          const bfy = ballHolderNow.field_y;
+          const bfx = _bhOriginX;
+          const bfy = _bhOriginY;
           const btx = ballPathAction.target_x;
           const bty = ballPathAction.target_y;
           
@@ -2858,7 +2879,10 @@ export default function MatchRoomPage() {
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
                 (() => {
-                  const fromSvg = toSVG(ballTrajectoryHolder.field_x!, ballTrajectoryHolder.field_y!);
+                  const holderIsBH = ballTrajectoryAction?.participant_id === activeTurn?.ball_holder_participant_id;
+                  const originX = holderIsBH ? (ballTrajectoryHolder.field_x! + 1.2) : ballTrajectoryHolder.field_x!;
+                  const originY = holderIsBH ? (ballTrajectoryHolder.field_y! - 1.2) : ballTrajectoryHolder.field_y!;
+                  const fromSvg = toSVG(originX, originY);
                   const toSvgPt = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                   const dx = toSvgPt.x - fromSvg.x;
                   const dy = toSvgPt.y - fromSvg.y;
@@ -3785,6 +3809,8 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
               e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
               e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
               e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
+              e.event_type === 'yellow_card' ? 'border-yellow-400 text-yellow-300 font-bold' :
+              e.event_type === 'red_card' ? 'border-red-500 text-red-400 font-bold' :
               e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
               e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
               'border-border text-foreground/60'
@@ -4059,6 +4085,8 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
           <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
           {ballHolderId === p.id && <span className="text-[8px]">⚽</span>}
           {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">✓</span>}
+          {(p as any).yellow_cards >= 1 && <span className="text-[8px]">🟨</span>}
+          {(p as any).is_sent_off && <span className="text-[8px]">🟥</span>}
         </button>
       ))}
     </div>

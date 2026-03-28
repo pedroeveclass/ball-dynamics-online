@@ -784,6 +784,7 @@ async function generateBotActions(
 
   for (const p of participants) {
     if (p.role_type !== 'player') continue;
+    if (p.is_sent_off) continue;
     if (submittedParticipantIds.has(p.id)) continue;
 
     const isAttacker = p.club_id === possClubId;
@@ -1390,22 +1391,22 @@ function computeDeviation(
 
   switch (actionType) {
     case 'pass_low': {
-      // Short passes (≤20) are easy, long passes (>35) get exponentially harder
-      const longPenalty = dist > 35 ? Math.pow((dist - 35) / 65, 1.2) * 4 : 0;
-      difficultyMultiplier = 5 + longPenalty;
+      // Short passes (≤20) are easy, long passes (>30) get exponentially harder
+      const longPenalty = dist > 30 ? Math.pow((dist - 30) / 70, 1.2) * 4 : 0;
+      difficultyMultiplier = 8 + longPenalty;
       skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
-      minRandomDeviation = dist > 25 ? 0.4 + (dist / 100) * 0.6 : 0.3;
+      minRandomDeviation = dist > 25 ? 0.8 + (dist / 100) * 2.0 : 0.3;
       break;
     }
     case 'pass_high':
-      difficultyMultiplier = 10;
+      difficultyMultiplier = 14;
       skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
-      minRandomDeviation = 0.5 + (dist / 100) * 0.8;
+      minRandomDeviation = 1.0 + (dist / 100) * 1.5;
       break;
     case 'pass_launch':
-      difficultyMultiplier = 9;
+      difficultyMultiplier = 12;
       skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
-      minRandomDeviation = 0.5 + (dist / 100) * 0.7;
+      minRandomDeviation = 0.8 + (dist / 100) * 1.2;
       break;
     case 'shoot_controlled': {
       // Distance to goal penalty — shots from midfield are very hard
@@ -1414,13 +1415,13 @@ function computeDeviation(
       const distPenalty = distToGoal > 25 ? Math.pow((distToGoal - 25) / 75, 1.5) * 5 : 0;
       difficultyMultiplier = 7 + distPenalty;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
-      minRandomDeviation = 0.4 + (distToGoal / 100) * 0.8;
+      minRandomDeviation = 0.4 + (dist / 100) * 0.8;
       break;
     }
     case 'shoot_power':
-      difficultyMultiplier = 8;
+      difficultyMultiplier = 10;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
-      minRandomDeviation = 0.6;
+      minRandomDeviation = 0.8 + (dist / 100) * 0.6;
       break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
@@ -1429,9 +1430,11 @@ function computeDeviation(
   // Exponential distance factor instead of linear
   const distFactor = Math.pow(dist / 100, 1.4) * difficultyMultiplier;
   // Skill curve: even 99 skill has some deviation via minRandomDeviation
-  const skillCurve = Math.pow(1 - skillFactor, 2.5);
+  const skillCurve = Math.pow(1 - skillFactor, 1.8);
+  // Distance amplifier: long passes/shots (40+ units) get extra deviation
+  const distAmplifier = dist > 40 ? 1 + (dist - 40) / 30 : 1;
   // Final deviation = skill-based + random floor
-  const deviationRadius = (distFactor * skillCurve + minRandomDeviation) * (0.5 + Math.random() * 0.5);
+  const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.5 + Math.random() * 0.5);
   const angle = Math.random() * 2 * Math.PI;
   let actualX = targetX + Math.cos(angle) * deviationRadius;
   let actualY = targetY + Math.sin(angle) * deviationRadius;
@@ -1512,7 +1515,7 @@ function computeInterceptSuccess(
   defenderAttrs: Record<string, number>,
   ballHeightZone?: 'green' | 'yellow' | 'red',
   defenderHeight?: string,
-): { success: boolean; chance: number; foul: boolean } {
+): { success: boolean; chance: number; foul: boolean; card?: 'yellow' } {
   let attackerSkill: number;
   let defenderSkill: number;
 
@@ -1560,17 +1563,37 @@ function computeInterceptSuccess(
 
   successChance = Math.max(0.05, Math.min(0.95, successChance));
   const roll = Math.random();
-  const success = roll < successChance;
+  let success = roll < successChance;
 
   let foul = false;
-  if (context.type === 'tackle' && !success) {
+  if (context.type === 'tackle') {
     const tackleSkill = (normalizeAttr(defenderAttrs.desarme ?? 40) + normalizeAttr(defenderAttrs.marcacao ?? 40)) / 2;
-    const foulChance = (1 - tackleSkill) * 0.35;
-    foul = Math.random() < foulChance;
+    if (success) {
+      // Hard tackle wins ball but might be a foul
+      const foulChance = (1 - tackleSkill) * 0.20;
+      foul = Math.random() < foulChance;
+    } else {
+      // Failed tackle has higher foul chance
+      const foulChance = (1 - tackleSkill) * 0.55 + 0.10;
+      foul = Math.random() < foulChance;
+    }
+    if (foul && success) {
+      // Foul overrides the successful tackle — possession stays with attacker
+      success = false;
+    }
   }
 
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} foul=${foul} zone=${ballHeightZone || 'green'}`);
-  return { success, chance: successChance, foul };
+  let card: 'yellow' | undefined;
+  if (foul) {
+    const recklessness = 1 - normalizeAttr(defenderAttrs.tomada_decisao ?? 40);
+    const yellowChance = 0.25 + recklessness * 0.15; // ~25-40% of fouls get yellow
+    if (Math.random() < yellowChance) {
+      card = 'yellow';
+    }
+  }
+
+  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} foul=${foul} card=${card || 'none'} zone=${ballHeightZone || 'green'}`);
+  return { success, chance: successChance, foul, card };
 }
 
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number): {
@@ -1582,6 +1605,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   failedContestLog?: string;
   foul?: boolean;
   foulPosition?: { x: number; y: number };
+  card?: 'yellow';
 } {
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
@@ -1619,7 +1643,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       else if (t > 0.05 && t < 0.95) ballHeightZone = 'yellow';
     }
     const defHeight = getPlayerHeight(candidate.participant);
-    const { success, chance, foul } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight);
+    const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight);
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
@@ -1643,7 +1667,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
 
     if (context.type === 'tackle') {
       if (foul) {
-        return { success: false, event: 'foul', description: `🟡 Falta! (Desarme: ${chancePct})`, possession_change: false, goal: false, foul: true, foulPosition: { x: candidate.interceptX ?? 50, y: candidate.interceptY ?? 50 }, failedContestParticipantId: candidate.participant.id, failedContestLog: `🟡 Falta cometida! (${chancePct})` };
+        return { success: false, event: 'foul', description: `🟡 Falta! (Desarme: ${chancePct})`, possession_change: false, goal: false, foul: true, foulPosition: { x: candidate.interceptX ?? 50, y: candidate.interceptY ?? 50 }, failedContestParticipantId: candidate.participant.id, failedContestLog: `🟡 Falta cometida! (${chancePct})`, card };
       }
       return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `🦵 Desarme falhou! (${chancePct})` };
     }
@@ -1676,6 +1700,8 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
     if (a.action_type !== 'receive' || a.target_x == null || a.target_y == null) continue;
+    const actionParticipant = participants.find((p: any) => p.id === a.participant_id);
+    if (actionParticipant?.is_sent_off) continue;
 
     const dx = endX - startX;
     const dy = endY - startY;
@@ -1731,15 +1757,16 @@ const KICKOFF_X = 50;
 const KICKOFF_Y = 50;
 
 async function pickCenterKickoffPlayer(supabase: any, matchId: string, clubId: string, seededParticipants?: any[]): Promise<string | null> {
-  let candidates = (seededParticipants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player');
+  let candidates = (seededParticipants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && !p.is_sent_off);
 
   if (candidates.length === 0) {
     const { data } = await supabase
       .from('match_participants')
-      .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y, created_at')
+      .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y, created_at, is_sent_off')
       .eq('match_id', matchId)
       .eq('club_id', clubId)
-      .eq('role_type', 'player');
+      .eq('role_type', 'player')
+      .neq('is_sent_off', true);
     candidates = data || [];
   }
 
@@ -2560,6 +2587,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
     : null;
 
+  // Safety: if ball holder was sent off, trigger loose ball
+  if (ballHolder && ballHolder.is_sent_off) {
+    const looseX = Number(ballHolder.pos_x ?? 50);
+    const looseY = Number(ballHolder.pos_y ?? 50);
+    await supabase.from('match_turns').update({ ball_holder_participant_id: null, ball_x: looseX, ball_y: looseY }).eq('id', activeTurn.id);
+    activeTurn.ball_holder_participant_id = null;
+    console.log(`[ENGINE] Ball holder ${ballHolder.id} was sent off — loose ball at (${looseX}, ${looseY})`);
+  }
+
   const isLooseBall = !activeTurn.ball_holder_participant_id;
 
   if (activeTurn.phase !== 'resolution') {
@@ -2902,6 +2938,42 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             await supabase.from('match_event_logs').insert({
               match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
             });
+          }
+          // ── Yellow / Red card processing ──
+          if (result.card === 'yellow' && result.failedContestParticipantId) {
+            const foulerParticipant = participants?.find((p: any) => p.id === result.failedContestParticipantId);
+            let foulerName = 'Jogador';
+            if (foulerParticipant?.player_profile_id) {
+              const { data: profileData } = await supabase.from('player_profiles').select('display_name').eq('id', foulerParticipant.player_profile_id).single();
+              if (profileData?.display_name) foulerName = profileData.display_name;
+            }
+            // Increment yellow cards
+            const prevYellows = Number(foulerParticipant?.yellow_cards ?? 0);
+            const newYellows = prevYellows + 1;
+            const updateData: Record<string, any> = { yellow_cards: newYellows };
+            if (newYellows >= 2) {
+              updateData.is_sent_off = true;
+            }
+            await supabase.from('match_participants').update(updateData).eq('id', result.failedContestParticipantId);
+            // Update local participant cache
+            if (foulerParticipant) {
+              foulerParticipant.yellow_cards = newYellows;
+              if (newYellows >= 2) foulerParticipant.is_sent_off = true;
+            }
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'yellow_card',
+              title: '🟨 Cartão Amarelo!',
+              body: `${foulerName} recebeu cartão amarelo.`,
+              payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName },
+            });
+            if (newYellows >= 2) {
+              await supabase.from('match_event_logs').insert({
+                match_id, event_type: 'red_card',
+                title: '🟥 Cartão Vermelho! Segundo amarelo!',
+                body: `${foulerName} recebeu o segundo amarelo e foi expulso!`,
+                payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName },
+              });
+            }
           }
         } else if (result.event === 'dribble') {
           // Tackle failed, dribble succeeded
