@@ -1387,31 +1387,36 @@ function computeDeviation(
 
   switch (actionType) {
     case 'pass_low': {
-      difficultyMultiplier = 80;
+      // Short (<15): ~1u | Medium (20-30): 5-11u | Long (50): ~20u
+      difficultyMultiplier = 25;
       skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
-      minRandomDeviation = dist < 15 ? 1.0 : dist < 30 ? 6.0 + (dist / 50) * 12.0 : 12.0 + (dist / 50) * 20.0;
+      minRandomDeviation = dist < 15 ? 0.5 : dist < 30 ? 3.0 + (dist / 50) * 6.0 : 6.0 + (dist / 50) * 10.0;
       break;
     }
     case 'pass_high':
-      difficultyMultiplier = 110;
+      // dist=25: 8-15u | dist=35: 10-18u | dist=50: 15-25u
+      difficultyMultiplier = 40;
       skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
-      minRandomDeviation = 8.0 + (dist / 50) * 16.0;
+      minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
     case 'pass_launch':
-      difficultyMultiplier = 100;
+      // dist=30: 10-18u | dist=50: 18-30u | dist=70: 30-50u
+      difficultyMultiplier = 35;
       skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
-      minRandomDeviation = 10.0 + (dist / 50) * 20.0;
+      minRandomDeviation = 5.0 + (dist / 50) * 10.0;
       break;
     case 'shoot_controlled': {
+      // dist=20: ~5u | dist=35: ~10u
       const goalX = targetX > 50 ? 100 : 0;
       const distToGoal = Math.abs(startX - goalX);
-      const distPenalty = distToGoal > 20 ? Math.pow((distToGoal - 20) / 60, 1.5) * 30 : 0;
-      difficultyMultiplier = 60 + distPenalty;
+      const distPenalty = distToGoal > 20 ? Math.pow((distToGoal - 20) / 60, 1.5) * 10 : 0;
+      difficultyMultiplier = 20 + distPenalty;
       skillFactor = normalizeAttr(attrs.acuracia_chute ?? 40);
-      minRandomDeviation = 2.0 + (dist / 80) * 8.0;
+      minRandomDeviation = 1.5 + (dist / 80) * 5.0;
       break;
     }
     case 'shoot_power':
+      // Keep aggressive — shoot_power already feels good
       difficultyMultiplier = 88;
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
       minRandomDeviation = 6.0 + (dist / 80) * 10.0;
