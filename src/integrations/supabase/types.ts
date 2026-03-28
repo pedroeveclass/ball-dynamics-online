@@ -942,6 +942,7 @@ export type Database = {
           id: string
           is_bot: boolean
           is_ready: boolean
+          is_sent_off: boolean
           lineup_slot_id: string | null
           match_id: string
           player_profile_id: string | null
@@ -949,6 +950,7 @@ export type Database = {
           pos_y: number | null
           role_type: string
           updated_at: string
+          yellow_cards: number
         }
         Insert: {
           club_id: string
@@ -957,6 +959,7 @@ export type Database = {
           id?: string
           is_bot?: boolean
           is_ready?: boolean
+          is_sent_off?: boolean
           lineup_slot_id?: string | null
           match_id: string
           player_profile_id?: string | null
@@ -964,6 +967,7 @@ export type Database = {
           pos_y?: number | null
           role_type?: string
           updated_at?: string
+          yellow_cards?: number
         }
         Update: {
           club_id?: string
@@ -972,6 +976,7 @@ export type Database = {
           id?: string
           is_bot?: boolean
           is_ready?: boolean
+          is_sent_off?: boolean
           lineup_slot_id?: string | null
           match_id?: string
           player_profile_id?: string | null
@@ -979,6 +984,7 @@ export type Database = {
           pos_y?: number | null
           role_type?: string
           updated_at?: string
+          yellow_cards?: number
         }
         Relationships: [
           {
