@@ -13,34 +13,7 @@ import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, F
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-
-// Formation positions for initial player placement (must match engine FORMATION_POSITIONS)
-const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
-  '4-4-2': [
-    { x: 5, y: 50, pos: 'GK' },
-    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
-    { x: 42, y: 15, pos: 'LM' }, { x: 42, y: 37, pos: 'CM' }, { x: 42, y: 63, pos: 'CM' }, { x: 42, y: 85, pos: 'RM' },
-    { x: 60, y: 35, pos: 'ST' }, { x: 60, y: 65, pos: 'ST' },
-  ],
-  '4-3-3': [
-    { x: 5, y: 50, pos: 'GK' },
-    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
-    { x: 40, y: 25, pos: 'CM' }, { x: 40, y: 50, pos: 'CM' }, { x: 40, y: 75, pos: 'CM' },
-    { x: 60, y: 15, pos: 'LW' }, { x: 62, y: 50, pos: 'ST' }, { x: 60, y: 85, pos: 'RW' },
-  ],
-  '4-2-3-1': [
-    { x: 5, y: 50, pos: 'GK' },
-    { x: 22, y: 15, pos: 'LB' }, { x: 22, y: 37, pos: 'CB' }, { x: 22, y: 63, pos: 'CB' }, { x: 22, y: 85, pos: 'RB' },
-    { x: 36, y: 35, pos: 'CDM' }, { x: 36, y: 65, pos: 'CDM' },
-    { x: 50, y: 15, pos: 'LM' }, { x: 50, y: 50, pos: 'CAM' }, { x: 50, y: 85, pos: 'RM' },
-    { x: 63, y: 50, pos: 'ST' },
-  ],
-};
-
-function getFormationPos(formation: string, isHome: boolean): Array<{ x: number; y: number; pos: string }> {
-  const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
-  return isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
-}
+import { FORMATION_POSITIONS, getFormationPositions } from '@/lib/formations';
 import { ptBR } from 'date-fns/locale';
 
 interface Challenge {
@@ -465,7 +438,7 @@ export default function ManagerChallengesPage() {
         const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
         // Get formation positions for initial placement — match by slot position
-        const formPositions = getFormationPos(formation, true);
+        const formPositions = getFormationPositions(formation, true);
         const usedPosIndices = new Set<number>();
 
         for (const slot of starterSlots) {

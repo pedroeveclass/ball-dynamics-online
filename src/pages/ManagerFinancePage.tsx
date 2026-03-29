@@ -4,8 +4,7 @@ import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, Building2, Users, Store, Handshake, Dumbbell, Loader2 } from 'lucide-react';
-
-const formatBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+import { formatBRL } from '@/lib/formatting';
 
 const FACILITY_STATS: Record<string, Record<number, { revenue: number; cost: number }>> = {
   souvenir_shop: { 1: { revenue: 3000, cost: 500 }, 2: { revenue: 6000, cost: 1000 }, 3: { revenue: 12000, cost: 2000 }, 4: { revenue: 22000, cost: 4000 }, 5: { revenue: 40000, cost: 7000 } },

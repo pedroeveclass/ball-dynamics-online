@@ -910,6 +910,40 @@ async function generateBotActions(
   }
   const turnNumber = match?.current_turn_number ?? 1;
 
+  // ── Pre-compute team maps: teammates and opponents by club (Fix 1) ──
+  const playersByClub = new Map<string, typeof participants>();
+  for (const p of participants) {
+    if (p.role_type !== 'player') continue;
+    const club = p.club_id;
+    if (!playersByClub.has(club)) playersByClub.set(club, []);
+    playersByClub.get(club)!.push(p);
+  }
+  const clubIds = Array.from(playersByClub.keys());
+
+  // ── Pre-compute opponents list per club ──
+  const opponentsByClub = new Map<string, typeof participants>();
+  for (const clubId of clubIds) {
+    const opps: typeof participants = [];
+    for (const [otherClubId, players] of playersByClub) {
+      if (otherClubId !== clubId) opps.push(...players);
+    }
+    opponentsByClub.set(clubId, opps);
+  }
+
+  // ── Pre-compute nearest opponent per participant (Fix 2) ──
+  const nearestOppMap = new Map<string, { opp: any; dist: number } | null>();
+  for (const bot of botsToAct) {
+    const bx = Number(bot.pos_x ?? 50);
+    const by = Number(bot.pos_y ?? 50);
+    const opps = opponentsByClub.get(bot.club_id) || [];
+    let best: { opp: any; dist: number } | null = null;
+    for (const opp of opps) {
+      const d = Math.sqrt((bx - Number(opp.pos_x ?? 50)) ** 2 + (by - Number(opp.pos_y ?? 50)) ** 2);
+      if (!best || d < best.dist) best = { opp, dist: d };
+    }
+    nearestOppMap.set(bot.id, best);
+  }
+
   for (const bot of botsToAct) {
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
@@ -933,12 +967,9 @@ async function generateBotActions(
     };
     const maxMoveRange = computeMaxMoveRange(botMoveAttrs, turnNumber);
 
-    const teammates = participants.filter(
-      (p: any) => p.club_id === bot.club_id && p.id !== bot.id && p.role_type === 'player'
-    );
-    const opponents = participants.filter(
-      (p: any) => p.club_id !== bot.club_id && p.role_type === 'player'
-    );
+    const allClubPlayers = playersByClub.get(bot.club_id) || [];
+    const teammates = allClubPlayers.filter((p: any) => p.id !== bot.id);
+    const opponents = opponentsByClub.get(bot.club_id) || [];
 
     // ── Ball Holder Decision ──
     if (isBH && phase === 'ball_holder') {
@@ -1018,7 +1049,7 @@ async function generateBotActions(
         if (distToGoal < 25 && Math.random() < 0.25) {
           actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'shoot_power', target_x: goalX, target_y: goalY, status: 'pending' });
         } else {
-          const nearestOpp = opponents.reduce((best: any, opp: any) => { const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2); return d < (best?.dist ?? 999) ? { opp, dist: d } : best; }, null as any);
+          const nearestOpp = nearestOppMap.get(bot.id);
           if (nearestOpp && nearestOpp.dist > 10 && Math.random() < 0.35) {
             const moveX = isHome ? Math.min(98, posX + 8 + Math.random() * 5) : Math.max(2, posX - 8 - Math.random() * 5);
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
@@ -1038,7 +1069,7 @@ async function generateBotActions(
           const shootType = distToGoal < 20 ? (Math.random() < 0.6 ? 'shoot_controlled' : 'shoot_power') : 'shoot_power';
           actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
         } else {
-          const nearestOpp = opponents.reduce((best: any, opp: any) => { const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2); return d < (best?.dist ?? 999) ? { opp, dist: d } : best; }, null as any);
+          const nearestOpp = nearestOppMap.get(bot.id);
           if (nearestOpp && nearestOpp.dist > 8 && Math.random() < 0.50) {
             const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
             const moveY = posY + (goalY - posY) * 0.3 + (Math.random() - 0.5) * 6;
@@ -1081,7 +1112,7 @@ async function generateBotActions(
           actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
         } else {
           // Too far — dribble aggressively toward goal or pass to attacking teammate
-          const nearestOpp = opponents.reduce((best: any, opp: any) => { const d = Math.sqrt((posX - Number(opp.pos_x ?? 50)) ** 2 + (posY - Number(opp.pos_y ?? 50)) ** 2); return d < (best?.dist ?? 999) ? { opp, dist: d } : best; }, null as any);
+          const nearestOpp = nearestOppMap.get(bot.id);
           if (nearestOpp && nearestOpp.dist > 6 && Math.random() < 0.65) {
             const moveX = isHome ? Math.min(98, posX + 12 + Math.random() * 5) : Math.max(2, posX - 12 - Math.random() * 5);
             const moveY = posY + (50 - posY) * 0.2 + (Math.random() - 0.5) * 6;
@@ -1375,9 +1406,10 @@ async function generateBotActions(
   }
 
   // ── Clamp all bot move actions to max movement range ──
+  const botMap = new Map(botsToAct.map(b => [b.id, b]));
   for (const action of actions) {
     if ((action.action_type === 'move' || action.action_type === 'receive' || action.action_type === 'block') && action.target_x != null && action.target_y != null) {
-      const bot = botsToAct.find(b => b.id === action.participant_id);
+      const bot = botMap.get(action.participant_id);
       if (bot) {
         const botRaw = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
         const moveAttrs = {
@@ -1484,22 +1516,43 @@ function computeDeviation(
   const distAmplifier = dist > 25 ? 1 + Math.pow((dist - 25) / 25, 1.5) : 1;
   // Final deviation
   const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4);
-  const angle = Math.random() * 2 * Math.PI;
-  let actualX = targetX + Math.cos(angle) * deviationRadius;
-  let actualY = targetY + Math.sin(angle) * deviationRadius;
 
-  // For shoot_power: if deviation is large, ball goes over the goal
+  const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power';
+
+  let actualX: number;
+  let actualY: number;
   let overGoal = false;
-  if (actionType === 'shoot_power' && deviationRadius > 1.0) {
-    if (actualY >= 38 && actualY <= 62) {
-      actualY = Math.random() > 0.5 ? 35 - Math.random() * 5 : 65 + Math.random() * 5;
-      overGoal = true;
+
+  if (isShot) {
+    // ── SHOTS: deviation is LATERAL ONLY (perpendicular to shot direction) ──
+    // The shot always travels to the goal line (a few units past the end line).
+    // Deviation only moves the landing point up or down (Y axis).
+    // Direction: +1 or -1 randomly
+    const lateralSign = Math.random() > 0.5 ? 1 : -1;
+    const lateralDeviation = deviationRadius * lateralSign;
+
+    // Keep X unchanged (shot goes to the same depth — goal line)
+    actualX = targetX;
+    actualY = targetY + lateralDeviation;
+
+    // For shoot_power: if deviation is large, ball goes over the goal (wide)
+    if (actionType === 'shoot_power' && deviationRadius > 1.0) {
+      if (actualY >= 38 && actualY <= 62) {
+        // Ball was still on target despite deviation — push it wide
+        actualY = lateralSign > 0 ? 65 + Math.random() * 5 : 35 - Math.random() * 5;
+        overGoal = true;
+      }
     }
+  } else {
+    // ── PASSES: deviation is radial (any direction) ──
+    const angle = Math.random() * 2 * Math.PI;
+    actualX = targetX + Math.cos(angle) * deviationRadius;
+    actualY = targetY + Math.sin(angle) * deviationRadius;
   }
 
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
-  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal}`);
+  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal} lateral=${isShot}`);
 
   return { actualX, actualY, deviationDist, overGoal };
 }
@@ -2413,15 +2466,92 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       continue;
     }
 
-    const { data: existingParts } = await supabase
+    let { data: existingParts } = await supabase
       .from('match_participants')
       .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y')
       .eq('match_id', m.id)
       .eq('role_type', 'player');
 
+    // ── Seed participants from lineups if none exist (league matches) ──
+    // For league matches, participants aren't pre-created. We need to create them from
+    // each club's active lineup_slots so human players get their connected_user_id set.
+    const isTestMatch = !m.home_lineup_id && !m.away_lineup_id;
+    if (!isTestMatch && (!existingParts || existingParts.length === 0)) {
+      console.log(`[ENGINE] No existing participants for match ${m.id.slice(0,8)} — seeding from lineups`);
+
+      const seedFromLineup = async (lineupId: string | null, clubId: string) => {
+        if (!lineupId) return [];
+        const { data: slots } = await supabase
+          .from('lineup_slots')
+          .select('id, player_profile_id, slot_position, sort_order')
+          .eq('lineup_id', lineupId)
+          .order('sort_order');
+
+        if (!slots || slots.length === 0) return [];
+
+        // Load player profiles to get user_id for connected_user_id
+        const profileIds = slots.filter(s => s.player_profile_id).map(s => s.player_profile_id);
+        const { data: profiles } = profileIds.length > 0
+          ? await supabase.from('player_profiles').select('id, user_id').in('id', profileIds)
+          : { data: [] };
+        const profileUserMap = new Map((profiles || []).map((p: any) => [p.id, p.user_id]));
+
+        const participants = slots.map((slot: any) => {
+          const userId = slot.player_profile_id ? profileUserMap.get(slot.player_profile_id) : null;
+          return {
+            match_id: m.id,
+            club_id: clubId,
+            lineup_slot_id: slot.id,
+            player_profile_id: slot.player_profile_id || null,
+            role_type: 'player',
+            is_bot: !userId,
+            connected_user_id: userId || null,
+          };
+        });
+
+        if (participants.length > 0) {
+          const { data: inserted } = await supabase.from('match_participants').insert(participants).select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y');
+          console.log(`[ENGINE] Seeded ${participants.length} participants (${participants.filter((p: any) => !p.is_bot).length} human) for club ${clubId.slice(0,8)}`);
+          return inserted || [];
+        }
+        return [];
+      };
+
+      // Also create manager participants
+      const seedManagers = async () => {
+        const managerParts: any[] = [];
+        for (const clubId of [m.home_club_id, m.away_club_id]) {
+          const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', clubId).maybeSingle();
+          if (club?.manager_profile_id) {
+            const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle();
+            if (mgr?.user_id) {
+              managerParts.push({
+                match_id: m.id,
+                club_id: clubId,
+                role_type: 'manager',
+                is_bot: false,
+                connected_user_id: mgr.user_id,
+              });
+            }
+          }
+        }
+        if (managerParts.length > 0) {
+          await supabase.from('match_participants').insert(managerParts);
+          console.log(`[ENGINE] Seeded ${managerParts.length} manager participants`);
+        }
+      };
+
+      const [homeSeeded, awaySeeded] = await Promise.all([
+        seedFromLineup(m.home_lineup_id, m.home_club_id),
+        seedFromLineup(m.away_lineup_id, m.away_club_id),
+      ]);
+      await seedManagers();
+
+      existingParts = [...homeSeeded, ...awaySeeded];
+    }
+
     const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id);
     const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id);
-    const isTestMatch = !m.home_lineup_id && !m.away_lineup_id;
 
     if (!isTestMatch) {
       const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.home_club_id).maybeSingle();

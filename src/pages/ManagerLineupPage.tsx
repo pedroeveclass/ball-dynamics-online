@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
 import { Save, UserPlus, X, Users } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 interface SquadPlayer {
   id: string;
@@ -287,10 +287,10 @@ export default function ManagerLineupPage() {
       if (error) throw error;
 
       setUniforms(prev => prev.map(u => u.id === uniform.id ? { ...u, shirt_color: edit.shirt_color, number_color: edit.number_color } : u));
-      toast({ title: 'Uniforme salvo!', description: `Uniforme ${uniformNumber} atualizado com sucesso.` });
+      toast.success(`Uniforme salvo! Uniforme ${uniformNumber} atualizado com sucesso.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao salvar uniforme.';
-      toast({ title: 'Erro', description: message, variant: 'destructive' });
+      toast.error(`Erro: ${message}`);
     } finally {
       setSavingUniform(null);
     }
@@ -298,7 +298,7 @@ export default function ManagerLineupPage() {
 
   const saveTacticalRoles = async () => {
     if (!lineupId) {
-      toast({ title: 'Erro', description: 'Salve a escalação primeiro antes de definir funções táticas.', variant: 'destructive' });
+      toast.error('Erro: Salve a escalação primeiro antes de definir funções táticas.');
       return;
     }
     setSavingRoles(true);
@@ -312,10 +312,10 @@ export default function ManagerLineupPage() {
         throw_in_left_taker_id: throwInLeftId || null,
       }).eq('id', lineupId);
       if (error) throw error;
-      toast({ title: 'Funções táticas salvas!', description: 'As funções foram atualizadas com sucesso.' });
+      toast.success('Funções táticas salvas! As funções foram atualizadas com sucesso.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao salvar funções táticas.';
-      toast({ title: 'Erro', description: message, variant: 'destructive' });
+      toast.error(`Erro: ${message}`);
     } finally {
       setSavingRoles(false);
     }
@@ -335,7 +335,7 @@ export default function ManagerLineupPage() {
 
     if (pickType === 'bench') {
       if (benchPlayers.length >= MAX_BENCH) {
-        toast({ title: 'Banco cheio', description: `Máximo de ${MAX_BENCH} jogadores no banco.`, variant: 'destructive' });
+        toast.error(`Banco cheio: Máximo de ${MAX_BENCH} jogadores no banco.`);
         return;
       }
       setBenchPlayers(prev => [...prev, playerId]);
@@ -464,10 +464,10 @@ export default function ManagerLineupPage() {
       if (cleanupError) throw cleanupError;
 
       setLineupId(newLineup.id);
-      toast({ title: 'Escalação salva!', description: 'A nova formação foi salva sem alterar partidas já criadas.' });
+      toast.success('Escalação salva! A nova formação foi salva sem alterar partidas já criadas.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Não foi possível salvar a escalação.';
-      toast({ title: 'Erro ao salvar', description: message, variant: 'destructive' });
+      toast.error(`Erro ao salvar: ${message}`);
     } finally {
       setSaving(false);
     }
@@ -629,7 +629,7 @@ export default function ManagerLineupPage() {
                         <div>
                           <span className="font-display font-bold text-xs">{p.full_name}</span>
                           <div className="flex items-center gap-1 mt-0.5">
-                            <PositionBadge position={p.primary_position as any} />
+                            <PositionBadge position={p.primary_position} />
                             <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
                           </div>
                         </div>
@@ -781,8 +781,8 @@ export default function ManagerLineupPage() {
                   <div className="flex-1">
                     <p className="font-display font-bold text-sm">{p.full_name}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <PositionBadge position={p.primary_position as any} />
-                      {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
+                      <PositionBadge position={p.primary_position} />
+                      {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                       <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
                     </div>
                   </div>

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import type { Tables } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatBRL } from '@/lib/formatting';
 
 const STATUS_INFO: Record<string, { label: string; className: string }> = {
   scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
@@ -131,8 +132,8 @@ export default function PlayerDashboard() {
           <div>
             <h1 className="font-display text-3xl font-bold">{p.full_name}</h1>
             <div className="flex items-center gap-3 mt-1">
-              <PositionBadge position={p.primary_position as any} />
-              {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
+              <PositionBadge position={p.primary_position} />
+              {p.secondary_position && <PositionBadge position={p.secondary_position} />}
               <span className="text-sm text-muted-foreground">{p.archetype}</span>
               <span className="text-sm text-muted-foreground">•</span>
               <span className="text-sm text-muted-foreground">{p.dominant_foot === 'right' ? 'Pé Direito' : 'Pé Esquerdo'}</span>
@@ -149,8 +150,8 @@ export default function PlayerDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label="Reputação" value={p.reputation} icon={<Star className="h-5 w-5" />} />
-          <StatCard label="Dinheiro" value={new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.money)} icon={<DollarSign className="h-5 w-5" />} />
-          <StatCard label="Salario/Sem" value={contract?.status === 'active' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.weekly_salary) : 'Sem contrato'} />
+          <StatCard label="Dinheiro" value={formatBRL(p.money)} icon={<DollarSign className="h-5 w-5" />} />
+          <StatCard label="Salario/Sem" value={contract?.status === 'active' ? formatBRL(contract.weekly_salary) : 'Sem contrato'} />
           <StatCard label="Clube" value={clubName || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
         </div>
 

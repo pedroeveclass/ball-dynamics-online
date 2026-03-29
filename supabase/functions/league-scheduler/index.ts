@@ -10,6 +10,16 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Authorize cron-only access
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const authHeader = req.headers.get('x-cron-secret');
+  if (!cronSecret || authHeader !== cronSecret) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -17,6 +27,14 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { action } = body;
+
+    // Validate match_id is UUID format when provided
+    if (body.match_id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.match_id)) {
+      return new Response(JSON.stringify({ error: 'Invalid match_id format, expected UUID' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // ─── Process due rounds: start matches for rounds whose time has arrived ───
     if (action === 'process_due_rounds' || !action) {

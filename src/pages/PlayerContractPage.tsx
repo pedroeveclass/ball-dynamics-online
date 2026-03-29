@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { formatBRL, formatDate } from '@/lib/formatting';
 
 interface ContractData {
   id: string;
@@ -20,15 +21,6 @@ interface ContractData {
   end_date: string | null;
   status: string;
   club_name?: string;
-}
-
-function formatDate(d: string | null) {
-  if (!d) return 'Indeterminado';
-  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
-}
-
-function formatBRL(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
 function getNextMonday(): string {

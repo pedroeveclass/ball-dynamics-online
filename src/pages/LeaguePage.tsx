@@ -190,25 +190,28 @@ export default function LeaguePage() {
       }
 
       if (roundsRes.data) {
-        // For each league_match, fetch the associated match scores if match_id exists
-        const roundsWithScores = await Promise.all(
-          roundsRes.data.map(async (round: any) => {
-            const matchesWithScores = await Promise.all(
-              (round.league_matches || []).map(async (lm: any) => {
-                if (lm.match_id) {
-                  const { data: matchData } = await supabase
-                    .from('matches')
-                    .select('home_score, away_score, status')
-                    .eq('id', lm.match_id)
-                    .single();
-                  return { ...lm, match: matchData };
-                }
-                return { ...lm, match: null };
-              })
-            );
-            return { ...round, league_matches: matchesWithScores };
-          })
+        // Collect all match IDs across rounds and batch-fetch scores in a single query
+        const allMatchIds = roundsRes.data.flatMap(
+          (r: any) => r.league_matches?.map((lm: any) => lm.match_id).filter(Boolean) || []
         );
+
+        let scoreMap = new Map<string, { id: string; home_score: number; away_score: number; status: string }>();
+        if (allMatchIds.length > 0) {
+          const { data: matchScores } = await supabase
+            .from('matches')
+            .select('id, home_score, away_score, status')
+            .in('id', allMatchIds);
+          scoreMap = new Map((matchScores || []).map((m: any) => [m.id, m]));
+        }
+
+        // Join scores locally
+        const roundsWithScores = roundsRes.data.map((round: any) => ({
+          ...round,
+          league_matches: (round.league_matches || []).map((lm: any) => ({
+            ...lm,
+            match: lm.match_id ? scoreMap.get(lm.match_id) || null : null,
+          })),
+        }));
         setRounds(roundsWithScores as any);
 
         // Select the current or most recent round by default

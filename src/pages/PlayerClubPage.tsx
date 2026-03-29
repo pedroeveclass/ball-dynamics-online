@@ -22,6 +22,7 @@ import {
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
   Shirt,
 } from 'lucide-react';
+import { formatBRL, formatDate } from '@/lib/formatting';
 
 // ── Types ──
 
@@ -143,11 +144,6 @@ const gkKeys = ['reflexo', 'posicionamento_gol', 'defesa_aerea', 'pegada', 'said
 
 // ── Helpers ──
 
-function formatDate(date: string | null) {
-  if (!date) return 'Indeterminado';
-  return new Date(`${date}T00:00:00`).toLocaleDateString('pt-BR');
-}
-
 function formatDominantFoot(foot: string) {
   if (foot === 'right') return 'Direito';
   if (foot === 'left') return 'Esquerdo';
@@ -155,9 +151,6 @@ function formatDominantFoot(foot: string) {
   return foot || '-';
 }
 
-function formatBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 
 function getCoachBonusLabel(coachType: string | null): string {
   const ct = coachType || 'all_around';
@@ -690,7 +683,7 @@ export default function PlayerClubPage() {
                       <tr key={idx} className="border-b border-border/20">
                         <td className="py-1.5 font-display font-bold text-muted-foreground">{idx + 1}</td>
                         <td className="py-1.5">
-                          <PositionBadge position={slot.slot_position as any} />
+                          <PositionBadge position={slot.slot_position} />
                         </td>
                         <td className="py-1.5 font-display font-semibold">
                           {slot.player?.full_name || 'Vago'}
@@ -777,7 +770,7 @@ export default function PlayerClubPage() {
                           {teammate.id === playerProfile.id && <span className="ml-1 text-xs text-tactical">(voce)</span>}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <PositionBadge position={teammate.primary_position as any} />
+                          <PositionBadge position={teammate.primary_position} />
                           <span className="text-xs text-muted-foreground">{teammate.archetype}</span>
                         </div>
                       </div>
@@ -854,8 +847,8 @@ export default function PlayerClubPage() {
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate font-display text-xl font-bold">{selectedPlayer.full_name}</h2>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <PositionBadge position={selectedPlayer.primary_position as any} />
-                      {selectedPlayer.secondary_position && <PositionBadge position={selectedPlayer.secondary_position as any} />}
+                      <PositionBadge position={selectedPlayer.primary_position} />
+                      {selectedPlayer.secondary_position && <PositionBadge position={selectedPlayer.secondary_position} />}
                       <span className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">
                         {selectedPlayer.archetype}
                       </span>

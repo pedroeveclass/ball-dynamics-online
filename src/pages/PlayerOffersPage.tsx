@@ -5,7 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Check, X, FileText, Inbox } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
+import { formatBRL } from '@/lib/formatting';
 
 interface Offer {
   id: string;
@@ -151,7 +152,6 @@ export default function PlayerOffersPage() {
       if (oldContract && oldContract.club_id && oldContract.club_id !== actionOffer.club_id) {
         const clause = oldContract.release_clause || 0;
         if (clause > 0) {
-          const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
           // Notify selling club manager
           const { data: sellerClub } = await supabase.from('clubs').select('manager_profile_id, name').eq('id', oldContract.club_id).maybeSingle();
           if (sellerClub) {
@@ -160,7 +160,7 @@ export default function PlayerOffersPage() {
               await supabase.from('notifications').insert({
                 user_id: sellerMgr.user_id,
                 title: '💰 Venda de Jogador',
-                body: `${playerProfile.full_name} foi vendido por ${fmt(clause)}. Valor creditado nas finanças do clube.`,
+                body: `${playerProfile.full_name} foi vendido por ${formatBRL(clause)}. Valor creditado nas finanças do clube.`,
                 type: 'player_sold',
               });
             }
@@ -173,7 +173,7 @@ export default function PlayerOffersPage() {
               await supabase.from('notifications').insert({
                 user_id: buyerMgr.user_id,
                 title: '💸 Compra de Jogador',
-                body: `${playerProfile.full_name} contratado por ${fmt(clause)} de multa rescisória.`,
+                body: `${playerProfile.full_name} contratado por ${formatBRL(clause)} de multa rescisória.`,
                 type: 'player_bought',
               });
             }
@@ -191,7 +191,7 @@ export default function PlayerOffersPage() {
         });
       }
 
-      toast({ title: 'Contrato assinado!', description: `Você agora faz parte do ${actionOffer.club_name}.` });
+      toast.success(`Contrato assinado! Você agora faz parte do ${actionOffer.club_name}.`);
       await refreshPlayerProfile();
     } else {
       await supabase.from('contract_offers').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('id', actionOffer.id);
@@ -206,7 +206,7 @@ export default function PlayerOffersPage() {
         });
       }
 
-      toast({ title: 'Proposta recusada', description: 'A proposta foi recusada com sucesso.' });
+      toast.success('Proposta recusada: A proposta foi recusada com sucesso.');
     }
 
     setProcessing(false);

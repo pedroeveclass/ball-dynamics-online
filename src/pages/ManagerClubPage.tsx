@@ -15,8 +15,7 @@ import {
   Store, Handshake, Calendar, TrendingUp, Star, LogOut, Loader2,
   Swords, Brain, CircleDot, ArrowRight, Pencil,
 } from 'lucide-react';
-
-const formatBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+import { formatBRL } from '@/lib/formatting';
 
 const FACILITY_LABELS: Record<string, { label: string; icon: typeof Store }> = {
   souvenir_shop: { label: 'Souvenirs', icon: Store },

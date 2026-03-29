@@ -16,12 +16,10 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { positionToPT } from '@/lib/positions';
+import { formatBRL } from '@/lib/formatting';
 import {
   Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus,
 } from 'lucide-react';
-
-const formatBRL = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 const SQUAD_ROLES = [
   { value: 'starter', label: 'Titular' },

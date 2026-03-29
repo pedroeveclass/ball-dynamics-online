@@ -8,8 +8,8 @@ interface AuthContextType {
   user: User | null;
   profile: Tables<'profiles'> | null;
   playerProfile: Tables<'player_profiles'> | null;
-  managerProfile: any | null;
-  club: any | null;
+  managerProfile: Tables<'manager_profiles'> | null;
+  club: Tables<'clubs'> | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshPlayerProfile: () => Promise<void>;
@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Tables<'profiles'> | null>(null);
   const [playerProfile, setPlayerProfile] = useState<Tables<'player_profiles'> | null>(null);
-  const [managerProfile, setManagerProfile] = useState<any | null>(null);
-  const [club, setClub] = useState<any | null>(null);
+  const [managerProfile, setManagerProfile] = useState<Tables<'manager_profiles'> | null>(null);
+  const [club, setClub] = useState<Tables<'clubs'> | null>(null);
   const [loading, setLoading] = useState(true);
   const dataLoadedRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);

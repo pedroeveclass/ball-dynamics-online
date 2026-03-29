@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -6,38 +7,41 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute, PlayerRoute, ManagerRoute } from "@/components/ProtectedRoute";
 
+// Critical pages — static imports (landing, auth, 404)
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import OnboardingPlayerPage from "./pages/OnboardingPlayerPage";
-import OnboardingManagerPage from "./pages/OnboardingManagerPage";
-import PlayerDashboard from "./pages/PlayerDashboard";
-import PlayerAttributesPage from "./pages/PlayerAttributesPage";
-import PlayerProfilePage from "./pages/PlayerProfilePage";
-import PlayerContractPage from "./pages/PlayerContractPage";
-import PlayerOffersPage from "./pages/PlayerOffersPage";
-import PlayerClubPage from "./pages/PlayerClubPage";
-import ManagerDashboard from "./pages/ManagerDashboard";
-import ManagerClubPage from "./pages/ManagerClubPage";
-import ManagerFinancePage from "./pages/ManagerFinancePage";
-import ManagerStadiumPage from "./pages/ManagerStadiumPage";
-import ManagerMarketPage from "./pages/ManagerMarketPage";
-import ManagerSquadPage from "./pages/ManagerSquadPage";
-import ManagerLineupPage from "./pages/ManagerLineupPage";
-import ManagerChallengesPage from "./pages/ManagerChallengesPage";
-import PlayerMatchesPage from "./pages/PlayerMatchesPage";
-import MatchRoomPage from "./pages/MatchRoomPage";
-import SoloPhysicsLabPage from "./pages/SoloPhysicsLabPage";
-import LeaguePage from "./pages/LeaguePage";
-import PublicClubPage from "./pages/PublicClubPage";
-import LeagueScheduleVotePage from "./pages/LeagueScheduleVotePage";
-import ManagerFacilitiesPage from "./pages/ManagerFacilitiesPage";
-import AccountProfilePage from "./pages/AccountProfilePage";
-import NotificationsPage from "./pages/NotificationsPage";
-import MatchReplayPage from "./pages/MatchReplayPage";
-import StorePage from "./pages/StorePage";
-import BankPage from "./pages/BankPage";
 import NotFound from "./pages/NotFound";
+
+// Lazy-loaded pages
+const OnboardingPlayerPage = lazy(() => import("./pages/OnboardingPlayerPage"));
+const OnboardingManagerPage = lazy(() => import("./pages/OnboardingManagerPage"));
+const PlayerDashboard = lazy(() => import("./pages/PlayerDashboard"));
+const PlayerAttributesPage = lazy(() => import("./pages/PlayerAttributesPage"));
+const PlayerProfilePage = lazy(() => import("./pages/PlayerProfilePage"));
+const PlayerContractPage = lazy(() => import("./pages/PlayerContractPage"));
+const PlayerOffersPage = lazy(() => import("./pages/PlayerOffersPage"));
+const PlayerClubPage = lazy(() => import("./pages/PlayerClubPage"));
+const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
+const ManagerClubPage = lazy(() => import("./pages/ManagerClubPage"));
+const ManagerFinancePage = lazy(() => import("./pages/ManagerFinancePage"));
+const ManagerStadiumPage = lazy(() => import("./pages/ManagerStadiumPage"));
+const ManagerMarketPage = lazy(() => import("./pages/ManagerMarketPage"));
+const ManagerSquadPage = lazy(() => import("./pages/ManagerSquadPage"));
+const ManagerLineupPage = lazy(() => import("./pages/ManagerLineupPage"));
+const ManagerChallengesPage = lazy(() => import("./pages/ManagerChallengesPage"));
+const PlayerMatchesPage = lazy(() => import("./pages/PlayerMatchesPage"));
+const MatchRoomPage = lazy(() => import("./pages/MatchRoomPage"));
+const SoloPhysicsLabPage = lazy(() => import("./pages/SoloPhysicsLabPage"));
+const LeaguePage = lazy(() => import("./pages/LeaguePage"));
+const PublicClubPage = lazy(() => import("./pages/PublicClubPage"));
+const LeagueScheduleVotePage = lazy(() => import("./pages/LeagueScheduleVotePage"));
+const ManagerFacilitiesPage = lazy(() => import("./pages/ManagerFacilitiesPage"));
+const AccountProfilePage = lazy(() => import("./pages/AccountProfilePage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+const MatchReplayPage = lazy(() => import("./pages/MatchReplayPage"));
+const StorePage = lazy(() => import("./pages/StorePage"));
+const BankPage = lazy(() => import("./pages/BankPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,6 +61,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
@@ -91,6 +96,7 @@ const App = () => (
             <Route path="/bank" element={<ProtectedRoute><BankPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

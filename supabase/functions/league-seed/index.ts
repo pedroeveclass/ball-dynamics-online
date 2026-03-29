@@ -144,6 +144,16 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Authorize cron-only access
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const authHeader = req.headers.get('x-cron-secret');
+  if (!cronSecret || authHeader !== cronSecret) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -151,6 +161,17 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { action } = body;
+
+    // Validate start_date is a valid date when provided
+    if (body.start_date) {
+      const parsed = new Date(body.start_date);
+      if (isNaN(parsed.getTime())) {
+        return new Response(JSON.stringify({ error: 'Invalid start_date format, expected ISO date string' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     if (action === 'seed_league') {
       // ── Step 1: Create the league ──
@@ -447,12 +468,20 @@ Deno.serve(async (req) => {
 
         const matchFixtures = roundFixtures.get(roundNum) || [];
         for (const fixture of matchFixtures) {
-          // Create the actual match
+          // Fetch each club's active lineup ID
+          const [{ data: homeLineup }, { data: awayLineup }] = await Promise.all([
+            supabase.from('lineups').select('id').eq('club_id', fixture.home).eq('is_active', true).maybeSingle(),
+            supabase.from('lineups').select('id').eq('club_id', fixture.away).eq('is_active', true).maybeSingle(),
+          ]);
+
+          // Create the actual match with lineup references
           const { data: match } = await supabase.from('matches').insert({
             home_club_id: fixture.home,
             away_club_id: fixture.away,
             scheduled_at: roundDate.toISOString(),
             status: 'scheduled',
+            home_lineup_id: homeLineup?.id || null,
+            away_lineup_id: awayLineup?.id || null,
           }).select('id').single();
 
           // Link to league_matches

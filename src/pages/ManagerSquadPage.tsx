@@ -15,9 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Users, MoreVertical, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-
-const formatBRL = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+import { formatBRL } from '@/lib/formatting';
 
 interface SquadPlayer {
   id: string;
@@ -142,42 +140,12 @@ export default function ManagerSquadPage() {
 
     setFiring(true);
     try {
-      // 1. Update contract
-      const { error: contractErr } = await supabase
-        .from('contracts')
-        .update({
-          status: 'terminated',
-          terminated_at: new Date().toISOString(),
-          termination_type: 'fired',
-        })
-        .eq('id', fireTarget.contract_id);
-      if (contractErr) throw contractErr;
-
-      // 2. Remove player from club
-      const { error: playerErr } = await supabase
-        .from('player_profiles')
-        .update({ club_id: null })
-        .eq('id', fireTarget.id);
-      if (playerErr) throw playerErr;
-
-      // 3. Subtract rescission from balance and recalculate wage bill
-      const newBalance = clubBalance - rescission;
-      const newWageBill = Math.max(0, weeklyWageBill - fireTarget.weekly_salary);
-      const { error: finErr } = await supabase
-        .from('club_finances')
-        .update({ balance: newBalance, weekly_wage_bill: newWageBill })
-        .eq('club_id', club.id);
-      if (finErr) throw finErr;
-
-      // 4. Notify player if human-controlled
-      if (fireTarget.user_id) {
-        await supabase.from('notifications').insert({
-          user_id: fireTarget.user_id,
-          title: '🔴 Dispensado',
-          body: `Você foi dispensado do ${club.name}.`,
-          type: 'contract_terminated',
-        });
-      }
+      const { error } = await supabase.rpc('fire_player', {
+        p_player_id: fireTarget.id,
+        p_club_id: club.id,
+        p_fine_amount: rescission,
+      });
+      if (error) throw error;
 
       toast.success(`${fireTarget.full_name} foi dispensado.`);
       setFireDialogOpen(false);
@@ -228,37 +196,25 @@ export default function ManagerSquadPage() {
   const handleAcceptPlayerExit = async (player: SquadPlayer) => {
     if (!club) return;
     try {
-      // Accept the mutual agreement
-      await (supabase.from('contract_mutual_agreements') as any)
-        .update({ status: 'accepted', resolved_at: new Date().toISOString() })
+      // Fetch the pending agreement ID
+      const { data: agreement } = await (supabase.from('contract_mutual_agreements') as any)
+        .select('id')
         .eq('contract_id', player.contract_id)
         .eq('requested_by', 'player')
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .maybeSingle();
 
-      // Terminate the contract
-      await supabase.from('contracts').update({
-        status: 'terminated',
-        terminated_at: new Date().toISOString(),
-        termination_type: 'mutual_agreement',
-      } as any).eq('id', player.contract_id);
-
-      // Remove player from club
-      await supabase.from('player_profiles').update({ club_id: null } as any).eq('id', player.id);
-
-      // Recalculate wage bill
-      const { data: remainingContracts } = await supabase.from('contracts').select('weekly_salary').eq('club_id', club.id).eq('status', 'active');
-      const newWageBill = (remainingContracts || []).reduce((s: number, c: any) => s + Number(c.weekly_salary || 0), 0);
-      await supabase.from('club_finances').update({ weekly_wage_bill: newWageBill }).eq('club_id', club.id);
-
-      // Notify player
-      if (player.user_id) {
-        await supabase.from('notifications').insert({
-          user_id: player.user_id,
-          title: '✅ Saída aceita!',
-          body: `${club.name} aceitou sua solicitação de saída por comum acordo.`,
-          type: 'mutual_agreement_accepted',
-        });
+      if (!agreement?.id) {
+        toast.error('Solicitação de saída não encontrada.');
+        return;
       }
+
+      const { error } = await supabase.rpc('accept_mutual_exit', {
+        p_agreement_id: agreement.id,
+        p_contract_id: player.contract_id,
+        p_player_id: player.id,
+      });
+      if (error) throw error;
 
       toast.success(`${player.full_name} saiu do clube por comum acordo.`);
       fetchSquad();
@@ -363,8 +319,8 @@ export default function ManagerSquadPage() {
                       onClick={() => setSelectedPlayerId(p.id)}
                     >
                       <div className="flex items-center gap-1">
-                        <PositionBadge position={p.primary_position as any} />
-                        {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
+                        <PositionBadge position={p.primary_position} />
+                        {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                       </div>
                     </td>
                     <td className="py-3 pr-3 text-muted-foreground cursor-pointer" onClick={() => setSelectedPlayerId(p.id)}>{p.archetype}</td>

@@ -106,8 +106,8 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate font-display text-xl font-bold">{player.full_name}</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <PositionBadge position={player.primary_position as any} />
-                    {player.secondary_position && <PositionBadge position={player.secondary_position as any} />}
+                    <PositionBadge position={player.primary_position} />
+                    {player.secondary_position && <PositionBadge position={player.secondary_position} />}
                     <span className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{player.archetype}</span>
                   </div>
                 </div>

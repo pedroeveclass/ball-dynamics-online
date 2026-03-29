@@ -22,9 +22,7 @@ import {
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { positionToPT } from '@/lib/positions';
-
-const formatBRL = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+import { formatBRL } from '@/lib/formatting';
 
 // ── Attribute category definitions (same keys as PublicClubPage) ──
 
@@ -405,8 +403,8 @@ export default function PlayerProfilePage() {
             <div className="flex-1 min-w-0">
               <h1 className="font-display text-2xl font-bold truncate">{p.full_name}</h1>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <PositionBadge position={p.primary_position as any} />
-                {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
+                <PositionBadge position={p.primary_position} />
+                {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                 <Badge variant="outline" className="text-xs">{p.archetype}</Badge>
               </div>
               <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
@@ -539,7 +537,7 @@ export default function PlayerProfilePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Atual:</span>
-                <PositionBadge position={p.secondary_position as any} />
+                <PositionBadge position={p.secondary_position} />
               </div>
               <Button
                 variant="outline"

@@ -8,9 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Landmark, Wallet, Calendar, Percent, CreditCard, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-
-const formatBRL = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+import { formatBRL } from '@/lib/formatting';
 
 interface Loan {
   id: string;
@@ -117,39 +115,18 @@ function BankContent() {
     if (loanAmount <= 0 || loanAmount > maxLoan) return;
     setSubmitting(true);
     try {
-      const loanData: any = {
-        principal: loanAmount,
-        remaining: loanAmount,
-        weekly_payment: weeklyPayment,
-        interest_rate: INTEREST_RATE,
-        term_weeks: TERM_WEEKS,
-        status: 'active',
-      };
+      const entityType = isManager ? 'club' : 'player';
+      const { error } = await supabase.rpc('process_loan', {
+        p_player_id: playerProfile?.id ?? null,
+        p_club_id: club?.id ?? null,
+        p_amount: loanAmount,
+        p_interest_rate: INTEREST_RATE,
+        p_duration_weeks: TERM_WEEKS,
+        p_entity_type: entityType,
+      });
+      if (error) throw error;
 
-      if (isManager && club) {
-        loanData.club_id = club.id;
-      } else if (isPlayer && playerProfile) {
-        loanData.player_profile_id = playerProfile.id;
-      }
-
-      const { error: loanError } = await (supabase as any).from('loans').insert(loanData);
-      if (loanError) throw loanError;
-
-      // Credit the money
-      if (isManager && club) {
-        const { error: creditError } = await supabase
-          .from('club_finances')
-          .update({ balance: (clubFinance?.balance ?? 0) + loanAmount })
-          .eq('club_id', club.id);
-        if (creditError) throw creditError;
-      } else if (isPlayer && playerProfile) {
-        const { error: creditError } = await supabase
-          .from('player_profiles')
-          .update({ money: (playerProfile.money ?? 0) + loanAmount })
-          .eq('id', playerProfile.id);
-        if (creditError) throw creditError;
-        await refreshPlayerProfile();
-      }
+      if (isPlayer) await refreshPlayerProfile();
 
       toast.success('Emprestimo aprovado!', {
         description: `${formatBRL(loanAmount)} creditado na sua conta.`,
@@ -164,35 +141,22 @@ function BankContent() {
 
   async function handlePayOff() {
     if (!activeLoan) return;
-    const payoffAmount = activeLoan.remaining;
-    if (payoffAmount > currentBalance) {
+    if (activeLoan.remaining > currentBalance) {
       toast.error('Saldo insuficiente para quitar o emprestimo.');
       return;
     }
     setPayingOff(true);
     try {
-      // Mark loan as paid
-      const { error: loanError } = await (supabase as any)
-        .from('loans')
-        .update({ remaining: 0, status: 'paid', paid_at: new Date().toISOString() })
-        .eq('id', activeLoan.id);
-      if (loanError) throw loanError;
+      const entityType = isManager ? 'club' : 'player';
+      const entityId = isManager ? club?.id : playerProfile?.id;
+      const { error } = await supabase.rpc('payoff_loan', {
+        p_loan_id: activeLoan.id,
+        p_entity_type: entityType,
+        p_entity_id: entityId!,
+      });
+      if (error) throw error;
 
-      // Deduct balance
-      if (isManager && club) {
-        const { error } = await supabase
-          .from('club_finances')
-          .update({ balance: (clubFinance?.balance ?? 0) - payoffAmount })
-          .eq('club_id', club.id);
-        if (error) throw error;
-      } else if (isPlayer && playerProfile) {
-        const { error } = await supabase
-          .from('player_profiles')
-          .update({ money: (playerProfile.money ?? 0) - payoffAmount })
-          .eq('id', playerProfile.id);
-        if (error) throw error;
-        await refreshPlayerProfile();
-      }
+      if (isPlayer) await refreshPlayerProfile();
 
       toast.success('Emprestimo quitado!');
       await fetchData();

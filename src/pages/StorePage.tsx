@@ -81,7 +81,7 @@ function getDurationLabel(duration: string | null): string | null {
   }
 }
 
-const formatBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+import { formatBRL } from '@/lib/formatting';
 
 function StoreItemCard({ item }: { item: StoreItem }) {
   const durationLabel = getDurationLabel(item.duration);

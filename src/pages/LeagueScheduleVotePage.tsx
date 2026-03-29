@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 const DAYS = [
   { value: 'monday', label: 'Segunda-feira' },
@@ -34,7 +34,6 @@ interface VoteSummary {
 
 export default function LeagueScheduleVotePage() {
   const { managerProfile } = useAuth();
-  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -137,12 +136,12 @@ export default function LeagueScheduleVotePage() {
 
       if (error) throw error;
 
-      toast({ title: 'Voto registrado!', description: 'Sua preferência foi salva com sucesso.' });
+      toast.success('Voto registrado! Sua preferência foi salva com sucesso.');
       // Refresh data
       await fetchData();
     } catch (err: any) {
       console.error('Error submitting vote:', err);
-      toast({ title: 'Erro', description: err.message || 'Não foi possível registrar o voto.', variant: 'destructive' });
+      toast.error(`Erro: ${err.message || 'Não foi possível registrar o voto.'}`);
     } finally {
       setSubmitting(false);
     }

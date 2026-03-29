@@ -79,8 +79,8 @@ const FACILITY_META: { key: string; label: string; icon: React.ElementType }[] =
   { key: 'stadium', label: 'Estádio', icon: Building2 },
 ];
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+import { formatBRL } from '@/lib/formatting';
+const formatCurrency = formatBRL;
 
 export default function ManagerFacilitiesPage() {
   const { club } = useAuth();

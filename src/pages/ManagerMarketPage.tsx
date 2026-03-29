@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PositionBadge } from '@/components/PositionBadge';
 import { Search, UserPlus, Users } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 interface FreeAgent {
   id: string;
@@ -102,7 +102,7 @@ export default function ManagerMarketPage() {
     });
 
     if (error) {
-      toast({ title: 'Erro', description: 'Não foi possível enviar a proposta.', variant: 'destructive' });
+      toast.error('Erro: Não foi possível enviar a proposta.');
     } else {
       const { data: playerData } = await supabase
         .from('player_profiles')
@@ -119,7 +119,7 @@ export default function ManagerMarketPage() {
         });
       }
 
-      toast({ title: 'Proposta enviada!', description: `Proposta enviada para ${selected.full_name}.` });
+      toast.success(`Proposta enviada! Proposta enviada para ${selected.full_name}.`);
       setOfferOpen(false);
     }
     setSending(false);
@@ -176,8 +176,8 @@ export default function ManagerMarketPage() {
                   <div>
                     <p className="font-display font-bold">{p.full_name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <PositionBadge position={p.primary_position as any} />
-                      {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
+                      <PositionBadge position={p.primary_position} />
+                      {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                       <span className="text-xs text-muted-foreground">{p.archetype}</span>
                       <span className="text-xs text-muted-foreground">• {p.age} anos</span>
                       <span className="text-xs text-muted-foreground">• Rep: {p.reputation}</span>
