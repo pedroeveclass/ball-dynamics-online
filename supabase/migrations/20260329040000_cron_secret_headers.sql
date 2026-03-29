@@ -65,7 +65,7 @@ RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $fn$
 DECLARE
   cron_expr TEXT;
 BEGIN
@@ -83,7 +83,7 @@ BEGIN
   PERFORM cron.schedule(
     'league-process-rounds',
     cron_expr,
-    $$
+    $cron$
       SELECT net.http_post(
         url := 'https://wfkmojrwgerfzjcrpqnl.supabase.co/functions/v1/league-scheduler',
         headers := jsonb_build_object(
@@ -92,10 +92,10 @@ BEGIN
         ),
         body := '{"action":"process_due_rounds"}'::jsonb
       );
-    $$
+    $cron$
   );
 END;
-$$;
+$fn$;
 
 -- NOTE: match-engine-lab cron does NOT get a secret header because
 -- match-engine-lab is also called from the frontend during matches.
