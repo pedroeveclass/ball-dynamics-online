@@ -9,7 +9,7 @@
 -- ============================================================
 
 -- ── 1. Re-create league-process-rounds with secret header ──
-SELECT cron.unschedule('league-process-rounds');
+DO $$ BEGIN PERFORM cron.unschedule('league-process-rounds'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 SELECT cron.schedule(
   'league-process-rounds',
   '0 0 * * 1,4',
@@ -26,7 +26,7 @@ SELECT cron.schedule(
 );
 
 -- ── 2. Re-create weekly-finances with secret header ──
-SELECT cron.unschedule('weekly-finances');
+DO $$ BEGIN PERFORM cron.unschedule('weekly-finances'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 SELECT cron.schedule(
   'weekly-finances',
   '0 3 * * 1',
@@ -43,7 +43,7 @@ SELECT cron.schedule(
 );
 
 -- ── 3. Re-create league-apply-votes with secret header ──
-SELECT cron.unschedule('league-apply-votes');
+DO $$ BEGIN PERFORM cron.unschedule('league-apply-votes'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 SELECT cron.schedule(
   'league-apply-votes',
   '0 6 * * *',
