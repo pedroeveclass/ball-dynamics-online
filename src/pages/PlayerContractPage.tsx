@@ -170,7 +170,7 @@ export default function PlayerContractPage() {
       toast.success('Contrato rescindido por comum acordo.');
       setClubMutualPending(null);
       await refreshPlayerProfile();
-      fetchData();
+      window.location.reload();
     } catch (err) {
       toast.error('Erro ao aceitar.');
     }
