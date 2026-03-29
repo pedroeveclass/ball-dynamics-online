@@ -34,6 +34,7 @@ interface SquadPlayer {
   release_clause: number;
   user_id: string | null;
   has_pending_agreement: boolean;
+  pending_agreement_from: 'club' | 'player' | null;
 }
 
 export default function ManagerSquadPage() {
@@ -78,12 +79,13 @@ export default function ManagerSquadPage() {
     const contractIds = contracts.map(c => c.id);
     const { data: pendingAgreements } = await supabase
       .from('contract_mutual_agreements')
-      .select('contract_id')
+      .select('contract_id, requested_by')
       .in('contract_id', contractIds)
-      .eq('status', 'pending')
-      .eq('requested_by', 'club');
+      .eq('status', 'pending');
 
-    const pendingContractIds = new Set((pendingAgreements || []).map(a => a.contract_id));
+    const pendingClubAgreements = new Set((pendingAgreements || []).filter(a => a.requested_by === 'club').map(a => a.contract_id));
+    const pendingPlayerAgreements = new Set((pendingAgreements || []).filter(a => a.requested_by === 'player').map(a => a.contract_id));
+    const pendingContractIds = new Set([...pendingClubAgreements, ...pendingPlayerAgreements]);
 
     setPlayers((playerData || []).map(p => {
       const contract = contractMap.get(p.id);
@@ -94,6 +96,7 @@ export default function ManagerSquadPage() {
         release_clause: contract?.release_clause ?? 0,
         user_id: p.user_id ?? null,
         has_pending_agreement: pendingContractIds.has(contract?.id ?? ''),
+        pending_agreement_from: pendingPlayerAgreements.has(contract?.id ?? '') ? 'player' : pendingClubAgreements.has(contract?.id ?? '') ? 'club' : null,
       };
     }));
     setLoading(false);
@@ -222,6 +225,73 @@ export default function ManagerSquadPage() {
     }
   };
 
+  const handleAcceptPlayerExit = async (player: SquadPlayer) => {
+    if (!club) return;
+    try {
+      // Accept the mutual agreement
+      await (supabase.from('contract_mutual_agreements') as any)
+        .update({ status: 'accepted', resolved_at: new Date().toISOString() })
+        .eq('contract_id', player.contract_id)
+        .eq('requested_by', 'player')
+        .eq('status', 'pending');
+
+      // Terminate the contract
+      await supabase.from('contracts').update({
+        status: 'terminated',
+        terminated_at: new Date().toISOString(),
+        termination_type: 'mutual_agreement',
+      } as any).eq('id', player.contract_id);
+
+      // Remove player from club
+      await supabase.from('player_profiles').update({ club_id: null } as any).eq('id', player.id);
+
+      // Recalculate wage bill
+      const { data: remainingContracts } = await supabase.from('contracts').select('weekly_salary').eq('club_id', club.id).eq('status', 'active');
+      const newWageBill = (remainingContracts || []).reduce((s: number, c: any) => s + Number(c.weekly_salary || 0), 0);
+      await supabase.from('club_finances').update({ weekly_wage_bill: newWageBill }).eq('club_id', club.id);
+
+      // Notify player
+      if (player.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: player.user_id,
+          title: '✅ Saída aceita!',
+          body: `${club.name} aceitou sua solicitação de saída por comum acordo.`,
+          type: 'mutual_agreement_accepted',
+        });
+      }
+
+      toast.success(`${player.full_name} saiu do clube por comum acordo.`);
+      fetchSquad();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao aceitar saída.');
+    }
+  };
+
+  const handleRejectPlayerExit = async (player: SquadPlayer) => {
+    if (!club) return;
+    try {
+      await (supabase.from('contract_mutual_agreements') as any)
+        .update({ status: 'rejected', resolved_at: new Date().toISOString() })
+        .eq('contract_id', player.contract_id)
+        .eq('requested_by', 'player')
+        .eq('status', 'pending');
+
+      if (player.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: player.user_id,
+          title: '❌ Saída recusada',
+          body: `${club.name} recusou sua solicitação de saída por comum acordo.`,
+          type: 'mutual_agreement_rejected',
+        });
+      }
+
+      toast.success('Solicitação de saída recusada.');
+      fetchSquad();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao recusar.');
+    }
+  };
+
   if (!club) return null;
   const totalWages = players.reduce((s, p) => s + p.weekly_salary, 0);
 
@@ -276,9 +346,14 @@ export default function ManagerSquadPage() {
                     >
                       <div className="flex items-center gap-2">
                         {p.full_name}
-                        {p.has_pending_agreement && (
+                        {p.pending_agreement_from === 'player' && (
+                          <span className="inline-flex items-center rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-600">
+                            ⚠️ Quer Sair
+                          </span>
+                        )}
+                        {p.pending_agreement_from === 'club' && (
                           <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-semibold text-yellow-600">
-                            Acordo Pendente
+                            Acordo Enviado
                           </span>
                         )}
                       </div>
@@ -306,6 +381,21 @@ export default function ManagerSquadPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {p.pending_agreement_from === 'player' && (
+                            <>
+                              <DropdownMenuItem
+                                className="text-pitch focus:text-pitch"
+                                onClick={() => handleAcceptPlayerExit(p)}
+                              >
+                                ✅ Aceitar Saída
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleRejectPlayerExit(p)}
+                              >
+                                ❌ Recusar Saída
+                              </DropdownMenuItem>
+                            </>
+                          )}
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => openFireDialog(p)}
