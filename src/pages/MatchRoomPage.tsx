@@ -131,6 +131,7 @@ export default function MatchRoomPage() {
   const realtimeNeedsRecoveryRef = useRef(false);
   const phaseProcessorInFlightRef = useRef(false);
   const phaseProcessorLastAttemptRef = useRef<{ turnId: string | null; at: number }>({ turnId: null, at: 0 });
+  const lastTurnChangeRef = useRef<number>(Date.now()); // tracks when we last received a turn change via realtime
   const invokeMatchEngineRef = useRef(invokeMatchEngine);
   invokeMatchEngineRef.current = invokeMatchEngine;
 
@@ -703,13 +704,8 @@ export default function MatchRoomPage() {
           : 'linear-gradient(90deg, hsl(var(--pitch-green)), hsl(var(--warning-amber)))';
       }
 
-      // Pre-trigger processing 300ms before timer expires
-      if (ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK && remaining <= 300 && remaining > 0 && !phaseProcessorInFlightRef.current && matchId) {
-        phaseProcessorInFlightRef.current = true;
-        invokeMatchEngineRef.current({ action: 'process_due_matches', match_id: matchId })
-          .catch(() => {})
-          .finally(() => { phaseProcessorInFlightRef.current = false; });
-      }
+      // Pre-trigger removed — the cron handles processing every 1s.
+      // Client fallback only fires if cron appears stuck (see effect below).
 
       if (seconds <= 0 && !hitZero) {
         hitZero = true;
@@ -939,6 +935,7 @@ export default function MatchRoomPage() {
         if (nextTurn?.status === 'active') {
           const endsAt = new Date(nextTurn.ends_at);
           if (!isNaN(endsAt.getTime())) {
+            lastTurnChangeRef.current = Date.now();
             activeTurnRef.current = nextTurn;
             setActiveTurn(nextTurn);
             scheduleTurnActionsReconcile(true);
@@ -1012,28 +1009,30 @@ export default function MatchRoomPage() {
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
+  // Client fallback processor — ONLY fires if the cron appears stuck.
+  // The cron runs every 1s. If 3s pass after phase expiry with no turn change, we nudge.
   useEffect(() => {
     if (!ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK || !matchId) return;
     if (match?.status !== 'live' || !activeTurn || phaseTimeLeft > 0) return;
 
     let cancelled = false;
-    const RETRY_INTERVAL = 1500; // Increased from 500ms to reduce overlap with cron
+    const STALE_THRESHOLD_MS = 3000; // only fire if cron hasn't produced a turn change in 3s
+    const RETRY_INTERVAL = 4000;
+
     const triggerProcessing = async () => {
+      if (cancelled || phaseProcessorInFlightRef.current) return;
       const currentTurnId = activeTurnRef.current?.id;
-      if (!currentTurnId || cancelled || phaseProcessorInFlightRef.current) return;
+      if (!currentTurnId) return;
 
-      const now = Date.now();
+      // Don't fire if a turn change happened recently (cron is working)
+      const timeSinceLastChange = Date.now() - lastTurnChangeRef.current;
+      if (timeSinceLastChange < STALE_THRESHOLD_MS) return;
+
+      // Don't fire if we already tried this turn
       const lastAttempt = phaseProcessorLastAttemptRef.current;
-      // Cooldown: skip if we already attempted this turn recently
-      if (lastAttempt.turnId === currentTurnId && now - lastAttempt.at < RETRY_INTERVAL) {
-        return;
-      }
-      // Global cooldown: don't fire if any attempt was very recent (prevents rapid multi-phase processing)
-      if (now - lastAttempt.at < 800) {
-        return;
-      }
+      if (lastAttempt.turnId === currentTurnId && Date.now() - lastAttempt.at < RETRY_INTERVAL) return;
 
-      phaseProcessorLastAttemptRef.current = { turnId: currentTurnId, at: now };
+      phaseProcessorLastAttemptRef.current = { turnId: currentTurnId, at: Date.now() };
       phaseProcessorInFlightRef.current = true;
       try {
         await invokeMatchEngine({ action: 'process_due_matches', match_id: matchId });
@@ -1044,15 +1043,12 @@ export default function MatchRoomPage() {
       }
     };
 
-    // Initial delay of 500ms to let the cron handle it first
+    // Wait 3s before first attempt (let cron handle it)
     const initialTimeout = setTimeout(() => {
-      if (cancelled) return;
-      void triggerProcessing();
-    }, 500);
+      if (!cancelled) void triggerProcessing();
+    }, STALE_THRESHOLD_MS);
 
-    const interval = setInterval(() => {
-      void triggerProcessing();
-    }, RETRY_INTERVAL);
+    const interval = setInterval(() => void triggerProcessing(), RETRY_INTERVAL);
 
     return () => {
       cancelled = true;
