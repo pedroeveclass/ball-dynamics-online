@@ -289,6 +289,19 @@ export default function MatchRoomPage() {
     }
     if (turnMeta.turn_number !== currentTurnNumberRef.current) return;
 
+    // Skip bot actions arriving via realtime during an active phase.
+    // Bot actions are generated server-side when a phase expires. Showing them
+    // before resolution causes a visual flash (bot arrow appearing then disappearing
+    // when the human action arrives or the phase transitions).
+    // Only apply bot actions if we're in resolution phase or the phase is already over.
+    if (actionRow.controlled_by_type === 'bot') {
+      const currentPhase = activeTurnRef.current?.phase;
+      if (currentPhase && currentPhase !== 'resolution') {
+        // Don't show bot actions during active phases — they'll appear during resolution
+        return;
+      }
+    }
+
     const nextAction: MatchAction = {
       ...actionRow,
       turn_phase: turnMeta.phase,

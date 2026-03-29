@@ -831,9 +831,8 @@ async function generateBotActions(
     if (p.role_type !== 'player') continue;
     if (p.is_sent_off) continue;
     if (submittedParticipantIds.has(p.id)) continue;
-    // Skip human-controlled players — they submit their own actions.
-    // If they don't submit in time, they simply don't act (no_action).
-    if (!p.is_bot && p.connected_user_id) continue;
+    // Anyone who hasn't submitted gets a bot action — human or not.
+    // submittedParticipantIds already excludes those who acted.
 
     const isAttacker = p.club_id === possClubId;
     const isBH = p.id === ballHolderId;
