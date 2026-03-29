@@ -756,10 +756,106 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "lineups_captain_player_id_fkey"
+            columns: ["captain_player_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "lineups_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineups_corner_left_taker_id_fkey"
+            columns: ["corner_left_taker_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineups_corner_right_taker_id_fkey"
+            columns: ["corner_right_taker_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineups_free_kick_taker_id_fkey"
+            columns: ["free_kick_taker_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineups_throw_in_left_taker_id_fkey"
+            columns: ["throw_in_left_taker_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineups_throw_in_right_taker_id_fkey"
+            columns: ["throw_in_right_taker_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loans: {
+        Row: {
+          club_id: string | null
+          created_at: string
+          id: string
+          paid_at: string | null
+          player_profile_id: string | null
+          principal: number
+          remaining: number
+          status: string
+          weekly_interest_rate: number
+          weekly_payment: number
+        }
+        Insert: {
+          club_id?: string | null
+          created_at?: string
+          id?: string
+          paid_at?: string | null
+          player_profile_id?: string | null
+          principal: number
+          remaining: number
+          status?: string
+          weekly_interest_rate?: number
+          weekly_payment: number
+        }
+        Update: {
+          club_id?: string | null
+          created_at?: string
+          id?: string
+          paid_at?: string | null
+          player_profile_id?: string | null
+          principal?: number
+          remaining?: number
+          status?: string
+          weekly_interest_rate?: number
+          weekly_payment?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loans_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loans_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1559,6 +1655,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_player_profile_id: string | null
           avatar_url: string | null
           created_at: string
           id: string
@@ -1567,6 +1664,7 @@ export type Database = {
           username: string
         }
         Insert: {
+          active_player_profile_id?: string | null
           avatar_url?: string | null
           created_at?: string
           id: string
@@ -1575,6 +1673,7 @@ export type Database = {
           username: string
         }
         Update: {
+          active_player_profile_id?: string | null
           avatar_url?: string | null
           created_at?: string
           id?: string
@@ -1582,7 +1681,15 @@ export type Database = {
           updated_at?: string
           username?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_player_profile_id_fkey"
+            columns: ["active_player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stadium_sectors: {
         Row: {
@@ -1665,6 +1772,111 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: true
             referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_items: {
+        Row: {
+          bonus_type: string | null
+          bonus_value: number | null
+          category: string
+          created_at: string
+          description: string | null
+          duration: string | null
+          id: string
+          is_available: boolean
+          level: number | null
+          max_level: number | null
+          monthly_cost: number | null
+          name: string
+          price: number
+          price_real: number | null
+          sort_order: number
+        }
+        Insert: {
+          bonus_type?: string | null
+          bonus_value?: number | null
+          category: string
+          created_at?: string
+          description?: string | null
+          duration?: string | null
+          id?: string
+          is_available?: boolean
+          level?: number | null
+          max_level?: number | null
+          monthly_cost?: number | null
+          name: string
+          price?: number
+          price_real?: number | null
+          sort_order?: number
+        }
+        Update: {
+          bonus_type?: string | null
+          bonus_value?: number | null
+          category?: string
+          created_at?: string
+          description?: string | null
+          duration?: string | null
+          id?: string
+          is_available?: boolean
+          level?: number | null
+          max_level?: number | null
+          monthly_cost?: number | null
+          name?: string
+          price?: number
+          price_real?: number | null
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      store_purchases: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_used_at: string | null
+          level: number | null
+          player_profile_id: string | null
+          status: string
+          store_item_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          level?: number | null
+          player_profile_id?: string | null
+          status?: string
+          store_item_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          level?: number | null
+          player_profile_id?: string | null
+          status?: string
+          store_item_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_purchases_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_purchases_store_item_id_fkey"
+            columns: ["store_item_id"]
+            isOneToOne: false
+            referencedRelation: "store_items"
             referencedColumns: ["id"]
           },
         ]
@@ -1778,6 +1990,17 @@ export type Database = {
       release_club_to_bot: { Args: { p_club_id: string }; Returns: undefined }
       release_match_turn_processing: {
         Args: { p_processing_token: string; p_turn_id: string }
+        Returns: undefined
+      }
+      transfer_player: {
+        Args: {
+          p_contract_months: number
+          p_new_club_id: string
+          p_new_release_clause: number
+          p_new_salary: number
+          p_old_contract_id: string
+          p_player_id: string
+        }
         Returns: undefined
       }
     }
