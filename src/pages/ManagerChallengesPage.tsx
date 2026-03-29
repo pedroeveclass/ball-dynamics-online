@@ -273,63 +273,83 @@ export default function ManagerChallengesPage() {
       }).select('id').single();
       if (matchError) throw matchError;
 
-      // Load lineup slots for whatever lineups exist
-      const lineupIds = [homeLineupId, awayLineupId].filter(Boolean) as string[];
-      const { data: slots } = lineupIds.length > 0
+      // Load ALL slots (starters + bench) for both teams
+      const allLineupIds = [homeLineupId, awayLineupId].filter(Boolean) as string[];
+      const { data: allSlots } = allLineupIds.length > 0
         ? await supabase.from('lineup_slots')
-            .select('id, lineup_id, player_profile_id, slot_position, role_type')
-            .in('lineup_id', lineupIds)
-            .eq('role_type', 'starter')
+            .select('id, lineup_id, player_profile_id, slot_position, role_type, sort_order')
+            .in('lineup_id', allLineupIds)
         : { data: [] };
 
-      const starterSlots = slots || [];
-      const homeStarterSlots = homeLineupId ? starterSlots.filter(slot => slot.lineup_id === homeLineupId) : [];
-      const awayStarterSlots = awayLineupId ? starterSlots.filter(slot => slot.lineup_id === awayLineupId) : [];
-      const homeFriendlySlots = pickFriendlySlots(homeStarterSlots);
-      const awayFriendlySlots = pickFriendlySlots(awayStarterSlots);
-      const friendlySlots = [...homeFriendlySlots, ...awayFriendlySlots];
-
-      const playerIds = friendlySlots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
+      const allSlotsArr = allSlots || [];
+      const playerIds = allSlotsArr.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
       const { data: players } = playerIds.length > 0 ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds) : { data: [] };
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-      // Create participants from lineup slots with formation positions
-      const slotParticipants = friendlySlots.map(slot => {
-        const clubId = homeLineupId && slot.lineup_id === homeLineupId ? challenge.challenger_club_id : challenge.challenged_club_id;
-        const isHome = clubId === challenge.challenger_club_id;
-        const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
-        // Find matching position from FRIENDLY_3V3_COORDS
-        const role = getFriendlySlotRole(slot.slot_position);
-        const coords = FRIENDLY_3V3_COORDS.find(c => c.pos === role) || { x: 30, y: 50 };
-        const posX = isHome ? coords.x : 100 - coords.x;
-        return { match_id: match!.id, player_profile_id: slot.player_profile_id || null, club_id: clubId, lineup_slot_id: slot.id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId || null, pos_x: posX, pos_y: coords.y };
-      });
+      // Get formations for position placement
+      const [{ data: homeLineupData }, { data: awayLineupData }] = await Promise.all([
+        homeLineupId ? supabase.from('lineups').select('formation').eq('id', homeLineupId).maybeSingle() : Promise.resolve({ data: null }),
+        awayLineupId ? supabase.from('lineups').select('formation').eq('id', awayLineupId).maybeSingle() : Promise.resolve({ data: null }),
+      ]);
+      const homeFormation = homeLineupData?.formation || '4-4-2';
+      const awayFormation = awayLineupData?.formation || '4-4-2';
+      const homeFormPositions = getFormationPositions(homeFormation, true);
+      const awayFormPositions = getFormationPositions(awayFormation, false);
 
-      const botParticipants: any[] = [];
-      const homeFilledRoles = new Set(homeFriendlySlots.map(slot => getFriendlySlotRole(slot.slot_position)).filter(Boolean));
-      const awayFilledRoles = new Set(awayFriendlySlots.map(slot => getFriendlySlotRole(slot.slot_position)).filter(Boolean));
+      // Create participants from ALL lineup slots
+      const allParticipants: any[] = [];
 
-      // Fill home team bots by missing role
-      for (const coords of FRIENDLY_3V3_COORDS) {
-        if (homeFilledRoles.has(coords.pos)) continue;
-        botParticipants.push({
-          match_id: match!.id, player_profile_id: null, club_id: challenge.challenger_club_id,
-          lineup_slot_id: null, role_type: 'player', is_bot: true, is_ready: false, connected_user_id: null,
-          pos_x: coords.x, pos_y: coords.y,
-        });
-      }
+      const createTeamParticipants = (
+        teamSlots: typeof allSlotsArr, clubId: string, isHome: boolean, formPositions: Array<{ x: number; y: number; pos: string }>
+      ) => {
+        const starters = teamSlots.filter(s => s.role_type === 'starter').sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        const bench = teamSlots.filter(s => s.role_type === 'bench');
+        const usedPosIndices = new Set<number>();
 
-      // Fill away team bots by missing role (mirror x positions)
-      for (const coords of FRIENDLY_3V3_COORDS) {
-        if (awayFilledRoles.has(coords.pos)) continue;
-        botParticipants.push({
-          match_id: match!.id, player_profile_id: null, club_id: challenge.challenged_club_id,
-          lineup_slot_id: null, role_type: 'player', is_bot: true, is_ready: false, connected_user_id: null,
-          pos_x: 100 - coords.x, pos_y: coords.y,
-        });
-      }
+        // Starters: place on field with formation positions
+        for (const slot of starters) {
+          const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
+          const slotPos = (slot.slot_position || '').replace(/[0-9]/g, '').toUpperCase();
 
-      const allParticipants = [...slotParticipants, ...botParticipants];
+          // Match to formation position
+          let fPos = { x: isHome ? 30 : 70, y: 50 };
+          for (let fi = 0; fi < formPositions.length; fi++) {
+            if (!usedPosIndices.has(fi) && formPositions[fi].pos.toUpperCase() === slotPos) {
+              fPos = formPositions[fi]; usedPosIndices.add(fi); break;
+            }
+          }
+          if (fPos.x === (isHome ? 30 : 70) && fPos.y === 50) {
+            for (let fi = 0; fi < formPositions.length; fi++) {
+              if (!usedPosIndices.has(fi)) { fPos = formPositions[fi]; usedPosIndices.add(fi); break; }
+            }
+          }
+
+          allParticipants.push({
+            match_id: match!.id, player_profile_id: slot.player_profile_id || null,
+            club_id: clubId, lineup_slot_id: slot.id, role_type: 'player',
+            is_bot: !userId, is_ready: false, connected_user_id: userId || null,
+            pos_x: fPos.x, pos_y: fPos.y,
+          });
+        }
+
+        // Bench: off-field participants
+        for (const slot of bench) {
+          const userId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
+          allParticipants.push({
+            match_id: match!.id, player_profile_id: slot.player_profile_id || null,
+            club_id: clubId, lineup_slot_id: slot.id, role_type: 'bench',
+            is_bot: !userId, is_ready: false, connected_user_id: userId || null,
+            pos_x: null, pos_y: null,
+          });
+        }
+      };
+
+      const homeSlots = homeLineupId ? allSlotsArr.filter(s => s.lineup_id === homeLineupId) : [];
+      const awaySlots = awayLineupId ? allSlotsArr.filter(s => s.lineup_id === awayLineupId) : [];
+      createTeamParticipants(homeSlots, challenge.challenger_club_id, true, homeFormPositions);
+      createTeamParticipants(awaySlots, challenge.challenged_club_id, false, awayFormPositions);
+
+      // Engine will fill remaining bots to reach 11 per team
       if (allParticipants.length > 0) await supabase.from('match_participants').insert(allParticipants);
 
       const { data: challengerMgr } = await supabase.from('manager_profiles').select('user_id').eq('id', challenge.challenger_manager_profile_id).single();
