@@ -710,30 +710,48 @@ export type Database = {
       }
       lineups: {
         Row: {
+          captain_player_id: string | null
           club_id: string
+          corner_left_taker_id: string | null
+          corner_right_taker_id: string | null
           created_at: string
           formation: string
+          free_kick_taker_id: string | null
           id: string
           is_active: boolean
           name: string | null
+          throw_in_left_taker_id: string | null
+          throw_in_right_taker_id: string | null
           updated_at: string
         }
         Insert: {
+          captain_player_id?: string | null
           club_id: string
+          corner_left_taker_id?: string | null
+          corner_right_taker_id?: string | null
           created_at?: string
           formation?: string
+          free_kick_taker_id?: string | null
           id?: string
           is_active?: boolean
           name?: string | null
+          throw_in_left_taker_id?: string | null
+          throw_in_right_taker_id?: string | null
           updated_at?: string
         }
         Update: {
+          captain_player_id?: string | null
           club_id?: string
+          corner_left_taker_id?: string | null
+          corner_right_taker_id?: string | null
           created_at?: string
           formation?: string
+          free_kick_taker_id?: string | null
           id?: string
           is_active?: boolean
           name?: string | null
+          throw_in_left_taker_id?: string | null
+          throw_in_right_taker_id?: string | null
           updated_at?: string
         }
         Relationships: [

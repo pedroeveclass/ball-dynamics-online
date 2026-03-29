@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { positionToPT } from '@/lib/positions';
 import {
   Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus,
 } from 'lucide-react';
@@ -550,7 +551,7 @@ export default function PublicClubPage() {
           <DialogHeader>
             <DialogTitle className="font-display">{selectedPlayer?.full_name}</DialogTitle>
             <DialogDescription>
-              {selectedPlayer?.primary_position} {selectedPlayer?.secondary_position ? `/ ${selectedPlayer.secondary_position}` : ''} • {selectedPlayer?.archetype} • {selectedPlayer?.age} anos
+              {positionToPT(selectedPlayer?.primary_position)} {selectedPlayer?.secondary_position ? `/ ${positionToPT(selectedPlayer.secondary_position)}` : ''} • {selectedPlayer?.archetype} • {selectedPlayer?.age} anos
             </DialogDescription>
           </DialogHeader>
 
@@ -628,7 +629,7 @@ export default function PublicClubPage() {
                 <div>
                   <p className="font-display font-bold text-sm">{selectedPlayer.full_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {selectedPlayer.primary_position} • {selectedPlayer.archetype} • {selectedPlayer.age} anos
+                    {positionToPT(selectedPlayer.primary_position)} • {selectedPlayer.archetype} • {selectedPlayer.age} anos
                   </p>
                 </div>
               </div>

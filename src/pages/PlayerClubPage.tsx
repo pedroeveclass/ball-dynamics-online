@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { ATTR_LABELS, COACH_TYPE_LABELS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS } from '@/lib/attributes';
+import { positionToPT } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
@@ -713,7 +714,7 @@ export default function PlayerClubPage() {
                     .filter((s) => s.role_type === 'substitute')
                     .map((slot, idx) => (
                       <Badge key={idx} variant="outline" className="text-xs">
-                        {slot.slot_position} \u2022 {slot.player?.full_name || 'Vago'} {slot.player ? `(${slot.player.overall})` : ''}
+                        {positionToPT(slot.slot_position)} \u2022 {slot.player?.full_name || 'Vago'} {slot.player ? `(${slot.player.overall})` : ''}
                       </Badge>
                     ))}
                 </div>
@@ -872,8 +873,8 @@ export default function PlayerClubPage() {
                   <DetailItem label="Pe dominante" value={formatDominantFoot(selectedPlayer.dominant_foot)} />
                   <DetailItem label="Arquetipo" value={selectedPlayer.archetype} />
                   <DetailItem label="Reputacao" value={selectedPlayer.reputation.toString()} />
-                  <DetailItem label="Posicao principal" value={selectedPlayer.primary_position} />
-                  <DetailItem label="Posicao secundaria" value={selectedPlayer.secondary_position || '-'} />
+                  <DetailItem label="Posicao principal" value={positionToPT(selectedPlayer.primary_position)} />
+                  <DetailItem label="Posicao secundaria" value={selectedPlayer.secondary_position ? positionToPT(selectedPlayer.secondary_position) : '-'} />
                   <DetailItem label="Clube" value={clubInfo.name} />
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { PositionCategory } from '@/types/game';
+import { positionToPT } from '@/lib/positions';
 
 interface PositionBadgeProps {
   position: string;
@@ -14,7 +15,8 @@ const categoryMap: Record<string, PositionCategory> = {
 };
 
 export function PositionBadge({ position, category, className }: PositionBadgeProps) {
-  const cat = category || categoryMap[position] || 'MID';
+  const clean = position.replace(/[0-9]/g, '').toUpperCase();
+  const cat = category || categoryMap[clean] || 'MID';
   const cls = {
     GK: 'badge-gk',
     DEF: 'badge-def',
@@ -22,5 +24,5 @@ export function PositionBadge({ position, category, className }: PositionBadgePr
     FWD: 'badge-fwd',
   }[cat];
 
-  return <span className={cn(cls, className)}>{position}</span>;
+  return <span className={cn(cls, className)}>{positionToPT(position)}</span>;
 }

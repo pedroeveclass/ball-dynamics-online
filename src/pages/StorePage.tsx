@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   Footprints,
   Zap,
+  Shield,
   GraduationCap,
   Heart,
   Gift,
@@ -36,19 +37,10 @@ interface StoreItem {
   sort_order: number;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  cosmetic: 'Cosméticos',
-  boots: 'Chuteiras',
-  consumable: 'Consumíveis',
-  trainer: 'Serviços',
-  physio: 'Serviços',
-  donation: 'Outros',
-  currency: 'Outros',
-};
-
 const DISPLAY_CATEGORIES: Record<string, string> = {
   cosmetic: 'cosmeticos',
   boots: 'chuteiras',
+  gloves: 'luvas',
   consumable: 'consumiveis',
   trainer: 'servicos',
   physio: 'servicos',
@@ -59,6 +51,7 @@ const DISPLAY_CATEGORIES: Record<string, string> = {
 const CATEGORY_TAB_LABELS: Record<string, string> = {
   cosmeticos: 'Cosméticos',
   chuteiras: 'Chuteiras',
+  luvas: 'Luvas de Goleiro',
   consumiveis: 'Consumíveis',
   servicos: 'Serviços',
   outros: 'Outros',
@@ -70,6 +63,7 @@ function getItemIcon(category: string) {
   if (category === 'donation') return <Gift className="h-5 w-5 text-muted-foreground" />;
   if (category === 'currency') return <CreditCard className="h-5 w-5 text-muted-foreground" />;
   if (category === 'boots') return <Footprints className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'gloves') return <Shield className="h-5 w-5 text-muted-foreground" />;
   if (category === 'consumable') return <Zap className="h-5 w-5 text-muted-foreground" />;
   if (category === 'cosmetic') return <ShoppingBag className="h-5 w-5 text-muted-foreground" />;
   return <Store className="h-5 w-5 text-muted-foreground" />;
@@ -82,6 +76,7 @@ function getDurationLabel(duration: string | null): string | null {
     case 'monthly': return 'Mensal';
     case 'single_use': return 'Uso Único';
     case 'daily': return '1x por dia';
+    case 'seasonal': return '1 Temporada';
     default: return duration;
   }
 }
@@ -145,6 +140,10 @@ export default function StorePage() {
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
 
+  // Filters for boots/gloves
+  const [filterLevel, setFilterLevel] = useState<number | null>(null);
+  const [filterBonus, setFilterBonus] = useState<string | null>(null);
+
   useEffect(() => {
     async function fetchItems() {
       const { data, error } = await (supabase as any)
@@ -166,7 +165,7 @@ export default function StorePage() {
     return acc;
   }, {});
 
-  const categoryOrder = ['cosmeticos', 'chuteiras', 'consumiveis', 'servicos', 'outros'];
+  const categoryOrder = ['cosmeticos', 'chuteiras', 'luvas', 'consumiveis', 'servicos', 'outros'];
   const availableCategories = categoryOrder.filter((c) => grouped[c]?.length);
   const defaultTab = availableCategories[0] || 'cosmeticos';
 
@@ -204,14 +203,53 @@ export default function StorePage() {
           </TabsList>
 
           {categoryOrder.map((cat) => {
-            const catItems = grouped[cat];
+            let catItems = grouped[cat];
             if (!catItems?.length) return null;
+
+            const hasFilters = cat === 'chuteiras' || cat === 'luvas';
+            const bonusTypes = hasFilters ? [...new Set(catItems.map(i => i.bonus_type).filter(Boolean))] : [];
+            const levels = hasFilters ? [...new Set(catItems.map(i => i.level).filter((l): l is number => l != null))].sort((a, b) => a - b) : [];
+
+            // Apply filters
+            if (hasFilters) {
+              if (filterLevel != null) catItems = catItems.filter(i => i.level === filterLevel);
+              if (filterBonus) catItems = catItems.filter(i => i.bonus_type === filterBonus);
+            }
+
             return (
-              <TabsContent key={cat} value={cat} className="mt-4">
+              <TabsContent key={cat} value={cat} className="mt-4 space-y-4">
+                {hasFilters && (
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={filterLevel ?? ''}
+                      onChange={e => setFilterLevel(e.target.value ? Number(e.target.value) : null)}
+                      className="text-xs border rounded px-2 py-1 bg-card"
+                    >
+                      <option value="">Todos os Níveis</option>
+                      {levels.map(l => <option key={l} value={l}>Nível {l}</option>)}
+                    </select>
+                    <select
+                      value={filterBonus ?? ''}
+                      onChange={e => setFilterBonus(e.target.value || null)}
+                      className="text-xs border rounded px-2 py-1 bg-card"
+                    >
+                      <option value="">Todas as Habilidades</option>
+                      {bonusTypes.map(b => <option key={b} value={b!}>{b}</option>)}
+                    </select>
+                    {(filterLevel != null || filterBonus) && (
+                      <button onClick={() => { setFilterLevel(null); setFilterBonus(null); }} className="text-xs text-destructive hover:underline">
+                        Limpar filtros
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {catItems.map((item) => (
                     <StoreItemCard key={item.id} item={item} />
                   ))}
+                  {catItems.length === 0 && (
+                    <p className="text-sm text-muted-foreground col-span-full text-center py-8">Nenhum item com esses filtros.</p>
+                  )}
                 </div>
               </TabsContent>
             );

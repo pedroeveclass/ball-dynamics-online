@@ -41,12 +41,14 @@ function getNextMonday(): string {
 }
 
 export default function PlayerContractPage() {
-  const { playerProfile } = useAuth();
+  const { playerProfile, refreshPlayerProfile } = useAuth();
   const [contract, setContract] = useState<ContractData | null>(null);
   const [playerMoney, setPlayerMoney] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [pendingMutual, setPendingMutual] = useState(false);
   const [mutualDialogOpen, setMutualDialogOpen] = useState(false);
+  const [clubMutualPending, setClubMutualPending] = useState<string | null>(null);
+  const [respondingMutual, setRespondingMutual] = useState(false);
   const [submittingMutual, setSubmittingMutual] = useState(false);
 
   useEffect(() => {
@@ -74,7 +76,7 @@ export default function PlayerContractPage() {
         const { data: club } = await supabase.from('clubs').select('name').eq('id', data.club_id).single();
         setContract({ ...data, club_name: club?.name || data.club_id });
 
-        // Check for pending mutual agreement
+        // Check for pending mutual agreement (player initiated)
         const { data: mutualAgreement } = await supabase
           .from('contract_mutual_agreements')
           .select('id')
@@ -83,6 +85,15 @@ export default function PlayerContractPage() {
           .eq('status', 'pending')
           .maybeSingle();
         setPendingMutual(!!mutualAgreement);
+
+        // Check for club-initiated mutual agreement
+        const { data: clubAgreement } = await (supabase.from('contract_mutual_agreements') as any)
+          .select('id')
+          .eq('contract_id', data.id)
+          .eq('requested_by', 'club')
+          .eq('status', 'pending')
+          .maybeSingle();
+        setClubMutualPending(clubAgreement?.id || null);
       } else {
         setContract(null);
         setPendingMutual(false);
@@ -125,6 +136,73 @@ export default function PlayerContractPage() {
       toast.error('Erro ao enviar solicitação.');
     }
     setSubmittingMutual(false);
+  }
+
+  async function handleAcceptClubMutual() {
+    if (!playerProfile || !contract || !clubMutualPending) return;
+    setRespondingMutual(true);
+    try {
+      // Accept the agreement
+      await (supabase.from('contract_mutual_agreements') as any)
+        .update({ status: 'accepted', resolved_at: new Date().toISOString() })
+        .eq('id', clubMutualPending);
+
+      // Terminate contract
+      await supabase.from('contracts').update({
+        status: 'terminated', terminated_at: new Date().toISOString(), termination_type: 'mutual_agreement',
+      } as any).eq('id', contract.id);
+
+      // Remove from club
+      await supabase.from('player_profiles').update({ club_id: null } as any).eq('id', playerProfile.id);
+
+      // Notify manager
+      const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', playerProfile.club_id).maybeSingle();
+      const { data: manager } = club ? await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle() : { data: null };
+      if (manager?.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: manager.user_id,
+          title: '✅ Comum acordo aceito',
+          body: `${playerProfile.full_name} aceitou a rescisão por comum acordo.`,
+          type: 'mutual_agreement_accepted',
+        });
+      }
+
+      toast.success('Contrato rescindido por comum acordo.');
+      setClubMutualPending(null);
+      await refreshPlayerProfile();
+      fetchContract();
+    } catch (err) {
+      toast.error('Erro ao aceitar.');
+    }
+    setRespondingMutual(false);
+  }
+
+  async function handleRejectClubMutual() {
+    if (!clubMutualPending) return;
+    setRespondingMutual(true);
+    try {
+      await (supabase.from('contract_mutual_agreements') as any)
+        .update({ status: 'rejected', resolved_at: new Date().toISOString() })
+        .eq('id', clubMutualPending);
+
+      // Notify manager
+      const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', playerProfile?.club_id).maybeSingle();
+      const { data: manager } = club ? await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle() : { data: null };
+      if (manager?.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: manager.user_id,
+          title: '❌ Comum acordo recusado',
+          body: `${playerProfile?.full_name} recusou a rescisão por comum acordo.`,
+          type: 'mutual_agreement_rejected',
+        });
+      }
+
+      toast.success('Proposta recusada.');
+      setClubMutualPending(null);
+    } catch (err) {
+      toast.error('Erro ao recusar.');
+    }
+    setRespondingMutual(false);
   }
 
   if (!playerProfile) return <AppLayout><p className="text-muted-foreground">Carregando...</p></AppLayout>;
@@ -225,6 +303,38 @@ export default function PlayerContractPage() {
             </div>
           )}
         </div>
+
+        {/* ── Club requested mutual agreement ── */}
+        {!loading && contract && clubMutualPending && (
+          <div className="stat-card space-y-3 border-2 border-orange-500/30 bg-orange-500/5">
+            <div className="flex items-center gap-2 mb-2">
+              <Handshake className="h-4 w-4 text-orange-500" />
+              <span className="font-display font-semibold text-sm text-orange-500">Proposta do Clube</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Seu clube propôs rescisão por comum acordo. Se aceitar, você sairá do clube sem custo para nenhuma das partes.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleAcceptClubMutual}
+                disabled={respondingMutual}
+                className="bg-pitch hover:bg-pitch/90 text-white gap-2"
+                size="sm"
+              >
+                {respondingMutual ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                ✅ Aceitar
+              </Button>
+              <Button
+                onClick={handleRejectClubMutual}
+                disabled={respondingMutual}
+                variant="outline"
+                size="sm"
+              >
+                ❌ Recusar
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* ── Solicitar Saída (Mutual Agreement) ── */}
         {!loading && contract && (

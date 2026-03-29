@@ -21,6 +21,7 @@ import {
   Repeat, Plus, UserCircle,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
+import { positionToPT } from '@/lib/positions';
 
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -328,7 +329,7 @@ export default function PlayerProfilePage() {
 
       if (error) throw error;
 
-      toast.success(`Posição secundária alterada para ${selectedSecondaryPos}!`);
+      toast.success(`Posição secundária alterada para ${positionToPT(selectedSecondaryPos)}!`);
       await refreshPlayerProfile();
       setSecondaryPosOpen(false);
       setSelectedSecondaryPos('');
@@ -376,7 +377,7 @@ export default function PlayerProfilePage() {
                   >
                     <User className="h-4 w-4 shrink-0" />
                     <span className="font-display font-semibold truncate max-w-[120px]">{pl.full_name}</span>
-                    <span className="text-xs">{pl.primary_position}</span>
+                    <span className="text-xs">{positionToPT(pl.primary_position)}</span>
                     <span className="font-display font-bold text-xs">{pl.overall}</span>
                     <span className="text-[10px]">{pl.club_id ? 'Clube' : 'Livre'}</span>
                   </button>
@@ -643,7 +644,7 @@ export default function PlayerProfilePage() {
               </SelectTrigger>
               <SelectContent>
                 {ALL_POSITIONS.filter(pos => pos !== p.primary_position).map(pos => (
-                  <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                  <SelectItem key={pos} value={pos}>{positionToPT(pos)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

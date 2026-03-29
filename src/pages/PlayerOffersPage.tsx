@@ -123,43 +123,65 @@ export default function PlayerOffersPage() {
         .eq('status', 'pending')
         .neq('id', actionOffer.id);
 
-      await supabase.from('contracts')
-        .update({ status: 'ended', end_date: new Date().toISOString().split('T')[0], updated_at: new Date().toISOString() })
-        .eq('player_profile_id', playerProfile.id)
-        .eq('status', 'active');
-
-      // Calculate end_date from contract_length (months)
-      const startDate = new Date();
-      const endDate = new Date(startDate);
-      endDate.setMonth(endDate.getMonth() + actionOffer.contract_length);
-
-      await supabase.from('contracts').insert({
-        player_profile_id: playerProfile.id,
-        club_id: actionOffer.club_id,
-        weekly_salary: actionOffer.weekly_salary,
-        release_clause: actionOffer.release_clause,
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
-        status: 'active',
+      // Transfer player via server-side function (handles contract, club_id, AND release clause)
+      const { error: transferError } = await supabase.rpc('transfer_player', {
+        p_player_id: playerProfile.id,
+        p_new_club_id: actionOffer.club_id,
+        p_old_contract_id: '00000000-0000-0000-0000-000000000000',
+        p_new_salary: actionOffer.weekly_salary,
+        p_new_release_clause: actionOffer.release_clause,
+        p_contract_months: actionOffer.contract_length,
       });
-
-      await supabase.from('player_profiles')
-        .update({ club_id: actionOffer.club_id, weekly_salary: actionOffer.weekly_salary, updated_at: new Date().toISOString() })
-        .eq('id', playerProfile.id);
-
-      const { data: financeData } = await supabase
-        .from('club_finances')
-        .select('weekly_wage_bill')
-        .eq('club_id', actionOffer.club_id)
-        .single();
-
-      if (financeData) {
-        await supabase.from('club_finances')
-          .update({ weekly_wage_bill: financeData.weekly_wage_bill + actionOffer.weekly_salary, updated_at: new Date().toISOString() })
-          .eq('club_id', actionOffer.club_id);
+      if (transferError) {
+        console.error('[TRANSFER] RPC error:', transferError);
+        throw transferError;
       }
 
-      const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', actionOffer.manager_profile_id).single();
+      // Wage bill + release clause already handled inside the RPC
+
+      // Notify both clubs about the transfer finances
+      const { data: oldContract } = await supabase.from('contracts')
+        .select('club_id, release_clause')
+        .eq('player_profile_id', playerProfile.id)
+        .eq('status', 'terminated')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (oldContract && oldContract.club_id && oldContract.club_id !== actionOffer.club_id) {
+        const clause = oldContract.release_clause || 0;
+        if (clause > 0) {
+          const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+          // Notify selling club manager
+          const { data: sellerClub } = await supabase.from('clubs').select('manager_profile_id, name').eq('id', oldContract.club_id).maybeSingle();
+          if (sellerClub) {
+            const { data: sellerMgr } = await supabase.from('manager_profiles').select('user_id').eq('id', sellerClub.manager_profile_id).maybeSingle();
+            if (sellerMgr?.user_id) {
+              await supabase.from('notifications').insert({
+                user_id: sellerMgr.user_id,
+                title: '💰 Venda de Jogador',
+                body: `${playerProfile.full_name} foi vendido por ${fmt(clause)}. Valor creditado nas finanças do clube.`,
+                type: 'player_sold',
+              });
+            }
+          }
+          // Notify buying club manager
+          const { data: buyerClub } = await supabase.from('clubs').select('manager_profile_id, name').eq('id', actionOffer.club_id).maybeSingle();
+          if (buyerClub) {
+            const { data: buyerMgr } = await supabase.from('manager_profiles').select('user_id').eq('id', buyerClub.manager_profile_id).maybeSingle();
+            if (buyerMgr?.user_id) {
+              await supabase.from('notifications').insert({
+                user_id: buyerMgr.user_id,
+                title: '💸 Compra de Jogador',
+                body: `${playerProfile.full_name} contratado por ${fmt(clause)} de multa rescisória.`,
+                type: 'player_bought',
+              });
+            }
+          }
+        }
+      }
+
+      const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', actionOffer.manager_profile_id).maybeSingle();
       if (mgr) {
         await supabase.from('notifications').insert({
           user_id: mgr.user_id,

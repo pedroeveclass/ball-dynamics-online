@@ -9,6 +9,7 @@ import { generateBaseAttributes, calculateOverall, POSITIONS, BODY_TYPES, GK_BOD
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
+import { positionToPT } from '@/lib/positions';
 
 const STEPS = ['Identidade', 'Posição', 'Tamanho', 'Tipo Físico', 'Atributos', 'Revisão'];
 const STEP_ICONS = [User, MapPin, Ruler, Shield, Dumbbell, Eye];
@@ -216,7 +217,7 @@ export default function OnboardingPlayerPage() {
                           : 'border-border text-muted-foreground hover:border-tactical/40'
                       }`}
                     >
-                      <span className="text-xs text-muted-foreground">{pos.value}</span>
+                      <span className="text-xs text-muted-foreground">{positionToPT(pos.value)}</span>
                       <br />
                       {pos.label}
                     </button>

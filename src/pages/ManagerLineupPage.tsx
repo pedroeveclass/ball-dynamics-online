@@ -173,6 +173,15 @@ export default function ManagerLineupPage() {
   const [uniformEdits, setUniformEdits] = useState<Record<number, { shirt_color: string; number_color: string }>>({});
   const [savingUniform, setSavingUniform] = useState<number | null>(null);
 
+  // Tactical roles state
+  const [captainId, setCaptainId] = useState<string | null>(null);
+  const [freeKickId, setFreeKickId] = useState<string | null>(null);
+  const [cornerRightId, setCornerRightId] = useState<string | null>(null);
+  const [cornerLeftId, setCornerLeftId] = useState<string | null>(null);
+  const [throwInRightId, setThrowInRightId] = useState<string | null>(null);
+  const [throwInLeftId, setThrowInLeftId] = useState<string | null>(null);
+  const [savingRoles, setSavingRoles] = useState(false);
+
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
   useEffect(() => {
@@ -217,6 +226,14 @@ export default function ManagerLineupPage() {
     if (lineup) {
       setLineupId(lineup.id);
       setFormation(lineup.formation);
+
+      // Load tactical roles
+      setCaptainId(lineup.captain_player_id || null);
+      setFreeKickId(lineup.free_kick_taker_id || null);
+      setCornerRightId(lineup.corner_right_taker_id || null);
+      setCornerLeftId(lineup.corner_left_taker_id || null);
+      setThrowInRightId(lineup.throw_in_right_taker_id || null);
+      setThrowInLeftId(lineup.throw_in_left_taker_id || null);
 
       const { data: slotsData } = await supabase
         .from('lineup_slots')
@@ -276,6 +293,31 @@ export default function ManagerLineupPage() {
       toast({ title: 'Erro', description: message, variant: 'destructive' });
     } finally {
       setSavingUniform(null);
+    }
+  };
+
+  const saveTacticalRoles = async () => {
+    if (!lineupId) {
+      toast({ title: 'Erro', description: 'Salve a escalação primeiro antes de definir funções táticas.', variant: 'destructive' });
+      return;
+    }
+    setSavingRoles(true);
+    try {
+      const { error } = await supabase.from('lineups').update({
+        captain_player_id: captainId || null,
+        free_kick_taker_id: freeKickId || null,
+        corner_right_taker_id: cornerRightId || null,
+        corner_left_taker_id: cornerLeftId || null,
+        throw_in_right_taker_id: throwInRightId || null,
+        throw_in_left_taker_id: throwInLeftId || null,
+      }).eq('id', lineupId);
+      if (error) throw error;
+      toast({ title: 'Funções táticas salvas!', description: 'As funções foram atualizadas com sucesso.' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao salvar funções táticas.';
+      toast({ title: 'Erro', description: message, variant: 'destructive' });
+    } finally {
+      setSavingRoles(false);
     }
   };
 
@@ -524,7 +566,12 @@ export default function ManagerLineupPage() {
                       {player ? player.overall : <UserPlus className="h-4 w-4" />}
                     </div>
                     <span className="text-[10px] font-display font-bold text-foreground/80 max-w-[70px] truncate text-center">
-                      {player ? player.full_name.split(' ').pop() : slot.label}
+                      {player ? (
+                        <>
+                          {assigned && assigned.player_profile_id === captainId && <span title="Capitão">©️</span>}
+                          {player.full_name.split(' ').pop()}
+                        </>
+                      ) : slot.label}
                     </span>
                     {player && (
                       <span className="text-[9px] text-muted-foreground">{slot.label}</span>
@@ -593,6 +640,46 @@ export default function ManagerLineupPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Funções Táticas */}
+        <div className="space-y-4">
+          <h2 className="font-display text-xl font-bold">Funções Táticas</h2>
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              {[
+                { label: 'Capitão', value: captainId, setter: setCaptainId },
+                { label: 'Batedor de Falta', value: freeKickId, setter: setFreeKickId },
+                { label: 'Cobrador de Escanteio Direito', value: cornerRightId, setter: setCornerRightId },
+                { label: 'Cobrador de Escanteio Esquerdo', value: cornerLeftId, setter: setCornerLeftId },
+                { label: 'Batedor de Lateral Direito', value: throwInRightId, setter: setThrowInRightId },
+                { label: 'Batedor de Lateral Esquerdo', value: throwInLeftId, setter: setThrowInLeftId },
+              ].map(({ label, value, setter }) => {
+                const starterPlayers = assignments.map(a => getPlayer(a.player_profile_id)).filter(Boolean) as SquadPlayer[];
+                return (
+                  <div key={label} className="flex items-center justify-between gap-4">
+                    <label className="text-sm font-display font-semibold text-muted-foreground whitespace-nowrap">{label}</label>
+                    <select
+                      className="flex-1 max-w-[250px] rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={value || ''}
+                      onChange={(e) => setter(e.target.value || null)}
+                    >
+                      <option value="">Selecionar...</option>
+                      {starterPlayers.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name} ({p.primary_position})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+              <Button onClick={saveTacticalRoles} disabled={savingRoles || !lineupId} className="w-full gap-1.5">
+                <Save className="h-4 w-4" />
+                {savingRoles ? 'Salvando...' : 'Salvar Funções'}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Uniformes */}

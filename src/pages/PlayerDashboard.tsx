@@ -87,14 +87,15 @@ export default function PlayerDashboard() {
       const allMatchIds = [...new Set([...directMatchIds, ...clubMatchIds])];
       if (allMatchIds.length === 0) return;
 
-      const { data: matchData } = await supabase
+      // Filter: only real matches (with lineups, not test/bot-only)
+      const { data: allMatches } = await supabase
         .from('matches')
-        .select('id, status, scheduled_at, home_club_id, away_club_id')
+        .select('id, status, scheduled_at, home_club_id, away_club_id, home_lineup_id, away_lineup_id')
         .in('id', allMatchIds)
         .in('status', ['scheduled', 'waiting', 'live'])
         .order('scheduled_at', { ascending: true })
-        .limit(1)
-        .single();
+        .limit(5);
+      const matchData = (allMatches || []).find((m: any) => m.home_lineup_id || m.away_lineup_id) || null;
 
       if (!matchData) return;
 

@@ -2142,18 +2142,34 @@ function detectOutOfBounds(
   return null;
 }
 
+interface LineupRoles {
+  captain_player_id: string | null;
+  free_kick_taker_id: string | null;
+  corner_right_taker_id: string | null;
+  corner_left_taker_id: string | null;
+  throw_in_right_taker_id: string | null;
+  throw_in_left_taker_id: string | null;
+}
+
+function findParticipantByProfileId(participants: any[], profileId: string | null): any | null {
+  if (!profileId) return null;
+  return participants.find((p: any) => p.player_profile_id === profileId && !p.is_sent_off) || null;
+}
+
 async function handleSetPiece(
   supabase: any,
   matchId: string,
   oob: OOBResult,
   participants: any[],
-  match: { home_club_id: string; away_club_id: string },
-  allActions: any[]
+  match: { home_club_id: string; away_club_id: string; home_lineup_id?: string | null; away_lineup_id?: string | null },
+  allActions: any[],
+  lineupRoles?: { home: LineupRoles | null; away: LineupRoles | null }
 ): Promise<{ playerId: string; clubId: string; title: string; body: string } | null> {
   const teamPlayers = participants.filter((p: any) => p.club_id === oob.awardedClubId && p.role_type === 'player');
   if (teamPlayers.length === 0) return null;
 
   const isHomeTeam = oob.awardedClubId === match.home_club_id;
+  const roles = lineupRoles ? (isHomeTeam ? lineupRoles.home : lineupRoles.away) : null;
 
   // Load slot positions for GK detection
   const slotIds = teamPlayers.filter((p: any) => p.lineup_slot_id).map((p: any) => p.lineup_slot_id);
@@ -2169,6 +2185,11 @@ async function handleSetPiece(
   };
 
   if (oob.type === 'throw_in') {
+    // Check for designated throw-in taker
+    const isRightSide = oob.side === 'bottom';
+    const takerId = roles ? (isRightSide ? roles.throw_in_right_taker_id : roles.throw_in_left_taker_id) : null;
+    const designatedTaker = findParticipantByProfileId(teamPlayers, takerId);
+
     const outfield = teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK');
     const candidates = outfield.length > 0 ? outfield : teamPlayers;
 
@@ -2180,7 +2201,7 @@ async function handleSetPiece(
       return distA - distB;
     });
 
-    const chosen = candidates[0];
+    const chosen = designatedTaker || candidates[0];
     const restartY = oob.side === 'top' ? 1 : 99;
     const restartX = Math.max(2, Math.min(98, oob.exitX));
     await supabase.from('match_participants').update({ pos_x: restartX, pos_y: restartY }).eq('id', chosen.id);
@@ -2193,11 +2214,17 @@ async function handleSetPiece(
   }
 
   if (oob.type === 'corner') {
+    // Check for designated corner taker
+    const isRightSide = oob.side === 'bottom';
+    const takerId = roles ? (isRightSide ? roles.corner_right_taker_id : roles.corner_left_taker_id) : null;
+    const designatedTaker = findParticipantByProfileId(teamPlayers, takerId);
+
     const forwards = teamPlayers.filter((p: any) => {
       const pos = getSlotPos(p).toUpperCase();
       return ['ST', 'CF', 'LW', 'RW', 'LM', 'RM', 'CAM'].includes(pos);
     });
-    const chosen = forwards.length > 0 ? forwards[0] : teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK')[0] || teamPlayers[0];
+    const fallback = forwards.length > 0 ? forwards[0] : teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK')[0] || teamPlayers[0];
+    const chosen = designatedTaker || fallback;
 
     const cornerX = isHomeTeam ? 99 : 1;
     const cornerY = oob.side === 'top' ? 1 : 99;
@@ -2823,6 +2850,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
   const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
 
+  // Load lineup tactical roles for set piece taker assignments
+  let lineupRolesCache: { home: LineupRoles | null; away: LineupRoles | null } | undefined;
+  if (match.home_lineup_id || match.away_lineup_id) {
+    const roleFields = 'captain_player_id, free_kick_taker_id, corner_right_taker_id, corner_left_taker_id, throw_in_right_taker_id, throw_in_left_taker_id';
+    const [homeLineupRes, awayLineupRes] = await Promise.all([
+      match.home_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.home_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
+      match.away_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.away_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
+    ]);
+    lineupRolesCache = { home: homeLineupRes.data || null, away: awayLineupRes.data || null };
+  }
+
   const ballHolder = activeTurn.ball_holder_participant_id
     ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
     : null;
@@ -3174,8 +3212,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             nextSetPieceType = 'penalty';
             ballEndPos = { x: penaltyX, y: penaltyY };
           } else {
-            nextBallHolderParticipantId = ballHolder.id;
-            await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', ballHolder.id);
+            // Check for designated free kick taker
+            const fkRoles = lineupRolesCache ? (possClubId === match.home_club_id ? lineupRolesCache.home : lineupRolesCache.away) : null;
+            const fkTaker = fkRoles ? findParticipantByProfileId(participants || [], fkRoles.free_kick_taker_id) : null;
+            const freeKickTakerId = fkTaker ? fkTaker.id : ballHolder.id;
+            nextBallHolderParticipantId = freeKickTakerId;
+            await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', freeKickTakerId);
             await supabase.from('match_event_logs').insert({
               match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
               payload: {
@@ -3312,7 +3354,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               const dB = Math.sqrt((Number(b.pos_x ?? 50) - offsideX) ** 2 + (Number(b.pos_y ?? 50) - offsideY) ** 2);
               return dA - dB;
             });
-            const fkTaker = defPlayersForFK[0];
+            // Check for designated free kick taker on the defending team
+            const offsideFkRoles = lineupRolesCache ? (defClub === match.home_club_id ? lineupRolesCache.home : lineupRolesCache.away) : null;
+            const offsideFkDesignated = offsideFkRoles ? findParticipantByProfileId(defPlayersForFK, offsideFkRoles.free_kick_taker_id) : null;
+            const fkTaker = offsideFkDesignated || defPlayersForFK[0];
             if (fkTaker) {
               await supabase.from('match_participants').update({ pos_x: offsideX, pos_y: offsideY }).eq('id', fkTaker.id);
               nextBallHolderParticipantId = fkTaker.id;
@@ -3511,7 +3556,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ballEndPos && !goalScored && nextBallHolderParticipantId === null) {
       const oob = detectOutOfBounds(ballEndPos.x, ballEndPos.y, lastTouchClubId || match.home_club_id, match);
       if (oob) {
-        const restart = await handleSetPiece(supabase, match_id, oob, participants || [], match, allActions);
+        const restart = await handleSetPiece(supabase, match_id, oob, participants || [], match, allActions, lineupRolesCache);
         if (restart) {
           nextBallHolderParticipantId = restart.playerId;
           newPossessionClubId = restart.clubId;

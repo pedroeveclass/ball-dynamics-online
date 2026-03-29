@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Bot, User, Eye, ChevronDown, ChevronRight, Square, LogOut } from 'lucide-react';
+import { positionToPT } from '@/lib/positions';
 
 // ─── Formation layouts ─────────────────────────────────────────
 const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: string }>> = {
@@ -489,6 +490,10 @@ export default function MatchRoomPage() {
   // Contest visual feedback during phase 4
   const [contestEffect, setContestEffect] = useState<{ type: 'tackle_fail' | 'tackle_success' | 'block' | 'dribble' | 'save' | 'intercept'; x: number; y: number; label: string } | null>(null);
 
+  // Captain IDs (player_profile_id) for captain armband display
+  const [homeCaptainProfileId, setHomeCaptainProfileId] = useState<string | null>(null);
+  const [awayCaptainProfileId, setAwayCaptainProfileId] = useState<string | null>(null);
+
   // Accordion states
   const [homeAccOpen, setHomeAccOpen] = useState(false);
   const [awayAccOpen, setAwayAccOpen] = useState(false);
@@ -729,6 +734,17 @@ export default function MatchRoomPage() {
       if (homeUniformsRes.data) setHomeUniforms(homeUniformsRes.data as ClubUniform[]);
       if (awayUniformsRes.data) setAwayUniforms(awayUniformsRes.data as ClubUniform[]);
     }).catch(() => { /* silently fall back to club colors */ });
+
+    // Load captain IDs from lineups
+    if (matchData.home_lineup_id || matchData.away_lineup_id) {
+      Promise.all([
+        matchData.home_lineup_id ? supabase.from('lineups').select('captain_player_id').eq('id', matchData.home_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
+        matchData.away_lineup_id ? supabase.from('lineups').select('captain_player_id').eq('id', matchData.away_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
+      ]).then(([homeRes, awayRes]) => {
+        if (homeRes.data?.captain_player_id) setHomeCaptainProfileId(homeRes.data.captain_player_id);
+        if (awayRes.data?.captain_player_id) setAwayCaptainProfileId(awayRes.data.captain_player_id);
+      }).catch(() => { /* ignore */ });
+    }
 
     const { data: participantRows } = await supabase.from('match_participants').select('*').eq('match_id', matchId);
     let nextParticipantRows = ((participantRows || []) as Participant[]);
@@ -3547,6 +3563,14 @@ export default function MatchRoomPage() {
                     >
                       {p.jersey_number || idx + 1}
                     </text>
+                    {p.player_profile_id && (
+                      (isHome && p.player_profile_id === homeCaptainProfileId) ||
+                      (!isHome && p.player_profile_id === awayCaptainProfileId)
+                    ) && (
+                      <text x={x + R + 2} y={y - R + 2} textAnchor="start" fontSize="6" fontWeight="900"
+                        fontFamily="'Barlow Condensed', sans-serif" fill="#fbbf24" stroke="#000" strokeWidth="0.3"
+                      >C</text>
+                    )}
                   </g>
                 );
               })}
@@ -4342,7 +4366,7 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
             ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
             : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
           <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
-          <span className="font-display w-6 text-white/50 shrink-0">{p.field_pos || '?'}</span>
+          <span className="font-display w-6 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
           <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
           {ballHolderId === p.id && <span className="text-[8px]">⚽</span>}
           {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">✓</span>}

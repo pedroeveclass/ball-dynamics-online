@@ -57,10 +57,12 @@ export default function PlayerMatchesPage() {
     const allMatchIds = [...new Set([...directMatchIds, ...clubMatchIds])];
     if (allMatchIds.length === 0) { setLoading(false); return; }
 
-    const { data: matchData } = await supabase.from('matches')
-      .select('id, status, home_score, away_score, scheduled_at, started_at, home_club_id, away_club_id, current_phase, current_turn_number')
+    const { data: rawMatchData } = await supabase.from('matches')
+      .select('id, status, home_score, away_score, scheduled_at, started_at, home_club_id, away_club_id, current_phase, current_turn_number, home_lineup_id, away_lineup_id')
       .in('id', allMatchIds).order('scheduled_at', { ascending: false });
-    if (!matchData) { setLoading(false); return; }
+    if (!rawMatchData) { setLoading(false); return; }
+    // Filter out test matches (3x3 and bot-only with no lineups)
+    const matchData = rawMatchData.filter((m: any) => m.home_lineup_id || m.away_lineup_id);
     const clubIds = [...new Set(matchData.flatMap(m => [m.home_club_id, m.away_club_id]))];
     const { data: clubData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', clubIds);
     const clubMap = new Map((clubData || []).map(c => [c.id, c]));

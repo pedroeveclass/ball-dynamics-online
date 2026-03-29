@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PositionBadge } from '@/components/PositionBadge';
 import { Search, UserPlus, Users } from 'lucide-react';
+import { positionToPT } from '@/lib/positions';
 import { toast } from '@/hooks/use-toast';
 
 interface FreeAgent {
@@ -143,7 +144,7 @@ export default function ManagerMarketPage() {
             <SelectTrigger className="w-[140px]"><SelectValue placeholder="Posição" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas</SelectItem>
-              {POSITIONS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              {POSITIONS.map(p => <SelectItem key={p} value={p}>{positionToPT(p)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={archFilter} onValueChange={setArchFilter}>
@@ -204,7 +205,7 @@ export default function ManagerMarketPage() {
                 <span className="font-display text-xl font-extrabold text-tactical">{selected.overall}</span>
                 <div>
                   <p className="font-display font-bold text-sm">{selected.full_name}</p>
-                  <p className="text-xs text-muted-foreground">{selected.primary_position} • {selected.archetype} • {selected.age} anos</p>
+                  <p className="text-xs text-muted-foreground">{positionToPT(selected.primary_position)} • {selected.archetype} • {selected.age} anos</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
