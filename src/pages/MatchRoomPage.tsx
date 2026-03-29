@@ -16,7 +16,7 @@ import { MatchActionMenu } from './match/MatchActionMenu';
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, club, profile } = useAuth();
+  const { user, club, profile, playerProfile } = useAuth();
 
   const [match, setMatch] = useState<MatchData | null>(null);
   const [homeClub, setHomeClub] = useState<ClubInfo | null>(null);
@@ -551,7 +551,27 @@ export default function MatchRoomPage() {
   // ── Determine user role ─────────────────────────────────────
   useEffect(() => {
     if (!user || !match) return;
-    const playerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'player');
+
+    // 1. Check by connected_user_id (primary)
+    let playerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'player');
+
+    // 2. Fallback: check by player_profile_id matching current active player profile
+    if (!playerPart && playerProfile?.id) {
+      playerPart = participants.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'player');
+      // Claim this participant: update connected_user_id in DB so future checks work
+      if (playerPart && !playerPart.connected_user_id) {
+        supabase.from('match_participants')
+          .update({ connected_user_id: user.id, is_bot: false })
+          .eq('id', playerPart.id)
+          .then(() => {
+            // Update local state too
+            setParticipants(prev => prev.map(p =>
+              p.id === playerPart!.id ? { ...p, connected_user_id: user.id, is_bot: false } : p
+            ));
+          });
+      }
+    }
+
     const managerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'manager');
     const isManagerOfHome = club?.id === match.home_club_id;
     const isManagerOfAway = club?.id === match.away_club_id;
@@ -569,7 +589,7 @@ export default function MatchRoomPage() {
     } else {
       setMyRole('spectator'); setMyParticipant(null); setMyClubId(null);
     }
-  }, [user, participants, match, club]);
+  }, [user, participants, match, club, playerProfile]);
 
   const computeMaxMoveRange = useCallback((participantId: string, _targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
