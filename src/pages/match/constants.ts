@@ -1,4 +1,4 @@
-// ─── Constants ────────────────────────────────────────────────
+// ─── Match Constants ──────────────────────────────────────────
 
 export const PHASE_LABELS: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
