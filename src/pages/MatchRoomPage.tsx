@@ -935,12 +935,26 @@ export default function MatchRoomPage() {
         if (nextTurn?.status === 'active') {
           const endsAt = new Date(nextTurn.ends_at);
           if (!isNaN(endsAt.getTime())) {
-            lastTurnChangeRef.current = Date.now();
-            activeTurnRef.current = nextTurn;
-            setActiveTurn(nextTurn);
-            scheduleTurnActionsReconcile(true);
-            // Secondary reconcile to catch bot actions with slight replication delay
-            setTimeout(() => scheduleTurnActionsReconcile(true), 500);
+            // If resolution animation is still playing, delay applying the new turn
+            // This prevents "two games" visual where old animation + new state overlap
+            const applyNewTurn = () => {
+              lastTurnChangeRef.current = Date.now();
+              activeTurnRef.current = nextTurn;
+              setActiveTurn(nextTurn);
+              scheduleTurnActionsReconcile(true);
+              setTimeout(() => scheduleTurnActionsReconcile(true), 500);
+            };
+
+            if (animatedResolutionIdRef.current && animFrameRef.current) {
+              // Animation still running — wait for it to finish (max 2s safety)
+              const waitForAnim = () => {
+                if (!animFrameRef.current) { applyNewTurn(); return; }
+                setTimeout(waitForAnim, 200);
+              };
+              setTimeout(waitForAnim, 200);
+            } else {
+              applyNewTurn();
+            }
           }
           return;
         }

@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const PHASE_DURATION_MS = 10000;
 const POSITIONING_PHASE_DURATION_MS = 10000;
-const RESOLUTION_PHASE_DURATION_MS = 2000;
+const RESOLUTION_PHASE_DURATION_MS = 4000; // 4s to give client animation time to finish
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
 const MAX_TURNS = 144;
 const TURNS_PER_HALF = 72;
