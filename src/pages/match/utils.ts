@@ -142,7 +142,9 @@ export function buildParticipantLayout(
   };
 
   const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
-    const positioned = assignPositions(list, formation, isHome);
+    // Cap at 11 to prevent duplicates from race conditions
+    const capped = list.length > 11 ? list.slice(0, 11) : list;
+    const positioned = assignPositions(capped, formation, isHome);
     if (isTestMatch) return positioned;
     const positions = getFormationPositions(formation, isHome, isKickoffStart);
     for (let index = positioned.length; index < 11; index++) {
