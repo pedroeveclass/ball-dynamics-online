@@ -30,6 +30,7 @@ export interface MatchScoreboardProps {
   currentTurnNumber: number; activeTurnPhase: string | null;
   halfStartedAt: string | null; currentHalf: number;
   myRole: 'player' | 'manager' | 'spectator';
+  isBenchPlayer: boolean;
   isManager: boolean; isPlayer: boolean;
   onFinishMatch: () => void; onExit: () => void;
   homeUniformNum: number; awayUniformNum: number;
@@ -44,7 +45,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
     isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
     homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
     halfStartedAt, currentHalf,
-    myRole, isManager, isPlayer, onFinishMatch, onExit,
+    myRole, isBenchPlayer, isManager, isPlayer, onFinishMatch, onExit,
     homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
   } = props;
 
@@ -128,7 +129,8 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
             <Square className="h-3 w-3" /> Finalizar
           </button>
         )}
-        {myRole === 'spectator' && <Badge variant="secondary" className="text-[10px] font-display"><Eye className="h-3 w-3 mr-1" />Espectador</Badge>}
+        {myRole === 'spectator' && !isBenchPlayer && <Badge variant="secondary" className="text-[10px] font-display"><Eye className="h-3 w-3 mr-1" />Espectador</Badge>}
+        {isBenchPlayer && <Badge className="bg-warning/20 text-warning text-[10px] border border-warning/40 font-display"><User className="h-3 w-3 mr-1" />No Banco</Badge>}
         {isPlayer && <Badge className="bg-pitch/20 text-pitch text-[10px] border border-pitch/40 font-display"><User className="h-3 w-3 mr-1" />Jogador</Badge>}
         {isManager && (
           <Badge className="bg-tactical/20 text-tactical text-[10px] border border-tactical/40 font-display">
