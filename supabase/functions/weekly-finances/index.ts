@@ -136,11 +136,79 @@ Deno.serve(async (req) => {
         }
       }
 
+      // --- Process club loan payments ---
+      const { data: clubLoans } = await supabase
+        .from('loans')
+        .select('*')
+        .eq('club_id', club.id)
+        .eq('status', 'active');
+
+      for (const loan of (clubLoans || [])) {
+        const interest = loan.remaining * 0.02;
+        const payment = Math.min(loan.weekly_payment, loan.remaining + interest);
+        const newRemaining = loan.remaining + interest - payment;
+
+        // Deduct from club balance (re-fetch current balance after salary credits)
+        const { data: currentFin } = await supabase
+          .from('club_finances')
+          .select('balance')
+          .eq('club_id', club.id)
+          .maybeSingle();
+
+        if (currentFin) {
+          await supabase.from('club_finances').update({
+            balance: Math.max(0, (currentFin.balance || 0) - payment),
+          }).eq('club_id', club.id);
+        }
+
+        if (newRemaining <= 0.01) {
+          await supabase.from('loans').update({ remaining: 0, status: 'paid', paid_at: new Date().toISOString() }).eq('id', loan.id);
+        } else {
+          await supabase.from('loans').update({ remaining: newRemaining }).eq('id', loan.id);
+        }
+
+        console.log(`[FINANCES] Club loan payment: club=${club.name} loan=${loan.id} payment=${payment} remaining=${newRemaining}`);
+      }
+
       processed++;
       console.log(`[FINANCES] ${club.name}: revenue=${totalRevenue} expense=${totalExpense} net=${netIncome} balance=${newBalance} players_paid=${(activeContracts || []).length}`);
     }
 
-    return new Response(JSON.stringify({ status: 'processed', clubs_processed: processed }), {
+    // --- Process player loan payments (outside club loop) ---
+    const { data: playerLoans } = await supabase
+      .from('loans')
+      .select('*')
+      .eq('status', 'active')
+      .not('player_profile_id', 'is', null);
+
+    for (const loan of (playerLoans || [])) {
+      const interest = loan.remaining * 0.02;
+      const payment = Math.min(loan.weekly_payment, loan.remaining + interest);
+      const newRemaining = loan.remaining + interest - payment;
+
+      // Deduct from player money
+      const { data: player } = await supabase
+        .from('player_profiles')
+        .select('money')
+        .eq('id', loan.player_profile_id)
+        .maybeSingle();
+
+      if (player) {
+        await supabase.from('player_profiles').update({
+          money: Math.max(0, (player.money || 0) - payment),
+        }).eq('id', loan.player_profile_id);
+      }
+
+      if (newRemaining <= 0.01) {
+        await supabase.from('loans').update({ remaining: 0, status: 'paid', paid_at: new Date().toISOString() }).eq('id', loan.id);
+      } else {
+        await supabase.from('loans').update({ remaining: newRemaining }).eq('id', loan.id);
+      }
+
+      console.log(`[FINANCES] Player loan payment: player=${loan.player_profile_id} loan=${loan.id} payment=${payment} remaining=${newRemaining}`);
+    }
+
+    return new Response(JSON.stringify({ status: 'processed', clubs_processed: processed, player_loans_processed: (playerLoans || []).length }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

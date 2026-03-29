@@ -35,6 +35,8 @@ import ManagerFacilitiesPage from "./pages/ManagerFacilitiesPage";
 import AccountProfilePage from "./pages/AccountProfilePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import MatchReplayPage from "./pages/MatchReplayPage";
+import StorePage from "./pages/StorePage";
+import BankPage from "./pages/BankPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -85,6 +87,8 @@ const App = () => (
             <Route path="/manager/facilities" element={<ManagerRoute><ManagerFacilitiesPage /></ManagerRoute>} />
             <Route path="/account/profile" element={<ProtectedRoute><AccountProfilePage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+            <Route path="/store" element={<ProtectedRoute><StorePage /></ProtectedRoute>} />
+            <Route path="/bank" element={<ProtectedRoute><BankPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
