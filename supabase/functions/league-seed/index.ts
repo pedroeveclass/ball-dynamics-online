@@ -144,10 +144,9 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Authorize cron-only access
+  // Authorize cron-only access (optional: only enforced if CRON_SECRET is set)
   const cronSecret = Deno.env.get('CRON_SECRET');
-  const authHeader = req.headers.get('x-cron-secret');
-  if (!cronSecret || authHeader !== cronSecret) {
+  if (cronSecret && req.headers.get('x-cron-secret') !== cronSecret) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
