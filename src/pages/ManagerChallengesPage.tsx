@@ -266,10 +266,12 @@ export default function ManagerChallengesPage() {
       const homeLineupId = homeLineupRes.data?.id || null;
       const awayLineupId = awayLineupRes.data?.id || null;
 
+      // Schedule 5s in future so engine doesn't pick up before participants are inserted
+      const safeScheduledAt = new Date(Math.max(new Date(challenge.scheduled_at).getTime(), Date.now() + 5000)).toISOString();
       const { data: match, error: matchError } = await supabase.from('matches').insert({
         home_club_id: challenge.challenger_club_id, away_club_id: challenge.challenged_club_id,
         home_lineup_id: homeLineupId, away_lineup_id: awayLineupId,
-        status: 'scheduled', current_phase: 'pre_match', scheduled_at: challenge.scheduled_at,
+        status: 'scheduled', current_phase: 'pre_match', scheduled_at: safeScheduledAt,
       }).select('id').single();
       if (matchError) throw matchError;
 
@@ -434,10 +436,11 @@ export default function ManagerChallengesPage() {
       const homeLineupId = activeLineup?.id || null;
       const formation = activeLineup?.formation || '4-4-2';
 
+      // Schedule 5s in future so engine doesn't pick up before participants are inserted
       const { data: match, error: matchError } = await supabase.from('matches').insert({
         home_club_id: club.id, away_club_id: opponentId,
         home_lineup_id: homeLineupId, away_lineup_id: null,
-        status: 'scheduled', scheduled_at: new Date().toISOString(), current_phase: 'pre_match',
+        status: 'scheduled', scheduled_at: new Date(Date.now() + 5000).toISOString(), current_phase: 'pre_match',
       }).select('id').single();
       if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
 
