@@ -18,7 +18,7 @@ import {
 import {
   User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Goal, Loader2, AlertTriangle, TrendingUp, Calendar,
-  RotateCcw, Repeat,
+  Repeat, Plus, UserCircle,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 
@@ -117,12 +117,20 @@ interface TrainingRecord {
   trained_at: string;
 }
 
-const RESTART_COST = 1_000_000;
+const NEW_PLAYER_COST = 1_000_000;
 const SECONDARY_POS_COST = 100_000;
 const ALL_POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'] as const;
 
+interface PlayerCard {
+  id: string;
+  full_name: string;
+  primary_position: string;
+  overall: number;
+  club_id: string | null;
+}
+
 export default function PlayerProfilePage() {
-  const { playerProfile, refreshPlayerProfile } = useAuth();
+  const { user, playerProfile, refreshPlayerProfile, switchPlayerProfile } = useAuth();
   const navigate = useNavigate();
 
   const [clubName, setClubName] = useState<string | null>(null);
@@ -133,8 +141,12 @@ export default function PlayerProfilePage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [trainingHistory, setTrainingHistory] = useState<TrainingRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [restartOpen, setRestartOpen] = useState(false);
-  const [restarting, setRestarting] = useState(false);
+
+  // Multi-character state
+  const [allPlayers, setAllPlayers] = useState<PlayerCard[]>([]);
+  const [allPlayersLoading, setAllPlayersLoading] = useState(true);
+  const [newPlayerOpen, setNewPlayerOpen] = useState(false);
+  const [creatingNewPlayer, setCreatingNewPlayer] = useState(false);
 
   // Secondary position state
   const [secondaryPosOpen, setSecondaryPosOpen] = useState(false);
@@ -245,59 +257,53 @@ export default function PlayerProfilePage() {
     })();
   }, [p?.id]);
 
-  // ── Restart career handler ──
-  async function handleRestart() {
-    if (!p) return;
-    setRestarting(true);
+  // ── Fetch all players for this user ──
+  useEffect(() => {
+    if (!user) return;
+    setAllPlayersLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('player_profiles')
+        .select('id, full_name, primary_position, overall, club_id')
+        .eq('user_id', user.id)
+        .order('created_at');
+      setAllPlayers((data as PlayerCard[]) || []);
+      setAllPlayersLoading(false);
+    })();
+  }, [user?.id, p?.id]);
+
+  // ── Create new player handler ──
+  async function handleCreateNewPlayer() {
+    if (!p || !user) return;
+    setCreatingNewPlayer(true);
 
     try {
-      if (p.money < RESTART_COST) {
-        toast.error('Saldo insuficiente para recomeçar a carreira.');
-        setRestarting(false);
+      if (p.money < NEW_PLAYER_COST) {
+        toast.error('Saldo insuficiente para criar novo jogador.');
+        setCreatingNewPlayer(false);
         return;
       }
 
-      // Deduct money
+      // Deduct money from current player
       const { error: moneyErr } = await supabase
         .from('player_profiles')
-        .update({ money: p.money - RESTART_COST })
+        .update({ money: p.money - NEW_PLAYER_COST })
         .eq('id', p.id);
       if (moneyErr) throw moneyErr;
 
-      // Terminate active contract
-      if (p.club_id) {
-        await supabase
-          .from('contracts')
-          .update({ status: 'terminated' })
-          .eq('player_profile_id', p.id)
-          .eq('status', 'active');
-      }
-
-      // Delete training history
-      await supabase
-        .from('training_history')
-        .delete()
-        .eq('player_profile_id', p.id);
-
-      // Delete player attributes
-      await supabase
-        .from('player_attributes')
-        .delete()
-        .eq('player_profile_id', p.id);
-
-      // Delete player profile
-      await supabase
-        .from('player_profiles')
-        .delete()
-        .eq('id', p.id);
-
-      toast.success('Carreira encerrada. Crie um novo jogador!');
-      await refreshPlayerProfile();
+      toast.success('Saldo debitado. Crie seu novo jogador!');
       navigate('/onboarding/player');
     } catch (err) {
-      toast.error('Erro ao recomeçar carreira. Tente novamente.');
+      toast.error('Erro ao iniciar criação de novo jogador.');
     }
-    setRestarting(false);
+    setCreatingNewPlayer(false);
+  }
+
+  // ── Switch player handler ──
+  async function handleSwitchPlayer(playerId: string) {
+    if (playerId === p?.id) return;
+    await switchPlayerProfile(playerId);
+    toast.success('Jogador ativo alterado!');
   }
 
   // ── Secondary position handler ──
@@ -343,11 +349,42 @@ export default function PlayerProfilePage() {
   }
 
   const footLabel = p.dominant_foot === 'right' ? 'Direito' : p.dominant_foot === 'left' ? 'Esquerdo' : 'Ambos';
-  const canRestart = p.money >= RESTART_COST;
+  const canCreateNewPlayer = p.money >= NEW_PLAYER_COST;
 
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
+
+        {/* ── Character Selector ── */}
+        {!allPlayersLoading && allPlayers.length > 1 && (
+          <div className="space-y-2">
+            <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+              <UserCircle className="h-4 w-4 text-tactical" /> Seus Jogadores
+            </h2>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {allPlayers.map(pl => {
+                const isActive = pl.id === p.id;
+                return (
+                  <button
+                    key={pl.id}
+                    onClick={() => handleSwitchPlayer(pl.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm shrink-0 transition-colors ${
+                      isActive
+                        ? 'border-pitch bg-pitch/10 text-foreground'
+                        : 'border-border bg-card hover:border-muted-foreground/40 text-muted-foreground'
+                    }`}
+                  >
+                    <User className="h-4 w-4 shrink-0" />
+                    <span className="font-display font-semibold truncate max-w-[120px]">{pl.full_name}</span>
+                    <span className="text-xs">{pl.primary_position}</span>
+                    <span className="font-display font-bold text-xs">{pl.overall}</span>
+                    <span className="text-[10px]">{pl.club_id ? 'Clube' : 'Livre'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ── Player Card ── */}
         <div className="stat-card space-y-4">
@@ -527,62 +564,61 @@ export default function PlayerProfilePage() {
           )}
         </div>
 
-        {/* ── Restart Career ── */}
+        {/* ── Novo Jogador ── */}
         <div className="stat-card space-y-3">
           <h2 className="font-display font-semibold text-sm flex items-center gap-2">
-            <RotateCcw className="h-4 w-4 text-destructive" /> Recomeçar Carreira
+            <Plus className="h-4 w-4 text-tactical" /> Novo Jogador
           </h2>
           <p className="text-xs text-muted-foreground">
-            Exclua seu jogador atual e crie um novo do zero. Seu jogador atual sera deletado permanentemente.
+            Crie um novo jogador e alterne entre eles a qualquer momento. Seu jogador atual sera mantido.
           </p>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Custo: {formatBRL(RESTART_COST)}</span>
-            {!canRestart && (
+            <span className="text-sm font-medium">Custo: {formatBRL(NEW_PLAYER_COST)}</span>
+            {!canCreateNewPlayer && (
               <span className="text-xs text-destructive flex items-center gap-1">
                 <AlertTriangle className="h-3.5 w-3.5" /> Saldo insuficiente
               </span>
             )}
           </div>
           <Button
-            variant="destructive"
             className="w-full gap-2"
-            disabled={!canRestart}
-            onClick={() => setRestartOpen(true)}
+            disabled={!canCreateNewPlayer}
+            onClick={() => setNewPlayerOpen(true)}
           >
-            <RotateCcw className="h-4 w-4" /> Recomeçar Carreira - {formatBRL(RESTART_COST)}
+            <Plus className="h-4 w-4" /> Criar Novo Jogador - {formatBRL(NEW_PLAYER_COST)}
           </Button>
         </div>
       </div>
 
-      {/* ── Restart Confirmation Dialog ── */}
-      <Dialog open={restartOpen} onOpenChange={setRestartOpen}>
+      {/* ── New Player Confirmation Dialog ── */}
+      <Dialog open={newPlayerOpen} onOpenChange={setNewPlayerOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display text-destructive flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" /> Recomeçar Carreira
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Plus className="h-5 w-5 text-tactical" /> Criar Novo Jogador
             </DialogTitle>
             <DialogDescription>
-              Esta acao e irreversivel. Seu jogador atual ({p.full_name}) sera deletado permanentemente,
-              incluindo atributos, historico de treino e contrato.
+              Criar um novo jogador custa {formatBRL(NEW_PLAYER_COST)}. O valor sera debitado do jogador atual.
+              Seu jogador atual sera mantido e voce podera alternar entre eles.
             </DialogDescription>
           </DialogHeader>
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm space-y-1">
-            <p className="font-semibold text-destructive">Sera excluido:</p>
+          <div className="p-3 rounded-lg bg-tactical/10 border border-tactical/20 text-sm space-y-1">
+            <p className="font-semibold">O que vai acontecer:</p>
             <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5">
-              <li>Perfil do jogador ({p.full_name})</li>
-              <li>Todos os atributos</li>
-              <li>Historico de treinos</li>
-              {p.club_id && <li>Contrato atual (rescindido)</li>}
+              <li>{formatBRL(NEW_PLAYER_COST)} sera debitado de {p.full_name}</li>
+              <li>Voce sera redirecionado para criar um novo jogador</li>
+              <li>O novo jogador se tornara o jogador ativo</li>
+              <li>Voce podera alternar entre jogadores a qualquer momento</li>
             </ul>
-            <p className="text-xs text-muted-foreground mt-2">Custo: {formatBRL(RESTART_COST)} (debitado do saldo atual)</p>
+            <p className="text-xs text-muted-foreground mt-2">Saldo atual: {formatBRL(p.money)}</p>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setRestartOpen(false)} disabled={restarting}>
+            <Button variant="outline" onClick={() => setNewPlayerOpen(false)} disabled={creatingNewPlayer}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={handleRestart} disabled={restarting} className="gap-2">
-              {restarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-              {restarting ? 'Processando...' : 'Confirmar e Recomeçar'}
+            <Button onClick={handleCreateNewPlayer} disabled={creatingNewPlayer} className="gap-2">
+              {creatingNewPlayer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {creatingNewPlayer ? 'Processando...' : 'Confirmar e Criar'}
             </Button>
           </DialogFooter>
         </DialogContent>

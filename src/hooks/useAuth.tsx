@@ -14,6 +14,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshPlayerProfile: () => Promise<void>;
   refreshManagerProfile: () => Promise<void>;
+  switchPlayerProfile: (playerProfileId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   refreshPlayerProfile: async () => {},
   refreshManagerProfile: async () => {},
+  switchPlayerProfile: async () => {},
 });
 
 // Deep compare to avoid new object references when data hasn't changed
@@ -51,8 +53,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data;
   };
 
-  const fetchPlayerProfile = async (userId: string) => {
-    const { data } = await supabase.from('player_profiles').select('*').eq('user_id', userId).single();
+  const fetchPlayerProfile = async (userId: string, activePlayerId?: string | null) => {
+    let data: any = null;
+    if (activePlayerId) {
+      // Load the specific active player
+      const res = await supabase.from('player_profiles').select('*').eq('id', activePlayerId).eq('user_id', userId).maybeSingle();
+      data = res.data;
+    }
+    if (!data) {
+      // Fallback: load the first player for this user
+      const res = await supabase.from('player_profiles').select('*').eq('user_id', userId).order('created_at', { ascending: true }).limit(1).maybeSingle();
+      data = res.data;
+    }
     stableSet(setPlayerProfile, data);
     return data;
   };
@@ -70,7 +82,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPlayerProfile = async () => {
-    if (user) await fetchPlayerProfile(user.id);
+    if (!user) return;
+    const { data: prof } = await supabase.from('profiles').select('active_player_profile_id').eq('id', user.id).maybeSingle();
+    await fetchPlayerProfile(user.id, prof?.active_player_profile_id);
+  };
+
+  const switchPlayerProfile = async (playerProfileId: string) => {
+    if (!user) return;
+    await supabase.from('profiles').update({ active_player_profile_id: playerProfileId }).eq('id', user.id);
+    await fetchPlayerProfile(user.id, playerProfileId);
   };
 
   const refreshManagerProfile = async () => {
@@ -82,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (prof?.role_selected === 'manager') {
       await fetchManagerProfile(userId);
     } else {
-      await fetchPlayerProfile(userId);
+      await fetchPlayerProfile(userId, (prof as any)?.active_player_profile_id);
     }
     dataLoadedRef.current = true;
     currentUserIdRef.current = userId;
@@ -143,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, loading, signOut, refreshPlayerProfile, refreshManagerProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, loading, signOut, refreshPlayerProfile, refreshManagerProfile, switchPlayerProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -98,6 +98,9 @@ export default function OnboardingPlayerPage() {
 
       if (playerError) throw playerError;
 
+      // Set this as the active player
+      await supabase.from('profiles').update({ active_player_profile_id: playerData.id }).eq('id', user.id);
+
       const { error: attrError } = await supabase
         .from('player_attributes')
         .insert({ player_profile_id: playerData.id, ...finalAttrs });
