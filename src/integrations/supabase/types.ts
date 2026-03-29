@@ -1924,6 +1924,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_mutual_exit: {
+        Args: {
+          p_agreement_id: string
+          p_contract_id: string
+          p_player_id: string
+        }
+        Returns: undefined
+      }
+      apply_league_schedule_votes: { Args: never; Returns: undefined }
       calculate_matchday_revenue: {
         Args: { p_club_id: string; p_opponent_reputation?: number }
         Returns: {
@@ -1971,6 +1980,11 @@ export type Database = {
       current_user_managed_club_id: { Args: never; Returns: string }
       current_user_manager_profile_id: { Args: never; Returns: string }
       current_user_player_profile_id: { Args: never; Returns: string }
+      current_user_player_profile_ids: { Args: never; Returns: string[] }
+      fire_player: {
+        Args: { p_club_id: string; p_fine_amount?: number; p_player_id: string }
+        Returns: undefined
+      }
       get_facility_stats: {
         Args: { p_facility_type: string; p_level: number }
         Returns: {
@@ -1986,6 +2000,21 @@ export type Database = {
       is_same_active_club_as_current_user: {
         Args: { _player_profile_id: string }
         Returns: boolean
+      }
+      payoff_loan: {
+        Args: { p_entity_id: string; p_entity_type: string; p_loan_id: string }
+        Returns: undefined
+      }
+      process_loan: {
+        Args: {
+          p_amount: number
+          p_club_id: string
+          p_duration_weeks: number
+          p_entity_type: string
+          p_interest_rate: number
+          p_player_id: string
+        }
+        Returns: string
       }
       release_club_to_bot: { Args: { p_club_id: string }; Returns: undefined }
       release_match_turn_processing: {

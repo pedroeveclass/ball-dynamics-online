@@ -2490,7 +2490,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         if (!slots || slots.length === 0) return [];
 
         // Load player profiles to get user_id for connected_user_id
-        const profileIds = slots.filter(s => s.player_profile_id).map(s => s.player_profile_id);
+        const profileIds = slots.filter((s: any) => s.player_profile_id).map((s: any) => s.player_profile_id);
         const { data: profiles } = profileIds.length > 0
           ? await supabase.from('player_profiles').select('id, user_id').in('id', profileIds)
           : { data: [] };
