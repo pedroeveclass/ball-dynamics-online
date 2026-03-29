@@ -2483,7 +2483,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         if (!lineupId) return [];
         const { data: slots } = await supabase
           .from('lineup_slots')
-          .select('id, player_profile_id, slot_position, sort_order')
+          .select('id, player_profile_id, slot_position, sort_order, role_type')
           .eq('lineup_id', lineupId)
           .order('sort_order');
 
@@ -2496,9 +2496,15 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           : { data: [] };
         const profileUserMap = new Map((profiles || []).map((p: any) => [p.id, p.user_id]));
 
-        const participants = slots.map((slot: any) => {
+        const starterSlots = slots.filter((s: any) => s.role_type === 'starter' || !s.role_type);
+        const benchSlots = slots.filter((s: any) => s.role_type === 'bench');
+
+        const participants: any[] = [];
+
+        // Starters become role_type 'player'
+        for (const slot of starterSlots) {
           const userId = slot.player_profile_id ? profileUserMap.get(slot.player_profile_id) : null;
-          return {
+          participants.push({
             match_id: m.id,
             club_id: clubId,
             lineup_slot_id: slot.id,
@@ -2506,12 +2512,30 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
             role_type: 'player',
             is_bot: !userId,
             connected_user_id: userId || null,
-          };
-        });
+          });
+        }
+
+        // Bench slots become role_type 'bench' (no field position)
+        for (const slot of benchSlots) {
+          const userId = slot.player_profile_id ? profileUserMap.get(slot.player_profile_id) : null;
+          participants.push({
+            match_id: m.id,
+            club_id: clubId,
+            lineup_slot_id: slot.id,
+            player_profile_id: slot.player_profile_id || null,
+            role_type: 'bench',
+            is_bot: !userId,
+            connected_user_id: userId || null,
+            pos_x: null,
+            pos_y: null,
+          });
+        }
 
         if (participants.length > 0) {
           const { data: inserted } = await supabase.from('match_participants').insert(participants).select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y');
-          console.log(`[ENGINE] Seeded ${participants.length} participants (${participants.filter((p: any) => !p.is_bot).length} human) for club ${clubId.slice(0,8)}`);
+          const starterCount = starterSlots.length;
+          const benchCount = benchSlots.length;
+          console.log(`[ENGINE] Seeded ${starterCount} starters + ${benchCount} bench (${participants.filter((p: any) => !p.is_bot).length} human) for club ${clubId.slice(0,8)}`);
           return inserted || [];
         }
         return [];
@@ -2550,8 +2574,8 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       existingParts = [...homeSeeded, ...awaySeeded];
     }
 
-    const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id);
-    const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id);
+    const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id && p.role_type === 'player');
+    const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id && p.role_type === 'player');
 
     if (!isTestMatch) {
       const { data: homeSettings } = await supabase.from('club_settings').select('default_formation').eq('club_id', m.home_club_id).maybeSingle();

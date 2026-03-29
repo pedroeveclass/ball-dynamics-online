@@ -587,7 +587,17 @@ export default function MatchRoomPage() {
       setMyParticipant(managerPart || null);
       setMyClubId(managerPart?.club_id || (isManagerOfHome ? match.home_club_id : match.away_club_id));
     } else {
-      setMyRole('spectator'); setMyParticipant(null); setMyClubId(null);
+      // Check if user is a bench player
+      const benchPart = playerProfile?.id
+        ? participants.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'bench')
+        : null;
+      if (benchPart) {
+        setMyRole('spectator');
+        setMyParticipant(benchPart);
+        setMyClubId(benchPart.club_id);
+      } else {
+        setMyRole('spectator'); setMyParticipant(null); setMyClubId(null);
+      }
     }
   }, [user, participants, match, club, playerProfile]);
 
@@ -1136,6 +1146,45 @@ export default function MatchRoomPage() {
   const exitToDashboard = () => {
     navigate(myRole === 'manager' ? '/manager' : '/player');
   };
+
+  const handleSubstitute = useCallback(async (outPlayerId: string, inPlayerId: string) => {
+    const outPlayer = participants.find(p => p.id === outPlayerId);
+    const inPlayer = participants.find(p => p.id === inPlayerId);
+    if (!outPlayer || !inPlayer) return;
+
+    // Swap roles: outgoing becomes bench, incoming becomes player at outgoing's position
+    await Promise.all([
+      supabase.from('match_participants').update({
+        role_type: 'bench', pos_x: null, pos_y: null,
+      }).eq('id', outPlayerId),
+      supabase.from('match_participants').update({
+        role_type: 'player', pos_x: outPlayer.pos_x ?? outPlayer.field_x ?? null, pos_y: outPlayer.pos_y ?? outPlayer.field_y ?? null,
+      }).eq('id', inPlayerId),
+    ]);
+
+    // Update local state
+    setParticipants(prev => prev.map(p => {
+      if (p.id === outPlayerId) return { ...p, role_type: 'bench', pos_x: null, pos_y: null, field_x: undefined, field_y: undefined };
+      if (p.id === inPlayerId) return {
+        ...p, role_type: 'player',
+        pos_x: outPlayer.pos_x ?? outPlayer.field_x ?? null,
+        pos_y: outPlayer.pos_y ?? outPlayer.field_y ?? null,
+        field_x: outPlayer.field_x, field_y: outPlayer.field_y, field_pos: outPlayer.field_pos,
+        jersey_number: outPlayer.jersey_number,
+      };
+      return p;
+    }));
+
+    // Create event log
+    await supabase.from('match_event_logs').insert({
+      match_id: matchId,
+      event_type: 'substitution',
+      title: 'Substituicao',
+      body: `${inPlayer.player_name || 'Jogador'} entra no lugar de ${outPlayer.player_name || 'Jogador'}`,
+    });
+
+    toast.success('Substituicao realizada!');
+  }, [participants, matchId]);
 
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
@@ -1943,6 +1992,14 @@ export default function MatchRoomPage() {
     () => participants.filter(p => p.club_id === match?.away_club_id && p.role_type === 'player'),
     [participants, match?.away_club_id]
   );
+  const homeBenchMemo = useMemo(
+    () => participants.filter(p => p.club_id === match?.home_club_id && p.role_type === 'bench'),
+    [participants, match?.home_club_id]
+  );
+  const awayBenchMemo = useMemo(
+    () => participants.filter(p => p.club_id === match?.away_club_id && p.role_type === 'bench'),
+    [participants, match?.away_club_id]
+  );
 
   // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
@@ -2542,7 +2599,7 @@ export default function MatchRoomPage() {
         homeScore={match.home_score} awayScore={match.away_score}
         currentTurnNumber={match.current_turn_number} activeTurnPhase={activeTurn?.phase ?? null}
         halfStartedAt={match.half_started_at ?? null} currentHalf={match.current_half ?? 1}
-        myRole={myRole} isManager={isManager} isPlayer={isPlayer}
+        myRole={myRole} isBenchPlayer={myRole === 'spectator' && myParticipant?.role_type === 'bench'} isManager={isManager} isPlayer={isPlayer}
         onFinishMatch={finishMatch} onExit={exitToDashboard}
         homeUniformNum={match.home_uniform ?? 1} awayUniformNum={match.away_uniform ?? 2}
         homeActiveUniform={homeActiveUniform} awayActiveUniform={awayActiveUniform}
@@ -3398,6 +3455,11 @@ export default function MatchRoomPage() {
           selectedId={selectedParticipantId}
           onSelectPlayer={handlePlayerClick}
           submittedIds={allSubmittedIds}
+          homeBench={homeBenchMemo}
+          awayBench={awayBenchMemo}
+          isManager={isManager}
+          myClubId={myClubId}
+          onSubstitute={handleSubstitute}
           homeAccOpen={homeAccOpen}
           awayAccOpen={awayAccOpen}
           logAccOpen={logAccOpen}

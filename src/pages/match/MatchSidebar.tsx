@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, User, ChevronDown, ChevronRight } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
 import type { ClubInfo, Participant, MatchTurn, EventLog } from './types';
 
@@ -166,6 +166,63 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
   );
 }
 
+// ─── BenchList ──────────────────────────────────────────────
+function BenchList({ players, isManagerTeam, starters, onSubstitute }: {
+  players: Participant[]; isManagerTeam: boolean;
+  starters: Participant[]; onSubstitute?: (outId: string, inId: string) => void;
+}) {
+  const [swapTarget, setSwapTarget] = useState<string | null>(null);
+
+  if (players.length === 0) return null;
+
+  return (
+    <div className="mt-1.5 pt-1.5 border-t border-[hsl(220,10%,22%)]">
+      <span className="text-[9px] font-display font-bold text-white/40 uppercase tracking-wider">Banco</span>
+      <div className="space-y-0.5 mt-0.5">
+        {players.map(p => (
+          <div key={p.id} className="relative">
+            <div className="w-full flex items-center gap-1.5 text-[9px] px-1.5 py-0.5 rounded text-white/60">
+              {p.is_bot
+                ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
+                : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
+              <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(p.slot_position)}</span>
+              <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
+              {isManagerTeam && onSubstitute && (
+                <button
+                  onClick={() => setSwapTarget(swapTarget === p.id ? null : p.id)}
+                  className="text-[8px] font-display bg-warning/20 text-warning px-1.5 py-0.5 rounded hover:bg-warning/30 transition-colors flex items-center gap-0.5"
+                  title="Substituir"
+                >
+                  <ArrowLeftRight className="h-2.5 w-2.5" />
+                </button>
+              )}
+            </div>
+            {/* Swap dropdown - pick which starter to replace */}
+            {swapTarget === p.id && isManagerTeam && onSubstitute && (
+              <div className="absolute right-0 top-full z-50 bg-[hsl(220,15%,16%)] border border-[hsl(220,10%,28%)] rounded shadow-lg p-1.5 min-w-[140px] max-h-[200px] overflow-y-auto">
+                <span className="text-[8px] font-display text-white/40 block mb-1">Sai quem?</span>
+                {starters.map(s => (
+                  <button key={s.id}
+                    onClick={() => { onSubstitute(s.id, p.id); setSwapTarget(null); }}
+                    className="w-full flex items-center gap-1 text-[9px] px-1.5 py-1 rounded hover:bg-warning/20 text-white/70 hover:text-white transition-colors text-left"
+                  >
+                    <span className="font-display w-5 shrink-0 text-white/50">{s.jersey_number || '?'}</span>
+                    <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(s.field_pos)}</span>
+                    <span className="truncate flex-1">{s.player_name?.split(' ')[0] || 'Bot'}</span>
+                  </button>
+                ))}
+                <button onClick={() => setSwapTarget(null)}
+                  className="w-full text-[8px] text-white/30 mt-1 hover:text-white/50 transition-colors"
+                >Cancelar</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── MatchSidebar (extracted, memoized) ─────────────────────
 export interface MatchSidebarProps {
   activeTurn: MatchTurn | null;
@@ -186,6 +243,11 @@ export interface MatchSidebarProps {
   selectedId: string | null;
   onSelectPlayer: (id: string) => void;
   submittedIds: Set<string>;
+  homeBench: Participant[];
+  awayBench: Participant[];
+  isManager: boolean;
+  myClubId: string | null;
+  onSubstitute: (outId: string, inId: string) => void;
   homeAccOpen: boolean; awayAccOpen: boolean; logAccOpen: boolean; chatAccOpen: boolean;
   onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void; onToggleChat: () => void;
   events: EventLog[];
@@ -201,6 +263,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
     isLooseBall, isHalftime, timerDisplayRef, timerBarRef,
     homeClub, awayClub, homePlayers, awayPlayers,
     ballHolderId, myId, selectedId, onSelectPlayer, submittedIds,
+    homeBench, awayBench, isManager, myClubId, onSubstitute,
     homeAccOpen, awayAccOpen, logAccOpen, chatAccOpen,
     onToggleHome, onToggleAway, onToggleLog, onToggleChat,
     events, eventsEndRef,
@@ -260,7 +323,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
 
       <AccordionSection
         title={homeClub?.name || 'Time Casa'}
-        badge={`${homePlayers.filter(p => !p.id.startsWith('virtual')).length}`}
+        badge={`${homePlayers.filter(p => !p.id.startsWith('virtual')).length}${homeBench.length > 0 ? ` + ${homeBench.length}` : ''}`}
         color={homeClub?.primary_color}
         open={homeAccOpen}
         onToggle={onToggleHome}
@@ -273,11 +336,17 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           onSelect={onSelectPlayer}
           submittedIds={submittedIds}
         />
+        <BenchList
+          players={homeBench}
+          isManagerTeam={isManager && myClubId === homeClub?.id}
+          starters={homePlayers}
+          onSubstitute={onSubstitute}
+        />
       </AccordionSection>
 
       <AccordionSection
         title={awayClub?.name || 'Time Fora'}
-        badge={`${awayPlayers.filter(p => !p.id.startsWith('virtual')).length}`}
+        badge={`${awayPlayers.filter(p => !p.id.startsWith('virtual')).length}${awayBench.length > 0 ? ` + ${awayBench.length}` : ''}`}
         color={awayClub?.primary_color}
         open={awayAccOpen}
         onToggle={onToggleAway}
@@ -289,6 +358,12 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           selectedId={selectedId}
           onSelect={onSelectPlayer}
           submittedIds={submittedIds}
+        />
+        <BenchList
+          players={awayBench}
+          isManagerTeam={isManager && myClubId === awayClub?.id}
+          starters={awayPlayers}
+          onSubstitute={onSubstitute}
         />
       </AccordionSection>
 

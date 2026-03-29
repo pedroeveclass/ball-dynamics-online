@@ -428,10 +428,12 @@ export default function ManagerChallengesPage() {
       if (homeLineupId) {
         const { data: slots } = await supabase.from('lineup_slots')
           .select('id, player_profile_id, slot_position, role_type')
-          .eq('lineup_id', homeLineupId).eq('role_type', 'starter');
+          .eq('lineup_id', homeLineupId);
 
-        const starterSlots = slots || [];
-        const playerIds = starterSlots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
+        const allSlots = slots || [];
+        const starterSlots = allSlots.filter(s => s.role_type === 'starter');
+        const benchSlots = allSlots.filter(s => s.role_type === 'bench');
+        const playerIds = allSlots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
         const { data: players } = playerIds.length > 0
           ? await supabase.from('player_profiles').select('id, user_id').in('id', playerIds)
           : { data: [] };
@@ -470,6 +472,17 @@ export default function ManagerChallengesPage() {
             club_id: club.id, lineup_slot_id: slot.id, role_type: 'player',
             is_bot: !pUserId, is_ready: false, connected_user_id: pUserId || null,
             pos_x: fPos.x, pos_y: fPos.y,
+          });
+        }
+
+        // Add bench players (no field position)
+        for (const slot of benchSlots) {
+          const pUserId = slot.player_profile_id ? playerUserMap.get(slot.player_profile_id) : null;
+          participantsToInsert.push({
+            match_id: match.id, player_profile_id: slot.player_profile_id || null,
+            club_id: club.id, lineup_slot_id: slot.id, role_type: 'bench',
+            is_bot: !pUserId, is_ready: false, connected_user_id: pUserId || null,
+            pos_x: null, pos_y: null,
           });
         }
       }
