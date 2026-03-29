@@ -113,7 +113,7 @@ export default function ManagerMarketPage() {
         await supabase.from('notifications').insert({
           user_id: playerData.user_id,
           title: 'Nova proposta de contrato!',
-          body: `${club.name} enviou uma proposta de $${salary}/semana.`,
+          body: `${club.name} enviou uma proposta de R$${salary}/semana.`,
           type: 'contract_offer',
         });
       }

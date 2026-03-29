@@ -1,11 +1,12 @@
 import { ReactNode } from 'react';
 import { ManagerSidebar } from '@/components/ManagerSidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { Bell, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export function ManagerLayout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
@@ -27,9 +28,7 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
               <span className="font-display text-lg font-bold tracking-tight text-foreground">FOOTBALL IDENTITY</span>
             </div>
             <div className="flex items-center gap-4">
-              <Link to="/notifications" className="relative p-2 rounded-md hover:bg-muted transition-colors">
-                <Bell className="h-5 w-5 text-muted-foreground" />
-              </Link>
+              <NotificationBell />
               <Link to="/account/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
                 <UserAvatar
                   avatarUrl={(profile as any)?.avatar_url}
