@@ -83,16 +83,7 @@ function StoreItemCard({ item }: { item: StoreItem }) {
   const durationLabel = getDurationLabel(item.duration);
 
   return (
-    <Card className="relative opacity-50 overflow-hidden">
-      {/* Unavailable overlay */}
-      <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
-        <div className="flex flex-col items-center gap-1">
-          <Lock className="h-6 w-6 text-muted-foreground" />
-          <span className="font-display text-sm font-bold text-muted-foreground tracking-wide">
-            INDISPONÍVEL
-          </span>
-        </div>
-      </div>
+    <Card className="overflow-hidden">
 
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
@@ -128,9 +119,9 @@ function StoreItemCard({ item }: { item: StoreItem }) {
           <span className="font-display text-sm font-bold">
             {formatPrice(item.price, item.price_type)}
           </span>
-          <Button size="sm" disabled className="text-xs h-7 px-3">
-            Comprar
-          </Button>
+          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+            Em breve
+          </Badge>
         </div>
       </CardContent>
     </Card>
