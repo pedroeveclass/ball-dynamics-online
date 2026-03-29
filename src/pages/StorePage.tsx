@@ -24,26 +24,39 @@ interface StoreItem {
   name: string;
   description: string | null;
   category: string;
-  sub_category: string | null;
   level: number | null;
-  bonus_attribute: string | null;
+  max_level: number | null;
+  bonus_type: string | null;
   bonus_value: number | null;
-  price: number | null;
-  price_type: string | null;
+  price: number;
+  price_real: number | null;
   duration: string | null;
+  monthly_cost: number | null;
   is_available: boolean;
-  sort_order: number | null;
+  sort_order: number;
 }
 
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  cosmeticos: <ShoppingBag className="h-4 w-4" />,
-  chuteiras: <Footprints className="h-4 w-4" />,
-  consumiveis: <Zap className="h-4 w-4" />,
-  servicos: <GraduationCap className="h-4 w-4" />,
-  outros: <Gift className="h-4 w-4" />,
+const CATEGORY_LABELS: Record<string, string> = {
+  cosmetic: 'Cosméticos',
+  boots: 'Chuteiras',
+  consumable: 'Consumíveis',
+  trainer: 'Serviços',
+  physio: 'Serviços',
+  donation: 'Outros',
+  currency: 'Outros',
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
+const DISPLAY_CATEGORIES: Record<string, string> = {
+  cosmetic: 'cosmeticos',
+  boots: 'chuteiras',
+  consumable: 'consumiveis',
+  trainer: 'servicos',
+  physio: 'servicos',
+  donation: 'outros',
+  currency: 'outros',
+};
+
+const CATEGORY_TAB_LABELS: Record<string, string> = {
   cosmeticos: 'Cosméticos',
   chuteiras: 'Chuteiras',
   consumiveis: 'Consumíveis',
@@ -51,14 +64,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   outros: 'Outros',
 };
 
-function getItemIcon(category: string, subCategory: string | null) {
-  if (subCategory === 'trainer') return <GraduationCap className="h-5 w-5 text-muted-foreground" />;
-  if (subCategory === 'physio') return <Heart className="h-5 w-5 text-muted-foreground" />;
-  if (subCategory === 'donation') return <Gift className="h-5 w-5 text-muted-foreground" />;
-  if (subCategory === 'currency') return <CreditCard className="h-5 w-5 text-muted-foreground" />;
-  if (category === 'chuteiras') return <Footprints className="h-5 w-5 text-muted-foreground" />;
-  if (category === 'consumiveis') return <Zap className="h-5 w-5 text-muted-foreground" />;
-  if (category === 'cosmeticos') return <ShoppingBag className="h-5 w-5 text-muted-foreground" />;
+function getItemIcon(category: string) {
+  if (category === 'trainer') return <GraduationCap className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'physio') return <Heart className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'donation') return <Gift className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'currency') return <CreditCard className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'boots') return <Footprints className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'consumable') return <Zap className="h-5 w-5 text-muted-foreground" />;
+  if (category === 'cosmetic') return <ShoppingBag className="h-5 w-5 text-muted-foreground" />;
   return <Store className="h-5 w-5 text-muted-foreground" />;
 }
 
@@ -73,11 +86,7 @@ function getDurationLabel(duration: string | null): string | null {
   }
 }
 
-function formatPrice(price: number | null, priceType: string | null): string {
-  if (priceType === 'real_money') return 'Dinheiro Real';
-  if (price == null) return '—';
-  return `R$ ${price.toLocaleString('pt-BR')}`;
-}
+const formatBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 function StoreItemCard({ item }: { item: StoreItem }) {
   const durationLabel = getDurationLabel(item.duration);
@@ -88,7 +97,7 @@ function StoreItemCard({ item }: { item: StoreItem }) {
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            {getItemIcon(item.category, item.sub_category)}
+            {getItemIcon(item.category)}
             <CardTitle className="text-sm font-display leading-tight">
               {item.name}
               {item.level != null && (
@@ -109,15 +118,15 @@ function StoreItemCard({ item }: { item: StoreItem }) {
           <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>
         )}
 
-        {item.bonus_attribute && item.bonus_value != null && (
+        {item.bonus_type && item.bonus_value != null && (
           <Badge variant="secondary" className="text-[10px]">
-            +{item.bonus_value} {item.bonus_attribute}
+            +{item.bonus_value} {item.bonus_type}
           </Badge>
         )}
 
         <div className="flex items-center justify-between pt-1">
           <span className="font-display text-sm font-bold">
-            {formatPrice(item.price, item.price_type)}
+            {item.price_real ? 'Dinheiro Real' : formatBRL(item.price)}
           </span>
           <Badge variant="outline" className="text-[10px] text-muted-foreground">
             Em breve
@@ -151,7 +160,7 @@ export default function StorePage() {
   }, []);
 
   const grouped = items.reduce<Record<string, StoreItem[]>>((acc, item) => {
-    const cat = item.category || 'outros';
+    const cat = DISPLAY_CATEGORIES[item.category] || 'outros';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(item);
     return acc;
@@ -187,8 +196,7 @@ export default function StorePage() {
               if (count === 0) return null;
               return (
                 <TabsTrigger key={cat} value={cat} className="flex items-center gap-1 text-xs">
-                  {CATEGORY_ICONS[cat]}
-                  {CATEGORY_LABELS[cat]}
+                  {CATEGORY_TAB_LABELS[cat] || cat}
                   <span className="text-[10px] text-muted-foreground">({count})</span>
                 </TabsTrigger>
               );
