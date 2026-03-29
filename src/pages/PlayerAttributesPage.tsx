@@ -3,12 +3,12 @@ import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS } from '@/lib/attributes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
-import { Dumbbell, TrendingUp, History, ArrowUp } from 'lucide-react';
+import { Dumbbell, TrendingUp, History, ArrowUp, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info } from 'lucide-react';
 
 const ENERGY_COST = 25;
 
@@ -27,6 +27,10 @@ export default function PlayerAttributesPage() {
   const [training, setTraining] = useState<string | null>(null);
   const [history, setHistory] = useState<TrainingRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [coachType, setCoachType] = useState<string>('all_around');
+  const [trainingCenterLevel, setTrainingCenterLevel] = useState<number>(0);
+  const [showBonusInfo, setShowBonusInfo] = useState(false);
+  const [hasClub, setHasClub] = useState<boolean>(true);
 
   const weeklyEvolution = (() => {
     const oneWeekAgo = new Date();
@@ -45,6 +49,29 @@ export default function PlayerAttributesPage() {
     setAttrs(data);
   };
 
+  const fetchTrainingBonuses = async () => {
+    if (!playerProfile?.club_id) {
+      setHasClub(false);
+      setCoachType('all_around');
+      setTrainingCenterLevel(0);
+      return;
+    }
+    setHasClub(true);
+
+    // Get club's manager coach type
+    const { data: club } = await supabase.from('clubs').select('id, manager_profile_id').eq('id', playerProfile.club_id).maybeSingle();
+    if (club?.manager_profile_id) {
+      const { data: manager } = await supabase.from('manager_profiles').select('coach_type').eq('id', club.manager_profile_id).maybeSingle();
+      setCoachType(manager?.coach_type || 'all_around');
+    } else {
+      setCoachType('all_around');
+    }
+
+    // Get training center level
+    const { data: trainingFacility } = await supabase.from('club_facilities').select('level').eq('club_id', playerProfile.club_id).eq('facility_type', 'training_center').maybeSingle();
+    setTrainingCenterLevel(trainingFacility?.level || 0);
+  };
+
   const fetchHistory = async () => {
     if (!playerProfile) return;
     const { data } = await supabase
@@ -56,7 +83,7 @@ export default function PlayerAttributesPage() {
     setHistory((data as TrainingRecord[]) || []);
   };
 
-  useEffect(() => { fetchAttrs(); fetchHistory(); }, [playerProfile]);
+  useEffect(() => { fetchAttrs(); fetchHistory(); fetchTrainingBonuses(); }, [playerProfile]);
 
   if (!playerProfile || !attrs) {
     return <AppLayout><p className="text-muted-foreground">Carregando atributos...</p></AppLayout>;
@@ -89,6 +116,10 @@ export default function PlayerAttributesPage() {
     }
     // Apply tier multiplier
     growth = growth * tierMultiplier;
+    // Apply coach and training center bonuses
+    const coachBonusValue = hasClub ? getCoachBonus(coachType, attrKey) : 0;
+    const tcBonusValue = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
+    growth = growth * (1 + coachBonusValue + tcBonusValue);
     growth = Math.round(growth * 100) / 100;
     const newVal = Math.min(99, Math.round((currentVal + growth) * 100) / 100);
 
@@ -143,8 +174,11 @@ export default function PlayerAttributesPage() {
           const evo = weeklyEvolution[key];
           const tier = getAttributeTier(value);
           const tierMult = getTrainingTierMultiplier(value);
-          const effectiveGrowthMin = (growthRate * tierMult).toFixed(2);
-          const effectiveGrowthMax = ((growthRate + 0.99) * tierMult).toFixed(2);
+          const attrCoachBonus = hasClub ? getCoachBonus(coachType, key) : 0;
+          const attrTcBonus = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
+          const bonusFactor = 1 + attrCoachBonus + attrTcBonus;
+          const effectiveGrowthMin = (growthRate * tierMult * bonusFactor).toFixed(2);
+          const effectiveGrowthMax = ((growthRate + 0.99) * tierMult * bonusFactor).toFixed(2);
           return (
             <Popover key={key}>
               <PopoverTrigger asChild>
@@ -185,6 +219,15 @@ export default function PlayerAttributesPage() {
                   )}
                   {playerProfile.age >= 30 && (
                     <p className="text-xs text-warning">Crescimento reduzido pela idade ({Math.round(growthRate * 100)}%)</p>
+                  )}
+                  {hasClub && attrCoachBonus > 0 && (
+                    <p className="text-xs text-blue-400">Bônus Treinador {COACH_TYPE_LABELS[coachType] || coachType}: +{Math.round(attrCoachBonus * 100)}%</p>
+                  )}
+                  {hasClub && attrTcBonus > 0 && (
+                    <p className="text-xs text-amber-400">Bônus Centro de Treino (Nv.{trainingCenterLevel}): +{Math.round(attrTcBonus * 100)}%</p>
+                  )}
+                  {!hasClub && (
+                    <p className="text-xs text-muted-foreground">Sem clube — sem bônus de treino</p>
                   )}
                   <Button
                     size="sm"
@@ -233,6 +276,63 @@ export default function PlayerAttributesPage() {
           Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia. Atributos mais altos crescem mais devagar.
           {Object.keys(weeklyEvolution).length > 0 && <span className="text-pitch"> Setas verdes indicam evolução na última semana.</span>}
         </p>
+
+        {/* Training Bonuses Info Card */}
+        <div className="stat-card">
+          <button
+            className="w-full flex items-center justify-between"
+            onClick={() => setShowBonusInfo(!showBonusInfo)}
+          >
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-tactical" />
+              <span className="font-display font-semibold text-sm">Bônus de Treino</span>
+            </div>
+            {showBonusInfo ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          {showBonusInfo && (
+            <div className="mt-3 space-y-2">
+              {!hasClub ? (
+                <p className="text-sm text-muted-foreground">Sem clube — sem bônus de treino</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Dumbbell className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Taxa Base (idade):</span>
+                    <span className="font-display font-bold text-foreground">{Math.round(growthRate * 100)}%</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    {coachType === 'defensive' && <Shield className="h-4 w-4 text-blue-400" />}
+                    {coachType === 'offensive' && <Swords className="h-4 w-4 text-red-400" />}
+                    {coachType === 'technical' && <Wrench className="h-4 w-4 text-cyan-400" />}
+                    {(coachType === 'all_around' || coachType === 'complete') && <Star className="h-4 w-4 text-yellow-400" />}
+                    <span className="text-muted-foreground">Bônus Treinador ({COACH_TYPE_LABELS[coachType] || 'Completo'}):</span>
+                    <span className="font-display font-bold text-blue-400">+{Math.round((COACH_BONUS_RATE[coachType] || 0.10) * 100)}%</span>
+                  </div>
+                  {coachType !== 'all_around' && coachType !== 'complete' && COACH_BONUS_ATTRS[coachType] && (
+                    <p className="text-xs text-muted-foreground ml-6">
+                      Atributos: {COACH_BONUS_ATTRS[coachType].map(a => ATTR_LABELS[a] || a).join(', ')}
+                    </p>
+                  )}
+                  {(coachType === 'all_around' || coachType === 'complete') && (
+                    <p className="text-xs text-muted-foreground ml-6">Aplica a todos os atributos</p>
+                  )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Building2 className="h-4 w-4 text-amber-400" />
+                    <span className="text-muted-foreground">Bônus Centro de Treino (Nv.{trainingCenterLevel}):</span>
+                    <span className="font-display font-bold text-amber-400">+{Math.round(getTrainingCenterBonus(trainingCenterLevel) * 100)}%</span>
+                  </div>
+                  <div className="border-t border-muted pt-2 flex items-center gap-2 text-sm">
+                    <TrendingUp className="h-4 w-4 text-pitch" />
+                    <span className="text-muted-foreground">Bônus combinado máximo:</span>
+                    <span className="font-display font-bold text-pitch">
+                      +{Math.round(((COACH_BONUS_RATE[coachType] || 0.10) + getTrainingCenterBonus(trainingCenterLevel)) * 100)}%
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {showHistory && (
           <div className="stat-card">

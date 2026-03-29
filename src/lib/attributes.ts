@@ -245,6 +245,55 @@ export function getTrainingTierMultiplier(value: number): number {
   return getAttributeTier(value).trainingMultiplier;
 }
 
+// ── Coach Type Training Bonuses ──
+export const COACH_BONUS_ATTRS: Record<string, string[]> = {
+  defensive: ['desarme', 'marcacao', 'posicionamento_defensivo', 'cabeceio', 'coragem', 'antecipacao'],
+  offensive: ['acuracia_chute', 'forca_chute', 'posicionamento_ofensivo', 'drible', 'curva', 'um_toque'],
+  technical: ['passe_baixo', 'passe_alto', 'controle_bola', 'visao_jogo', 'tomada_decisao', 'distribuicao_curta'],
+  all_around: [], // applies to all
+  complete: [], // alias for all_around
+};
+
+export const COACH_BONUS_RATE: Record<string, number> = {
+  defensive: 0.15,
+  offensive: 0.15,
+  technical: 0.15,
+  all_around: 0.10,
+  complete: 0.10,
+};
+
+export const COACH_TYPE_LABELS: Record<string, string> = {
+  defensive: 'Defensivo',
+  offensive: 'Ofensivo',
+  technical: 'Técnico',
+  all_around: 'Completo',
+  complete: 'Completo',
+};
+
+// ── Training Center Level Bonuses ──
+export const TRAINING_CENTER_BONUS: Record<number, number> = {
+  0: 0,
+  1: 0.05,
+  2: 0.10,
+  3: 0.18,
+  4: 0.28,
+  5: 0.40,
+};
+
+export function getCoachBonus(coachType: string, attrKey: string): number {
+  const type = coachType || 'all_around';
+  const rate = COACH_BONUS_RATE[type] || 0.10;
+  const boostedAttrs = COACH_BONUS_ATTRS[type];
+  if (!boostedAttrs) return 0.10; // fallback to all_around
+  // all_around/complete apply to all attributes
+  if (boostedAttrs.length === 0) return rate;
+  return boostedAttrs.includes(attrKey) ? rate : 0;
+}
+
+export function getTrainingCenterBonus(level: number): number {
+  return TRAINING_CENTER_BONUS[level] ?? 0;
+}
+
 // Positions
 export const POSITIONS = [
   { value: 'GK', label: 'Goleiro', category: 'GK' },

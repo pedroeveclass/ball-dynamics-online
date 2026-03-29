@@ -30,29 +30,47 @@ const STATUS_INFO: Record<string, { label: string; className: string }> = {
 };
 
 export default function PlayerMatchesPage() {
-  const { user } = useAuth();
+  const { user, playerProfile } = useAuth();
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadMatches = useCallback(async () => {
     if (!user) return;
+
+    // Method 1: Direct participation via match_participants
     const { data: parts } = await supabase.from('match_participants').select('match_id, is_bot').eq('connected_user_id', user.id).eq('role_type', 'player');
-    if (!parts || parts.length === 0) { setLoading(false); return; }
-    const matchIds = [...new Set(parts.map(p => p.match_id))];
+    const directMatchIds = [...new Set((parts || []).map(p => p.match_id))];
+
+    // Method 2: Club's league matches (player may not be in match_participants yet)
+    let clubMatchIds: string[] = [];
+    if (playerProfile?.club_id) {
+      const { data: clubMatches } = await supabase
+        .from('matches')
+        .select('id')
+        .or(`home_club_id.eq.${playerProfile.club_id},away_club_id.eq.${playerProfile.club_id}`)
+        .order('scheduled_at', { ascending: false })
+        .limit(50);
+      clubMatchIds = (clubMatches || []).map(m => m.id);
+    }
+
+    // Merge and deduplicate
+    const allMatchIds = [...new Set([...directMatchIds, ...clubMatchIds])];
+    if (allMatchIds.length === 0) { setLoading(false); return; }
+
     const { data: matchData } = await supabase.from('matches')
       .select('id, status, home_score, away_score, scheduled_at, started_at, home_club_id, away_club_id, current_phase, current_turn_number')
-      .in('id', matchIds).order('scheduled_at', { ascending: false });
+      .in('id', allMatchIds).order('scheduled_at', { ascending: false });
     if (!matchData) { setLoading(false); return; }
     const clubIds = [...new Set(matchData.flatMap(m => [m.home_club_id, m.away_club_id]))];
     const { data: clubData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', clubIds);
     const clubMap = new Map((clubData || []).map(c => [c.id, c]));
-    const partMap = new Map(parts.map(p => [p.match_id, p]));
+    const partMap = new Map((parts || []).map(p => [p.match_id, p]));
     setMatches(matchData.map(m => ({
       match_id: m.id, is_bot: partMap.get(m.id)?.is_bot ?? true, match: m,
       home_club: clubMap.get(m.home_club_id), away_club: clubMap.get(m.away_club_id),
     })));
     setLoading(false);
-  }, [user]);
+  }, [user, playerProfile]);
 
   useEffect(() => { loadMatches(); }, [loadMatches]);
 

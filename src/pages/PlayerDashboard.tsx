@@ -60,20 +60,37 @@ export default function PlayerDashboard() {
 
     const fetchNextMatch = async () => {
       if (!user) return;
-      // Get match_participants for this user
+
+      // Method 1: Direct participation via match_participants
       const { data: parts } = await supabase
         .from('match_participants')
         .select('match_id')
         .eq('connected_user_id', user.id)
         .eq('role_type', 'player');
 
-      if (!parts || parts.length === 0) return;
+      let directMatchIds = (parts || []).map(p => p.match_id);
 
-      const matchIds = parts.map(p => p.match_id);
+      // Method 2: Club's scheduled league matches (player may not be in match_participants yet)
+      let clubMatchIds: string[] = [];
+      if (playerProfile.club_id) {
+        const { data: clubMatches } = await supabase
+          .from('matches')
+          .select('id')
+          .or(`home_club_id.eq.${playerProfile.club_id},away_club_id.eq.${playerProfile.club_id}`)
+          .in('status', ['scheduled', 'waiting', 'live'])
+          .order('scheduled_at', { ascending: true })
+          .limit(5);
+        clubMatchIds = (clubMatches || []).map(m => m.id);
+      }
+
+      // Merge and deduplicate
+      const allMatchIds = [...new Set([...directMatchIds, ...clubMatchIds])];
+      if (allMatchIds.length === 0) return;
+
       const { data: matchData } = await supabase
         .from('matches')
         .select('id, status, scheduled_at, home_club_id, away_club_id')
-        .in('id', matchIds)
+        .in('id', allMatchIds)
         .in('status', ['scheduled', 'waiting', 'live'])
         .order('scheduled_at', { ascending: true })
         .limit(1)
@@ -131,8 +148,8 @@ export default function PlayerDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label="Reputação" value={p.reputation} icon={<Star className="h-5 w-5" />} />
-          <StatCard label="Dinheiro" value={`$${p.money.toLocaleString()}`} icon={<DollarSign className="h-5 w-5" />} />
-          <StatCard label="Salário/Sem" value={contract?.status === 'active' ? `$${contract.weekly_salary.toLocaleString()}` : 'Sem contrato'} />
+          <StatCard label="Dinheiro" value={new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.money)} icon={<DollarSign className="h-5 w-5" />} />
+          <StatCard label="Salario/Sem" value={contract?.status === 'active' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.weekly_salary) : 'Sem contrato'} />
           <StatCard label="Clube" value={clubName || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
         </div>
 

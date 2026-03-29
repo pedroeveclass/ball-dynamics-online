@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     // Fetch all players with energy below max
     const { data: players, error } = await supabase
       .from('player_profiles')
-      .select('id, energy_current, energy_max');
+      .select('id, user_id, energy_current, energy_max');
 
     if (error) throw error;
 
@@ -33,6 +33,17 @@ Deno.serve(async (req) => {
         .from('player_profiles')
         .update({ energy_current: newEnergy })
         .eq('id', p.id);
+
+      // Notify player if they have a user_id
+      if (p.user_id) {
+        const pctRecovered = Math.round((regenAmount / p.energy_max) * 100);
+        await supabase.from('notifications').insert({
+          user_id: p.user_id,
+          title: '⚡ Energia recuperada!',
+          body: `${pctRecovered}% de energia recuperada. Aproveite para treinar!`,
+          type: 'energy_regen',
+        });
+      }
 
       updated++;
     }

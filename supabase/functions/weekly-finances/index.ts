@@ -103,8 +103,41 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Credit player salaries
+      const { data: activeContracts } = await supabase
+        .from('contracts')
+        .select('player_profile_id, weekly_salary')
+        .eq('club_id', club.id)
+        .eq('status', 'active');
+
+      for (const contract of (activeContracts || [])) {
+        if (contract.player_profile_id && contract.weekly_salary > 0) {
+          const { data: player } = await supabase
+            .from('player_profiles')
+            .select('money, user_id')
+            .eq('id', contract.player_profile_id)
+            .maybeSingle();
+
+          if (player) {
+            await supabase.from('player_profiles').update({
+              money: (player.money || 0) + contract.weekly_salary,
+            }).eq('id', contract.player_profile_id);
+
+            // Notify player about salary received
+            if (player.user_id) {
+              await supabase.from('notifications').insert({
+                user_id: player.user_id,
+                title: '💰 Salário recebido!',
+                body: `Você recebeu ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.weekly_salary)} de salário semanal.`,
+                type: 'salary_paid',
+              });
+            }
+          }
+        }
+      }
+
       processed++;
-      console.log(`[FINANCES] ${club.name}: revenue=${totalRevenue} expense=${totalExpense} net=${netIncome} balance=${newBalance}`);
+      console.log(`[FINANCES] ${club.name}: revenue=${totalRevenue} expense=${totalExpense} net=${netIncome} balance=${newBalance} players_paid=${(activeContracts || []).length}`);
     }
 
     return new Response(JSON.stringify({ status: 'processed', clubs_processed: processed }), {

@@ -1,75 +1,651 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
-import { Plus } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
+import { ATTR_LABELS } from '@/lib/attributes';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
+  ShieldAlert, Goal, Loader2, AlertTriangle, TrendingUp, Calendar,
+  RotateCcw, Repeat,
+} from 'lucide-react';
+import type { Tables } from '@/integrations/supabase/types';
+
+const formatBRL = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+// ── Attribute category definitions (same keys as PublicClubPage) ──
+
+interface AttrRow { label: string; key: string }
+
+const PHYSICAL: AttrRow[] = [
+  { label: 'Velocidade', key: 'velocidade' },
+  { label: 'Aceleração', key: 'aceleracao' },
+  { label: 'Agilidade', key: 'agilidade' },
+  { label: 'Força', key: 'forca' },
+  { label: 'Stamina', key: 'stamina' },
+  { label: 'Resistência', key: 'resistencia' },
+];
+
+const TECHNICAL: AttrRow[] = [
+  { label: 'Controle de Bola', key: 'controle_bola' },
+  { label: 'Drible', key: 'drible' },
+  { label: 'Passe Baixo', key: 'passe_baixo' },
+  { label: 'Passe Alto', key: 'passe_alto' },
+  { label: 'Um Toque', key: 'um_toque' },
+  { label: 'Curva', key: 'curva' },
+];
+
+const MENTAL: AttrRow[] = [
+  { label: 'Visão de Jogo', key: 'visao_jogo' },
+  { label: 'Tomada de Decisão', key: 'tomada_decisao' },
+  { label: 'Antecipação', key: 'antecipacao' },
+  { label: 'Posic. Ofensivo', key: 'posicionamento_ofensivo' },
+  { label: 'Posic. Defensivo', key: 'posicionamento_defensivo' },
+];
+
+const SHOOTING: AttrRow[] = [
+  { label: 'Acurácia de Chute', key: 'acuracia_chute' },
+  { label: 'Força de Chute', key: 'forca_chute' },
+];
+
+const DEFENDING: AttrRow[] = [
+  { label: 'Desarme', key: 'desarme' },
+  { label: 'Marcação', key: 'marcacao' },
+  { label: 'Cabeceio', key: 'cabeceio' },
+];
+
+const GK_ATTRS: AttrRow[] = [
+  { label: 'Reflexo', key: 'reflexo' },
+  { label: 'Posic. Gol', key: 'posicionamento_gol' },
+  { label: 'Pegada', key: 'pegada' },
+  { label: 'Saída de Gol', key: 'saida_gol' },
+  { label: 'Comando de Área', key: 'comando_area' },
+];
+
+function AttrGroup({ title, icon, rows, attrs }: { title: string; icon: React.ReactNode; rows: AttrRow[]; attrs: any }) {
+  const avg = rows.length > 0
+    ? Math.round(rows.reduce((sum, r) => sum + Number(attrs?.[r.key] ?? 0), 0) / rows.length)
+    : 0;
+  const color = avg >= 70 ? 'text-pitch' : avg >= 50 ? 'text-yellow-500' : 'text-destructive';
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 w-28 shrink-0">
+        {icon}
+        <span className="text-sm text-muted-foreground">{title}</span>
+      </div>
+      <Progress value={avg} className="flex-1 h-2.5" />
+      <span className={`w-8 text-right font-display font-bold text-sm ${color}`}>{avg}</span>
+    </div>
+  );
+}
+
+// OVR color helper
+function ovrColor(ovr: number) {
+  if (ovr > 70) return 'text-pitch';
+  if (ovr > 50) return 'text-yellow-500';
+  return 'text-destructive';
+}
+
+// ── Career stats type ──
+
+interface CareerStats {
+  matches: number;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+}
+
+interface TrainingRecord {
+  id: string;
+  attribute_key: string;
+  old_value: number;
+  new_value: number;
+  growth: number;
+  trained_at: string;
+}
+
+const RESTART_COST = 1_000_000;
+const SECONDARY_POS_COST = 100_000;
+const ALL_POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'] as const;
 
 export default function PlayerProfilePage() {
-  const { playerProfile } = useAuth();
-  const [clubName, setClubName] = useState<string | null>(null);
+  const { playerProfile, refreshPlayerProfile } = useAuth();
+  const navigate = useNavigate();
 
+  const [clubName, setClubName] = useState<string | null>(null);
+  const [clubColors, setClubColors] = useState<{ primary: string; secondary: string } | null>(null);
+  const [attrs, setAttrs] = useState<any>(null);
+  const [attrsLoading, setAttrsLoading] = useState(true);
+  const [stats, setStats] = useState<CareerStats>({ matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [trainingHistory, setTrainingHistory] = useState<TrainingRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [restartOpen, setRestartOpen] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
+  // Secondary position state
+  const [secondaryPosOpen, setSecondaryPosOpen] = useState(false);
+  const [selectedSecondaryPos, setSelectedSecondaryPos] = useState<string>('');
+  const [changingSecondaryPos, setChangingSecondaryPos] = useState(false);
+
+  const p = playerProfile;
+
+  // ── Fetch club info ──
   useEffect(() => {
-    if (!playerProfile?.club_id) return;
+    if (!p?.club_id) { setClubName(null); setClubColors(null); return; }
     (async () => {
       const { data } = await supabase
         .from('clubs')
-        .select('name')
-        .eq('id', playerProfile.club_id)
+        .select('name, primary_color, secondary_color')
+        .eq('id', p.club_id!)
         .single();
-      if (data) setClubName(data.name);
+      if (data) {
+        setClubName(data.name);
+        setClubColors({ primary: data.primary_color, secondary: data.secondary_color });
+      }
     })();
-  }, [playerProfile?.club_id]);
+  }, [p?.club_id]);
 
-  if (!playerProfile) return <AppLayout><p className="text-muted-foreground">Carregando perfil...</p></AppLayout>;
+  // ── Fetch attributes ──
+  useEffect(() => {
+    if (!p) return;
+    setAttrsLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('player_attributes')
+        .select('*')
+        .eq('player_profile_id', p.id)
+        .maybeSingle();
+      setAttrs(data);
+      setAttrsLoading(false);
+    })();
+  }, [p?.id]);
 
-  const p = playerProfile;
+  // ── Fetch career stats ──
+  useEffect(() => {
+    if (!p) return;
+    setStatsLoading(true);
+    (async () => {
+      try {
+        // 1. Get all match_participants for this player
+        const { data: participants } = await supabase
+          .from('match_participants')
+          .select('id, match_id')
+          .eq('player_profile_id', p.id);
+
+        if (!participants || participants.length === 0) {
+          setStats({ matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
+          setStatsLoading(false);
+          return;
+        }
+
+        const participantIds = new Set(participants.map(mp => mp.id));
+        const matchIds = [...new Set(participants.map(mp => mp.match_id))];
+        const matchCount = matchIds.length;
+
+        // 2. Fetch events for those matches (goals + cards)
+        const { data: events } = await supabase
+          .from('match_event_logs')
+          .select('event_type, payload')
+          .in('match_id', matchIds)
+          .in('event_type', ['goal', 'yellow_card', 'red_card']);
+
+        const allEvents = events || [];
+
+        const goals = allEvents.filter(
+          e => e.event_type === 'goal' && participantIds.has((e.payload as any)?.scorer_participant_id)
+        ).length;
+
+        const assists = allEvents.filter(
+          e => e.event_type === 'goal' && participantIds.has((e.payload as any)?.assister_participant_id)
+        ).length;
+
+        const yellowCards = allEvents.filter(
+          e => e.event_type === 'yellow_card' && participantIds.has((e.payload as any)?.player_participant_id)
+        ).length;
+
+        const redCards = allEvents.filter(
+          e => e.event_type === 'red_card' && participantIds.has((e.payload as any)?.player_participant_id)
+        ).length;
+
+        setStats({ matches: matchCount, goals, assists, yellowCards, redCards });
+      } catch {
+        // silently fail
+      }
+      setStatsLoading(false);
+    })();
+  }, [p?.id]);
+
+  // ── Fetch training history (last 10) ──
+  useEffect(() => {
+    if (!p) return;
+    setHistoryLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('training_history')
+        .select('id, attribute_key, old_value, new_value, growth, trained_at')
+        .eq('player_profile_id', p.id)
+        .order('trained_at', { ascending: false })
+        .limit(10);
+      setTrainingHistory((data as TrainingRecord[]) || []);
+      setHistoryLoading(false);
+    })();
+  }, [p?.id]);
+
+  // ── Restart career handler ──
+  async function handleRestart() {
+    if (!p) return;
+    setRestarting(true);
+
+    try {
+      if (p.money < RESTART_COST) {
+        toast.error('Saldo insuficiente para recomeçar a carreira.');
+        setRestarting(false);
+        return;
+      }
+
+      // Deduct money
+      const { error: moneyErr } = await supabase
+        .from('player_profiles')
+        .update({ money: p.money - RESTART_COST })
+        .eq('id', p.id);
+      if (moneyErr) throw moneyErr;
+
+      // Terminate active contract
+      if (p.club_id) {
+        await supabase
+          .from('contracts')
+          .update({ status: 'terminated' })
+          .eq('player_profile_id', p.id)
+          .eq('status', 'active');
+      }
+
+      // Delete training history
+      await supabase
+        .from('training_history')
+        .delete()
+        .eq('player_profile_id', p.id);
+
+      // Delete player attributes
+      await supabase
+        .from('player_attributes')
+        .delete()
+        .eq('player_profile_id', p.id);
+
+      // Delete player profile
+      await supabase
+        .from('player_profiles')
+        .delete()
+        .eq('id', p.id);
+
+      toast.success('Carreira encerrada. Crie um novo jogador!');
+      await refreshPlayerProfile();
+      navigate('/onboarding/player');
+    } catch (err) {
+      toast.error('Erro ao recomeçar carreira. Tente novamente.');
+    }
+    setRestarting(false);
+  }
+
+  // ── Secondary position handler ──
+  async function handleSecondaryPosition() {
+    if (!p || !selectedSecondaryPos) return;
+    setChangingSecondaryPos(true);
+
+    try {
+      if (p.money < SECONDARY_POS_COST) {
+        toast.error('Saldo insuficiente para alterar posição secundária.');
+        setChangingSecondaryPos(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('player_profiles')
+        .update({
+          secondary_position: selectedSecondaryPos,
+          money: p.money - SECONDARY_POS_COST,
+        })
+        .eq('id', p.id);
+
+      if (error) throw error;
+
+      toast.success(`Posição secundária alterada para ${selectedSecondaryPos}!`);
+      await refreshPlayerProfile();
+      setSecondaryPosOpen(false);
+      setSelectedSecondaryPos('');
+    } catch (err) {
+      toast.error('Erro ao alterar posição secundária.');
+    }
+    setChangingSecondaryPos(false);
+  }
+
+  if (!p) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  const footLabel = p.dominant_foot === 'right' ? 'Direito' : p.dominant_foot === 'left' ? 'Esquerdo' : 'Ambos';
+  const canRestart = p.money >= RESTART_COST;
 
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
-        <div className="flex items-center justify-between">
-          <h1 className="font-display text-2xl font-bold">Perfil do Jogador</h1>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" disabled className="opacity-50">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Em breve: criar mais jogadores</TooltipContent>
-          </Tooltip>
-        </div>
 
+        {/* ── Player Card ── */}
         <div className="stat-card space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-display text-2xl font-bold">{p.full_name[0]}</span>
+          <div className="flex items-start gap-4">
+            {/* Avatar */}
+            <div
+              className="h-20 w-20 rounded-full flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: clubColors?.primary || 'hsl(var(--primary))',
+                color: clubColors?.secondary || 'hsl(var(--primary-foreground))',
+              }}
+            >
+              <span className="font-display text-3xl font-extrabold">{p.full_name[0]}</span>
             </div>
-            <div>
-              <h2 className="font-display text-xl font-bold">{p.full_name}</h2>
-              <div className="flex items-center gap-2 mt-1">
+
+            {/* Name + positions */}
+            <div className="flex-1 min-w-0">
+              <h1 className="font-display text-2xl font-bold truncate">{p.full_name}</h1>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <PositionBadge position={p.primary_position as any} />
                 {p.secondary_position && <PositionBadge position={p.secondary_position as any} />}
+                <Badge variant="outline" className="text-xs">{p.archetype}</Badge>
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
+                <span>{p.age} anos</span>
+                <span className="flex items-center gap-1"><Footprints className="h-3.5 w-3.5" />{footLabel}</span>
+                <span className="flex items-center gap-1"><Ruler className="h-3.5 w-3.5" />{p.height} cm</span>
               </div>
             </div>
-            <div className="ml-auto text-right">
-              <span className="font-display text-3xl font-extrabold text-tactical">{p.overall}</span>
+
+            {/* OVR */}
+            <div className="text-center shrink-0">
+              <span className={`font-display text-4xl font-extrabold ${ovrColor(p.overall)}`}>{p.overall}</span>
               <p className="text-xs text-muted-foreground">OVR</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-            <div><span className="text-xs text-muted-foreground">Idade</span><p className="font-display font-bold">{p.age} anos</p></div>
-            <div><span className="text-xs text-muted-foreground">Pé Dominante</span><p className="font-display font-bold">{p.dominant_foot === 'right' ? 'Direito' : p.dominant_foot === 'left' ? 'Esquerdo' : 'Ambos'}</p></div>
-            <div><span className="text-xs text-muted-foreground">Arquétipo</span><p className="font-display font-bold">{p.archetype}</p></div>
-            <div><span className="text-xs text-muted-foreground">Reputação</span><p className="font-display font-bold">{p.reputation}</p></div>
-            <div><span className="text-xs text-muted-foreground">Clube</span><p className="font-display font-bold">{clubName || (p.club_id ? 'Carregando...' : 'Sem clube')}</p></div>
-            <div><span className="text-xs text-muted-foreground">Status</span><p className="font-display font-bold">{p.club_id ? 'Contratado' : 'Agente Livre'}</p></div>
+          {/* Club + reputation row */}
+          <div className="flex items-center gap-3 pt-3 border-t border-border flex-wrap">
+            {p.club_id && clubName ? (
+              <Badge variant="secondary" className="gap-1.5 text-sm">
+                {clubColors && (
+                  <div
+                    className="w-4 h-4 rounded-sm flex items-center justify-center text-[6px] font-bold"
+                    style={{ backgroundColor: clubColors.primary, color: clubColors.secondary }}
+                  >
+                    C
+                  </div>
+                )}
+                {clubName}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-sm text-muted-foreground">Agente Livre</Badge>
+            )}
+            <Badge variant="outline" className="gap-1 text-xs">
+              <Star className="h-3 w-3" /> Reputação {p.reputation}
+            </Badge>
+            <Badge variant="outline" className="gap-1 text-xs">
+              Saldo: {formatBRL(p.money)}
+            </Badge>
           </div>
         </div>
+
+        {/* ── Career Statistics ── */}
+        <div className="stat-card space-y-3">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Goal className="h-4 w-4 text-tactical" /> Estatísticas de Carreira
+          </h2>
+          {statsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <StatCard label="Partidas" value={stats.matches} icon={<Shield className="h-4 w-4" />} />
+              <StatCard label="Gols" value={stats.goals} icon={<Goal className="h-4 w-4" />} color="text-pitch" />
+              <StatCard label="Assistências" value={stats.assists} icon={<TrendingUp className="h-4 w-4" />} color="text-blue-400" />
+              <StatCard label="Amarelos" value={stats.yellowCards} icon={<div className="w-3 h-4 rounded-sm bg-yellow-400" />} color="text-yellow-500" />
+              <StatCard label="Vermelhos" value={stats.redCards} icon={<div className="w-3 h-4 rounded-sm bg-red-500" />} color="text-destructive" />
+            </div>
+          )}
+        </div>
+
+        {/* ── Attribute Overview ── */}
+        <div className="stat-card space-y-3">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Dumbbell className="h-4 w-4 text-tactical" /> Visão Geral de Atributos
+          </h2>
+          {attrsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : attrs ? (
+            <div className="space-y-2.5">
+              <AttrGroup title="Físico" icon={<Dumbbell className="h-3.5 w-3.5 text-muted-foreground" />} rows={PHYSICAL} attrs={attrs} />
+              <AttrGroup title="Técnico" icon={<Footprints className="h-3.5 w-3.5 text-muted-foreground" />} rows={TECHNICAL} attrs={attrs} />
+              <AttrGroup title="Mental" icon={<Brain className="h-3.5 w-3.5 text-muted-foreground" />} rows={MENTAL} attrs={attrs} />
+              <AttrGroup title="Finalização" icon={<Crosshair className="h-3.5 w-3.5 text-muted-foreground" />} rows={SHOOTING} attrs={attrs} />
+              <AttrGroup title="Defesa" icon={<ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />} rows={DEFENDING} attrs={attrs} />
+              {p.primary_position === 'GK' && (
+                <AttrGroup title="Goleiro" icon={<Shield className="h-3.5 w-3.5 text-muted-foreground" />} rows={GK_ATTRS} attrs={attrs} />
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">Atributos não disponíveis.</p>
+          )}
+        </div>
+
+        {/* ── Training History (last 10) ── */}
+        <div className="stat-card space-y-3">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-tactical" /> Evolução Recente
+          </h2>
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : trainingHistory.length > 0 ? (
+            <div className="space-y-1.5">
+              {trainingHistory.map(h => {
+                const growthColor = h.growth >= 2 ? 'text-pitch' : h.growth >= 1 ? 'text-yellow-500' : 'text-destructive';
+                const attrLabel = ATTR_LABELS[h.attribute_key] || h.attribute_key;
+                return (
+                  <div key={h.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs text-muted-foreground w-20 shrink-0">
+                        {new Date(h.trained_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      </span>
+                      <span className="font-medium">{attrLabel}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{h.old_value} → {h.new_value}</span>
+                      <span className={`font-display font-bold text-sm ${growthColor}`}>+{h.growth.toFixed(1)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">Nenhum treino registrado ainda.</p>
+          )}
+        </div>
+
+        {/* ── Secondary Position ── */}
+        <div className="stat-card space-y-3">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Repeat className="h-4 w-4 text-tactical" /> Posição Secundária
+          </h2>
+          {p.secondary_position ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Atual:</span>
+                <PositionBadge position={p.secondary_position as any} />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setSelectedSecondaryPos(''); setSecondaryPosOpen(true); }}
+              >
+                Mudar
+              </Button>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Escolha uma posição secundária para poder ser escalado nela pelo treinador.
+              </p>
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => { setSelectedSecondaryPos(''); setSecondaryPosOpen(true); }}
+              >
+                <Repeat className="h-4 w-4" /> Escolher Posição Secundária - {formatBRL(SECONDARY_POS_COST)}
+              </Button>
+            </>
+          )}
+        </div>
+
+        {/* ── Restart Career ── */}
+        <div className="stat-card space-y-3">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <RotateCcw className="h-4 w-4 text-destructive" /> Recomeçar Carreira
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Exclua seu jogador atual e crie um novo do zero. Seu jogador atual sera deletado permanentemente.
+          </p>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Custo: {formatBRL(RESTART_COST)}</span>
+            {!canRestart && (
+              <span className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5" /> Saldo insuficiente
+              </span>
+            )}
+          </div>
+          <Button
+            variant="destructive"
+            className="w-full gap-2"
+            disabled={!canRestart}
+            onClick={() => setRestartOpen(true)}
+          >
+            <RotateCcw className="h-4 w-4" /> Recomeçar Carreira - {formatBRL(RESTART_COST)}
+          </Button>
+        </div>
       </div>
+
+      {/* ── Restart Confirmation Dialog ── */}
+      <Dialog open={restartOpen} onOpenChange={setRestartOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" /> Recomeçar Carreira
+            </DialogTitle>
+            <DialogDescription>
+              Esta acao e irreversivel. Seu jogador atual ({p.full_name}) sera deletado permanentemente,
+              incluindo atributos, historico de treino e contrato.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm space-y-1">
+            <p className="font-semibold text-destructive">Sera excluido:</p>
+            <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5">
+              <li>Perfil do jogador ({p.full_name})</li>
+              <li>Todos os atributos</li>
+              <li>Historico de treinos</li>
+              {p.club_id && <li>Contrato atual (rescindido)</li>}
+            </ul>
+            <p className="text-xs text-muted-foreground mt-2">Custo: {formatBRL(RESTART_COST)} (debitado do saldo atual)</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setRestartOpen(false)} disabled={restarting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleRestart} disabled={restarting} className="gap-2">
+              {restarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              {restarting ? 'Processando...' : 'Confirmar e Recomeçar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Secondary Position Dialog ── */}
+      <Dialog open={secondaryPosOpen} onOpenChange={setSecondaryPosOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Repeat className="h-5 w-5 text-tactical" />
+              {p.secondary_position ? 'Mudar Posição Secundária' : 'Escolher Posição Secundária'}
+            </DialogTitle>
+            <DialogDescription>
+              Custo: {formatBRL(SECONDARY_POS_COST)} (debitado do saldo atual de {formatBRL(p.money)}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select value={selectedSecondaryPos} onValueChange={setSelectedSecondaryPos}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma posição" />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_POSITIONS.filter(pos => pos !== p.primary_position).map(pos => (
+                  <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {p.money < SECONDARY_POS_COST && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5" /> Saldo insuficiente
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSecondaryPosOpen(false)} disabled={changingSecondaryPos}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSecondaryPosition}
+              disabled={changingSecondaryPos || !selectedSecondaryPos || p.money < SECONDARY_POS_COST}
+              className="gap-2"
+            >
+              {changingSecondaryPos ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}
+              {changingSecondaryPos ? 'Processando...' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
+  );
+}
+
+// ── Small stat card component ──
+
+function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color?: string }) {
+  return (
+    <div className="bg-muted/30 rounded-lg p-3 text-center space-y-1">
+      <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
+        {icon}
+        <span className="text-[10px] uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={`font-display text-2xl font-extrabold ${color || ''}`}>{value}</p>
+    </div>
   );
 }
