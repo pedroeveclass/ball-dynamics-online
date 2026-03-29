@@ -493,6 +493,7 @@ export default function MatchRoomPage() {
   const [homeAccOpen, setHomeAccOpen] = useState(false);
   const [awayAccOpen, setAwayAccOpen] = useState(false);
   const [logAccOpen, setLogAccOpen] = useState(false);
+  const [chatAccOpen, setChatAccOpen] = useState(true);
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -3741,6 +3742,8 @@ export default function MatchRoomPage() {
           onToggleHome={() => setHomeAccOpen(!homeAccOpen)}
           onToggleAway={() => setAwayAccOpen(!awayAccOpen)}
           onToggleLog={() => setLogAccOpen(!logAccOpen)}
+          chatAccOpen={chatAccOpen}
+          onToggleChat={() => setChatAccOpen(!chatAccOpen)}
           events={events}
           eventsEndRef={eventsEndRef}
           matchId={matchId!}
@@ -3904,8 +3907,8 @@ interface MatchSidebarProps {
   selectedId: string | null;
   onSelectPlayer: (id: string) => void;
   submittedIds: Set<string>;
-  homeAccOpen: boolean; awayAccOpen: boolean; logAccOpen: boolean;
-  onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void;
+  homeAccOpen: boolean; awayAccOpen: boolean; logAccOpen: boolean; chatAccOpen: boolean;
+  onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void; onToggleChat: () => void;
   events: EventLog[];
   eventsEndRef: React.RefObject<HTMLDivElement | null>;
   matchId: string;
@@ -3919,8 +3922,8 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
     isLooseBall, isHalftime, timerDisplayRef, timerBarRef,
     homeClub, awayClub, homePlayers, awayPlayers,
     ballHolderId, myId, selectedId, onSelectPlayer, submittedIds,
-    homeAccOpen, awayAccOpen, logAccOpen,
-    onToggleHome, onToggleAway, onToggleLog,
+    homeAccOpen, awayAccOpen, logAccOpen, chatAccOpen,
+    onToggleHome, onToggleAway, onToggleLog, onToggleChat,
     events, eventsEndRef,
     matchId, userId, username,
   } = props;
@@ -3935,7 +3938,10 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
   useEffect(() => {
     if (!matchId) return;
     (supabase.from('match_chat_messages') as any).select('*').eq('match_id', matchId).order('created_at', { ascending: true }).limit(100)
-      .then(({ data }: any) => { if (data) setChatMessages(data); });
+      .then(({ data, error }: any) => {
+        if (error) console.error('[CHAT] Load error:', error);
+        if (data) { console.log('[CHAT] Loaded', data.length, 'messages'); setChatMessages(data); }
+      });
 
     const channel = supabase.channel(`chat-${matchId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_chat_messages', filter: `match_id=eq.${matchId}` },
@@ -4043,14 +4049,18 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
       </AccordionSection>
 
       {/* ── Chat ── */}
-      <div className="border-t border-[hsl(220,10%,22%)] mt-auto flex flex-col" style={{ maxHeight: '180px' }}>
-        <div className="px-2 py-1 text-[9px] font-display text-white/40 uppercase tracking-wider">Chat</div>
-        <div className="flex-1 overflow-y-auto px-2 space-y-0.5 min-h-0" style={{ maxHeight: '120px' }}>
+      <AccordionSection
+        title="Chat"
+        badge={chatMessages.length > 0 ? `${chatMessages.length}` : undefined}
+        open={chatAccOpen}
+        onToggle={onToggleChat}
+      >
+        <div className="space-y-0.5 max-h-[200px] overflow-y-auto pr-1">
           {chatMessages.length === 0 && (
             <p className="text-[9px] text-white/20 text-center py-2">Sem mensagens</p>
           )}
           {chatMessages.map(m => (
-            <div key={m.id} className="text-[9px] leading-tight">
+            <div key={m.id} className="text-[9px] leading-tight py-0.5">
               <span className={`font-bold ${m.user_id === userId ? 'text-pitch' : 'text-white/70'}`}>{m.username}: </span>
               <span className="text-white/60">{m.message}</span>
             </div>
@@ -4058,7 +4068,7 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
           <div ref={chatEndRef} />
         </div>
         {userId && (
-          <div className="flex gap-1 p-1.5 border-t border-[hsl(220,10%,22%)]">
+          <div className="flex gap-1 mt-1.5">
             <input
               type="text"
               value={chatInput}
@@ -4077,7 +4087,7 @@ const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) 
             </button>
           </div>
         )}
-      </div>
+      </AccordionSection>
     </div>
   );
 });
