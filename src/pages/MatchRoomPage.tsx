@@ -48,7 +48,12 @@ export default function MatchRoomPage() {
     }
   }, []);
   const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Try current session first, refresh if expired
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      session = refreshed.session;
+    }
     return invokeConfiguredMatchEngine({
       body,
       accessToken: session?.access_token,
