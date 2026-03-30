@@ -808,6 +808,8 @@ function pickBestPassTarget(
 interface TickCache {
   clubSettings?: { homeFormation: string; awayFormation: string };
   attrByProfile?: Record<string, any>;
+  enrichedParticipants?: any[];
+  lineupRoles?: { home: any | null; away: any | null };
 }
 
 async function generateBotActions(
@@ -2838,11 +2840,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   // ── POSITIONING PHASES ──
   if (isPositioningPhase(activeTurn.phase)) {
     // Parallelize: load participants and actions simultaneously
-    const [{ data: rawParticipants }, { data: rawActions }] = await Promise.all([
-      supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
-      supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending').order('created_at', { ascending: false }),
-    ]);
-    const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
+    let participants: any[];
+    if (tickCache.enrichedParticipants) {
+      // Re-use cached enriched participants but refresh positions from DB
+      const { data: freshParts } = await supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off').eq('match_id', match_id).eq('role_type', 'player');
+      const posMap = new Map((freshParts || []).map((p: any) => [p.id, p]));
+      participants = tickCache.enrichedParticipants.map((p: any) => {
+        const fresh = posMap.get(p.id);
+        return fresh ? { ...p, pos_x: fresh.pos_x, pos_y: fresh.pos_y, is_sent_off: fresh.is_sent_off } : p;
+      });
+    } else {
+      const { data: rawParticipants } = await supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player');
+      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants || []);
+      tickCache.enrichedParticipants = participants;
+    }
+    const { data: rawActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending').order('created_at', { ascending: false });
 
     const possClubId = activeTurn.possession_club_id;
     const isAttackPhase = activeTurn.phase === 'positioning_attack';
@@ -2994,27 +3006,50 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   // Parallelize: load participants + turnRows (for resolution) simultaneously
   const isResolution = activeTurn.phase === 'resolution';
-  const [{ data: rawParticipants2 }, turnRowsResult] = await Promise.all([
-    supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
-    isResolution
-      ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
-      : Promise.resolve({ data: null }),
-  ]);
-  const participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
+  let participants: any[];
+
+  if (tickCache.enrichedParticipants) {
+    // Re-use cached enriched participants but refresh positions from DB
+    const [{ data: freshParts }, turnRowsRes] = await Promise.all([
+      supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off').eq('match_id', match_id).eq('role_type', 'player'),
+      isResolution
+        ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
+        : Promise.resolve({ data: null }),
+    ]);
+    var turnRowsResult: any = turnRowsRes;
+    const posMap = new Map((freshParts || []).map((p: any) => [p.id, p]));
+    participants = tickCache.enrichedParticipants.map((p: any) => {
+      const fresh = posMap.get(p.id);
+      return fresh ? { ...p, pos_x: fresh.pos_x, pos_y: fresh.pos_y, is_sent_off: fresh.is_sent_off } : p;
+    });
+  } else {
+    const [{ data: rawParticipants2 }, turnRowsRes] = await Promise.all([
+      supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
+      isResolution
+        ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
+        : Promise.resolve({ data: null }),
+    ]);
+    var turnRowsResult: any = turnRowsRes;
+    participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
+    tickCache.enrichedParticipants = participants;
+  }
 
   const possClubId = activeTurn.possession_club_id;
   const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
   const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
 
-  // Load lineup tactical roles for set piece taker assignments
+  // Load lineup tactical roles for set piece taker assignments (cached)
   let lineupRolesCache: { home: LineupRoles | null; away: LineupRoles | null } | undefined;
-  if (match.home_lineup_id || match.away_lineup_id) {
+  if (tickCache.lineupRoles) {
+    lineupRolesCache = tickCache.lineupRoles;
+  } else if (match.home_lineup_id || match.away_lineup_id) {
     const roleFields = 'captain_player_id, free_kick_taker_id, corner_right_taker_id, corner_left_taker_id, throw_in_right_taker_id, throw_in_left_taker_id';
     const [homeLineupRes, awayLineupRes] = await Promise.all([
       match.home_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.home_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
       match.away_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.away_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
     ]);
     lineupRolesCache = { home: homeLineupRes.data || null, away: awayLineupRes.data || null };
+    tickCache.lineupRoles = lineupRolesCache;
   }
 
   const ballHolder = activeTurn.ball_holder_participant_id
