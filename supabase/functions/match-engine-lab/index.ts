@@ -2876,7 +2876,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     // Determine if this is a kickoff (ball holder at center)
     const bhId = activeTurn.ball_holder_participant_id;
-    const submittedParticipantIds = new Set<string>((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
+    const submittedParticipantIds = new Set<string>((rawActions || []).map((a: any) => a.participant_id));
     await generateBotActions(
       supabase,
       match_id,
@@ -3030,26 +3030,36 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         : Promise.resolve({ data: null }),
     ]);
     var turnRowsResult: any = turnRowsRes;
-    participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
-    tickCache.enrichedParticipants = participants;
+    if (isResolution) {
+      // Full enrichment only needed for resolution (slot positions, etc.)
+      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
+      tickCache.enrichedParticipants = participants;
+    } else {
+      // Non-resolution phases: skip expensive enrichment, raw participants suffice for bot generation
+      participants = rawParticipants2 || [];
+      // Store raw participants in cache (will be replaced with enriched version at resolution)
+      tickCache.enrichedParticipants = participants;
+    }
   }
 
   const possClubId = activeTurn.possession_club_id;
   const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
   const defPlayers = (participants || []).filter(p => p.club_id !== possClubId);
 
-  // Load lineup tactical roles for set piece taker assignments (cached)
+  // Load lineup tactical roles for set piece taker assignments (only needed for resolution)
   let lineupRolesCache: { home: LineupRoles | null; away: LineupRoles | null } | undefined;
-  if (tickCache.lineupRoles) {
-    lineupRolesCache = tickCache.lineupRoles;
-  } else if (match.home_lineup_id || match.away_lineup_id) {
-    const roleFields = 'captain_player_id, free_kick_taker_id, corner_right_taker_id, corner_left_taker_id, throw_in_right_taker_id, throw_in_left_taker_id';
-    const [homeLineupRes, awayLineupRes] = await Promise.all([
-      match.home_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.home_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
-      match.away_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.away_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
-    ]);
-    lineupRolesCache = { home: homeLineupRes.data || null, away: awayLineupRes.data || null };
-    tickCache.lineupRoles = lineupRolesCache;
+  if (isResolution) {
+    if (tickCache.lineupRoles) {
+      lineupRolesCache = tickCache.lineupRoles;
+    } else if (match.home_lineup_id || match.away_lineup_id) {
+      const roleFields = 'captain_player_id, free_kick_taker_id, corner_right_taker_id, corner_left_taker_id, throw_in_right_taker_id, throw_in_left_taker_id';
+      const [homeLineupRes, awayLineupRes] = await Promise.all([
+        match.home_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.home_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
+        match.away_lineup_id ? supabase.from('lineups').select(roleFields).eq('id', match.away_lineup_id).maybeSingle() : Promise.resolve({ data: null }),
+      ]);
+      lineupRolesCache = { home: homeLineupRes.data || null, away: awayLineupRes.data || null };
+      tickCache.lineupRoles = lineupRolesCache;
+    }
   }
 
   const ballHolder = activeTurn.ball_holder_participant_id
@@ -3067,8 +3077,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   const isLooseBall = !activeTurn.ball_holder_participant_id;
 
+  // Pre-load actions for this turn (used by both bot generation and early deviation)
+  let nonResolutionActions: any[] | null = null;
   if (!isResolution) {
-    const submittedParticipantIds = new Set<string>((await supabase.from('match_actions').select('participant_id').eq('match_turn_id', activeTurn.id).eq('status', 'pending')).data?.map((row: any) => row.participant_id) || []);
+    const { data: nrActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
+    nonResolutionActions = nrActions || [];
+    const submittedParticipantIds = new Set<string>(nonResolutionActions.map((a: any) => a.participant_id));
     await generateBotActions(
       supabase,
       match_id,
@@ -3084,6 +3098,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       activeTurn.set_piece_type,
       looseBallPos,
     );
+    // Refresh actions after bot generation to include newly created bot actions (needed for early deviation)
+    if (activeTurn.phase === 'ball_holder') {
+      const { data: refreshedActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
+      nonResolutionActions = refreshedActions || [];
+    }
   }
 
   // ── RESOLUTION ──
@@ -3094,6 +3113,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   let ballEndPos: { x: number; y: number } | null = null;
   const lastTouchClubId = possClubId;
   let nextSetPieceType: string | null = null;
+  const eventsToLog: any[] = [];
+  const deferredPositionUpdates: Array<{id: string, pos_x: number, pos_y: number}> = [];
 
   if (isResolution) {
     console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
@@ -3249,7 +3270,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           bhAction.target_y = deviation.actualY;
 
           if (deviation.overGoal) {
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'shot_over',
               title: '💨 Chute para fora!',
               body: 'A bola foi por cima do gol.',
@@ -3325,7 +3346,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             if (possClubId === match.home_club_id) homeScore++;
             else awayScore++;
 
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'goal',
               title: `⚽ GOL! ${homeScore} – ${awayScore}`,
               body: `Turno ${match.current_turn_number}`,
@@ -3344,7 +3365,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             // Shot missed — ball goes out of bounds
             nextBallHolderParticipantId = null;
             ballEndPos = { x: Number(ballHolderAction.target_x ?? 50), y: shotTargetY };
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'shot_missed',
               title: isOverGoal ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
               body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
@@ -3357,7 +3378,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         } else if (result.looseBallPos) {
           // Shot/pass blocked — ball deflects to random position
           nextBallHolderParticipantId = null;
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: result.event || 'blocked',
             title: result.description,
             body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
@@ -3372,7 +3393,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             resolvedPayload.tackler_participant_id = result.newBallHolderId;
             resolvedPayload.tackled_participant_id = ballHolder.id;
           }
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: resolvedEventType,
             title: result.possession_change ? `🔄 Troca de posse` : result.description,
             body: result.description,
@@ -3392,8 +3413,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const penaltyX = isHomeAttacking ? 88 : 12;
             const penaltyY = 50;
             nextBallHolderParticipantId = ballHolder.id;
-            await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', ballHolder.id);
-            await supabase.from('match_event_logs').insert({
+            deferredPositionUpdates.push({ id: ballHolder.id, pos_x: penaltyX, pos_y: penaltyY });
+            eventsToLog.push({
               match_id, event_type: 'penalty', title: '🟥 PÊNALTI!', body: 'Falta dentro da área! Pênalti marcado.',
               payload: {
                 fouler_participant_id: result.failedContestParticipantId,
@@ -3408,8 +3429,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const fkTaker = fkRoles ? findParticipantByProfileId(participants || [], fkRoles.free_kick_taker_id) : null;
             const freeKickTakerId = fkTaker ? fkTaker.id : ballHolder.id;
             nextBallHolderParticipantId = freeKickTakerId;
-            await supabase.from('match_participants').update({ pos_x: foulX, pos_y: foulY }).eq('id', freeKickTakerId);
-            await supabase.from('match_event_logs').insert({
+            deferredPositionUpdates.push({ id: freeKickTakerId, pos_x: foulX, pos_y: foulY });
+            eventsToLog.push({
               match_id, event_type: 'foul', title: result.description, body: 'Falta cometida! Tiro livre para o time atacante.',
               payload: {
                 fouler_participant_id: result.failedContestParticipantId,
@@ -3420,7 +3441,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             ballEndPos = { x: foulX, y: foulY };
           }
           if (result.failedContestLog) {
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
             });
           }
@@ -3445,14 +3466,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               foulerParticipant.yellow_cards = newYellows;
               if (newYellows >= 2) foulerParticipant.is_sent_off = true;
             }
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'yellow_card',
               title: '🟨 Cartão Amarelo!',
               body: `${foulerName} recebeu cartão amarelo.`,
               payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName },
             });
             if (newYellows >= 2) {
-              await supabase.from('match_event_logs').insert({
+              eventsToLog.push({
                 match_id, event_type: 'red_card',
                 title: '🟥 Cartão Vermelho! Segundo amarelo!',
                 body: `${foulerName} recebeu o segundo amarelo e foi expulso!`,
@@ -3463,14 +3484,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         } else if (result.event === 'dribble') {
           // Tackle failed, dribble succeeded
           nextBallHolderParticipantId = ballHolder.id;
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: 'dribble',
             title: result.description,
             body: 'O desarme falhou e o jogador seguiu com a bola.',
           });
           // Log the failed contest too
           if (result.failedContestLog) {
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'tackle_failed',
               title: result.failedContestLog,
               body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
@@ -3487,7 +3508,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 const startY = Number(failedPart.pos_y ?? 50);
                 const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
                 const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.75;
-                await supabase.from('match_participants').update({ pos_x: penaltyX, pos_y: penaltyY }).eq('id', failedPart.id);
+                deferredPositionUpdates.push({ id: failedPart.id, pos_x: penaltyX, pos_y: penaltyY });
                 console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 25%`);
               }
             }
@@ -3517,7 +3538,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               const receiver = (participants || []).find((p: any) => p.id === bestId);
               if (receiver && receiver.club_id !== possClubId) {
                 newPossessionClubId = receiver.club_id;
-                await supabase.from('match_event_logs').insert({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado!' });
+                eventsToLog.push({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado!' });
               }
             } else {
               nextBallHolderParticipantId = null;
@@ -3527,7 +3548,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             nextBallHolderParticipantId = null;
             const looseDest = { x: Number(ballHolderAction.target_x ?? 50), y: Number(ballHolderAction.target_y ?? 50) };
             ballEndPos = looseDest;
-            await supabase.from('match_event_logs').insert({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: `Ninguém dominou a bola.`, payload: { x: looseDest.x, y: looseDest.y } });
+            eventsToLog.push({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: `Ninguém dominou a bola.`, payload: { x: looseDest.x, y: looseDest.y } });
           }
         } else if (ballHolderAction.action_type === 'move') {
           nextBallHolderParticipantId = ballHolder.id;
@@ -3550,7 +3571,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const offsideFkDesignated = offsideFkRoles ? findParticipantByProfileId(defPlayersForFK, offsideFkRoles.free_kick_taker_id) : null;
             const fkTaker = offsideFkDesignated || defPlayersForFK[0];
             if (fkTaker) {
-              await supabase.from('match_participants').update({ pos_x: offsideX, pos_y: offsideY }).eq('id', fkTaker.id);
+              deferredPositionUpdates.push({ id: fkTaker.id, pos_x: offsideX, pos_y: offsideY });
               nextBallHolderParticipantId = fkTaker.id;
             } else {
               nextBallHolderParticipantId = null;
@@ -3558,7 +3579,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             newPossessionClubId = defClub;
             nextSetPieceType = 'free_kick';
             ballEndPos = { x: offsideX, y: offsideY };
-            await supabase.from('match_event_logs').insert({
+            eventsToLog.push({
               match_id, event_type: 'offside', title: '🚩 Impedimento!', body: 'Jogador em posição irregular. Tiro livre indireto.',
             });
           }
@@ -3584,7 +3605,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         nextBallHolderParticipantId = looseBallClaimer.id;
         newPossessionClubId = looseBallClaimer.club_id;
 
-        await supabase.from('match_event_logs').insert({
+        eventsToLog.push({
           match_id,
           event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
           title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
@@ -3593,7 +3614,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       } else {
         nextBallHolderParticipantId = null;
         if (wasAlreadyLoose) {
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: 'ball_stopped',
             title: '⚽ Bola parada',
             body: 'A bola perdeu a inércia e está parada no campo.',
@@ -3611,7 +3632,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
           }
           ballEndPos = { x: inertiaBallX, y: inertiaBallY };
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: 'ball_inertia',
             title: '⚽ Bola continua rolando...',
             body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
@@ -3639,9 +3660,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           bhFinalX = bhStartX + bhDx * scale;
           bhFinalY = bhStartY + bhDy * scale;
         }
-        await supabase.from('match_participants').update({
-          pos_x: bhFinalX, pos_y: bhFinalY,
-        }).eq('id', ballHolder.id);
+        deferredPositionUpdates.push({ id: ballHolder.id, pos_x: bhFinalX, pos_y: bhFinalY });
         console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
       }
     }
@@ -3698,7 +3717,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             : (ballGoalAction && (ballGoalAction.action_type === 'pass_high' || ballGoalAction.action_type === 'pass_launch') ? 'header' : 'shot');
           const isBallGoalOwnGoal = (inAwayGoal && possClubId !== match.home_club_id && possClubId !== match.away_club_id)
             || (inHomeGoal && possClubId === match.home_club_id);
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Bola no fundo da rede!`,
             payload: {
               scorer_participant_id: ballHolder?.id || null,
@@ -3727,7 +3746,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           } else {
             if (possClubId === match.away_club_id) awayScore++; else homeScore++;
           }
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
             payload: {
               scorer_participant_id: ballHolder.id,
@@ -3752,7 +3771,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           nextBallHolderParticipantId = restart.playerId;
           newPossessionClubId = restart.clubId;
           nextSetPieceType = oob.type;
-          await supabase.from('match_event_logs').insert({
+          eventsToLog.push({
             match_id, event_type: oob.type,
             title: restart.title,
             body: restart.body,
@@ -3760,6 +3779,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
     }
+
+    // ── Batch: flush deferred position updates + event logs ──
+    const batchOps: Promise<any>[] = [];
+    if (deferredPositionUpdates.length > 0) {
+      for (const upd of deferredPositionUpdates) {
+        batchOps.push(supabase.from('match_participants').update({ pos_x: upd.pos_x, pos_y: upd.pos_y }).eq('id', upd.id));
+      }
+    }
+    if (eventsToLog.length > 0) {
+      batchOps.push(supabase.from('match_event_logs').insert(eventsToLog));
+    }
+    if (batchOps.length > 0) await Promise.all(batchOps);
 
     // ── Save turn snapshot for replay ──
     try {
@@ -4057,15 +4088,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const devAttrByProfile: Record<string, any> = {};
       for (const row of (devAttrRows || [])) devAttrByProfile[row.player_profile_id] = row;
 
-      const { data: bhActions } = await supabase.from('match_actions')
-        .select('*')
-        .eq('match_turn_id', activeTurn.id)
-        .eq('participant_id', ballHolder.id)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false })
-        .limit(1);
+      // Re-use pre-loaded actions instead of re-querying
+      const bhActionsFromCache = (nonResolutionActions || [])
+        .filter((a: any) => a.participant_id === ballHolder.id)
+        .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
-      const bhAction = bhActions?.[0];
+      const bhAction = bhActionsFromCache[0];
       if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
         const raw = ballHolder.player_profile_id ? devAttrByProfile[ballHolder.player_profile_id] : null;
         const devAttrs: Record<string, number> = {
