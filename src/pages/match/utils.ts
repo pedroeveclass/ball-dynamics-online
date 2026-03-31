@@ -60,37 +60,8 @@ export function buildParticipantLayout(
   slotMap: Map<string, LineupSlotSummary>,
   matchId: string,
 ): Participant[] {
-  const pickImplicitGoalkeeperId = (teamParts: Participant[]): string | null => {
-    if (teamParts.length === 0) return null;
-    const avgX = teamParts.reduce((sum, part) => sum + Number(part.pos_x ?? 50), 0) / teamParts.length;
-    const isHomeLike = avgX <= 50;
-
-    // First, look for a player in the goal area (within 15 units of goal line)
-    const goalAreaPlayers = teamParts.filter(p => {
-      const px = Number(p.pos_x ?? 50);
-      return isHomeLike ? px < 15 : px > 85;
-    });
-
-    if (goalAreaPlayers.length > 0) {
-      // Pick the one closest to goal line
-      goalAreaPlayers.sort((a, b) => {
-        const ax = Number(a.pos_x ?? 50);
-        const bx = Number(b.pos_x ?? 50);
-        return isHomeLike ? ax - bx : bx - ax;
-      });
-      return goalAreaPlayers[0]?.id ?? null;
-    }
-
-    // Fallback: pick closest to goal line (original logic)
-    const sorted = [...teamParts].sort((a, b) => {
-      const ax = Number(a.pos_x ?? 50);
-      const bx = Number(b.pos_x ?? 50);
-      const xDiff = isHomeLike ? ax - bx : bx - ax;
-      if (xDiff !== 0) return xDiff;
-      return a.id.localeCompare(b.id);
-    });
-    return sorted[0]?.id ?? null;
-  };
+  // GK is ALWAYS determined by lineup slot or player primary_position.
+  // No implicit/position-based fallback — every team has a GK in their lineup.
 
   const enriched: Participant[] = parts.map(participant => ({
     ...participant,
@@ -113,18 +84,8 @@ export function buildParticipantLayout(
       .map(participant => participant.id)
   );
 
-  const implicitGoalkeeperIds = new Set<string>();
-  for (const teamParts of [homeParts, awayParts]) {
-    if (teamParts.length === 0) continue;
-    const hasExplicitGoalkeeper = teamParts.some(participant => explicitGoalkeeperIds.has(participant.id));
-    if (!hasExplicitGoalkeeper) {
-      const inferredId = pickImplicitGoalkeeperId(teamParts);
-      if (inferredId) implicitGoalkeeperIds.add(inferredId);
-    }
-  }
-
   const isGoalkeeper = (participant: Participant) =>
-    explicitGoalkeeperIds.has(participant.id) || implicitGoalkeeperIds.has(participant.id);
+    explicitGoalkeeperIds.has(participant.id);
 
   const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
     const positions = getFormationPositions(formation, isHome, isKickoffStart);
