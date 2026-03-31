@@ -730,8 +730,8 @@ export default function ManagerLineupPage() {
         {uniforms.length > 0 && (
           <div className="space-y-4">
             <h2 className="font-display text-xl font-bold">Uniformes</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[1, 2].map(num => {
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[1, 2, 3].map(num => {
                 const uniform = uniforms.find(u => u.uniform_number === num);
                 const edit = uniformEdits[num];
                 if (!uniform || !edit) return null;
@@ -742,7 +742,7 @@ export default function ManagerLineupPage() {
                   <Card key={num}>
                     <CardHeader className="pb-3">
                       <CardTitle className="font-display text-base">
-                        Uniforme {num} ({num === 1 ? 'Casa' : 'Fora'})
+                        {num === 3 ? 'Goleiro' : `Uniforme ${num} (${num === 1 ? 'Casa' : 'Fora'})`}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -805,7 +805,7 @@ export default function ManagerLineupPage() {
                               </g>
                               <text x="40" y="52" textAnchor="middle" dominantBaseline="central"
                                 fontSize="28" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-                                fill={edit.number_color}>10</text>
+                                fill={edit.number_color}>{num === 3 ? '1' : '10'}</text>
                             </svg>
                           </div>
                         );
