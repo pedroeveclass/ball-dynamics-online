@@ -3303,6 +3303,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         if (a.participant_id === ballHolder?.id && a.action_type === 'move' && !bhHasBallAction) {
           maxRange *= 0.85;
         }
+        // One-touch turn: everyone moves at 50% range (less reaction time)
+        const isOneTouchTurn = allActions.some((act: any) => act.payload && typeof act.payload === 'object' && (act.payload as any).one_touch_executed);
+        if (isOneTouchTurn) {
+          maxRange *= 0.5;
+        }
         const dx = finalX - startX;
         const dy = finalY - startY;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -3644,7 +3649,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
       if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
         const bhAttrs = getAttrs(ballHolder);
-        const bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
+        let bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
+        // One-touch turn: 50% reduction
+        const isOTTurn = allActions.some((act: any) => act.payload && typeof act.payload === 'object' && (act.payload as any).one_touch_executed);
+        if (isOTTurn) bhMaxRange *= 0.5;
         const bhStartX = Number(ballHolder.pos_x ?? 50);
         const bhStartY = Number(ballHolder.pos_y ?? 50);
         let bhFinalX = Number(bhMoveAction.target_x);
