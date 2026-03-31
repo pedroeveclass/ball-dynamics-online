@@ -158,13 +158,38 @@ interface UniformData {
   stripe_color: string;
 }
 
-const PATTERNS = [
+const PATTERN_CATEGORIES = [
   { value: 'solid', label: 'Cor Completa' },
   { value: 'stripe_vertical', label: 'Listra Vertical' },
-  { value: 'stripe_double_vertical', label: 'Listra Dupla' },
-  { value: 'stripe_triple_vertical', label: 'Listra Tripla' },
+  { value: 'stripe_horizontal', label: 'Listra Horizontal' },
   { value: 'stripe_diagonal', label: 'Listra Diagonal' },
+  { value: 'bicolor', label: 'Bicolor' },
 ];
+
+const STRIPE_COUNTS = [
+  { value: 'single', label: 'Simples' },
+  { value: 'double', label: 'Dupla' },
+  { value: 'triple', label: 'Tripla' },
+];
+
+// Build full pattern value from category + count
+const buildPattern = (category: string, count: string) => {
+  if (category === 'solid' || category === 'bicolor') return category;
+  return `${category}_${count}`;
+};
+
+// Parse pattern into category + count
+const parsePattern = (pattern: string): { category: string; count: string } => {
+  if (pattern === 'solid' || pattern === 'bicolor') return { category: pattern, count: 'single' };
+  for (const cat of ['stripe_vertical', 'stripe_horizontal', 'stripe_diagonal']) {
+    if (pattern.startsWith(cat)) {
+      const count = pattern.replace(`${cat}_`, '');
+      if (['single', 'double', 'triple'].includes(count)) return { category: cat, count };
+      if (pattern === cat) return { category: cat, count: 'single' };
+    }
+  }
+  return { category: 'solid', count: 'single' };
+};
 
 export default function ManagerLineupPage() {
   const { club } = useAuth();
@@ -713,55 +738,61 @@ export default function ManagerLineupPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       {/* Jersey preview */}
-                      <div className="flex justify-center">
-                        <svg width="80" height="96" viewBox="0 0 80 96" className="rounded-lg border border-border/50">
-                          <defs>
-                            {edit.pattern === 'stripe_vertical' && (
-                              <pattern id={`stripe-v-${num}`} width="20" height="96" patternUnits="userSpaceOnUse">
-                                <rect width="10" height="96" fill={edit.shirt_color} />
-                                <rect x="10" width="10" height="96" fill={edit.stripe_color} />
-                              </pattern>
-                            )}
-                            {edit.pattern === 'stripe_double_vertical' && (
-                              <pattern id={`stripe-dv-${num}`} width="24" height="96" patternUnits="userSpaceOnUse">
-                                <rect width="8" height="96" fill={edit.shirt_color} />
-                                <rect x="8" width="4" height="96" fill={edit.stripe_color} />
-                                <rect x="12" width="8" height="96" fill={edit.shirt_color} />
-                                <rect x="20" width="4" height="96" fill={edit.stripe_color} />
-                              </pattern>
-                            )}
-                            {edit.pattern === 'stripe_triple_vertical' && (
-                              <pattern id={`stripe-tv-${num}`} width="18" height="96" patternUnits="userSpaceOnUse">
-                                <rect width="6" height="96" fill={edit.shirt_color} />
-                                <rect x="6" width="3" height="96" fill={edit.stripe_color} />
-                                <rect x="9" width="3" height="96" fill={edit.shirt_color} />
-                                <rect x="12" width="3" height="96" fill={edit.stripe_color} />
-                                <rect x="15" width="3" height="96" fill={edit.shirt_color} />
-                              </pattern>
-                            )}
-                            {edit.pattern === 'stripe_diagonal' && (
-                              <pattern id={`stripe-d-${num}`} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                                <rect width="7" height="14" fill={edit.shirt_color} />
-                                <rect x="7" width="7" height="14" fill={edit.stripe_color} />
-                              </pattern>
-                            )}
-                          </defs>
-                          <rect width="80" height="96" rx="8" fill={
-                            edit.pattern === 'solid' ? edit.shirt_color :
-                            edit.pattern === 'stripe_vertical' ? `url(#stripe-v-${num})` :
-                            edit.pattern === 'stripe_double_vertical' ? `url(#stripe-dv-${num})` :
-                            edit.pattern === 'stripe_triple_vertical' ? `url(#stripe-tv-${num})` :
-                            `url(#stripe-d-${num})`
-                          } />
-                          <text x="40" y="52" textAnchor="middle" dominantBaseline="central"
-                            fontSize="28" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
-                            fill={edit.number_color}>10</text>
-                        </svg>
-                      </div>
+                      {(() => {
+                        const pat = edit.pattern;
+                        const sc = edit.shirt_color;
+                        const stc = edit.stripe_color;
+                        const pid = `pat-${num}`;
 
-                      {/* Shirt color */}
+                        // SVG pattern definitions for each combo
+                        const getPatternDef = () => {
+                          // Vertical
+                          if (pat === 'stripe_vertical_single') return <pattern id={pid} width="20" height="96" patternUnits="userSpaceOnUse"><rect width="10" height="96" fill={sc}/><rect x="10" width="10" height="96" fill={stc}/></pattern>;
+                          if (pat === 'stripe_vertical_double') return <pattern id={pid} width="24" height="96" patternUnits="userSpaceOnUse"><rect width="8" height="96" fill={sc}/><rect x="8" width="4" height="96" fill={stc}/><rect x="12" width="8" height="96" fill={sc}/><rect x="20" width="4" height="96" fill={stc}/></pattern>;
+                          if (pat === 'stripe_vertical_triple') return <pattern id={pid} width="18" height="96" patternUnits="userSpaceOnUse"><rect width="4" height="96" fill={sc}/><rect x="4" width="2" height="96" fill={stc}/><rect x="6" width="4" height="96" fill={sc}/><rect x="10" width="2" height="96" fill={stc}/><rect x="12" width="4" height="96" fill={sc}/><rect x="16" width="2" height="96" fill={stc}/></pattern>;
+                          // Horizontal
+                          if (pat === 'stripe_horizontal_single') return <pattern id={pid} width="80" height="20" patternUnits="userSpaceOnUse"><rect width="80" height="10" fill={sc}/><rect y="10" width="80" height="10" fill={stc}/></pattern>;
+                          if (pat === 'stripe_horizontal_double') return <pattern id={pid} width="80" height="24" patternUnits="userSpaceOnUse"><rect width="80" height="8" fill={sc}/><rect y="8" width="80" height="4" fill={stc}/><rect y="12" width="80" height="8" fill={sc}/><rect y="20" width="80" height="4" fill={stc}/></pattern>;
+                          if (pat === 'stripe_horizontal_triple') return <pattern id={pid} width="80" height="18" patternUnits="userSpaceOnUse"><rect width="80" height="4" fill={sc}/><rect y="4" width="80" height="2" fill={stc}/><rect y="6" width="80" height="4" fill={sc}/><rect y="10" width="80" height="2" fill={stc}/><rect y="12" width="80" height="4" fill={sc}/><rect y="16" width="80" height="2" fill={stc}/></pattern>;
+                          // Diagonal
+                          if (pat === 'stripe_diagonal_single') return <pattern id={pid} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="14" fill={sc}/><rect x="7" width="7" height="14" fill={stc}/></pattern>;
+                          if (pat === 'stripe_diagonal_double') return <pattern id={pid} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="18" fill={sc}/><rect x="6" width="3" height="18" fill={stc}/><rect x="9" width="6" height="18" fill={sc}/><rect x="15" width="3" height="18" fill={stc}/></pattern>;
+                          if (pat === 'stripe_diagonal_triple') return <pattern id={pid} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="18" fill={sc}/><rect x="3" width="3" height="18" fill={stc}/><rect x="6" width="3" height="18" fill={sc}/><rect x="9" width="3" height="18" fill={stc}/><rect x="12" width="3" height="18" fill={sc}/><rect x="15" width="3" height="18" fill={stc}/></pattern>;
+                          return null;
+                        };
+
+                        const getFill = () => {
+                          if (pat === 'solid') return sc;
+                          if (pat === 'bicolor') return sc; // bicolor uses two rects
+                          return `url(#${pid})`;
+                        };
+
+                        return (
+                          <div className="flex justify-center">
+                            <svg width="80" height="96" viewBox="0 0 80 96" className="rounded-lg border border-border/50">
+                              <defs>{getPatternDef()}</defs>
+                              {pat === 'bicolor' ? (
+                                <>
+                                  <rect width="40" height="96" rx="8" fill={sc} />
+                                  <rect x="40" width="40" height="96" fill={stc} />
+                                  <rect x="40" width="40" height="96" rx="8" fill={stc} style={{ clipPath: 'inset(0 0 0 0 round 0 8px 8px 0)' }} />
+                                </>
+                              ) : (
+                                <rect width="80" height="96" rx="8" fill={getFill()} />
+                              )}
+                              <text x="40" y="52" textAnchor="middle" dominantBaseline="central"
+                                fontSize="28" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
+                                fill={edit.number_color}>10</text>
+                            </svg>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Shirt color (Cor 1) */}
                       <div className="space-y-2">
-                        <label className="text-sm font-display font-semibold text-muted-foreground">Cor da Camisa</label>
+                        <label className="text-sm font-display font-semibold text-muted-foreground">
+                          {edit.pattern === 'bicolor' ? 'Cor Esquerda' : 'Cor da Camisa'}
+                        </label>
                         <div className="flex flex-wrap gap-1.5">
                           {SHIRT_COLORS.map(color => (
                             <button
@@ -774,26 +805,60 @@ export default function ManagerLineupPage() {
                         </div>
                       </div>
 
-                      {/* Pattern */}
+                      {/* Pattern category */}
                       <div className="space-y-2">
                         <label className="text-sm font-display font-semibold text-muted-foreground">Padrao</label>
                         <div className="flex flex-wrap gap-1.5">
-                          {PATTERNS.map(p => (
-                            <button
-                              key={p.value}
-                              className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${edit.pattern === p.value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
-                              onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: p.value } }))}
-                            >
-                              {p.label}
-                            </button>
-                          ))}
+                          {PATTERN_CATEGORIES.map(p => {
+                            const parsed = parsePattern(edit.pattern);
+                            const isActive = parsed.category === p.value;
+                            return (
+                              <button
+                                key={p.value}
+                                className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${isActive ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
+                                onClick={() => {
+                                  const newPattern = buildPattern(p.value, parsed.count);
+                                  setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: newPattern } }));
+                                }}
+                              >
+                                {p.label}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
-                      {/* Stripe color */}
+                      {/* Stripe count (only for stripe patterns) */}
+                      {(() => {
+                        const parsed = parsePattern(edit.pattern);
+                        if (parsed.category === 'solid' || parsed.category === 'bicolor') return null;
+                        return (
+                          <div className="space-y-2">
+                            <label className="text-sm font-display font-semibold text-muted-foreground">Quantidade de Listras</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {STRIPE_COUNTS.map(sc => (
+                                <button
+                                  key={sc.value}
+                                  className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${parsed.count === sc.value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
+                                  onClick={() => {
+                                    const newPattern = buildPattern(parsed.category, sc.value);
+                                    setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: newPattern } }));
+                                  }}
+                                >
+                                  {sc.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Stripe / Bicolor color (Cor 2) */}
                       {edit.pattern !== 'solid' && (
                         <div className="space-y-2">
-                          <label className="text-sm font-display font-semibold text-muted-foreground">Cor da Listra</label>
+                          <label className="text-sm font-display font-semibold text-muted-foreground">
+                            {edit.pattern === 'bicolor' ? 'Cor Direita' : 'Cor da Listra'}
+                          </label>
                           <div className="flex flex-wrap gap-1.5">
                             {SHIRT_COLORS.map(color => (
                               <button
