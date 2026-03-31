@@ -154,7 +154,17 @@ interface UniformData {
   uniform_number: number;
   shirt_color: string;
   number_color: string;
+  pattern: string;
+  stripe_color: string;
 }
+
+const PATTERNS = [
+  { value: 'solid', label: 'Cor Completa' },
+  { value: 'stripe_vertical', label: 'Listra Vertical' },
+  { value: 'stripe_double_vertical', label: 'Listra Dupla' },
+  { value: 'stripe_triple_vertical', label: 'Listra Tripla' },
+  { value: 'stripe_diagonal', label: 'Listra Diagonal' },
+];
 
 export default function ManagerLineupPage() {
   const { club } = useAuth();
@@ -170,7 +180,7 @@ export default function ManagerLineupPage() {
 
   // Uniform state
   const [uniforms, setUniforms] = useState<UniformData[]>([]);
-  const [uniformEdits, setUniformEdits] = useState<Record<number, { shirt_color: string; number_color: string }>>({});
+  const [uniformEdits, setUniformEdits] = useState<Record<number, { shirt_color: string; number_color: string; pattern: string; stripe_color: string }>>({});
   const [savingUniform, setSavingUniform] = useState<number | null>(null);
 
   // Tactical roles state
@@ -256,15 +266,15 @@ export default function ManagerLineupPage() {
     // Load uniforms
     const { data: uniformsData } = await supabase
       .from('club_uniforms')
-      .select('id, uniform_number, shirt_color, number_color')
+      .select('id, uniform_number, shirt_color, number_color, pattern, stripe_color')
       .eq('club_id', club.id)
       .order('uniform_number');
 
     if (uniformsData) {
       setUniforms(uniformsData);
-      const edits: Record<number, { shirt_color: string; number_color: string }> = {};
+      const edits: Record<number, { shirt_color: string; number_color: string; pattern: string; stripe_color: string }> = {};
       uniformsData.forEach(u => {
-        edits[u.uniform_number] = { shirt_color: u.shirt_color, number_color: u.number_color };
+        edits[u.uniform_number] = { shirt_color: u.shirt_color, number_color: u.number_color, pattern: u.pattern || 'solid', stripe_color: u.stripe_color || '#FFFFFF' };
       });
       setUniformEdits(edits);
     }
@@ -281,12 +291,12 @@ export default function ManagerLineupPage() {
     try {
       const { error } = await supabase
         .from('club_uniforms')
-        .update({ shirt_color: edit.shirt_color, number_color: edit.number_color, updated_at: new Date().toISOString() })
+        .update({ shirt_color: edit.shirt_color, number_color: edit.number_color, pattern: edit.pattern, stripe_color: edit.stripe_color, updated_at: new Date().toISOString() })
         .eq('id', uniform.id);
 
       if (error) throw error;
 
-      setUniforms(prev => prev.map(u => u.id === uniform.id ? { ...u, shirt_color: edit.shirt_color, number_color: edit.number_color } : u));
+      setUniforms(prev => prev.map(u => u.id === uniform.id ? { ...u, shirt_color: edit.shirt_color, number_color: edit.number_color, pattern: edit.pattern, stripe_color: edit.stripe_color } : u));
       toast.success(`Uniforme salvo! Uniforme ${uniformNumber} atualizado com sucesso.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao salvar uniforme.';
@@ -692,7 +702,7 @@ export default function ManagerLineupPage() {
                 const edit = uniformEdits[num];
                 if (!uniform || !edit) return null;
 
-                const hasChanges = edit.shirt_color !== uniform.shirt_color || edit.number_color !== uniform.number_color;
+                const hasChanges = edit.shirt_color !== uniform.shirt_color || edit.number_color !== uniform.number_color || edit.pattern !== (uniform.pattern || 'solid') || edit.stripe_color !== (uniform.stripe_color || '#FFFFFF');
 
                 return (
                   <Card key={num}>
@@ -704,12 +714,49 @@ export default function ManagerLineupPage() {
                     <CardContent className="space-y-4">
                       {/* Jersey preview */}
                       <div className="flex justify-center">
-                        <div
-                          className="w-20 h-24 rounded-lg relative flex items-center justify-center border border-border/50"
-                          style={{ backgroundColor: edit.shirt_color }}
-                        >
-                          <span className="font-display text-2xl font-extrabold" style={{ color: edit.number_color }}>10</span>
-                        </div>
+                        <svg width="80" height="96" viewBox="0 0 80 96" className="rounded-lg border border-border/50">
+                          <defs>
+                            {edit.pattern === 'stripe_vertical' && (
+                              <pattern id={`stripe-v-${num}`} width="20" height="96" patternUnits="userSpaceOnUse">
+                                <rect width="10" height="96" fill={edit.shirt_color} />
+                                <rect x="10" width="10" height="96" fill={edit.stripe_color} />
+                              </pattern>
+                            )}
+                            {edit.pattern === 'stripe_double_vertical' && (
+                              <pattern id={`stripe-dv-${num}`} width="24" height="96" patternUnits="userSpaceOnUse">
+                                <rect width="8" height="96" fill={edit.shirt_color} />
+                                <rect x="8" width="4" height="96" fill={edit.stripe_color} />
+                                <rect x="12" width="8" height="96" fill={edit.shirt_color} />
+                                <rect x="20" width="4" height="96" fill={edit.stripe_color} />
+                              </pattern>
+                            )}
+                            {edit.pattern === 'stripe_triple_vertical' && (
+                              <pattern id={`stripe-tv-${num}`} width="18" height="96" patternUnits="userSpaceOnUse">
+                                <rect width="6" height="96" fill={edit.shirt_color} />
+                                <rect x="6" width="3" height="96" fill={edit.stripe_color} />
+                                <rect x="9" width="3" height="96" fill={edit.shirt_color} />
+                                <rect x="12" width="3" height="96" fill={edit.stripe_color} />
+                                <rect x="15" width="3" height="96" fill={edit.shirt_color} />
+                              </pattern>
+                            )}
+                            {edit.pattern === 'stripe_diagonal' && (
+                              <pattern id={`stripe-d-${num}`} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                                <rect width="7" height="14" fill={edit.shirt_color} />
+                                <rect x="7" width="7" height="14" fill={edit.stripe_color} />
+                              </pattern>
+                            )}
+                          </defs>
+                          <rect width="80" height="96" rx="8" fill={
+                            edit.pattern === 'solid' ? edit.shirt_color :
+                            edit.pattern === 'stripe_vertical' ? `url(#stripe-v-${num})` :
+                            edit.pattern === 'stripe_double_vertical' ? `url(#stripe-dv-${num})` :
+                            edit.pattern === 'stripe_triple_vertical' ? `url(#stripe-tv-${num})` :
+                            `url(#stripe-d-${num})`
+                          } />
+                          <text x="40" y="52" textAnchor="middle" dominantBaseline="central"
+                            fontSize="28" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
+                            fill={edit.number_color}>10</text>
+                        </svg>
                       </div>
 
                       {/* Shirt color */}
@@ -726,6 +773,39 @@ export default function ManagerLineupPage() {
                           ))}
                         </div>
                       </div>
+
+                      {/* Pattern */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-display font-semibold text-muted-foreground">Padrao</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {PATTERNS.map(p => (
+                            <button
+                              key={p.value}
+                              className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${edit.pattern === p.value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
+                              onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: p.value } }))}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Stripe color */}
+                      {edit.pattern !== 'solid' && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-display font-semibold text-muted-foreground">Cor da Listra</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {SHIRT_COLORS.map(color => (
+                              <button
+                                key={color}
+                                className={`w-7 h-7 rounded-md border-2 transition-all ${edit.stripe_color === color ? 'border-tactical scale-110' : 'border-border/50 hover:border-muted-foreground'}`}
+                                style={{ backgroundColor: color }}
+                                onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], stripe_color: color } }))}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Number color */}
                       <div className="space-y-2">

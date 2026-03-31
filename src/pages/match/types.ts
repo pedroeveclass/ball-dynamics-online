@@ -62,6 +62,8 @@ export interface ClubUniform {
   uniform_number: number;
   shirt_color: string;
   number_color: string;
+  pattern: string;
+  stripe_color: string;
 }
 
 export interface PendingInterceptChoice {

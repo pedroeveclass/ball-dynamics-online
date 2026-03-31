@@ -353,8 +353,8 @@ export default function MatchRoomPage() {
 
     // Fetch club uniforms (non-blocking, falls back to club colors if table is empty or missing)
     Promise.all([
-      supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', matchData.home_club_id),
-      supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', matchData.away_club_id),
+      supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color, pattern, stripe_color').eq('club_id', matchData.home_club_id),
+      supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color, pattern, stripe_color').eq('club_id', matchData.away_club_id),
     ]).then(([homeUniformsRes, awayUniformsRes]) => {
       if (homeUniformsRes.data) setHomeUniforms(homeUniformsRes.data as ClubUniform[]);
       if (awayUniformsRes.data) setAwayUniforms(awayUniformsRes.data as ClubUniform[]);
@@ -3287,6 +3287,32 @@ export default function MatchRoomPage() {
                       strokeWidth={isMe ? 1.5 : 0.8}
                       filter="url(#shadow)"
                     />
+                    {/* Stripe pattern overlay on player circle */}
+                    {(() => {
+                      const uniform = isHome ? homeActiveUniform : awayActiveUniform;
+                      if (p.field_pos === 'GK' || !uniform.pattern || uniform.pattern === 'solid') return null;
+                      const stripeColor = uniform.stripe_color || '#fff';
+                      if (uniform.pattern === 'stripe_vertical') {
+                        return <line x1={x} y1={y-R+1} x2={x} y2={y+R-1} stroke={stripeColor} strokeWidth="2" opacity="0.8" />;
+                      }
+                      if (uniform.pattern === 'stripe_double_vertical') {
+                        return <>
+                          <line x1={x-3} y1={y-R+1} x2={x-3} y2={y+R-1} stroke={stripeColor} strokeWidth="1.5" opacity="0.8" />
+                          <line x1={x+3} y1={y-R+1} x2={x+3} y2={y+R-1} stroke={stripeColor} strokeWidth="1.5" opacity="0.8" />
+                        </>;
+                      }
+                      if (uniform.pattern === 'stripe_triple_vertical') {
+                        return <>
+                          <line x1={x-4} y1={y-R+2} x2={x-4} y2={y+R-2} stroke={stripeColor} strokeWidth="1" opacity="0.8" />
+                          <line x1={x} y1={y-R+1} x2={x} y2={y+R-1} stroke={stripeColor} strokeWidth="1" opacity="0.8" />
+                          <line x1={x+4} y1={y-R+2} x2={x+4} y2={y+R-2} stroke={stripeColor} strokeWidth="1" opacity="0.8" />
+                        </>;
+                      }
+                      if (uniform.pattern === 'stripe_diagonal') {
+                        return <line x1={x-R+2} y1={y+R-2} x2={x+R-2} y2={y-R+2} stroke={stripeColor} strokeWidth="2" opacity="0.8" />;
+                      }
+                      return null;
+                    })()}
                     <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
                       fontSize="7" fontWeight="800"
                       fontFamily="'Barlow Condensed', sans-serif"
