@@ -2811,7 +2811,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .from('match_event_logs')
       .select('event_type, payload, body')
       .eq('match_id', match_id)
-      .in('event_type', ['loose_ball', 'block', 'shot_missed', 'blocked', 'loose_ball_phase'])
+      .in('event_type', ['loose_ball', 'block', 'shot_missed', 'blocked', 'loose_ball_phase', 'ball_inertia', 'ball_stopped', 'loose_ball_recovered', 'possession_change'])
       .order('created_at', { ascending: false })
       .limit(1);
     if (lastEvents && lastEvents.length > 0) {
@@ -2825,6 +2825,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         if (coordMatch) {
           looseBallPos = { x: Number(coordMatch[1]), y: Number(coordMatch[2]) };
         }
+      }
+    }
+    // Fallback: if no position from events, check previous turn's ball action target
+    if (!looseBallPos) {
+      const { data: prevActions } = await supabase
+        .from('match_actions')
+        .select('target_x, target_y, action_type')
+        .eq('match_id', match_id)
+        .eq('status', 'used')
+        .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (prevActions?.[0]?.target_x != null) {
+        looseBallPos = { x: Number(prevActions[0].target_x), y: Number(prevActions[0].target_y) };
       }
     }
     if (looseBallPos) console.log(`[ENGINE] Loose ball position: (${looseBallPos.x.toFixed(1)}, ${looseBallPos.y.toFixed(1)})`);
