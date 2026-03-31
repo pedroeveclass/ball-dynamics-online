@@ -167,28 +167,37 @@ const PATTERN_CATEGORIES = [
 ];
 
 const STRIPE_COUNTS = [
+  { value: 'unique', label: 'Unica' },
   { value: 'single', label: 'Simples' },
   { value: 'double', label: 'Dupla' },
   { value: 'triple', label: 'Tripla' },
 ];
 
-// Build full pattern value from category + count
+const BICOLOR_TYPES = [
+  { value: 'bicolor_vertical', label: 'Vertical' },
+  { value: 'bicolor_horizontal', label: 'Horizontal' },
+  { value: 'bicolor_diagonal', label: 'Diagonal' },
+];
+
+// Build full pattern value from category + count/type
 const buildPattern = (category: string, count: string) => {
-  if (category === 'solid' || category === 'bicolor') return category;
+  if (category === 'solid') return 'solid';
+  if (category === 'bicolor') return count; // count holds the bicolor subtype
   return `${category}_${count}`;
 };
 
 // Parse pattern into category + count
 const parsePattern = (pattern: string): { category: string; count: string } => {
-  if (pattern === 'solid' || pattern === 'bicolor') return { category: pattern, count: 'single' };
+  if (pattern === 'solid') return { category: 'solid', count: 'unique' };
+  if (pattern.startsWith('bicolor')) return { category: 'bicolor', count: pattern };
   for (const cat of ['stripe_vertical', 'stripe_horizontal', 'stripe_diagonal']) {
     if (pattern.startsWith(cat)) {
       const count = pattern.replace(`${cat}_`, '');
-      if (['single', 'double', 'triple'].includes(count)) return { category: cat, count };
-      if (pattern === cat) return { category: cat, count: 'single' };
+      if (['unique', 'single', 'double', 'triple'].includes(count)) return { category: cat, count };
+      if (pattern === cat) return { category: cat, count: 'unique' };
     }
   }
-  return { category: 'solid', count: 'single' };
+  return { category: 'solid', count: 'unique' };
 };
 
 export default function ManagerLineupPage() {
@@ -744,42 +753,56 @@ export default function ManagerLineupPage() {
                         const stc = edit.stripe_color;
                         const pid = `pat-${num}`;
 
-                        // SVG pattern definitions for each combo
                         const getPatternDef = () => {
-                          // Vertical
+                          // Unique = single stripe in the middle
+                          if (pat === 'stripe_vertical_unique') return null; // rendered inline
+                          if (pat === 'stripe_horizontal_unique') return null;
+                          if (pat === 'stripe_diagonal_unique') return null;
+                          // Vertical repeating
                           if (pat === 'stripe_vertical_single') return <pattern id={pid} width="20" height="96" patternUnits="userSpaceOnUse"><rect width="10" height="96" fill={sc}/><rect x="10" width="10" height="96" fill={stc}/></pattern>;
                           if (pat === 'stripe_vertical_double') return <pattern id={pid} width="24" height="96" patternUnits="userSpaceOnUse"><rect width="8" height="96" fill={sc}/><rect x="8" width="4" height="96" fill={stc}/><rect x="12" width="8" height="96" fill={sc}/><rect x="20" width="4" height="96" fill={stc}/></pattern>;
                           if (pat === 'stripe_vertical_triple') return <pattern id={pid} width="18" height="96" patternUnits="userSpaceOnUse"><rect width="4" height="96" fill={sc}/><rect x="4" width="2" height="96" fill={stc}/><rect x="6" width="4" height="96" fill={sc}/><rect x="10" width="2" height="96" fill={stc}/><rect x="12" width="4" height="96" fill={sc}/><rect x="16" width="2" height="96" fill={stc}/></pattern>;
-                          // Horizontal
+                          // Horizontal repeating
                           if (pat === 'stripe_horizontal_single') return <pattern id={pid} width="80" height="20" patternUnits="userSpaceOnUse"><rect width="80" height="10" fill={sc}/><rect y="10" width="80" height="10" fill={stc}/></pattern>;
                           if (pat === 'stripe_horizontal_double') return <pattern id={pid} width="80" height="24" patternUnits="userSpaceOnUse"><rect width="80" height="8" fill={sc}/><rect y="8" width="80" height="4" fill={stc}/><rect y="12" width="80" height="8" fill={sc}/><rect y="20" width="80" height="4" fill={stc}/></pattern>;
                           if (pat === 'stripe_horizontal_triple') return <pattern id={pid} width="80" height="18" patternUnits="userSpaceOnUse"><rect width="80" height="4" fill={sc}/><rect y="4" width="80" height="2" fill={stc}/><rect y="6" width="80" height="4" fill={sc}/><rect y="10" width="80" height="2" fill={stc}/><rect y="12" width="80" height="4" fill={sc}/><rect y="16" width="80" height="2" fill={stc}/></pattern>;
-                          // Diagonal
+                          // Diagonal repeating
                           if (pat === 'stripe_diagonal_single') return <pattern id={pid} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="14" fill={sc}/><rect x="7" width="7" height="14" fill={stc}/></pattern>;
                           if (pat === 'stripe_diagonal_double') return <pattern id={pid} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="18" fill={sc}/><rect x="6" width="3" height="18" fill={stc}/><rect x="9" width="6" height="18" fill={sc}/><rect x="15" width="3" height="18" fill={stc}/></pattern>;
                           if (pat === 'stripe_diagonal_triple') return <pattern id={pid} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="18" fill={sc}/><rect x="3" width="3" height="18" fill={stc}/><rect x="6" width="3" height="18" fill={sc}/><rect x="9" width="3" height="18" fill={stc}/><rect x="12" width="3" height="18" fill={sc}/><rect x="15" width="3" height="18" fill={stc}/></pattern>;
                           return null;
                         };
 
-                        const getFill = () => {
-                          if (pat === 'solid') return sc;
-                          if (pat === 'bicolor') return sc; // bicolor uses two rects
-                          return `url(#${pid})`;
-                        };
+                        const isBicolor = pat.startsWith('bicolor');
+                        const isUnique = pat.endsWith('_unique');
 
                         return (
                           <div className="flex justify-center">
-                            <svg width="80" height="96" viewBox="0 0 80 96" className="rounded-lg border border-border/50">
-                              <defs>{getPatternDef()}</defs>
-                              {pat === 'bicolor' ? (
-                                <>
-                                  <rect width="40" height="96" rx="8" fill={sc} />
-                                  <rect x="40" width="40" height="96" fill={stc} />
-                                  <rect x="40" width="40" height="96" rx="8" fill={stc} style={{ clipPath: 'inset(0 0 0 0 round 0 8px 8px 0)' }} />
-                                </>
-                              ) : (
-                                <rect width="80" height="96" rx="8" fill={getFill()} />
-                              )}
+                            <svg width="80" height="96" viewBox="0 0 80 96" className="rounded-lg border border-border/50" overflow="hidden">
+                              <defs>
+                                <clipPath id={`clip-${num}`}><rect width="80" height="96" rx="8"/></clipPath>
+                                {getPatternDef()}
+                              </defs>
+                              <g clipPath={`url(#clip-${num})`}>
+                                {isBicolor ? (
+                                  pat === 'bicolor_horizontal' ? (
+                                    <><rect width="80" height="48" fill={sc}/><rect y="48" width="80" height="48" fill={stc}/></>
+                                  ) : pat === 'bicolor_diagonal' ? (
+                                    <><rect width="80" height="96" fill={sc}/><polygon points="0,96 80,0 80,96" fill={stc}/></>
+                                  ) : (
+                                    <><rect width="40" height="96" fill={sc}/><rect x="40" width="40" height="96" fill={stc}/></>
+                                  )
+                                ) : isUnique ? (
+                                  <>
+                                    <rect width="80" height="96" fill={sc}/>
+                                    {pat === 'stripe_vertical_unique' && <rect x="34" width="12" height="96" fill={stc}/>}
+                                    {pat === 'stripe_horizontal_unique' && <rect y="42" width="80" height="12" fill={stc}/>}
+                                    {pat === 'stripe_diagonal_unique' && <polygon points="0,80 0,96 80,0 80,16" fill={stc} opacity="0.9"/>}
+                                  </>
+                                ) : (
+                                  <rect width="80" height="96" fill={pat === 'solid' ? sc : `url(#${pid})`}/>
+                                )}
+                              </g>
                               <text x="40" y="52" textAnchor="middle" dominantBaseline="central"
                                 fontSize="28" fontWeight="800" fontFamily="'Barlow Condensed', sans-serif"
                                 fill={edit.number_color}>10</text>
@@ -817,7 +840,15 @@ export default function ManagerLineupPage() {
                                 key={p.value}
                                 className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${isActive ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
                                 onClick={() => {
-                                  const newPattern = buildPattern(p.value, parsed.count);
+                                  let newPattern: string;
+                                  if (p.value === 'bicolor') {
+                                    newPattern = parsed.category === 'bicolor' ? parsed.count : 'bicolor_vertical';
+                                  } else if (p.value === 'solid') {
+                                    newPattern = 'solid';
+                                  } else {
+                                    const currentCount = ['unique','single','double','triple'].includes(parsed.count) ? parsed.count : 'unique';
+                                    newPattern = buildPattern(p.value, currentCount);
+                                  }
                                   setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: newPattern } }));
                                 }}
                               >
@@ -827,6 +858,24 @@ export default function ManagerLineupPage() {
                           })}
                         </div>
                       </div>
+
+                      {/* Bicolor type selector */}
+                      {parsePattern(edit.pattern).category === 'bicolor' && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-display font-semibold text-muted-foreground">Tipo Bicolor</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {BICOLOR_TYPES.map(bt => (
+                              <button
+                                key={bt.value}
+                                className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${edit.pattern === bt.value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
+                                onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: bt.value } }))}
+                              >
+                                {bt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Stripe count (only for stripe patterns) */}
                       {(() => {
