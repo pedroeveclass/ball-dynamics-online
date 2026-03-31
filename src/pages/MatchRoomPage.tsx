@@ -12,6 +12,8 @@ import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantL
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
 import { MatchActionMenu } from './match/MatchActionMenu';
+import { PitchSVG, DEFAULT_STADIUM_STYLE } from '@/components/PitchSVG';
+import type { StadiumStyle } from '@/components/PitchSVG';
 
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
@@ -23,6 +25,7 @@ export default function MatchRoomPage() {
   const [awayClub, setAwayClub] = useState<ClubInfo | null>(null);
   const [homeUniforms, setHomeUniforms] = useState<ClubUniform[]>([]);
   const [awayUniforms, setAwayUniforms] = useState<ClubUniform[]>([]);
+  const [stadiumStyle, setStadiumStyle] = useState<StadiumStyle>(DEFAULT_STADIUM_STYLE);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeTurn, setActiveTurn] = useState<MatchTurn | null>(null);
   const [events, setEvents] = useState<EventLog[]>([]);
@@ -359,6 +362,20 @@ export default function MatchRoomPage() {
       if (homeUniformsRes.data) setHomeUniforms(homeUniformsRes.data as ClubUniform[]);
       if (awayUniformsRes.data) setAwayUniforms(awayUniformsRes.data as ClubUniform[]);
     }).catch(() => { /* silently fall back to club colors */ });
+
+    // Load home team's stadium style
+    supabase.from('stadium_styles').select('*').eq('club_id', matchData.home_club_id).maybeSingle()
+      .then(({ data }) => {
+        if (data) setStadiumStyle({
+          pitch_pattern: data.pitch_pattern,
+          border_color: data.border_color,
+          lighting: data.lighting,
+          net_pattern: data.net_pattern,
+          net_style: data.net_style,
+          ad_board_color: data.ad_board_color,
+          bench_color: data.bench_color,
+        });
+      });
 
     // Load captain IDs from lineups
     if (matchData.home_lineup_id || matchData.away_lineup_id) {
@@ -2649,22 +2666,16 @@ export default function MatchRoomPage() {
         {/* ── Field area (dominant) ── */}
         <div className="flex-1 flex items-center justify-center p-2 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)' }}>
           <div className="relative w-full" style={{ maxWidth: 960 }}>
-            <svg
-              ref={svgRef}
-              viewBox={`0 0 ${FIELD_W + PAD * 2} ${FIELD_H + PAD * 2}`}
-              className="w-full rounded-lg"
-              style={{ cursor: drawingAction ? 'crosshair' : 'default' }}
+            <PitchSVG
+              style={stadiumStyle}
+              svgRef={svgRef}
               onMouseMove={handleSvgMouseMove}
               onClick={handleSvgClick}
+              cursor={drawingAction ? 'crosshair' : 'default'}
+              className="w-full rounded-lg"
             >
-              {/* Defs */}
+              {/* Extra defs not provided by PitchSVG */}
               <defs>
-                <pattern id="grass" x="0" y="0" width="80" height={INNER_H} patternUnits="userSpaceOnUse">
-                  <rect x="0" y="0" width="40" height={INNER_H} fill="hsl(100,45%,28%)" />
-                  <rect x="40" y="0" width="40" height={INNER_H} fill="hsl(100,42%,25%)" />
-                </pattern>
-                <filter id="glow"><feGaussianBlur stdDeviation="2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-                <filter id="shadow"><feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.5" /></filter>
                 <filter id="pulse-glow">
                   <feGaussianBlur stdDeviation="4" result="b" />
                   <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -2676,42 +2687,6 @@ export default function MatchRoomPage() {
                 <marker id="ah-red" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#ef4444" /></marker>
                 <marker id="ah-cyan" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#06b6d4" /></marker>
               </defs>
-
-              {/* Border frame */}
-              <rect x="0" y="0" width={FIELD_W + PAD * 2} height={FIELD_H + PAD * 2} fill="hsl(140,10%,15%)" rx="8" />
-
-              {/* Grass surface */}
-              <rect x={PAD} y={PAD} width={INNER_W} height={INNER_H} fill="url(#grass)" />
-
-              {/* Field lines */}
-              <g stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" fill="none">
-                <rect x={PAD + 2} y={PAD + 2} width={INNER_W - 4} height={INNER_H - 4} />
-                <line x1={PAD + INNER_W / 2} y1={PAD + 2} x2={PAD + INNER_W / 2} y2={PAD + INNER_H - 2} />
-                <circle cx={PAD + INNER_W / 2} cy={PAD + INNER_H / 2} r={INNER_H * 0.15} />
-                <circle cx={PAD + INNER_W / 2} cy={PAD + INNER_H / 2} r={3} fill="rgba(255,255,255,0.6)" />
-                <rect x={PAD + 2} y={PAD + INNER_H * 0.22} width={INNER_W * 0.16} height={INNER_H * 0.56} />
-                <rect x={PAD + 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
-                <path d={`M ${PAD + 2 + INNER_W * 0.16} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 1 ${PAD + 2 + INNER_W * 0.16} ${PAD + INNER_H * 0.62}`} />
-                <rect x={PAD + INNER_W - INNER_W * 0.16 - 2} y={PAD + INNER_H * 0.22} width={INNER_W * 0.16} height={INNER_H * 0.56} />
-                <rect x={PAD + INNER_W - INNER_W * 0.06 - 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
-                <path d={`M ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 0 ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.62}`} />
-              </g>
-
-              {/* Goals */}
-              <g stroke="rgba(255,255,255,0.7)" strokeWidth="2" fill="rgba(255,255,255,0.08)">
-                <rect x={PAD - 8} y={PAD + INNER_H * 0.38} width={10} height={INNER_H * 0.24} rx="1" />
-                <rect x={PAD + INNER_W - 2} y={PAD + INNER_H * 0.38} width={10} height={INNER_H * 0.24} rx="1" />
-              </g>
-
-              {/* Goal nets */}
-              <g stroke="rgba(255,255,255,0.15)" strokeWidth="0.5">
-                {[0, 1, 2, 3].map(i => (
-                  <g key={`net-${i}`}>
-                    <line x1={PAD - 8 + i * 3} y1={PAD + INNER_H * 0.38} x2={PAD - 8 + i * 3} y2={PAD + INNER_H * 0.62} />
-                    <line x1={PAD + INNER_W - 2 + i * 3} y1={PAD + INNER_H * 0.38} x2={PAD + INNER_W - 2 + i * 3} y2={PAD + INNER_H * 0.62} />
-                  </g>
-                ))}
-              </g>
 
               {/* ── Kickoff half-field overlay during positioning ── */}
               {isPositioningTurn && (() => {
@@ -3396,7 +3371,7 @@ export default function MatchRoomPage() {
                   </g>
                 );
               })()}
-            </svg>
+            </PitchSVG>
 
             {/* Action menu overlay */}
             {showActionMenu && !drawingAction && (() => {
