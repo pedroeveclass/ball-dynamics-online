@@ -3287,30 +3287,32 @@ export default function MatchRoomPage() {
                       strokeWidth={isMe ? 1.5 : 0.8}
                       filter="url(#shadow)"
                     />
-                    {/* Stripe pattern overlay on player circle */}
+                    {/* Pattern overlay on player circle */}
                     {(() => {
                       const uniform = isHome ? homeActiveUniform : awayActiveUniform;
                       if (p.field_pos === 'GK' || !uniform.pattern || uniform.pattern === 'solid') return null;
-                      const stripeColor = uniform.stripe_color || '#fff';
-                      if (uniform.pattern === 'stripe_vertical') {
-                        return <line x1={x} y1={y-R+1} x2={x} y2={y+R-1} stroke={stripeColor} strokeWidth="2" opacity="0.8" />;
+                      const sc = uniform.stripe_color || '#fff';
+                      const pat = uniform.pattern;
+                      // Vertical
+                      if (pat.startsWith('stripe_vertical')) {
+                        if (pat.includes('triple')) return <><line x1={x-4} y1={y-R+2} x2={x-4} y2={y+R-2} stroke={sc} strokeWidth="1" opacity="0.8"/><line x1={x} y1={y-R+1} x2={x} y2={y+R-1} stroke={sc} strokeWidth="1" opacity="0.8"/><line x1={x+4} y1={y-R+2} x2={x+4} y2={y+R-2} stroke={sc} strokeWidth="1" opacity="0.8"/></>;
+                        if (pat.includes('double')) return <><line x1={x-3} y1={y-R+1} x2={x-3} y2={y+R-1} stroke={sc} strokeWidth="1.5" opacity="0.8"/><line x1={x+3} y1={y-R+1} x2={x+3} y2={y+R-1} stroke={sc} strokeWidth="1.5" opacity="0.8"/></>;
+                        return <line x1={x} y1={y-R+1} x2={x} y2={y+R-1} stroke={sc} strokeWidth="2" opacity="0.8"/>;
                       }
-                      if (uniform.pattern === 'stripe_double_vertical') {
-                        return <>
-                          <line x1={x-3} y1={y-R+1} x2={x-3} y2={y+R-1} stroke={stripeColor} strokeWidth="1.5" opacity="0.8" />
-                          <line x1={x+3} y1={y-R+1} x2={x+3} y2={y+R-1} stroke={stripeColor} strokeWidth="1.5" opacity="0.8" />
-                        </>;
+                      // Horizontal
+                      if (pat.startsWith('stripe_horizontal')) {
+                        if (pat.includes('triple')) return <><line x1={x-R+2} y1={y-4} x2={x+R-2} y2={y-4} stroke={sc} strokeWidth="1" opacity="0.8"/><line x1={x-R+1} y1={y} x2={x+R-1} y2={y} stroke={sc} strokeWidth="1" opacity="0.8"/><line x1={x-R+2} y1={y+4} x2={x+R-2} y2={y+4} stroke={sc} strokeWidth="1" opacity="0.8"/></>;
+                        if (pat.includes('double')) return <><line x1={x-R+1} y1={y-3} x2={x+R-1} y2={y-3} stroke={sc} strokeWidth="1.5" opacity="0.8"/><line x1={x-R+1} y1={y+3} x2={x+R-1} y2={y+3} stroke={sc} strokeWidth="1.5" opacity="0.8"/></>;
+                        return <line x1={x-R+1} y1={y} x2={x+R-1} y2={y} stroke={sc} strokeWidth="2" opacity="0.8"/>;
                       }
-                      if (uniform.pattern === 'stripe_triple_vertical') {
-                        return <>
-                          <line x1={x-4} y1={y-R+2} x2={x-4} y2={y+R-2} stroke={stripeColor} strokeWidth="1" opacity="0.8" />
-                          <line x1={x} y1={y-R+1} x2={x} y2={y+R-1} stroke={stripeColor} strokeWidth="1" opacity="0.8" />
-                          <line x1={x+4} y1={y-R+2} x2={x+4} y2={y+R-2} stroke={stripeColor} strokeWidth="1" opacity="0.8" />
-                        </>;
+                      // Diagonal
+                      if (pat.startsWith('stripe_diagonal')) {
+                        if (pat.includes('triple')) return <><line x1={x-R+1} y1={y+R-5} x2={x+R-5} y2={y-R+1} stroke={sc} strokeWidth="1" opacity="0.8"/><line x1={x-R+2} y1={y+R-2} x2={x+R-2} y2={y-R+2} stroke={sc} strokeWidth="1" opacity="0.8"/><line x1={x-R+5} y1={y+R-1} x2={x+R-1} y2={y-R+5} stroke={sc} strokeWidth="1" opacity="0.8"/></>;
+                        if (pat.includes('double')) return <><line x1={x-R+2} y1={y+R-5} x2={x+R-5} y2={y-R+2} stroke={sc} strokeWidth="1.5" opacity="0.8"/><line x1={x-R+5} y1={y+R-2} x2={x+R-2} y2={y-R+5} stroke={sc} strokeWidth="1.5" opacity="0.8"/></>;
+                        return <line x1={x-R+2} y1={y+R-2} x2={x+R-2} y2={y-R+2} stroke={sc} strokeWidth="2" opacity="0.8"/>;
                       }
-                      if (uniform.pattern === 'stripe_diagonal') {
-                        return <line x1={x-R+2} y1={y+R-2} x2={x+R-2} y2={y-R+2} stroke={stripeColor} strokeWidth="2" opacity="0.8" />;
-                      }
+                      // Bicolor: right half overlay
+                      if (pat === 'bicolor') return <path d={`M${x},${y-R} A${R},${R} 0 0,1 ${x},${y+R} L${x},${y-R}`} fill={sc} opacity="0.9"/>;
                       return null;
                     })()}
                     <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
