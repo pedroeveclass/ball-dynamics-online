@@ -102,6 +102,24 @@ function pickImplicitGoalkeeperId(teamParts: any[]): string | null {
   if (teamParts.length === 0) return null;
   const avgX = teamParts.reduce((sum: number, part: any) => sum + Number(part.pos_x ?? 50), 0) / teamParts.length;
   const isHomeLike = avgX <= 50;
+
+  // First, look for a player in the goal area (within 15 units of goal line)
+  const goalAreaPlayers = teamParts.filter((p: any) => {
+    const px = Number(p.pos_x ?? 50);
+    return isHomeLike ? px < 15 : px > 85;
+  });
+
+  if (goalAreaPlayers.length > 0) {
+    // Pick the one closest to goal line
+    goalAreaPlayers.sort((a: any, b: any) => {
+      const ax = Number(a.pos_x ?? 50);
+      const bx = Number(b.pos_x ?? 50);
+      return isHomeLike ? ax - bx : bx - ax;
+    });
+    return goalAreaPlayers[0]?.id ?? null;
+  }
+
+  // Fallback: pick closest to goal line (original logic)
   const sorted = [...teamParts].sort((a: any, b: any) => {
     const ax = Number(a.pos_x ?? 50);
     const bx = Number(b.pos_x ?? 50);
@@ -1904,7 +1922,12 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           // At progress=0 the ball just left — interceptor needs to already be there
           // At progress=1 the ball arrived — interceptor has full turn to get there
           // Scale allowed range by progress: early intercepts require being closer
-          const timingRange = adjustedMaxRange * Math.max(0.15, t);
+          // At t=0 (start): interceptor must be within ~1 unit (essentially touching)
+          // At t=0.5 (middle): normal range check
+          // At t=1.0 (end): full range
+          const timingRange = t < 0.1
+            ? Math.min(1.0, adjustedMaxRange * 0.05) // Very early: must be right there
+            : adjustedMaxRange * Math.max(0.2, t);
           if (distToIntercept > timingRange) {
             console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
             continue;
