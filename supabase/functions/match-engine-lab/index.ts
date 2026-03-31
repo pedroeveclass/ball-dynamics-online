@@ -98,37 +98,8 @@ function getFormationForFill(formation: string, isHome: boolean): Array<{ x: num
   return base.map(p => ({ ...p, x: 100 - p.x }));
 }
 
-function pickImplicitGoalkeeperId(teamParts: any[]): string | null {
-  if (teamParts.length === 0) return null;
-  const avgX = teamParts.reduce((sum: number, part: any) => sum + Number(part.pos_x ?? 50), 0) / teamParts.length;
-  const isHomeLike = avgX <= 50;
-
-  // First, look for a player in the goal area (within 15 units of goal line)
-  const goalAreaPlayers = teamParts.filter((p: any) => {
-    const px = Number(p.pos_x ?? 50);
-    return isHomeLike ? px < 15 : px > 85;
-  });
-
-  if (goalAreaPlayers.length > 0) {
-    // Pick the one closest to goal line
-    goalAreaPlayers.sort((a: any, b: any) => {
-      const ax = Number(a.pos_x ?? 50);
-      const bx = Number(b.pos_x ?? 50);
-      return isHomeLike ? ax - bx : bx - ax;
-    });
-    return goalAreaPlayers[0]?.id ?? null;
-  }
-
-  // Fallback: pick closest to goal line (original logic)
-  const sorted = [...teamParts].sort((a: any, b: any) => {
-    const ax = Number(a.pos_x ?? 50);
-    const bx = Number(b.pos_x ?? 50);
-    const xDiff = isHomeLike ? ax - bx : bx - ax;
-    if (xDiff !== 0) return xDiff;
-    return String(a.id).localeCompare(String(b.id));
-  });
-  return sorted[0]?.id ?? null;
-}
+// GK is ALWAYS determined by lineup slot or player primary_position.
+// No implicit/position-based fallback — every team has a GK in their lineup.
 
 function isExplicitGoalkeeper(
   participant: any,
@@ -158,8 +129,7 @@ function getGoalkeeperIdsByClub(
     const explicitGK = teamParts.find((participant: any) =>
       isExplicitGoalkeeper(participant, slotMap, profilePosMap)
     );
-    const implicitGKId = explicitGK?.id || pickImplicitGoalkeeperId(teamParts);
-    if (implicitGKId) gkIdByClub.set(clubId, implicitGKId);
+    if (explicitGK) gkIdByClub.set(clubId, explicitGK.id);
   }
 
   return gkIdByClub;
