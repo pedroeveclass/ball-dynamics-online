@@ -2076,9 +2076,13 @@ export default function MatchRoomPage() {
 
   // Active uniform colors (fall back to club colors if no uniform data)
   const homeActiveUniform = homeUniforms.find(u => u.uniform_number === (match.home_uniform ?? 1))
-    || { shirt_color: homeClub?.primary_color ?? '#dc2626', number_color: homeClub?.secondary_color ?? '#fff' };
+    || { shirt_color: homeClub?.primary_color ?? '#dc2626', number_color: homeClub?.secondary_color ?? '#fff', pattern: 'solid', stripe_color: '#fff' };
   const awayActiveUniform = awayUniforms.find(u => u.uniform_number === (match.away_uniform ?? 2))
-    || { shirt_color: awayClub?.primary_color ?? '#16a34a', number_color: awayClub?.secondary_color ?? '#fff' };
+    || { shirt_color: awayClub?.primary_color ?? '#16a34a', number_color: awayClub?.secondary_color ?? '#fff', pattern: 'solid', stripe_color: '#fff' };
+  const homeGKUniform = homeUniforms.find(u => u.uniform_number === 3)
+    || { shirt_color: '#111', number_color: '#fff', pattern: 'solid', stripe_color: '#fff' };
+  const awayGKUniform = awayUniforms.find(u => u.uniform_number === 3)
+    || { shirt_color: '#333', number_color: '#fff', pattern: 'solid', stripe_color: '#fff' };
   const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
   // Determine receive/block actions based on ball trajectory type
@@ -3257,15 +3261,17 @@ export default function MatchRoomPage() {
                     )}
                     <circle
                       cx={x} cy={y} r={R}
-                      fill={p.field_pos === 'GK' ? '#111' : (isHome ? homeActiveUniform.shirt_color : awayActiveUniform.shirt_color)}
+                      fill={p.field_pos === 'GK' ? (isHome ? homeGKUniform.shirt_color : awayGKUniform.shirt_color) : (isHome ? homeActiveUniform.shirt_color : awayActiveUniform.shirt_color)}
                       stroke={isMe ? '#fff' : 'rgba(0,0,0,0.4)'}
                       strokeWidth={isMe ? 1.5 : 0.8}
                       filter="url(#shadow)"
                     />
                     {/* Pattern overlay on player circle */}
                     {(() => {
-                      const uniform = isHome ? homeActiveUniform : awayActiveUniform;
-                      if (p.field_pos === 'GK' || !uniform.pattern || uniform.pattern === 'solid') return null;
+                      const uniform = p.field_pos === 'GK'
+                        ? (isHome ? homeGKUniform : awayGKUniform)
+                        : (isHome ? homeActiveUniform : awayActiveUniform);
+                      if (!uniform.pattern || uniform.pattern === 'solid') return null;
                       const sc = uniform.stripe_color || '#fff';
                       const pat = uniform.pattern;
                       // Vertical (unique = single center line, single/double/triple = repeating)
@@ -3298,7 +3304,7 @@ export default function MatchRoomPage() {
                     <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
                       fontSize="7" fontWeight="800"
                       fontFamily="'Barlow Condensed', sans-serif"
-                      fill={p.field_pos === 'GK' ? '#fff' : (isHome ? homeActiveUniform.number_color : awayActiveUniform.number_color)}
+                      fill={p.field_pos === 'GK' ? (isHome ? homeGKUniform.number_color : awayGKUniform.number_color) : (isHome ? homeActiveUniform.number_color : awayActiveUniform.number_color)}
                     >
                       {p.jersey_number || idx + 1}
                     </text>
