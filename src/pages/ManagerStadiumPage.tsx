@@ -3,12 +3,13 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Building2, Users, Star, Wrench, DollarSign, TrendingUp, Save, Loader2, BarChart3 } from 'lucide-react';
+import { Building2, Users, Star, Wrench, DollarSign, TrendingUp, Save, Loader2, BarChart3, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
+import { PitchSVG, DEFAULT_STADIUM_STYLE, type StadiumStyle } from '@/components/PitchSVG';
 
 interface Sector {
   id: string;
@@ -30,6 +31,246 @@ interface RevenuePreview {
   sector_revenue: number;
 }
 
+// ─── Style editor constants ──────────────────────────────────────────
+const PITCH_PATTERNS: { value: string; label: string }[] = [
+  { value: 'stripes_vertical_thin', label: 'Listras V. Finas' },
+  { value: 'stripes_vertical_thick', label: 'Listras V. Grossas' },
+  { value: 'stripes_horizontal_thin', label: 'Listras H. Finas' },
+  { value: 'stripes_horizontal_thick', label: 'Listras H. Grossas' },
+  { value: 'checkered_small', label: 'Xadrez P.' },
+  { value: 'checkered_large', label: 'Xadrez G.' },
+  { value: 'concentric_circles', label: 'Círculos' },
+  { value: 'diagonal', label: 'Diagonal' },
+  { value: 'uniform', label: 'Uniforme' },
+];
+
+const LIGHTING_OPTIONS: { value: string; label: string }[] = [
+  { value: 'neutral', label: 'Neutra' },
+  { value: 'warm', label: 'Quente' },
+  { value: 'cold', label: 'Fria' },
+  { value: 'night', label: 'Noturna' },
+];
+
+const NET_PATTERNS: { value: string; label: string }[] = [
+  { value: 'checkered', label: 'Quadriculado' },
+  { value: 'diamond', label: 'Diamante' },
+];
+
+const NET_STYLES: { value: string; label: string }[] = [
+  { value: 'classic', label: 'Clássico' },
+  { value: 'veil', label: 'Véu de Noiva' },
+];
+
+const STYLE_COLORS = [
+  'hsl(140,10%,15%)', 'hsl(220,15%,18%)', 'hsl(0,0%,12%)', 'hsl(0,0%,20%)',
+  'hsl(210,20%,25%)', 'hsl(30,10%,20%)', 'hsl(350,30%,20%)', 'hsl(200,40%,20%)',
+  'hsl(160,30%,18%)', 'hsl(270,20%,20%)', 'hsl(40,30%,25%)', 'hsl(0,50%,25%)',
+  'hsl(220,50%,25%)', 'hsl(120,30%,20%)', 'hsl(45,60%,30%)', 'hsl(0,0%,30%)',
+];
+
+function StyleOptionButton({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors border ${
+        selected
+          ? 'bg-pitch text-white border-pitch'
+          : 'bg-muted/50 text-muted-foreground border-border hover:bg-muted'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ColorSwatch({
+  color,
+  selected,
+  onClick,
+}: {
+  color: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-7 h-7 rounded-md border-2 transition-all ${
+        selected ? 'border-pitch scale-110 ring-1 ring-pitch/50' : 'border-transparent hover:border-muted-foreground/30'
+      }`}
+      style={{ backgroundColor: color }}
+    />
+  );
+}
+
+function StadiumStyleEditor({
+  editedStyle,
+  setEditedStyle,
+  hasStyleChanges,
+  savingStyle,
+  onSave,
+}: {
+  editedStyle: StadiumStyle;
+  setEditedStyle: React.Dispatch<React.SetStateAction<StadiumStyle>>;
+  hasStyleChanges: boolean;
+  savingStyle: boolean;
+  onSave: () => void;
+}) {
+  const updateField = <K extends keyof StadiumStyle>(key: K, value: StadiumStyle[K]) => {
+    setEditedStyle(prev => ({ ...prev, [key]: value }));
+  };
+
+  return (
+    <div className="stat-card">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Palette className="h-4 w-4 text-pitch" />
+          <h2 className="font-display font-semibold text-sm">Personalizar Campo</h2>
+        </div>
+        {hasStyleChanges && (
+          <Button
+            size="sm"
+            onClick={onSave}
+            disabled={savingStyle}
+            className="bg-pitch hover:bg-pitch/90 text-white"
+          >
+            {savingStyle ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+            Salvar Estilo
+          </Button>
+        )}
+      </div>
+
+      {/* Live preview */}
+      <div className="mb-5 flex justify-center">
+        <div style={{ width: 400 }}>
+          <PitchSVG style={editedStyle} />
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {/* Pitch pattern */}
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Gramado</label>
+          <div className="flex flex-wrap gap-1.5">
+            {PITCH_PATTERNS.map(p => (
+              <StyleOptionButton
+                key={p.value}
+                selected={editedStyle.pitch_pattern === p.value}
+                onClick={() => updateField('pitch_pattern', p.value)}
+              >
+                {p.label}
+              </StyleOptionButton>
+            ))}
+          </div>
+        </div>
+
+        {/* Border color */}
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Borda</label>
+          <div className="flex flex-wrap gap-1.5">
+            {STYLE_COLORS.map(color => (
+              <ColorSwatch
+                key={color}
+                color={color}
+                selected={editedStyle.border_color === color}
+                onClick={() => updateField('border_color', color)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Lighting */}
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Iluminacao</label>
+          <div className="flex flex-wrap gap-1.5">
+            {LIGHTING_OPTIONS.map(opt => (
+              <StyleOptionButton
+                key={opt.value}
+                selected={editedStyle.lighting === opt.value}
+                onClick={() => updateField('lighting', opt.value)}
+              >
+                {opt.label}
+              </StyleOptionButton>
+            ))}
+          </div>
+        </div>
+
+        {/* Net pattern + style */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Rede do Gol</label>
+            <div className="flex flex-wrap gap-1.5">
+              {NET_PATTERNS.map(opt => (
+                <StyleOptionButton
+                  key={opt.value}
+                  selected={editedStyle.net_pattern === opt.value}
+                  onClick={() => updateField('net_pattern', opt.value)}
+                >
+                  {opt.label}
+                </StyleOptionButton>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Estilo da Rede</label>
+            <div className="flex flex-wrap gap-1.5">
+              {NET_STYLES.map(opt => (
+                <StyleOptionButton
+                  key={opt.value}
+                  selected={editedStyle.net_style === opt.value}
+                  onClick={() => updateField('net_style', opt.value)}
+                >
+                  {opt.label}
+                </StyleOptionButton>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Ad board color */}
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Placas de Publicidade</label>
+          <div className="flex flex-wrap gap-1.5">
+            {STYLE_COLORS.map(color => (
+              <ColorSwatch
+                key={color}
+                color={color}
+                selected={editedStyle.ad_board_color === color}
+                onClick={() => updateField('ad_board_color', color)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Bench color */}
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Banco de Reservas</label>
+          <div className="flex flex-wrap gap-1.5">
+            {STYLE_COLORS.map(color => (
+              <ColorSwatch
+                key={color}
+                color={color}
+                selected={editedStyle.bench_color === color}
+                onClick={() => updateField('bench_color', color)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ManagerStadiumPage() {
   const { club } = useAuth();
   const [stadium, setStadium] = useState<any>(null);
@@ -38,14 +279,20 @@ export default function ManagerStadiumPage() {
   const [saving, setSaving] = useState(false);
   const [revenuePreview, setRevenuePreview] = useState<RevenuePreview[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [editedStyle, setEditedStyle] = useState<StadiumStyle>({ ...DEFAULT_STADIUM_STYLE });
+  const [savedStyle, setSavedStyle] = useState<StadiumStyle>({ ...DEFAULT_STADIUM_STYLE });
+  const [savingStyle, setSavingStyle] = useState(false);
 
   const hasChanges = Object.keys(editedPrices).some(
     id => editedPrices[id] !== sectors.find(s => s.id === id)?.ticket_price
   );
 
+  const hasStyleChanges = JSON.stringify(editedStyle) !== JSON.stringify(savedStyle);
+
   useEffect(() => {
     if (!club) return;
     fetchData();
+    fetchStadiumStyle();
   }, [club]);
 
   async function fetchData() {
@@ -73,6 +320,50 @@ export default function ManagerStadiumPage() {
     if (data) setRevenuePreview(data as RevenuePreview[]);
     if (error) console.error('Revenue preview error:', error);
     setLoadingPreview(false);
+  }
+
+  async function fetchStadiumStyle() {
+    if (!club) return;
+    const { data } = await supabase
+      .from('stadium_styles')
+      .select('*')
+      .eq('club_id', club.id)
+      .maybeSingle();
+    if (data) {
+      const loaded: StadiumStyle = {
+        pitch_pattern: data.pitch_pattern ?? DEFAULT_STADIUM_STYLE.pitch_pattern,
+        border_color: data.border_color ?? DEFAULT_STADIUM_STYLE.border_color,
+        lighting: data.lighting ?? DEFAULT_STADIUM_STYLE.lighting,
+        net_pattern: data.net_pattern ?? DEFAULT_STADIUM_STYLE.net_pattern,
+        net_style: data.net_style ?? DEFAULT_STADIUM_STYLE.net_style,
+        ad_board_color: data.ad_board_color ?? DEFAULT_STADIUM_STYLE.ad_board_color,
+        bench_color: data.bench_color ?? DEFAULT_STADIUM_STYLE.bench_color,
+      };
+      setEditedStyle(loaded);
+      setSavedStyle(loaded);
+    }
+  }
+
+  async function handleSaveStyle() {
+    if (!club) return;
+    setSavingStyle(true);
+    try {
+      const { error } = await supabase.from('stadium_styles').upsert(
+        {
+          club_id: club.id,
+          ...editedStyle,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'club_id' }
+      );
+      if (error) throw error;
+      setSavedStyle({ ...editedStyle });
+      toast.success('Estilo do campo salvo com sucesso!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar estilo');
+    } finally {
+      setSavingStyle(false);
+    }
   }
 
   function handlePriceChange(sectorId: string, value: string) {
@@ -235,6 +526,15 @@ export default function ManagerStadiumPage() {
             <p className="text-sm text-muted-foreground text-center py-4">Nenhum setor configurado.</p>
           )}
         </div>
+
+        {/* Stadium Style Editor */}
+        <StadiumStyleEditor
+          editedStyle={editedStyle}
+          setEditedStyle={setEditedStyle}
+          hasStyleChanges={hasStyleChanges}
+          savingStyle={savingStyle}
+          onSave={handleSaveStyle}
+        />
 
         {/* Info */}
         <div className="text-xs text-muted-foreground space-y-1 px-1">
