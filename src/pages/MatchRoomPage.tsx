@@ -839,6 +839,14 @@ export default function MatchRoomPage() {
     // Only trigger visual during/near resolution
     const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
     if (!isContest) return;
+
+    // Check recent events for contradictions (batched events arrive together)
+    const recentTypes = new Set(events.slice(-8).map(e => e.event_type));
+    // Don't show block/save effect if the shot actually missed
+    if ((last.event_type === 'blocked' || last.event_type === 'saved') &&
+        (recentTypes.has('shot_missed') || recentTypes.has('shot_over'))) return;
+    // Don't show tackle effect if a dribble followed (tackle failed)
+    if (last.event_type === 'tackle' && recentTypes.has('dribble')) return;
     
     // Find approximate position from interceptor or ball holder
     const bhPart = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);

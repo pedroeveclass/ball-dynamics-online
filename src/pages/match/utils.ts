@@ -64,6 +64,24 @@ export function buildParticipantLayout(
     if (teamParts.length === 0) return null;
     const avgX = teamParts.reduce((sum, part) => sum + Number(part.pos_x ?? 50), 0) / teamParts.length;
     const isHomeLike = avgX <= 50;
+
+    // First, look for a player in the goal area (within 15 units of goal line)
+    const goalAreaPlayers = teamParts.filter(p => {
+      const px = Number(p.pos_x ?? 50);
+      return isHomeLike ? px < 15 : px > 85;
+    });
+
+    if (goalAreaPlayers.length > 0) {
+      // Pick the one closest to goal line
+      goalAreaPlayers.sort((a, b) => {
+        const ax = Number(a.pos_x ?? 50);
+        const bx = Number(b.pos_x ?? 50);
+        return isHomeLike ? ax - bx : bx - ax;
+      });
+      return goalAreaPlayers[0]?.id ?? null;
+    }
+
+    // Fallback: pick closest to goal line (original logic)
     const sorted = [...teamParts].sort((a, b) => {
       const ax = Number(a.pos_x ?? 50);
       const bx = Number(b.pos_x ?? 50);
