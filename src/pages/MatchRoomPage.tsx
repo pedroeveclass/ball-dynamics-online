@@ -2668,8 +2668,8 @@ export default function MatchRoomPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── Field area (dominant) ── */}
-        <div className="flex-1 flex items-center justify-center p-2 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)' }}>
-          <div className="relative w-full" style={{ maxWidth: 960 }}>
+        <div className="flex-1 flex items-center justify-center p-1 sm:p-2 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)' }}>
+          <div className="relative w-full h-full flex items-center justify-center" style={{ maxWidth: 1200 }}>
             <PitchSVG
               style={stadiumStyle}
               svgRef={svgRef}
