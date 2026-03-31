@@ -131,7 +131,9 @@ export type Database = {
           created_at: string
           id: string
           number_color: string
+          pattern: string
           shirt_color: string
+          stripe_color: string
           uniform_number: number
           updated_at: string
         }
@@ -140,7 +142,9 @@ export type Database = {
           created_at?: string
           id?: string
           number_color: string
+          pattern?: string
           shirt_color: string
+          stripe_color?: string
           uniform_number: number
           updated_at?: string
         }
@@ -149,7 +153,9 @@ export type Database = {
           created_at?: string
           id?: string
           number_color?: string
+          pattern?: string
           shirt_color?: string
+          stripe_color?: string
           uniform_number?: number
           updated_at?: string
         }
@@ -1731,6 +1737,56 @@ export type Database = {
             columns: ["stadium_id"]
             isOneToOne: false
             referencedRelation: "stadiums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stadium_styles: {
+        Row: {
+          ad_board_color: string
+          bench_color: string
+          border_color: string
+          club_id: string
+          created_at: string
+          id: string
+          lighting: string
+          net_pattern: string
+          net_style: string
+          pitch_pattern: string
+          updated_at: string
+        }
+        Insert: {
+          ad_board_color?: string
+          bench_color?: string
+          border_color?: string
+          club_id: string
+          created_at?: string
+          id?: string
+          lighting?: string
+          net_pattern?: string
+          net_style?: string
+          pitch_pattern?: string
+          updated_at?: string
+        }
+        Update: {
+          ad_board_color?: string
+          bench_color?: string
+          border_color?: string
+          club_id?: string
+          created_at?: string
+          id?: string
+          lighting?: string
+          net_pattern?: string
+          net_style?: string
+          pitch_pattern?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stadium_styles_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
             referencedColumns: ["id"]
           },
         ]
