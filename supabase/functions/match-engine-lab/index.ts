@@ -619,7 +619,7 @@ function getFormationAnchor(
 // ─── Compute max movement range based on attributes ──────────
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
-  const maxSpeed = 10 + normalizeAttr(attrs.velocidade) * 14;
+  const maxSpeed = 8 + normalizeAttr(attrs.velocidade) * 11; // ~12% of field per turn for avg player
   const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
   let totalDist = 0;
   let vel = 0;
@@ -1842,9 +1842,11 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
 
   // Ball speed: faster ball = less time to move = reduced interception range
   const ballSpeedFactor =
-    isShootType(bhActionType) ? (bhActionType === 'shoot_power' ? 0.3 : 0.5) :
-    (bhActionType === 'pass_high' || bhActionType === 'pass_launch') ? 0.65 :
-    1.0; // pass_low = normal speed
+    bhActionType === 'shoot_power' ? 0.25 :
+    bhActionType === 'shoot_controlled' ? 0.35 :
+    bhActionType === 'pass_launch' ? 0.5 :
+    (bhActionType === 'pass_high') ? 0.65 :
+    1.0; // pass_low / move = normal speed
 
   const interceptors: Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> = [];
   for (const a of allActions) {
@@ -1862,13 +1864,14 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
     const cy = startY + dy * t;
     const dist = Math.sqrt((a.target_x - cx) ** 2 + (a.target_y - cy) ** 2);
 
-    const threshold = 2;
-    if (dist <= threshold) {
-      // Use per-action interceptable ranges (block vs receive have different zones)
+    // Player's action target must be within 1 unit of the ball trajectory
+    const INTERCEPT_THRESHOLD = 1.0;
+    if (dist <= INTERCEPT_THRESHOLD) {
+      // Check interceptable zones (block vs receive have different allowed trajectory segments)
       const interceptableRanges = getInterceptableRanges(bhActionType, a.action_type);
       const isInInterceptableZone = interceptableRanges.some(([lo, hi]) => t >= lo && t <= hi);
       if (isInInterceptableZone) {
-        // ── Physical reach validation ──
+        // ── Physical reach + timing validation ──
         const interceptor = participants.find((p: any) => p.id === a.participant_id);
         if (interceptor && turnNumber != null && attrByProfile) {
           const pRaw = interceptor.player_profile_id ? attrByProfile[interceptor.player_profile_id] : null;
@@ -1884,19 +1887,16 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           const posX = Number(interceptor.pos_x ?? 50);
           const posY = Number(interceptor.pos_y ?? 50);
           const distToIntercept = Math.sqrt((posX - cx) ** 2 + (posY - cy) ** 2);
+          // Range check: can the player physically reach the intercept point?
           if (distToIntercept > adjustedMaxRange) {
             console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor})`);
             continue;
           }
-          // Timing check: interceptor must reach the point by the time the ball/carrier arrives
-          // At progress=0 the ball just left — interceptor needs to already be there
-          // At progress=1 the ball arrived — interceptor has full turn to get there
-          // Scale allowed range by progress: early intercepts require being closer
-          // At t=0 (start): interceptor must be within ~1 unit (essentially touching)
-          // At t=0.5 (middle): normal range check
-          // At t=1.0 (end): full range
+          // Timing check: the ball arrives at progress t (0=start, 1=end).
+          // At t=0 the ball just left — interceptor must already be there (~1 unit).
+          // At t=1 the ball arrived — interceptor has full range to get there.
           const timingRange = t < 0.1
-            ? Math.min(1.0, adjustedMaxRange * 0.05) // Very early: must be right there
+            ? Math.min(1.0, adjustedMaxRange * 0.05)
             : adjustedMaxRange * Math.max(0.2, t);
           if (distToIntercept > timingRange) {
             console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
@@ -3298,7 +3298,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
         // ── Apply physics movement limits ──
         const attrs = getAttrs(part);
-        const maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
+        let maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
+        // Ball holder conducting (move only, no pass/shoot) gets 15% penalty
+        if (a.participant_id === ballHolder?.id && a.action_type === 'move' && !bhHasBallAction) {
+          maxRange *= 0.85;
+        }
         const dx = finalX - startX;
         const dy = finalY - startY;
         const dist = Math.sqrt(dx * dx + dy * dy);
