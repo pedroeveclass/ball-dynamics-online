@@ -665,8 +665,15 @@ export default function MatchRoomPage() {
 
     if (overrideMultiplier != null) range *= overrideMultiplier;
 
+    // One-touch turn: everyone moves at 50% (less reaction time)
+    const isOneTouchTurn = turnActions.some(a =>
+      a.payload && typeof a.payload === 'object' &&
+      ((a.payload as any).one_touch_executed === true || (a.payload as any).one_touch === true)
+    );
+    if (isOneTouchTurn) range *= 0.5;
+
     return range;
-  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase]);
+  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions]);
 
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
