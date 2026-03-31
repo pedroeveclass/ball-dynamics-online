@@ -305,7 +305,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
   };
 
   return (
-    <div className="w-72 shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-hidden">
+    <div className="w-72 shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-y-auto">
       {/* Turn Wheel */}
       <div className="p-3 border-b border-[hsl(220,10%,22%)]">
         <TurnWheel
