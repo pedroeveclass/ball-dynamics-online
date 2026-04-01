@@ -1880,6 +1880,64 @@ function computeInterceptSuccess(
   return { success, chance: successChance, foul, card };
 }
 
+function resolveDispute(
+  attackerCandidate: { participant: any; progress: number; interceptX: number; interceptY: number },
+  defenderCandidate: { participant: any; progress: number; interceptX: number; interceptY: number },
+  attrByProfile: Record<string, any>,
+  ballHeightZone: 'green' | 'yellow' | 'red',
+  turnNumber: number,
+): { winner: 'attacker' | 'defender'; chance: number } {
+  const getAttrs = (p: any) => {
+    const raw = p?.player_profile_id ? attrByProfile[p.player_profile_id] : null;
+    return (key: string) => Number(raw?.[key] ?? 40);
+  };
+
+  const atkA = getAttrs(attackerCandidate.participant);
+  const defA = getAttrs(defenderCandidate.participant);
+
+  // Dispute Attack skill
+  let atkSkill = (
+    normalizeAttr(atkA('aceleracao')) * 0.15 +
+    normalizeAttr(atkA('agilidade')) * 0.15 +
+    normalizeAttr(atkA('forca')) * 0.15 +
+    normalizeAttr(atkA('equilibrio')) * 0.10 +
+    normalizeAttr(atkA('antecipacao')) * 0.10 +
+    normalizeAttr(atkA('posicionamento_ofensivo')) * 0.10 +
+    normalizeAttr(atkA('trabalho_equipe')) * 0.05 +
+    normalizeAttr(atkA('tomada_decisao')) * 0.05
+  );
+  // Add pulo if ball is aerial (yellow zone)
+  if (ballHeightZone === 'yellow') {
+    atkSkill = atkSkill * 0.85 + normalizeAttr(atkA('pulo')) * 0.15;
+  }
+
+  // Dispute Defense skill
+  let defSkill = (
+    normalizeAttr(defA('aceleracao')) * 0.10 +
+    normalizeAttr(defA('agilidade')) * 0.15 +
+    normalizeAttr(defA('forca')) * 0.15 +
+    normalizeAttr(defA('equilibrio')) * 0.10 +
+    normalizeAttr(defA('desarme')) * 0.10 +
+    normalizeAttr(defA('marcacao')) * 0.10 +
+    normalizeAttr(defA('antecipacao')) * 0.10 +
+    normalizeAttr(defA('posicionamento_defensivo')) * 0.05
+  );
+  if (ballHeightZone === 'yellow') {
+    defSkill = defSkill * 0.85 + normalizeAttr(defA('pulo')) * 0.15;
+  }
+
+  // Base chance: 50/50, modified by skills
+  let attackerChance = 0.50 + (atkSkill - defSkill) * 0.30;
+  attackerChance = Math.max(0.15, Math.min(0.85, attackerChance));
+
+  const roll = Math.random();
+  const winner = roll < attackerChance ? 'attacker' : 'defender';
+
+  console.log(`[ENGINE] Dispute: atkSkill=${atkSkill.toFixed(2)} defSkill=${defSkill.toFixed(2)} atkChance=${(attackerChance*100).toFixed(0)}% roll=${roll.toFixed(3)} winner=${winner}`);
+
+  return { winner, chance: attackerChance };
+}
+
 function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
@@ -1912,6 +1970,83 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   const bhAttrs = getFullAttrs(bh);
   const bhActionType = _attacker.action_type || action;
   const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile);
+
+  // ── DISPUTE DETECTION ──
+  // If multiple interceptors from DIFFERENT teams target the same area (within 3 units),
+  // resolve a dispute to determine who gets priority.
+  if (interceptors.length >= 2) {
+    const possessionClubId = bh?.club_id || possClubId;
+    let disputeHandled = false;
+
+    for (let i = 0; i < interceptors.length - 1 && !disputeHandled; i++) {
+      for (let j = i + 1; j < interceptors.length && !disputeHandled; j++) {
+        const a = interceptors[i];
+        const b = interceptors[j];
+
+        // Check if they're from different teams AND targeting nearby spots
+        if (a.participant.club_id !== b.participant.club_id) {
+          const dist = Math.sqrt(
+            (a.interceptX - b.interceptX) ** 2 + (a.interceptY - b.interceptY) ** 2
+          );
+
+          if (dist < 3.0) {
+            // DISPUTE! Determine attacker vs defender
+            const aIsAttacker = a.participant.club_id === possessionClubId;
+            const attackerCand = aIsAttacker ? a : b;
+            const defenderCand = aIsAttacker ? b : a;
+            const attackerIdx = aIsAttacker ? i : j;
+            const defenderIdx = aIsAttacker ? j : i;
+
+            // Determine ball height at this point
+            let disputeZone: 'green' | 'yellow' | 'red' = 'green';
+            const avgProgress = (a.progress + b.progress) / 2;
+            if (bhActionType === 'pass_high') {
+              if (avgProgress > 0.2 && avgProgress < 0.8) disputeZone = 'red';
+              else disputeZone = 'yellow';
+            } else if (bhActionType === 'pass_launch') {
+              if (avgProgress > 0.35 && avgProgress < 0.65) disputeZone = 'red';
+              else if (avgProgress > 0.05 && avgProgress < 0.95) disputeZone = 'yellow';
+            }
+
+            // Check header bonus: find what action each player chose
+            const atkAction = allActions.find((ac: any) => ac.participant_id === attackerCand.participant.id);
+            const defAction = allActions.find((ac: any) => ac.participant_id === defenderCand.participant.id);
+            const atkIsHeader = atkAction && isHeaderType(atkAction.action_type);
+            const defIsHeader = defAction && isHeaderType(defAction.action_type);
+
+            const { winner } = resolveDispute(
+              attackerCand, defenderCand,
+              attrByProfile || {}, disputeZone, turnNumber || 1
+            );
+
+            // Apply header bonus: if one used header and other didn't in yellow zone, header user gets second chance
+            let finalWinner = winner;
+            if (disputeZone === 'yellow') {
+              if (atkIsHeader && !defIsHeader && winner === 'defender') {
+                if (Math.random() < 0.15) finalWinner = 'attacker';
+              } else if (defIsHeader && !atkIsHeader && winner === 'attacker') {
+                if (Math.random() < 0.15) finalWinner = 'defender';
+              }
+            }
+
+            // Reorder: winner first, loser second
+            if (finalWinner === 'attacker') {
+              if (attackerIdx > defenderIdx) {
+                [interceptors[attackerIdx], interceptors[defenderIdx]] = [interceptors[defenderIdx], interceptors[attackerIdx]];
+              }
+            } else {
+              if (defenderIdx > attackerIdx) {
+                [interceptors[attackerIdx], interceptors[defenderIdx]] = [interceptors[defenderIdx], interceptors[attackerIdx]];
+              }
+            }
+
+            console.log(`[ENGINE] Dispute resolved: ${finalWinner === 'attacker' ? 'ATK' : 'DEF'} goes first (header bonus: atk=${atkIsHeader} def=${defIsHeader})`);
+            disputeHandled = true;
+          }
+        }
+      }
+    }
+  }
 
   for (const candidate of interceptors) {
     const defAttrs = getFullAttrs(candidate.participant);
