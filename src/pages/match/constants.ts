@@ -27,7 +27,7 @@ export const TURN_ACTION_RECONCILE_DELAY_MS = 300;
 export const CLIENT_MATCH_PROCESSOR_RETRY_MS = 500;
 export const ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK =
   import.meta.env.VITE_ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK !== 'false';
-export const INTERCEPT_RADIUS = 0.6; // very small domination window, close to the ball path
+export const INTERCEPT_RADIUS = 0.6; // visual zone shown to player (more restrictive than engine's 1.0)
 export const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 
 export const ACTION_PHASE_ORDER: Record<string, number> = {

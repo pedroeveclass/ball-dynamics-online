@@ -2767,20 +2767,42 @@ export default function MatchRoomPage() {
                   // Perpendicular offset for the zone width
                   const px = (-dy / len) * (INTERCEPT_RADIUS / 100) * INNER_W;
                   const py = (dx / len) * (INTERCEPT_RADIUS / 100) * INNER_H;
-                  const points = [
-                    `${fromSvg.x + px},${fromSvg.y + py}`,
-                    `${toSvgPt.x + px},${toSvgPt.y + py}`,
-                    `${toSvgPt.x - px},${toSvgPt.y - py}`,
-                    `${fromSvg.x - px},${fromSvg.y - py}`,
-                  ].join(' ');
+
+                  // Determine which segments of the trajectory are interceptable (not red zone)
+                  const actionType = ballTrajectoryAction.action_type;
+                  let segments: [number, number][] = [[0, 1]]; // default: full trajectory
+                  if (actionType === 'pass_high' || actionType === 'header_high') {
+                    segments = [[0, 0.2], [0.8, 1]]; // red zone: 0.2-0.8
+                  } else if (actionType === 'pass_launch') {
+                    segments = [[0, 0.35], [0.65, 1]]; // red zone: 0.35-0.65
+                  } else if (actionType === 'shoot_power' || actionType === 'header_power') {
+                    segments = [[0, 0.3]]; // only early part
+                  }
+
                   return (
-                    <polygon
-                      points={points}
-                      fill="rgba(59, 130, 246, 0.08)"
-                      stroke="rgba(59, 130, 246, 0.25)"
-                      strokeWidth="1"
-                      strokeDasharray="6,4"
-                    />
+                    <g>
+                      {segments.map(([t0, t1], si) => {
+                        const s0x = fromSvg.x + dx * t0;
+                        const s0y = fromSvg.y + dy * t0;
+                        const s1x = fromSvg.x + dx * t1;
+                        const s1y = fromSvg.y + dy * t1;
+                        const pts = [
+                          `${s0x + px},${s0y + py}`,
+                          `${s1x + px},${s1y + py}`,
+                          `${s1x - px},${s1y - py}`,
+                          `${s0x - px},${s0y - py}`,
+                        ].join(' ');
+                        return (
+                          <polygon key={si}
+                            points={pts}
+                            fill="rgba(59, 130, 246, 0.08)"
+                            stroke="rgba(59, 130, 246, 0.25)"
+                            strokeWidth="1"
+                            strokeDasharray="6,4"
+                          />
+                        );
+                      })}
+                    </g>
                   );
                 })()
               )}
