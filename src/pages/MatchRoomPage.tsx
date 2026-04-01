@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState } from './match/types';
-import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, formatScheduledDate } from './match/constants';
+import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
@@ -1721,10 +1721,10 @@ export default function MatchRoomPage() {
         const bhAllActions = actionsSnap
           .filter(a => a.participant_id === bhPart.id)
           .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-        const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type)) || bhAllActions[0];
+        const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)) || bhAllActions[0];
         if (!ballAction) return defaultBallPos;
 
-        const ballEaseK = (isShootAction(ballAction.action_type) && ballAction.action_type !== 'shoot_controlled') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
+        const ballEaseK = (isAnyShootAction(ballAction.action_type) && ballAction.action_type !== 'shoot_controlled' && ballAction.action_type !== 'header_controlled') ? 5 : (ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'header_controlled') ? 3 : (ballAction.action_type === 'pass_high' || ballAction.action_type === 'header_high') ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
         const expDecay = 1 - Math.exp(-ballEaseK * raw);
         const normFactor = 1 - Math.exp(-ballEaseK);
         const t = expDecay / normFactor;
@@ -1746,8 +1746,8 @@ export default function MatchRoomPage() {
           return holderPos ? { x: holderPos.x + 1.2, y: holderPos.y - 1.2 } : defaultBallPos;
         }
 
-        const isBallPass = isPassAction(ballAction.action_type);
-        const isBallShoot = isShootAction(ballAction.action_type);
+        const isBallPass = isPassAction(ballAction.action_type) || (isHeaderAction(ballAction.action_type) && !isAnyShootAction(ballAction.action_type));
+        const isBallShoot = isShootAction(ballAction.action_type) || isAnyShootAction(ballAction.action_type);
         if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
           if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
             const dx = ballAction.target_x - ballStartX;
@@ -1776,11 +1776,11 @@ export default function MatchRoomPage() {
         const bhAllActions = actionsSnap
           .filter(a => a.participant_id === bhPart.id)
           .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-        const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type));
+        const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type));
         if (!ballAction) return 0;
         const actionType = ballAction.action_type;
         let arcHeight = 0;
-        if (actionType === 'pass_high') arcHeight = 30;
+        if (actionType === 'pass_high' || actionType === 'header_high') arcHeight = 30;
         else if (actionType === 'pass_launch') arcHeight = 45;
         else if (actionType === 'shoot_controlled') arcHeight = 14;
         else if (actionType === 'shoot_power') arcHeight = 9;
@@ -1838,7 +1838,7 @@ export default function MatchRoomPage() {
           
           const ballHolderHasBallAction = Boolean(
             bhId && latestActions.some(action => action.participant_id === bhId && (
-              isPassAction(action.action_type) || isShootAction(action.action_type)
+              isPassAction(action.action_type) || isShootAction(action.action_type) || isHeaderAction(action.action_type)
             ))
           );
 
@@ -1890,7 +1890,7 @@ export default function MatchRoomPage() {
              const bhAllActions = latestActions
                .filter(a => a.participant_id === bhId)
                .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-             const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
+             const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
                || bhAllActions[0];
              
               if (ballAction) {
@@ -2109,12 +2109,12 @@ export default function MatchRoomPage() {
     const inBox = isGK && (isHome ? (gkX <= 18) : (gkX >= 82));
 
     // Shoot trajectory
-    if (trajType && isShootAction(trajType)) {
+    if (trajType && isAnyShootAction(trajType)) {
       if (isGK && inBox) return ['receive', 'block']; // Agarrar + Espalmar
       return ['block']; // Bloquear for outfield (and GK outside box)
     }
-    // pass_high or pass_launch in initial zone (progress < 0.2)
-    if (trajType && (trajType === 'pass_high' || trajType === 'pass_launch') && trajProgress < 0.2) {
+    // pass_high or pass_launch or header_high in initial zone (progress < 0.2)
+    if (trajType && (trajType === 'pass_high' || trajType === 'pass_launch' || trajType === 'header_high') && trajProgress < 0.2) {
       return ['block'];
     }
     // pass_high or pass_launch in final zone (progress > 0.8) or pass_low: normal receive
@@ -2361,7 +2361,7 @@ export default function MatchRoomPage() {
     const bhAllActions = turnActions
       .filter(action => action.participant_id === ballHolder.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-    const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type))
+    const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
       || bhAllActions[0];
 
     if (!animating || activeTurn?.phase !== 'resolution' || !ballAction) {
@@ -2466,12 +2466,12 @@ export default function MatchRoomPage() {
     const bhAllActions = turnActions
       .filter(a => a.participant_id === ballHolder.id)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-    const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type));
+    const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type));
     if (!ballAction) return 0;
 
     const actionType = ballAction.action_type;
     let arcHeight = 0;
-    if (actionType === 'pass_high') arcHeight = 30;
+    if (actionType === 'pass_high' || actionType === 'header_high') arcHeight = 30;
     else if (actionType === 'pass_launch') arcHeight = 45;
     else if (actionType === 'shoot_controlled') arcHeight = 14;
     else if (actionType === 'shoot_power') arcHeight = 9;
@@ -2576,14 +2576,14 @@ export default function MatchRoomPage() {
     if (action.action_type === 'block') {
       return { color: '#f59e0b', markerId: 'ah-yellow', strokeW: 2.5 };
     }
-    if (isShootAction(action.action_type)) {
+    if (isAnyShootAction(action.action_type)) {
       const color = action.target_x != null && action.target_y != null
         ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, action.action_type, action.participant_id)
         : '#f59e0b';
       const markerId = 'ah-green'; // arrow tip always green
       return { color, markerId, strokeW: 3.5 };
     }
-    if (isPassAction(action.action_type)) {
+    if (isAnyPassAction(action.action_type)) {
       const color = action.target_x != null && action.target_y != null
         ? getArrowQuality(fromX, fromY, action.target_x, action.target_y, action.action_type, action.participant_id)
         : '#06b6d4';
@@ -2624,9 +2624,9 @@ export default function MatchRoomPage() {
       }
       return null;
     }
-    return turnActions.find(a => 
+    return turnActions.find(a =>
       a.participant_id === activeTurn.ball_holder_participant_id &&
-      (isPassAction(a.action_type) || isShootAction(a.action_type) || a.action_type === 'move') &&
+      (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type) || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     ) || null;
   };
@@ -2834,7 +2834,7 @@ export default function MatchRoomPage() {
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
                 const lockedOrigin = activeTurn?.phase === 'resolution' ? resolutionStartPositions[action.participant_id] : null;
-                const isBHAction = action.participant_id === activeTurn?.ball_holder_participant_id && (isPassAction(action.action_type) || isShootAction(action.action_type));
+                const isBHAction = action.participant_id === activeTurn?.ball_holder_participant_id && (isPassAction(action.action_type) || isShootAction(action.action_type) || isHeaderAction(action.action_type));
                 const baseFromX = lockedOrigin?.x ?? fromPart.field_x;
                 const baseFromY = lockedOrigin?.y ?? fromPart.field_y;
                 // Pass/shoot arrows start from ball position
@@ -3452,7 +3452,7 @@ export default function MatchRoomPage() {
             {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
               <div className="absolute bottom-2 right-2 bg-background/80 border border-blue-500/30 rounded px-3 py-1 z-30">
                 <span className="text-[9px] font-display text-blue-400">
-                  {isShootAction(ballTrajectoryAction.action_type)
+                  {isAnyShootAction(ballTrajectoryAction.action_type)
                     ? 'Mova para a zona azul para BLOQUEAR / DEFENDER'
                     : 'Mova para a zona azul para DOMINAR BOLA'}
                 </span>
