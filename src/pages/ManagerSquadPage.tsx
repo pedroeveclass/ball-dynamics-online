@@ -158,6 +158,21 @@ export default function ManagerSquadPage() {
     }
   };
 
+  const handleFireJustCause = async (player: SquadPlayer) => {
+    if (!club) return;
+    try {
+      const { error } = await supabase.rpc('fire_player_just_cause', {
+        p_player_id: player.id,
+        p_club_id: club.id,
+      });
+      if (error) throw error;
+      toast.success(`${player.full_name} dispensado por justa causa (sem multa).`);
+      fetchSquad();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao demitir jogador.');
+    }
+  };
+
   const handleMutualAgreement = async () => {
     if (!agreementTarget || !club || !managerProfile) return;
 
@@ -351,6 +366,15 @@ export default function ManagerSquadPage() {
                                 ❌ Recusar Saída
                               </DropdownMenuItem>
                             </>
+                          )}
+                          {/* Just cause: bots always, humans after 30d inactive */}
+                          {(p.user_id === null) && (
+                            <DropdownMenuItem
+                              className="text-amber-500 focus:text-amber-500"
+                              onClick={() => handleFireJustCause(p)}
+                            >
+                              Justa Causa (sem multa)
+                            </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"

@@ -30,6 +30,7 @@ const ManagerMarketPage = lazy(() => import("./pages/ManagerMarketPage"));
 const ManagerSquadPage = lazy(() => import("./pages/ManagerSquadPage"));
 const ManagerLineupPage = lazy(() => import("./pages/ManagerLineupPage"));
 const ManagerChallengesPage = lazy(() => import("./pages/ManagerChallengesPage"));
+const ManagerCoachPage = lazy(() => import("./pages/ManagerCoachPage"));
 const PlayerMatchesPage = lazy(() => import("./pages/PlayerMatchesPage"));
 const MatchRoomPage = lazy(() => import("./pages/MatchRoomPage"));
 const SoloPhysicsLabPage = lazy(() => import("./pages/SoloPhysicsLabPage"));
@@ -90,6 +91,7 @@ const App = () => (
             <Route path="/club/:clubId" element={<PublicClubPage />} />
             <Route path="/league/vote" element={<ManagerRoute><LeagueScheduleVotePage /></ManagerRoute>} />
             <Route path="/manager/facilities" element={<ManagerRoute><ManagerFacilitiesPage /></ManagerRoute>} />
+            <Route path="/manager/coach" element={<ManagerRoute><ManagerCoachPage /></ManagerRoute>} />
             <Route path="/account/profile" element={<ProtectedRoute><AccountProfilePage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute><StorePage /></ProtectedRoute>} />

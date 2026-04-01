@@ -3,8 +3,9 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot } from 'lucide-react';
+import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { formatBRL } from '@/lib/formatting';
 
 const COACH_TYPE_MAP: Record<string, { label: string; icon: typeof Shield }> = {
   defensive: { label: 'Defensivo', icon: Shield },
@@ -18,6 +19,7 @@ export default function ManagerDashboard() {
   const [finance, setFinance] = useState<any>(null);
   const [stadium, setStadium] = useState<any>(null);
   const [playerCount, setPlayerCount] = useState(0);
+  const [bankruptcyStatus, setBankruptcyStatus] = useState<any>(null);
 
   useEffect(() => {
     if (!club) return;
@@ -30,6 +32,11 @@ export default function ManagerDashboard() {
       setFinance(finRes.data);
       setStadium(stadRes.data);
       setPlayerCount(playersRes.count || 0);
+      // Check bankruptcy status
+      try {
+        const { data: bStatus } = await supabase.rpc('get_bankruptcy_status', { p_club_id: club.id });
+        if (bStatus && bStatus.length > 0) setBankruptcyStatus(bStatus[0]);
+      } catch { /* table may not exist yet */ }
     };
     fetchData();
   }, [club]);
@@ -60,6 +67,43 @@ export default function ManagerDashboard() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        {/* Transfer Window Banner */}
+        {(() => {
+          const day = new Date().getDate();
+          const isOpen = day >= 1 && day <= 5;
+          const nextMonth = new Date();
+          nextMonth.setMonth(nextMonth.getMonth() + 1, 1);
+          return (
+            <div className={`rounded-lg px-4 py-2.5 flex items-center gap-3 ${isOpen ? 'bg-pitch/15 border border-pitch/30' : 'bg-muted/20 border border-border'}`}>
+              <ArrowLeftRight className={`h-4 w-4 ${isOpen ? 'text-pitch' : 'text-muted-foreground'}`} />
+              <span className={`font-display text-sm font-semibold ${isOpen ? 'text-pitch' : 'text-muted-foreground'}`}>
+                {isOpen
+                  ? 'Janela de Transferência ABERTA — Transferências são processadas imediatamente!'
+                  : `Próxima janela: 01/${nextMonth.toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' })}`}
+              </span>
+            </div>
+          );
+        })()}
+
+        {/* Bankruptcy Warning */}
+        {bankruptcyStatus?.is_in_debt && (
+          <div className="rounded-lg px-4 py-3 bg-destructive/15 border border-destructive/30">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <div>
+                <p className="font-display text-sm font-bold text-destructive">
+                  DÍVIDA CRÍTICA — Saldo: {formatBRL(bankruptcyStatus.balance)}
+                </p>
+                <p className="text-xs text-destructive/80 mt-0.5">
+                  {bankruptcyStatus.days_remaining != null
+                    ? `Quite a dívida em ${bankruptcyStatus.days_remaining} dias ou será demitido e o clube será resetado.`
+                    : 'O clube está em dívida acima de R$1.000.000. Quite o mais rápido possível!'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-lg flex items-center justify-center font-display text-xl font-extrabold"

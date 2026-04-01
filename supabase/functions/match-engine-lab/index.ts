@@ -794,11 +794,14 @@ function pickBestPassTarget(
 
 // ─── Bot AI: generate smart fallback actions ─────────────────
 // ─── Tick-level cache for data that doesn't change within a tick ──
+interface CoachBonus { skill_type: string; level: number; trained_formation: string | null; bonus_value: number; }
+
 interface TickCache {
   clubSettings?: { homeFormation: string; awayFormation: string };
   attrByProfile?: Record<string, any>;
   enrichedParticipants?: any[];
   lineupRoles?: { home: any | null; away: any | null };
+  coachBonuses?: { home: CoachBonus[]; away: CoachBonus[] };
 }
 
 async function generateBotActions(
@@ -856,6 +859,31 @@ async function generateBotActions(
     }
     if (tickCache) tickCache.clubSettings = { homeFormation, awayFormation };
   }
+
+  // ── Load coach training bonuses (cached per tick) ──
+  let coachBonusHome: CoachBonus[] = [];
+  let coachBonusAway: CoachBonus[] = [];
+  if (tickCache?.coachBonuses) {
+    coachBonusHome = tickCache.coachBonuses.home;
+    coachBonusAway = tickCache.coachBonuses.away;
+  } else {
+    try {
+      const [{ data: hb }, { data: ab }] = await Promise.all([
+        supabase.rpc('get_coach_bonuses', { p_club_id: match.home_club_id }),
+        supabase.rpc('get_coach_bonuses', { p_club_id: match.away_club_id }),
+      ]);
+      coachBonusHome = hb || [];
+      coachBonusAway = ab || [];
+      if (tickCache) tickCache.coachBonuses = { home: coachBonusHome, away: coachBonusAway };
+    } catch { /* coach_training table may not exist yet */ }
+  }
+
+  // Helper to get a specific bonus for a club
+  const getCoachBonus = (clubId: string, skillType: string): number => {
+    const bonuses = clubId === match.home_club_id ? coachBonusHome : coachBonusAway;
+    const b = bonuses.find(x => x.skill_type === skillType);
+    return b?.bonus_value ?? 0;
+  };
 
   // Helper: get ball position (uses loose ball position when available)
   const getBallPos = (): { x: number; y: number } => {
@@ -2101,7 +2129,7 @@ function resolveDispute(
   return { winner, chance: attackerChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[]): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -2245,11 +2273,23 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       continue;
     }
     const defHeight = getPlayerHeight(candidate.participant);
-    const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType, {
+    let { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType, {
       interceptX: candidate.interceptX,
       participantClubId: candidate.participant.club_id,
       homeClubId: bh?.club_id || possClubId,
     });
+
+    // ── Coach bonuses ──
+    if (getCoachBonusFn) {
+      // High press: +1% steal chance per level (max 5%)
+      const defClubId = candidate.participant.club_id;
+      const highPressBonus = getCoachBonusFn(defClubId, 'high_press') / 100;
+      if (!success && highPressBonus > 0 && Math.random() < highPressBonus) {
+        success = true;
+        chance = Math.min(0.99, chance + highPressBonus);
+      }
+    }
+
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
@@ -3855,7 +3895,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
       if (ballHolderAction) {
-        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog);
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus);
 
         if (result.goal) {
           // Check if the shot is actually on target
