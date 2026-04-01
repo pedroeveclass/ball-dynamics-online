@@ -72,6 +72,11 @@ export default function MatchRoomPage() {
   const [submittedActions, setSubmittedActions] = useState<Set<string>>(new Set());
   const [pendingInterceptChoice, setPendingInterceptChoice] = useState<PendingInterceptChoice | null>(null);
 
+  // Pending substitutions: queued until next dead ball / positioning phase
+  const [pendingSubstitutions, setPendingSubstitutions] = useState<Array<{ outId: string; inId: string }>>([]);
+  // Track players who were already substituted out (cannot re-enter)
+  const [substitutedOutIds, setSubstitutedOutIds] = useState<Set<string>>(new Set());
+
   // Persisted actions for current turn (loaded from DB)
   const [turnActions, setTurnActions] = useState<MatchAction[]>([]);
 
@@ -839,6 +844,13 @@ export default function MatchRoomPage() {
   // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
   const isDeadBall = activeTurn?.phase === 'ball_holder' && prevTurnWasPositioningRef.current;
 
+  // ── Apply pending substitutions when dead ball / positioning phase starts ──
+  useEffect(() => {
+    if (pendingSubstitutions.length > 0 && isPositioningTurn) {
+      applyPendingSubstitutions();
+    }
+  }, [isPositioningTurn, pendingSubstitutions.length, applyPendingSubstitutions]);
+
   // ── Possession change detection ────────────────────────────
   useEffect(() => {
     if (!activeTurn) return;
@@ -1211,44 +1223,60 @@ export default function MatchRoomPage() {
     navigate(myRole === 'manager' ? '/manager' : '/player');
   };
 
-  const handleSubstitute = useCallback(async (outPlayerId: string, inPlayerId: string) => {
-    const outPlayer = participants.find(p => p.id === outPlayerId);
-    const inPlayer = participants.find(p => p.id === inPlayerId);
-    if (!outPlayer || !inPlayer) return;
-
-    // Swap roles: outgoing becomes bench, incoming becomes player at outgoing's position
-    await Promise.all([
-      supabase.from('match_participants').update({
-        role_type: 'bench', pos_x: null, pos_y: null,
-      }).eq('id', outPlayerId),
-      supabase.from('match_participants').update({
-        role_type: 'player', pos_x: outPlayer.pos_x ?? outPlayer.field_x ?? null, pos_y: outPlayer.pos_y ?? outPlayer.field_y ?? null,
-      }).eq('id', inPlayerId),
-    ]);
-
-    // Update local state
-    setParticipants(prev => prev.map(p => {
-      if (p.id === outPlayerId) return { ...p, role_type: 'bench', pos_x: null, pos_y: null, field_x: undefined, field_y: undefined };
-      if (p.id === inPlayerId) return {
-        ...p, role_type: 'player',
-        pos_x: outPlayer.pos_x ?? outPlayer.field_x ?? null,
-        pos_y: outPlayer.pos_y ?? outPlayer.field_y ?? null,
-        field_x: outPlayer.field_x, field_y: outPlayer.field_y, field_pos: outPlayer.field_pos,
-        jersey_number: outPlayer.jersey_number,
-      };
-      return p;
-    }));
-
-    // Create event log
-    await supabase.from('match_event_logs').insert({
-      match_id: matchId,
-      event_type: 'substitution',
-      title: 'Substituicao',
-      body: `${inPlayer.player_name || 'Jogador'} entra no lugar de ${outPlayer.player_name || 'Jogador'}`,
+  // Queue a substitution — will be applied on next dead ball / positioning phase
+  const handleSubstitute = useCallback((outPlayerId: string, inPlayerId: string) => {
+    // Don't allow re-queuing the same player
+    setPendingSubstitutions(prev => {
+      if (prev.some(s => s.outId === outPlayerId || s.inId === inPlayerId)) return prev;
+      return [...prev, { outId: outPlayerId, inId: inPlayerId }];
     });
+    toast.success('Substituição agendada! Será aplicada na próxima parada de jogo.');
+  }, []);
 
-    toast.success('Substituicao realizada!');
-  }, [participants, matchId]);
+  // Apply all pending substitutions (called when dead ball / positioning detected)
+  const applyPendingSubstitutions = useCallback(async () => {
+    if (pendingSubstitutions.length === 0) return;
+    const toApply = [...pendingSubstitutions];
+    setPendingSubstitutions([]);
+
+    for (const { outId, inId } of toApply) {
+      const outPlayer = participants.find(p => p.id === outId);
+      const inPlayer = participants.find(p => p.id === inId);
+      if (!outPlayer || !inPlayer) continue;
+      // Substituted player can't come back
+      setSubstitutedOutIds(prev => new Set([...prev, outId]));
+
+      await Promise.all([
+        supabase.from('match_participants').update({
+          role_type: 'bench', pos_x: null, pos_y: null,
+        }).eq('id', outId),
+        supabase.from('match_participants').update({
+          role_type: 'player', pos_x: outPlayer.pos_x ?? outPlayer.field_x ?? null, pos_y: outPlayer.pos_y ?? outPlayer.field_y ?? null,
+        }).eq('id', inId),
+      ]);
+
+      setParticipants(prev => prev.map(p => {
+        if (p.id === outId) return { ...p, role_type: 'bench', pos_x: null, pos_y: null, field_x: undefined, field_y: undefined };
+        if (p.id === inId) return {
+          ...p, role_type: 'player',
+          pos_x: outPlayer.pos_x ?? outPlayer.field_x ?? null,
+          pos_y: outPlayer.pos_y ?? outPlayer.field_y ?? null,
+          field_x: outPlayer.field_x, field_y: outPlayer.field_y, field_pos: outPlayer.field_pos,
+          jersey_number: outPlayer.jersey_number,
+        };
+        return p;
+      }));
+
+      await supabase.from('match_event_logs').insert({
+        match_id: matchId,
+        event_type: 'substitution',
+        title: '🔄 Substituição',
+        body: `${inPlayer.player_name || 'Jogador'} entra no lugar de ${outPlayer.player_name || 'Jogador'}`,
+      });
+
+      toast.success(`Substituição: ${inPlayer.player_name?.split(' ')[0] || 'Jogador'} entrou!`);
+    }
+  }, [pendingSubstitutions, participants, matchId]);
 
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
@@ -3571,6 +3599,8 @@ export default function MatchRoomPage() {
           isManager={isManager}
           myClubId={myClubId}
           onSubstitute={handleSubstitute}
+          pendingSubstitutions={pendingSubstitutions}
+          substitutedOutIds={substitutedOutIds}
           homeAccOpen={homeAccOpen}
           awayAccOpen={awayAccOpen}
           logAccOpen={logAccOpen}

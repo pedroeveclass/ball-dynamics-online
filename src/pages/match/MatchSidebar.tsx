@@ -167,9 +167,11 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
 }
 
 // ─── BenchList ──────────────────────────────────────────────
-function BenchList({ players, isManagerTeam, starters, onSubstitute }: {
+function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubstitutions, substitutedOutIds }: {
   players: Participant[]; isManagerTeam: boolean;
   starters: Participant[]; onSubstitute?: (outId: string, inId: string) => void;
+  pendingSubstitutions?: Array<{ outId: string; inId: string }>;
+  substitutedOutIds?: Set<string>;
 }) {
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
 
@@ -179,45 +181,55 @@ function BenchList({ players, isManagerTeam, starters, onSubstitute }: {
     <div className="mt-1.5 pt-1.5 border-t border-[hsl(220,10%,22%)]">
       <span className="text-[9px] font-display font-bold text-white/40 uppercase tracking-wider">Banco</span>
       <div className="space-y-0.5 mt-0.5">
-        {players.map(p => (
-          <div key={p.id} className="relative">
-            <div className="w-full flex items-center gap-1.5 text-[9px] px-1.5 py-0.5 rounded text-white/60">
-              {p.is_bot
-                ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
-                : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
-              <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(p.slot_position)}</span>
-              <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
-              {isManagerTeam && onSubstitute && (
-                <button
-                  onClick={() => setSwapTarget(swapTarget === p.id ? null : p.id)}
-                  className="text-[8px] font-display bg-warning/20 text-warning px-1.5 py-0.5 rounded hover:bg-warning/30 transition-colors flex items-center gap-0.5"
-                  title="Substituir"
-                >
-                  <ArrowLeftRight className="h-2.5 w-2.5" />
-                </button>
+        {players.map(p => {
+          const isPendingIn = pendingSubstitutions?.some(s => s.inId === p.id);
+          const wasSubbedOut = substitutedOutIds?.has(p.id);
+          return (
+            <div key={p.id} className="relative">
+              <div className={`w-full flex items-center gap-1.5 text-[9px] px-1.5 py-0.5 rounded ${wasSubbedOut ? 'text-white/25 line-through' : isPendingIn ? 'text-amber-400' : 'text-white/60'}`}>
+                {p.is_bot
+                  ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
+                  : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
+                <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(p.slot_position)}</span>
+                <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
+                {isPendingIn && (
+                  <span className="text-[7px] font-display text-amber-400 bg-amber-400/10 px-1 rounded">Aguardando...</span>
+                )}
+                {wasSubbedOut && (
+                  <span className="text-[7px] font-display text-white/30 bg-white/5 px-1 rounded">Saiu</span>
+                )}
+                {isManagerTeam && onSubstitute && !isPendingIn && !wasSubbedOut && (
+                  <button
+                    onClick={() => setSwapTarget(swapTarget === p.id ? null : p.id)}
+                    className="text-[8px] font-display bg-warning/20 text-warning px-1.5 py-0.5 rounded hover:bg-warning/30 transition-colors flex items-center gap-0.5"
+                    title="Substituir"
+                  >
+                    <ArrowLeftRight className="h-2.5 w-2.5" />
+                  </button>
+                )}
+              </div>
+              {/* Swap dropdown - pick which starter to replace */}
+              {swapTarget === p.id && isManagerTeam && onSubstitute && (
+                <div className="absolute right-0 top-full z-50 bg-[hsl(220,15%,16%)] border border-[hsl(220,10%,28%)] rounded shadow-lg p-1.5 min-w-[140px] max-h-[200px] overflow-y-auto">
+                  <span className="text-[8px] font-display text-white/40 block mb-1">Sai quem?</span>
+                  {starters.filter(s => !pendingSubstitutions?.some(ps => ps.outId === s.id)).map(s => (
+                    <button key={s.id}
+                      onClick={() => { onSubstitute(s.id, p.id); setSwapTarget(null); }}
+                      className="w-full flex items-center gap-1 text-[9px] px-1.5 py-1 rounded hover:bg-warning/20 text-white/70 hover:text-white transition-colors text-left"
+                    >
+                      <span className="font-display w-5 shrink-0 text-white/50">{s.jersey_number || '?'}</span>
+                      <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(s.field_pos)}</span>
+                      <span className="truncate flex-1">{s.player_name?.split(' ')[0] || 'Bot'}</span>
+                    </button>
+                  ))}
+                  <button onClick={() => setSwapTarget(null)}
+                    className="w-full text-[8px] text-white/30 mt-1 hover:text-white/50 transition-colors"
+                  >Cancelar</button>
+                </div>
               )}
             </div>
-            {/* Swap dropdown - pick which starter to replace */}
-            {swapTarget === p.id && isManagerTeam && onSubstitute && (
-              <div className="absolute right-0 top-full z-50 bg-[hsl(220,15%,16%)] border border-[hsl(220,10%,28%)] rounded shadow-lg p-1.5 min-w-[140px] max-h-[200px] overflow-y-auto">
-                <span className="text-[8px] font-display text-white/40 block mb-1">Sai quem?</span>
-                {starters.map(s => (
-                  <button key={s.id}
-                    onClick={() => { onSubstitute(s.id, p.id); setSwapTarget(null); }}
-                    className="w-full flex items-center gap-1 text-[9px] px-1.5 py-1 rounded hover:bg-warning/20 text-white/70 hover:text-white transition-colors text-left"
-                  >
-                    <span className="font-display w-5 shrink-0 text-white/50">{s.jersey_number || '?'}</span>
-                    <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(s.field_pos)}</span>
-                    <span className="truncate flex-1">{s.player_name?.split(' ')[0] || 'Bot'}</span>
-                  </button>
-                ))}
-                <button onClick={() => setSwapTarget(null)}
-                  className="w-full text-[8px] text-white/30 mt-1 hover:text-white/50 transition-colors"
-                >Cancelar</button>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -248,6 +260,8 @@ export interface MatchSidebarProps {
   isManager: boolean;
   myClubId: string | null;
   onSubstitute: (outId: string, inId: string) => void;
+  pendingSubstitutions?: Array<{ outId: string; inId: string }>;
+  substitutedOutIds?: Set<string>;
   homeAccOpen: boolean; awayAccOpen: boolean; logAccOpen: boolean; chatAccOpen: boolean;
   onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void; onToggleChat: () => void;
   events: EventLog[];
@@ -264,6 +278,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
     homeClub, awayClub, homePlayers, awayPlayers,
     ballHolderId, myId, selectedId, onSelectPlayer, submittedIds,
     homeBench, awayBench, isManager, myClubId, onSubstitute,
+    pendingSubstitutions, substitutedOutIds,
     homeAccOpen, awayAccOpen, logAccOpen, chatAccOpen,
     onToggleHome, onToggleAway, onToggleLog, onToggleChat,
     events, eventsEndRef,
@@ -341,6 +356,8 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           isManagerTeam={isManager && myClubId === homeClub?.id}
           starters={homePlayers}
           onSubstitute={onSubstitute}
+          pendingSubstitutions={pendingSubstitutions}
+          substitutedOutIds={substitutedOutIds}
         />
       </AccordionSection>
 
@@ -364,6 +381,8 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           isManagerTeam={isManager && myClubId === awayClub?.id}
           starters={awayPlayers}
           onSubstitute={onSubstitute}
+          pendingSubstitutions={pendingSubstitutions}
+          substitutedOutIds={substitutedOutIds}
         />
       </AccordionSection>
 
