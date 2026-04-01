@@ -1225,7 +1225,6 @@ export default function MatchRoomPage() {
 
   // Queue a substitution — will be applied on next dead ball / positioning phase
   const handleSubstitute = useCallback((outPlayerId: string, inPlayerId: string) => {
-    // Don't allow re-queuing the same player
     setPendingSubstitutions(prev => {
       if (prev.some(s => s.outId === outPlayerId || s.inId === inPlayerId)) return prev;
       return [...prev, { outId: outPlayerId, inId: inPlayerId }];
@@ -1233,17 +1232,24 @@ export default function MatchRoomPage() {
     toast.success('Substituição agendada! Será aplicada na próxima parada de jogo.');
   }, []);
 
+  // Ref to avoid stale closure in applyPendingSubstitutions
+  const pendingSubsRef = useRef(pendingSubstitutions);
+  pendingSubsRef.current = pendingSubstitutions;
+  const participantsRefForSubs = useRef(participants);
+  participantsRefForSubs.current = participants;
+
   // Apply all pending substitutions (called when dead ball / positioning detected)
   const applyPendingSubstitutions = useCallback(async () => {
-    if (pendingSubstitutions.length === 0) return;
-    const toApply = [...pendingSubstitutions];
+    const pending = pendingSubsRef.current;
+    if (pending.length === 0) return;
+    const toApply = [...pending];
     setPendingSubstitutions([]);
 
     for (const { outId, inId } of toApply) {
-      const outPlayer = participants.find(p => p.id === outId);
-      const inPlayer = participants.find(p => p.id === inId);
+      const currentParticipants = participantsRefForSubs.current;
+      const outPlayer = currentParticipants.find(p => p.id === outId);
+      const inPlayer = currentParticipants.find(p => p.id === inId);
       if (!outPlayer || !inPlayer) continue;
-      // Substituted player can't come back
       setSubstitutedOutIds(prev => new Set([...prev, outId]));
 
       await Promise.all([
@@ -1276,7 +1282,7 @@ export default function MatchRoomPage() {
 
       toast.success(`Substituição: ${inPlayer.player_name?.split(' ')[0] || 'Jogador'} entrou!`);
     }
-  }, [pendingSubstitutions, participants, matchId]);
+  }, [matchId]);
 
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
