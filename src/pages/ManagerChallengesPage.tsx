@@ -61,12 +61,12 @@ export default function ManagerChallengesPage() {
   const [hasLineup, setHasLineup] = useState(false);
 
   // 3x3 challenge state
-  const [matchType, setMatchType] = useState<'11x11' | '3x3'>('11x11');
+  const [matchType, setMatchType] = useState<'11x11' | '5x5'>('11x11');
   const [squad3v3, setSquad3v3] = useState<{ id: string; full_name: string; primary_position: string; overall: number }[]>([]);
-  const [selected3v3, setSelected3v3] = useState<string[]>(['', '', '']);
+  const [selected3v3, setSelected3v3] = useState<string[]>(['', '', '', '', '']);
   // Accept 3x3 dialog state
   const [accept3v3Challenge, setAccept3v3Challenge] = useState<Challenge | null>(null);
-  const [accept3v3Selected, setAccept3v3Selected] = useState<string[]>(['', '', '']);
+  const [accept3v3Selected, setAccept3v3Selected] = useState<string[]>(['', '', '', '', '']);
   const [accept3v3Squad, setAccept3v3Squad] = useState<{ id: string; full_name: string; primary_position: string; overall: number }[]>([]);
 
   const loadChallenges = useCallback(async () => {
@@ -102,7 +102,7 @@ export default function ManagerChallengesPage() {
     setScheduledAt(tomorrow.toISOString().slice(0, 16));
     setAwayClubId(''); setMessage('');
     setMatchType('11x11');
-    setSelected3v3(['', '', '']);
+    setSelected3v3(['', '', '', '', '']);
     const players = await fetchClubPlayers(club.id);
     setSquad3v3(players);
     setShowCreateDialog(true);
@@ -110,8 +110,8 @@ export default function ManagerChallengesPage() {
 
   const handleSendChallenge = async () => {
     if (!club || !awayClubId || !scheduledAt || !managerProfile) return;
-    if (matchType === '3x3' && selected3v3.some(id => !id)) { toast.error('Selecione 3 jogadores para o modo 3x3.'); return; }
-    if (matchType === '3x3' && new Set(selected3v3).size !== 3) { toast.error('Selecione 3 jogadores diferentes.'); return; }
+    if (matchType === '5x5' && selected3v3.some(id => !id)) { toast.error('Selecione 5 jogadores para o modo 5x5.'); return; }
+    if (matchType === '5x5' && new Set(selected3v3).size !== 5) { toast.error('Selecione 5 jogadores diferentes.'); return; }
     setSending(true);
     try {
       const { data: awayClubData } = await supabase.from('clubs').select('manager_profile_id').eq('id', awayClubId).single();
@@ -119,8 +119,8 @@ export default function ManagerChallengesPage() {
       const { data: awayMgrData } = await supabase.from('manager_profiles').select('user_id').eq('id', awayClubData.manager_profile_id).single();
 
       let finalMessage = message.trim();
-      if (matchType === '3x3') {
-        finalMessage = `[3x3:${selected3v3.join(',')}] ${finalMessage}`.trim();
+      if (matchType === '5x5') {
+        finalMessage = `[5x5:${selected3v3.join(',')}] ${finalMessage}`.trim();
       }
 
       await supabase.from('match_challenges').insert({
@@ -164,7 +164,7 @@ export default function ManagerChallengesPage() {
     const picked: T[] = [];
     const usedSlotIds = new Set<string>();
 
-    for (const targetRole of ['GK', 'CB', 'ST'] as const) {
+    for (const targetRole of ['GK', 'CB', 'CB', 'CM', 'ST'] as const) {
       const match = clubSlots.find(slot =>
         !usedSlotIds.has(slot.id) && getFriendlySlotRole(slot.slot_position) === targetRole,
       );
@@ -178,7 +178,7 @@ export default function ManagerChallengesPage() {
 
   const parse3v3Message = (msg: string | null): { is3v3: boolean; playerIds: string[]; cleanMessage: string } => {
     if (!msg) return { is3v3: false, playerIds: [], cleanMessage: '' };
-    const match = msg.match(/^\[3x3:([a-f0-9-,]+)\]\s*(.*)/);
+    const match = msg.match(/^\[5x5:([a-f0-9-,]+)\]\s*(.*)/);
     if (!match) return { is3v3: false, playerIds: [], cleanMessage: msg };
     return { is3v3: true, playerIds: match[1].split(','), cleanMessage: match[2] };
   };
@@ -190,7 +190,7 @@ export default function ManagerChallengesPage() {
       // Show 3x3 accept dialog for the defender to pick their players
       const players = await fetchClubPlayers(club.id);
       setAccept3v3Squad(players);
-      setAccept3v3Selected(['', '', '']);
+      setAccept3v3Selected(['', '', '', '', '']);
       setAccept3v3Challenge(challenge);
       return;
     }
@@ -199,8 +199,8 @@ export default function ManagerChallengesPage() {
 
   const doAccept3v3 = async () => {
     if (!accept3v3Challenge || !club || !managerProfile) return;
-    if (accept3v3Selected.some(id => !id)) { toast.error('Selecione 3 jogadores.'); return; }
-    if (new Set(accept3v3Selected).size !== 3) { toast.error('Selecione 3 jogadores diferentes.'); return; }
+    if (accept3v3Selected.some(id => !id)) { toast.error('Selecione 5 jogadores.'); return; }
+    if (new Set(accept3v3Selected).size !== 5) { toast.error('Selecione 5 jogadores diferentes.'); return; }
     const challenge = accept3v3Challenge;
     setAccept3v3Challenge(null);
     setActing(challenge.id);
@@ -241,15 +241,15 @@ export default function ManagerChallengesPage() {
       managerParticipants.push({ match_id: match!.id, club_id: challenge.challenged_club_id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: (await supabase.auth.getUser()).data.user?.id || null });
       await supabase.from('match_participants').insert(managerParticipants);
 
-      await supabase.from('match_event_logs').insert({ match_id: match!.id, event_type: 'system', title: '⚔️ Amistoso 3x3 agendado', body: `${challenge.challenger_club?.name} vs ${challenge.challenged_club?.name}` });
+      await supabase.from('match_event_logs').insert({ match_id: match!.id, event_type: 'system', title: '⚔️ Amistoso 5x5 agendado', body: `${challenge.challenger_club?.name} vs ${challenge.challenged_club?.name}` });
       await supabase.from('match_challenges').update({ status: 'accepted', match_id: match!.id }).eq('id', challenge.id);
 
       if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso 3x3.`, type: 'match_challenge_accepted' });
+        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso 5x5.`, type: 'match_challenge_accepted' });
       }
-      toast.success('Amistoso 3x3 aceito!');
+      toast.success('Amistoso 5x5 aceito!');
       loadChallenges();
-    } catch (err: any) { toast.error(err.message || 'Erro ao aceitar 3x3'); }
+    } catch (err: any) { toast.error(err.message || 'Erro ao aceitar 5x5'); }
     finally { setActing(null); }
   };
 
@@ -403,15 +403,15 @@ export default function ManagerChallengesPage() {
       }).select('id').single();
       if (matchError || !match) throw matchError || new Error('Falha');
       const userId = (await supabase.auth.getUser()).data.user?.id;
-      // 3v3 test: GK + CB + ST per team
-      const testHome = [{ x: 5, y: 50 }, { x: 25, y: 50 }, { x: 45, y: 50 }];
+      // 5v5 test: GK + 4 field players per team
+      const testHome = [{ x: 5, y: 50 }, { x: 22, y: 30 }, { x: 22, y: 70 }, { x: 38, y: 35 }, { x: 38, y: 65 }];
       const testAway = testHome.map(p => ({ x: 100 - p.x, y: p.y }));
       await supabase.from('match_participants').insert([
         ...testHome.map(p => ({ match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),
         ...testAway.map(p => ({ match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),
         { match_id: match.id, club_id: club.id, role_type: 'manager', is_bot: false, is_ready: false, connected_user_id: userId },
       ]);
-      await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '3v3 — GK + CB + ST vs GK + CB + ST' });
+      await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '5v5 — GK + 4 jogadores vs GK + 4 jogadores' });
       if (target === 'lab') { toast.success('Laboratório criado!'); navigate(`/match-lab/${match.id}`); }
       else { toast.success('Partida de teste criada!'); navigate(`/match/${match.id}`); }
     } catch (err: any) { toast.error(err.message || 'Erro'); }
@@ -550,7 +550,7 @@ export default function ManagerChallengesPage() {
               <FlaskConical className="h-4 w-4 mr-1" /> Lab Solo
             </Button>
             <Button size="sm" variant="outline" onClick={() => handleCreateTestMatch('match')} disabled={creatingTarget !== null} className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
-              <FlaskConical className="h-4 w-4 mr-1" /> {creatingTarget === 'match' ? 'Criando...' : 'Teste 3v3'}
+              <FlaskConical className="h-4 w-4 mr-1" /> {creatingTarget === 'match' ? 'Criando...' : 'Teste 5v5'}
             </Button>
             <Button size="sm" variant="outline" onClick={handleCreateBotFriendly} disabled={creatingBotMatch} className="font-display text-xs border-pitch/40 text-pitch hover:bg-pitch/10">
               <Bot className="h-4 w-4 mr-1" /> {creatingBotMatch ? 'Criando...' : 'Amistoso x BOT'}
@@ -634,14 +634,14 @@ export default function ManagerChallengesPage() {
               <Label className="text-xs text-muted-foreground">Tipo de Partida</Label>
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant={matchType === '11x11' ? 'default' : 'outline'} onClick={() => setMatchType('11x11')} className="flex-1 font-display text-xs">11x11</Button>
-                <Button type="button" size="sm" variant={matchType === '3x3' ? 'default' : 'outline'} onClick={() => setMatchType('3x3')} className="flex-1 font-display text-xs">3x3</Button>
+                <Button type="button" size="sm" variant={matchType === '5x5' ? 'default' : 'outline'} onClick={() => setMatchType('5x5')} className="flex-1 font-display text-xs">5x5</Button>
               </div>
             </div>
 
-            {matchType === '3x3' && (
+            {matchType === '5x5' && (
               <div className="space-y-2 p-3 rounded-lg border border-tactical/30 bg-tactical/5">
-                <p className="text-xs font-display font-bold text-tactical">Escale 3 jogadores</p>
-                {(['Goleiro', 'Defensor', 'Atacante'] as const).map((label, i) => (
+                <p className="text-xs font-display font-bold text-tactical">Escale 5 jogadores</p>
+                {(['Goleiro', 'Jogador 2', 'Jogador 3', 'Jogador 4', 'Jogador 5'] as const).map((label, i) => (
                   <div key={label} className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{label}</Label>
                     <Select value={selected3v3[i]} onValueChange={val => { const next = [...selected3v3]; next[i] = val; setSelected3v3(next); }}>
@@ -664,8 +664,8 @@ export default function ManagerChallengesPage() {
               <Textarea placeholder="Mensagem para o adversário..." value={message} onChange={e => setMessage(e.target.value)} rows={2} className="resize-none" />
             </div>
 
-            <Button onClick={handleSendChallenge} disabled={sending || !awayClubId || !scheduledAt || !hasLineup || (matchType === '3x3' && (selected3v3.some(id => !id) || new Set(selected3v3).size !== 3))} className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-              <Send className="h-4 w-4 mr-2" /> {sending ? 'Enviando...' : matchType === '3x3' ? 'ENVIAR CONVITE 3x3' : 'ENVIAR CONVITE'}
+            <Button onClick={handleSendChallenge} disabled={sending || !awayClubId || !scheduledAt || !hasLineup || (matchType === '5x5' && (selected3v3.some(id => !id) || new Set(selected3v3).size !== 5))} className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
+              <Send className="h-4 w-4 mr-2" /> {sending ? 'Enviando...' : matchType === '5x5' ? 'ENVIAR CONVITE 5x5' : 'ENVIAR CONVITE'}
             </Button>
           </div>
         </DialogContent>
@@ -675,12 +675,12 @@ export default function ManagerChallengesPage() {
       <Dialog open={!!accept3v3Challenge} onOpenChange={open => { if (!open) setAccept3v3Challenge(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display flex items-center gap-2"><Swords className="h-5 w-5 text-tactical" /> Aceitar Amistoso 3x3</DialogTitle>
-            <DialogDescription>Escolha seus 3 jogadores para o amistoso 3x3.</DialogDescription>
+            <DialogTitle className="font-display flex items-center gap-2"><Swords className="h-5 w-5 text-tactical" /> Aceitar Amistoso 5x5</DialogTitle>
+            <DialogDescription>Escolha seus 3 jogadores para o amistoso 5x5.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 p-3 rounded-lg border border-tactical/30 bg-tactical/5">
-            <p className="text-xs font-display font-bold text-tactical">Escale 3 jogadores</p>
-            {(['Goleiro', 'Defensor', 'Atacante'] as const).map((label, i) => (
+            <p className="text-xs font-display font-bold text-tactical">Escale 5 jogadores</p>
+            {(['Goleiro', 'Jogador 2', 'Jogador 3', 'Jogador 4', 'Jogador 5'] as const).map((label, i) => (
               <div key={label} className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{label}</Label>
                 <Select value={accept3v3Selected[i]} onValueChange={val => { const next = [...accept3v3Selected]; next[i] = val; setAccept3v3Selected(next); }}>
@@ -696,8 +696,8 @@ export default function ManagerChallengesPage() {
               </div>
             ))}
           </div>
-          <Button onClick={doAccept3v3} disabled={accept3v3Selected.some(id => !id) || new Set(accept3v3Selected).size !== 3} className="w-full bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
-            <CheckCircle2 className="h-4 w-4 mr-2" /> ACEITAR 3x3
+          <Button onClick={doAccept3v3} disabled={accept3v3Selected.some(id => !id) || new Set(accept3v3Selected).size !== 5} className="w-full bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
+            <CheckCircle2 className="h-4 w-4 mr-2" /> ACEITAR 5x5
           </Button>
         </DialogContent>
       </Dialog>
@@ -731,11 +731,11 @@ function ChallengeCard({ challenge: c, direction, isActing, onAccept, onReject, 
         <Badge variant="outline" className={`text-xs shrink-0 ${statusInfo.className}`}>{statusInfo.label}</Badge>
       </div>
       {c.message && (() => {
-        const is3v3 = c.message.startsWith('[3x3:');
-        const cleanMsg = is3v3 ? c.message.replace(/^\[3x3:[^\]]+\]\s*/, '') : c.message;
+        const is3v3 = c.message.startsWith('[5x5:');
+        const cleanMsg = is3v3 ? c.message.replace(/^\[5x5:[^\]]+\]\s*/, '') : c.message;
         return (
           <div className="flex items-center gap-2">
-            {is3v3 && <Badge variant="outline" className="text-[10px] border-tactical/50 text-tactical shrink-0">3x3</Badge>}
+            {is3v3 && <Badge variant="outline" className="text-[10px] border-tactical/50 text-tactical shrink-0">5x5</Badge>}
             {cleanMsg && <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">{cleanMsg}</p>}
           </div>
         );

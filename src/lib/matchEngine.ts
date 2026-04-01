@@ -2,7 +2,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 // ═══════════════════════════════════════════════════════════════════
 // A engine principal agora é "match-engine-lab" para TODOS os modos
-// de jogo (3x3, 11x11, amistosos, oficiais).
+// de jogo (5x5, 11x11, amistosos, oficiais).
 // A engine original "match-engine" foi desativada/arquivada.
 // ═══════════════════════════════════════════════════════════════════
 const DEFAULT_MATCH_ENGINE_FUNCTION = "match-engine-lab";

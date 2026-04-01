@@ -56,7 +56,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
           {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
           {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
         </Badge>
-        {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">3v3</Badge>}
+        {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">5v5</Badge>}
         {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
         {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
         {isPositioningTurn && <Badge variant="secondary" className="text-[9px] font-display text-tactical border-tactical/40">POSICIONAMENTO</Badge>}
