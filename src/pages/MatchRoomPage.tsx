@@ -2556,15 +2556,21 @@ export default function MatchRoomPage() {
   const getArrowQuality = (fromX: number, fromY: number, toX: number, toY: number, type: string, participantId?: string): string => {
     const dist = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
     const attrs = participantId ? playerAttrsMap[participantId] : null;
+    // Map header types to their foot equivalents for quality calculation
+    const mappedType = type === 'header_controlled' ? 'shoot_controlled'
+      : type === 'header_power' ? 'shoot_power'
+      : type === 'header_high' ? 'pass_high'
+      : type === 'header_low' ? 'pass_low'
+      : type;
 
-    if (type === 'shoot_controlled') {
+    if (mappedType === 'shoot_controlled') {
       const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 12;
       const eDist = dist - accBonus;
       if (eDist < 35) return '#22c55e';
       if (eDist < 55) return '#f59e0b';
       return '#ef4444';
     }
-    if (type === 'shoot_power') {
+    if (mappedType === 'shoot_power') {
       const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
       const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 4;
       const eDist = dist - accBonus - powBonus;
@@ -2572,7 +2578,7 @@ export default function MatchRoomPage() {
       if (eDist < 40) return '#f59e0b';
       return '#ef4444'; // red = over the goal risk
     }
-    if (type === 'shoot') {
+    if (mappedType === 'shoot') {
       const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 10;
       const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 5;
       const eDist = dist - accBonus - powBonus;
@@ -2580,14 +2586,14 @@ export default function MatchRoomPage() {
       if (eDist < 50) return '#f59e0b';
       return '#ef4444';
     }
-    if (type === 'pass_high') {
+    if (mappedType === 'pass_high') {
       const passBonus = normalizeAttr(Number(attrs?.passe_alto ?? 40)) * 10;
       const eDist = dist - passBonus;
       if (eDist < 25) return '#22c55e';
       if (eDist < 45) return '#f59e0b';
       return '#ef4444';
     }
-    if (type === 'pass_launch') {
+    if (mappedType === 'pass_launch') {
       const passBonus = (normalizeAttr(Number(attrs?.passe_baixo ?? 40)) + normalizeAttr(Number(attrs?.passe_alto ?? 40))) / 2 * 9;
       const eDist = dist - passBonus;
       if (eDist < 22) return '#22c55e';

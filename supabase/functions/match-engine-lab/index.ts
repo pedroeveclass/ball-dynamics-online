@@ -1582,6 +1582,23 @@ async function generateBotActions(
     }
   }
 
+  // ── GK constraint: clamp GK move targets to their box ──
+  for (const action of actions) {
+    if (action.action_type !== 'move' && action.action_type !== 'receive') continue;
+    const botPart = participants.find((p: any) => p.id === action.participant_id);
+    if (!botPart) continue;
+    const botPos = botPart._slot_position || botPart.slot_position || '';
+    if (botPos !== 'GK') continue;
+    const botIsHome = botPart.club_id === match?.home_club_id;
+    if (botIsHome) {
+      action.target_x = Math.min(action.target_x, 20);
+      action.target_y = Math.max(20, Math.min(80, action.target_y));
+    } else {
+      action.target_x = Math.max(action.target_x, 80);
+      action.target_y = Math.max(20, Math.min(80, action.target_y));
+    }
+  }
+
   if (actions.length > 0) {
     await supabase.from('match_actions').insert(actions);
     console.log(`[ENGINE] Bot tactical AI generated ${actions.length} actions for phase ${phase}`);
@@ -2348,11 +2365,11 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
 
   // Ball speed: faster ball = less time to move = reduced interception range
   const ballSpeedFactor =
-    bhActionType === 'shoot_power' ? 0.25 :
-    bhActionType === 'shoot_controlled' ? 0.35 :
+    (bhActionType === 'shoot_power' || bhActionType === 'header_power') ? 0.25 :
+    (bhActionType === 'shoot_controlled' || bhActionType === 'header_controlled') ? 0.35 :
     bhActionType === 'pass_launch' ? 0.5 :
-    (bhActionType === 'pass_high') ? 0.65 :
-    1.0; // pass_low / move = normal speed
+    (bhActionType === 'pass_high' || bhActionType === 'header_high') ? 0.65 :
+    1.0; // pass_low / header_low / move = normal speed
 
   const interceptors: Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> = [];
   for (const a of allActions) {
