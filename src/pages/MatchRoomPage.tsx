@@ -1436,12 +1436,14 @@ export default function MatchRoomPage() {
           // Direct click on trajectory line
           const directHit = distToTraj <= INTERCEPT_RADIUS && movePct <= tCursor;
           
-          // Circle overlap: click must be NEAR the trajectory (within circle visual radius),
-          // and the player must be able to reach that point in time.
+          // Circle overlap: click must be near the trajectory OR the player's circle at that
+          // position must visually overlap the ball path.
           let circleOverlap = false;
           if (!directHit && moveDist <= maxRange) {
-            // Click is within movement range — check if click + circle radius overlaps trajectory
-            if (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor) {
+            // playerCircleRadius on the field in % (visual radius of the player circle)
+            const playerCircleFieldR = 7 / INNER_W * 100; // ~0.8% (player circle SVG r=7)
+            // Check if click position + player visual circle overlaps trajectory
+            if (distToTraj <= (playerCircleFieldR + INTERCEPT_RADIUS + 0.5) && movePct <= tCursor) {
               circleOverlap = true;
             }
           }
@@ -2209,7 +2211,7 @@ export default function MatchRoomPage() {
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
       if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...oneTouchActions, 'move', 'no_action']) : ['no_action', 'move'];
-      if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? [...receiveActions, 'move', 'no_action'] : ['no_action', 'move'];
+      if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...oneTouchActions, 'move', 'no_action']) : ['no_action', 'move'];
       return [];
     }
 
@@ -2224,7 +2226,7 @@ export default function MatchRoomPage() {
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
     if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, ...oneTouchActions, 'move', 'no_action']) : ['no_action', 'move'];
-    if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? [...receiveActions, 'move', 'no_action'] : ['no_action', 'move'];
+    if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...oneTouchActions, 'move', 'no_action']) : ['no_action', 'move'];
     return [];
   };
 

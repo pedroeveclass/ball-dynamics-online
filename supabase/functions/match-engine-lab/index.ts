@@ -4221,10 +4221,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           : null;
         const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
         if (!isOverGoal) {
+          // Goal logic: the team whose goal was scored in concedes (regardless of who had possession)
           if (inAwayGoal) {
-            if (possClubId === match.home_club_id) homeScore++; else awayScore++;
+            // Ball in away goal → home team scores (or own goal by away)
+            homeScore++;
           } else {
-            if (possClubId === match.away_club_id) awayScore++; else homeScore++;
+            // Ball in home goal → away team scores (or own goal by home)
+            awayScore++;
           }
           const ballGoalAction = ballHolder
             ? allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
@@ -4232,18 +4235,23 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const ballGoalType = ballGoalAction && (isShootType(ballGoalAction.action_type) || isHeaderShootType(ballGoalAction.action_type)) ? 'shot'
             : (ballGoalAction && isHeaderType(ballGoalAction.action_type) ? 'header'
             : (ballGoalAction && (ballGoalAction.action_type === 'pass_high' || ballGoalAction.action_type === 'pass_launch') ? 'header' : 'shot'));
-          const isBallGoalOwnGoal = (inAwayGoal && possClubId !== match.home_club_id && possClubId !== match.away_club_id)
+          // Own goal: ball went into the goal of the team with possession
+          const isBallGoalOwnGoal = (inAwayGoal && possClubId === match.away_club_id)
             || (inHomeGoal && possClubId === match.home_club_id);
           eventsToLog.push({
-            match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Bola no fundo da rede!`,
+            match_id, event_type: 'goal',
+            title: isBallGoalOwnGoal ? `⚽ GOL CONTRA! ${homeScore} – ${awayScore}` : `⚽ GOL! ${homeScore} – ${awayScore}`,
+            body: `Turno ${match.current_turn_number}${isBallGoalOwnGoal ? ' - Gol contra!' : ' - Bola no fundo da rede!'}`,
             payload: {
               scorer_participant_id: ballHolder?.id || null,
-              scorer_club_id: possClubId,
+              scorer_club_id: isBallGoalOwnGoal ? (possClubId === match.home_club_id ? match.away_club_id : match.home_club_id) : possClubId,
               assister_participant_id: null,
               goal_type: isBallGoalOwnGoal ? 'own_goal' : ballGoalType,
             },
           });
-          newPossessionClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+          // Team that conceded gets the kickoff
+          const concedingClubId = inAwayGoal ? match.away_club_id : match.home_club_id;
+          newPossessionClubId = concedingClubId;
           nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
           nextSetPieceType = 'kickoff';
         }
@@ -4258,11 +4266,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const inHomeGoal = moveEndX <= 2 && moveEndY >= 38 && moveEndY <= 62;
         const inAwayGoal = moveEndX >= 98 && moveEndY >= 38 && moveEndY <= 62;
         if (inHomeGoal || inAwayGoal) {
-          if (inAwayGoal) {
-            if (possClubId === match.home_club_id) homeScore++; else awayScore++;
-          } else {
-            if (possClubId === match.away_club_id) awayScore++; else homeScore++;
-          }
+          if (inAwayGoal) homeScore++; else awayScore++;
           eventsToLog.push({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
             payload: {
