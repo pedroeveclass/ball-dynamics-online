@@ -3572,7 +3572,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   if (!isResolution) {
     const { data: nrActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
     nonResolutionActions = nrActions || [];
-    const submittedParticipantIds = new Set<string>(nonResolutionActions.map((a: any) => a.participant_id));
+    const submittedParticipantIds = new Set<string>((nonResolutionActions || []).map((a: any) => a.participant_id));
     await generateBotActions(
       supabase,
       match_id,
