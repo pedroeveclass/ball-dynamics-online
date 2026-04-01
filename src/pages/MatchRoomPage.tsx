@@ -2924,10 +2924,19 @@ export default function MatchRoomPage() {
                 const fromPart = participants.find(p => p.id === action.participant_id);
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
+                // Hide bot arrows during positioning phases (they just clutter the field)
+                if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
+
                 // Hide bot receive/block arrows that are clearly impossible (too far from trajectory)
                 if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
                   const moveDist = Math.sqrt((fromPart.field_x - action.target_x) ** 2 + (fromPart.field_y - action.target_y) ** 2);
                   if (moveDist > 15) return null; // >15% of field = clearly impossible
+                }
+
+                // Hide bot move arrows where bot already arrived (distance ≈ 0)
+                if (action.controlled_by_type === 'bot' && action.action_type === 'move') {
+                  const dist = Math.sqrt((fromPart.field_x - action.target_x) ** 2 + (fromPart.field_y - action.target_y) ** 2);
+                  if (dist < 1) return null;
                 }
 
                 const lockedOrigin = activeTurn?.phase === 'resolution' ? resolutionStartPositions[action.participant_id] : null;
