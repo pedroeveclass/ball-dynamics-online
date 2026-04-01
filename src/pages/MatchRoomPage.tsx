@@ -1477,6 +1477,19 @@ export default function MatchRoomPage() {
           setMouseFieldPct(null);
           return;
         }
+        // Circle overlap: player's movement circle from current position reaches the ball
+        const dp = participants.find(p => p.id === drawingAction.fromParticipantId);
+        if (dp && dp.field_x != null && dp.field_y != null) {
+          const distPlayerToBall = Math.sqrt((dp.field_x - looseBallPos.x) ** 2 + (dp.field_y - looseBallPos.y) ** 2);
+          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+          if (distPlayerToBall <= maxRange + INTERCEPT_RADIUS) {
+            setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
+            setShowActionMenu(drawingAction.fromParticipantId);
+            setDrawingAction(null);
+            setMouseFieldPct(null);
+            return;
+          }
+        }
       }
       
       // Clamp move to max range based on player physics + inertia
@@ -1496,7 +1509,7 @@ export default function MatchRoomPage() {
           const possClubId = activeTurn?.possession_club_id;
           const isDefending = moveFrom.club_id !== possClubId;
           if (isDefending) {
-            const CENTER_CIRCLE_RADIUS = 9.15; // ~9.15% of field (matches real proportion)
+            const CENTER_CIRCLE_RADIUS = 10; // matches engine constraint
             const distToCenter = Math.sqrt((mx - 50) * (mx - 50) + (my - 50) * (my - 50));
             if (distToCenter < CENTER_CIRCLE_RADIUS) {
               // Push out of center circle
@@ -2733,7 +2746,7 @@ export default function MatchRoomPage() {
                 const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
                 if (!isKickoff) return null;
                 const centerSvg = toSVG(50, 50);
-                const CENTER_CIRCLE_RADIUS_PCT = 9.15;
+                const CENTER_CIRCLE_RADIUS_PCT = 10; // matches engine constraint
                 const circleRadiusSvgX = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_W;
                 const circleRadiusSvgY = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_H;
                 const possClubId = activeTurn?.possession_club_id;

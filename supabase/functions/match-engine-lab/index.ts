@@ -981,6 +981,28 @@ async function generateBotActions(
       const goalY = 40 + Math.random() * 20;
       const distToGoal = Math.sqrt((posX - goalX) ** 2 + (posY - 50) ** 2);
 
+      // ── Dead ball (kickoff, free kick, etc): BH MUST pass, never move ──
+      if (setPieceType) {
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+        if (passResult) {
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: passResult.actionType,
+            target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
+            target_participant_id: passResult.target.id, status: 'pending',
+          });
+        } else {
+          // Fallback: short pass forward
+          const fwdX = isHome ? Math.min(98, posX + 15) : Math.max(2, posX - 15);
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'pass_low',
+            target_x: fwdX, target_y: 40 + Math.random() * 20, status: 'pending',
+          });
+        }
+        continue; // Skip the rest of BH logic
+      }
+
       if (isGK) {
         // GK: always pass to nearest free defender/midfielder, never shoot or dribble
         const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
@@ -1469,12 +1491,13 @@ async function generateBotActions(
 
         // Center circle exclusion for non-possession team during positioning
         if (isDefending) {
+          const CENTER_CIRCLE_R = 10; // ~10% of field (matches client visual)
           const distToCenter = Math.sqrt((target.x - 50) ** 2 + (target.y - 50) ** 2);
-          if (distToCenter < 12) { // center circle radius ~12 units
+          if (distToCenter < CENTER_CIRCLE_R) {
             // Push outside the circle
             const angle = Math.atan2(target.y - 50, target.x - 50);
-            target.x = 50 + Math.cos(angle) * 13;
-            target.y = 50 + Math.sin(angle) * 13;
+            target.x = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
+            target.y = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
             // Re-enforce half constraint
             if (isHome) target.x = Math.min(target.x, 49);
             else target.x = Math.max(target.x, 51);
@@ -2070,7 +2093,7 @@ function resolveDispute(
   return { winner, chance: attackerChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[]): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -2080,7 +2103,9 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   foul?: boolean;
   foulPosition?: { x: number; y: number };
   card?: 'yellow';
+  disputeInfo?: { winner: 'attacker' | 'defender'; zone: string };
 } {
+  let _disputeInfo: { winner: 'attacker' | 'defender'; zone: string } | undefined;
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
     const result: Record<string, number> = {};
@@ -2173,6 +2198,15 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
               }
             }
 
+            _disputeInfo = { winner: finalWinner, zone: disputeZone };
+            if (eventsToLog) {
+              eventsToLog.push({
+                match_id: _attacker.match_id,
+                event_type: 'dispute',
+                title: finalWinner === 'attacker' ? '⚔️ Disputa: Ataque venceu!' : '🛡️ Disputa: Defesa venceu!',
+                body: `Disputa ${disputeZone === 'yellow' ? 'aérea' : 'no chão'}${atkIsHeader || defIsHeader ? ' (cabeceio)' : ''}.`,
+              });
+            }
             console.log(`[ENGINE] Dispute resolved: ${finalWinner === 'attacker' ? 'ATK' : 'DEF'} goes first (header bonus: atk=${atkIsHeader} def=${defIsHeader})`);
             disputeHandled = true;
           }
@@ -3365,11 +3399,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
 
-      // Kickoff half-field constraint
+      // Kickoff constraints: half-field + center circle exclusion
       if (isKickoff) {
         const isHome = part.club_id === match.home_club_id;
         if (isHome) targetX = Math.min(targetX, 49);
         else targetX = Math.max(targetX, 51);
+        // Center circle exclusion for defending team
+        const isDefending = part.club_id !== possClubId;
+        if (isDefending) {
+          const CENTER_CIRCLE_R = 10;
+          const distToCenter = Math.sqrt((targetX - 50) ** 2 + (targetY - 50) ** 2);
+          if (distToCenter < CENTER_CIRCLE_R) {
+            const angle = Math.atan2(targetY - 50, targetX - 50);
+            targetX = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
+            targetY = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
+            if (isHome) targetX = Math.min(targetX, 49);
+            else targetX = Math.max(targetX, 51);
+          }
+        }
       }
 
       // Clamp to field
@@ -3391,6 +3438,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (actionIds.length > 0) {
       await supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds);
     }
+
+    // Brief delay so clients see bot positions update before phase transitions
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Resolve current positioning turn
     await supabase.from('match_turns')
@@ -3763,6 +3813,19 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           finalY = startY + dy * scale;
         }
 
+        // ── GK constraint: goalkeeper must stay near their goal ──
+        const partSlotPos = part?._slot_position || part?.slot_position || '';
+        if (partSlotPos === 'GK') {
+          const isHome = part?.club_id === match.home_club_id;
+          if (isHome) {
+            finalX = Math.min(finalX, 22); // stay in/near box
+            finalY = Math.max(18, Math.min(82, finalY));
+          } else {
+            finalX = Math.max(finalX, 78);
+            finalY = Math.max(18, Math.min(82, finalY));
+          }
+        }
+
         console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
         resolutionMoveUpdates.push(
@@ -3782,7 +3845,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
       if (ballHolderAction) {
-        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1);
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog);
 
         if (result.goal) {
           // Check if the shot is actually on target
