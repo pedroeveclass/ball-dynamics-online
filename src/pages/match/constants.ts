@@ -68,6 +68,37 @@ export const isHeaderAction = (t: string) => t === 'header_low' || t === 'header
 export const isAnyShootAction = (t: string) => isShootAction(t) || t === 'header_controlled' || t === 'header_power';
 export const isAnyPassAction = (t: string) => isPassAction(t) || t === 'header_low' || t === 'header_high';
 
+// Ball height zone at a given trajectory progress
+export function getBallZoneAtProgress(actionType: string, progress: number): 'green' | 'yellow' | 'red' {
+  switch (actionType) {
+    case 'pass_low': case 'header_low': case 'move':
+    case 'shoot_controlled': case 'header_controlled':
+      return 'green';
+
+    case 'pass_high': case 'header_high':
+      if (progress < 0.12) return 'green';
+      if (progress < 0.2) return 'yellow';
+      if (progress < 0.8) return 'red';
+      if (progress < 0.9) return 'yellow';
+      return 'green';
+
+    case 'pass_launch':
+      if (progress < 0.08) return 'green';
+      if (progress < 0.35) return 'yellow';
+      if (progress < 0.65) return 'red';
+      if (progress < 0.88) return 'yellow';
+      return 'green';
+
+    case 'shoot_power': case 'header_power':
+      if (progress < 0.1) return 'green';
+      if (progress < 0.3) return 'yellow';
+      return 'red';
+
+    default:
+      return 'green';
+  }
+}
+
 // Safe date formatter
 export function formatScheduledDate(dateStr: string): string {
   try {

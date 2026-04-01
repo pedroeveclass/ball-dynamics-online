@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState } from './match/types';
-import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate } from './match/constants';
+import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
@@ -1187,8 +1187,8 @@ export default function MatchRoomPage() {
         scheduleTurnActionsReconcile(true);
         toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
         // Sound effects
-        if (actionType === 'shoot_controlled' || actionType === 'shoot_power') sounds.kick();
-        else if (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch') sounds.pass();
+        if (isAnyShootAction(actionType)) sounds.kick();
+        else if (isAnyPassAction(actionType)) sounds.pass();
         else sounds.phaseChange();
       }
     } catch { toast.error('Erro ao enviar ação'); }
@@ -1272,7 +1272,8 @@ export default function MatchRoomPage() {
     // pass/shoot actions become one-touch — they need a target, so enter drawing mode with the
     // intercept position as the starting point for the action
     if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId &&
-        (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch' || actionType === 'shoot_controlled' || actionType === 'shoot_power')) {
+        (actionType === 'pass_low' || actionType === 'pass_high' || actionType === 'pass_launch' || actionType === 'shoot_controlled' || actionType === 'shoot_power' ||
+         actionType === 'header_low' || actionType === 'header_high' || actionType === 'header_controlled' || actionType === 'header_power')) {
       // Store the one-touch context — the drawing will submit with one_touch payload
       setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
       setShowActionMenu(null);
@@ -1306,10 +1307,10 @@ export default function MatchRoomPage() {
         intercept_x: pendingInterceptChoice!.targetX,
         intercept_y: pendingInterceptChoice!.targetY,
         next_action_type: drawingAction.type,
-        next_target_x: drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power'
+        next_target_x: isAnyShootAction(drawingAction.type)
           ? (() => { const s = participants.find(p => p.id === drawingAction.fromParticipantId); return s ? getShootTarget(s).x : pctX; })()
           : pctX,
-        next_target_y: drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power'
+        next_target_y: isAnyShootAction(drawingAction.type)
           ? clamp(pctY, 38, 62)
           : pctY,
         next_target_participant_id: nearPlayer?.id || null,
@@ -1319,12 +1320,12 @@ export default function MatchRoomPage() {
       const oneTouchReceiveActions = getReceiveActions(drawingAction.fromParticipantId);
       const oneTouchActionType = oneTouchReceiveActions.includes('block') && !oneTouchReceiveActions.includes('receive') ? 'block' : 'receive';
       submitAction(oneTouchActionType, drawingAction.fromParticipantId, pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY, undefined, oneTouchNextPayload);
-    } else if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+    } else if (isAnyShootAction(drawingAction.type)) {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
       submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
-    } else if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
+    } else if (isAnyPassAction(drawingAction.type)) {
       // Apply pass distance clamping
       const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
       let finalPctX = pctX, finalPctY = pctY;
@@ -1344,7 +1345,7 @@ export default function MatchRoomPage() {
         if (!activeTurn?.ball_holder_participant_id) return null;
         const bhAction = turnActions.find(action => {
           if (action.participant_id !== activeTurn.ball_holder_participant_id) return false;
-          return action.action_type === 'pass_low' || action.action_type === 'pass_high' || action.action_type === 'pass_launch' || action.action_type === 'shoot_controlled' || action.action_type === 'shoot_power' || action.action_type === 'shoot' || action.action_type === 'move';
+          return isAnyPassAction(action.action_type) || isAnyShootAction(action.action_type) || action.action_type === 'move';
         });
         // If ball holder has no action (stationary), treat as move to current position
         if (!bhAction && ballHolderNow && ballHolderNow.field_x != null && ballHolderNow.field_y != null) {
@@ -1401,32 +1402,30 @@ export default function MatchRoomPage() {
           // Direct click on trajectory line
           const directHit = distToTraj <= INTERCEPT_RADIUS && movePct <= tCursor;
           
-          // Purple circle check: if the action circle overlaps the trajectory at ANY reachable point,
-          // clicking anywhere in the circle should work. Find the closest point on trajectory to the player.
+          // Circle overlap: even if cursor isn't on trajectory, if the player's
+          // movement circle from CURRENT position overlaps the trajectory, trigger intercept.
           let circleOverlap = false;
-          if (!directHit && moveDist <= maxRange) {
-            // Player's circle at cursor position overlaps trajectory
-            if (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor) {
-              circleOverlap = true;
-            }
-            // Also: if player can reach trajectory at any point, snap to closest trajectory point
-            if (!circleOverlap) {
-              const playerX = drawingParticipant.field_x;
-              const playerY = drawingParticipant.field_y;
-              const tPlayer = _tlen2 > 0 ? clamp(((playerX - bfx) * _tdx + (playerY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
-              const closestOnTrajX = bfx + _tdx * tPlayer;
-              const closestOnTrajY = bfy + _tdy * tPlayer;
-              const distPlayerToTraj = Math.sqrt((playerX - closestOnTrajX) ** 2 + (playerY - closestOnTrajY) ** 2);
-              if (distPlayerToTraj <= maxRange + INTERCEPT_RADIUS) {
-                // Can reach: check if arrival is before ball
-                const moveToTraj = distPlayerToTraj;
-                const movePctToTraj = maxRange > 0 ? Math.min(1, moveToTraj / maxRange) : 0;
-                if (movePctToTraj <= tPlayer) {
-                  circleOverlap = true;
-                  interceptTargetX = closestOnTrajX;
-                  interceptTargetY = closestOnTrajY;
-                }
+          if (!directHit) {
+            // Check from player's CURRENT position: find closest trajectory point reachable
+            const playerX = drawingParticipant.field_x!;
+            const playerY = drawingParticipant.field_y!;
+            // Find closest point on trajectory to the player
+            const tPlayer = _tlen2 > 0 ? clamp(((playerX - bfx) * _tdx + (playerY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
+            const closestOnTrajX = bfx + _tdx * tPlayer;
+            const closestOnTrajY = bfy + _tdy * tPlayer;
+            const distPlayerToTraj = Math.sqrt((playerX - closestOnTrajX) ** 2 + (playerY - closestOnTrajY) ** 2);
+            if (distPlayerToTraj <= maxRange + INTERCEPT_RADIUS) {
+              // Player can reach the trajectory — check timing (arrive before/with ball)
+              const movePctToTraj = maxRange > 0 ? Math.min(1, distPlayerToTraj / maxRange) : 0;
+              if (movePctToTraj <= tPlayer || tPlayer < 0.05) {
+                circleOverlap = true;
+                interceptTargetX = closestOnTrajX;
+                interceptTargetY = closestOnTrajY;
               }
+            }
+            // Also check at cursor position: if cursor is near trajectory within circle radius
+            if (!circleOverlap && moveDist <= maxRange && distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor) {
+              circleOverlap = true;
             }
           }
           
@@ -1534,7 +1533,7 @@ export default function MatchRoomPage() {
 
     if (drawingAction) {
       const p = participants.find(x => x.id === participantId);
-      if (p && (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch')) {
+      if (p && isAnyPassAction(drawingAction.type)) {
         submitAction(drawingAction.type, drawingAction.fromParticipantId, p.field_x, p.field_y, participantId);
         setDrawingAction(null);
         setMouseFieldPct(null);
@@ -2096,7 +2095,7 @@ export default function MatchRoomPage() {
     || { shirt_color: '#333', number_color: '#fff', pattern: 'solid', stripe_color: '#fff' };
   const isLooseBall = activeTurn && !activeTurn.ball_holder_participant_id;
 
-  // Determine receive/block actions based on ball trajectory type
+  // Determine receive/block actions based on ball trajectory type and height zone
   const getReceiveActions = (participantId: string): string[] => {
     const pic = pendingInterceptChoice;
     if (!pic || pic.participantId !== participantId) return ['receive'];
@@ -2111,14 +2110,26 @@ export default function MatchRoomPage() {
     // Shoot trajectory
     if (trajType && isAnyShootAction(trajType)) {
       if (isGK && inBox) return ['receive', 'block']; // Agarrar + Espalmar
-      return ['block']; // Bloquear for outfield (and GK outside box)
+      return ['block']; // Bloquear for outfield
     }
-    // pass_high or pass_launch or header_high in initial zone (progress < 0.2)
-    if (trajType && (trajType === 'pass_high' || trajType === 'pass_launch' || trajType === 'header_high') && trajProgress < 0.2) {
-      return ['block'];
+
+    // Determine zone
+    const zone = trajType ? getBallZoneAtProgress(trajType, trajProgress) : 'green';
+
+    // Yellow zone: headed interception
+    if (zone === 'yellow') {
+      return ['receive']; // Engine treats as header-based receive in yellow zone
     }
-    // pass_high or pass_launch in final zone (progress > 0.8) or pass_low: normal receive
+
+    // Green zone: normal foot receive
     return ['receive'];
+  };
+
+  // Get the ball zone for a participant's pending intercept
+  const getInterceptZone = (participantId: string): 'green' | 'yellow' | 'red' => {
+    const pic = pendingInterceptChoice;
+    if (!pic || pic.participantId !== participantId || !pic.trajectoryActionType) return 'green';
+    return getBallZoneAtProgress(pic.trajectoryActionType, pic.trajectoryProgress ?? 0.5);
   };
 
   // Get actions for current phase
@@ -2139,11 +2150,22 @@ export default function MatchRoomPage() {
 
     const filterShots = (actions: string[]) => {
       if (inAttackingHalf) return actions;
-      return actions.filter(a => a !== 'shoot_controlled' && a !== 'shoot_power');
+      return actions.filter(a => a !== 'shoot_controlled' && a !== 'shoot_power' && a !== 'header_controlled' && a !== 'header_power');
     };
 
     // Build receive/block actions based on trajectory context
     const receiveActions = getReceiveActions(participantId);
+    const interceptZone = hasReceivePrompt ? getInterceptZone(participantId) : 'green';
+
+    // One-touch actions: in yellow zone, offer BOTH header and foot actions
+    const footOneTouchActions = ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
+    const headerOneTouchActions = ['header_low', 'header_high', 'header_controlled', 'header_power'];
+    const oneTouchActions = interceptZone === 'yellow'
+      ? [...headerOneTouchActions, ...footOneTouchActions]
+      : footOneTouchActions;
+
+    // GK-specific: check if BH is GK
+    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
 
     // Positioning turn: move only, ball holder can't move
     if (isPositioningTurn) {
@@ -2156,7 +2178,7 @@ export default function MatchRoomPage() {
     // Loose ball: skip phase 1, both teams move in phase 2/3
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
-      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
+      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...oneTouchActions, 'move', 'no_action']) : ['no_action', 'move'];
       if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? [...receiveActions, 'move', 'no_action'] : ['no_action', 'move'];
       return [];
     }
@@ -2164,16 +2186,14 @@ export default function MatchRoomPage() {
     // Dead ball (kickoff/set piece): ball holder can only pass or shoot, no dribble/carry
     const setPieceType = activeTurn.set_piece_type;
     if (phase === 'ball_holder' && isBH && setPieceType) {
-      // Throw-in: only passes (no shoot, no move)
       if (setPieceType === 'throw_in') return ['pass_low', 'pass_high', 'pass_launch'];
-      // Other set pieces (kickoff, corner, goal_kick, free_kick): passes + shoots (no move)
       return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     }
     if (phase === 'ball_holder' && isBH && isDeadBall) return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
     if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
-    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'move', 'no_action']) : ['no_action', 'move'];
+    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, ...oneTouchActions, 'move', 'no_action']) : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? [...receiveActions, 'move', 'no_action'] : ['no_action', 'move'];
     return [];
   };
@@ -2195,6 +2215,8 @@ export default function MatchRoomPage() {
     pass_low: 50,
     pass_high: 60,
     pass_launch: 70,
+    header_low: 35,
+    header_high: 45,
   };
 
   const clampPassDistance = (fromX: number, fromY: number, toX: number, toY: number, actionType: string): { x: number; y: number } => {
@@ -2220,8 +2242,8 @@ export default function MatchRoomPage() {
     if (now - lastMouseMoveTimeRef.current < 33) return;
     lastMouseMoveTimeRef.current = now;
     const rect = svgRef.current.getBoundingClientRect();
-    const totalW = FIELD_W + PAD * 2;
-    const totalH = FIELD_H + PAD * 2;
+    const totalW = FIELD_W;
+    const totalH = FIELD_H;
     const svgX = ((e.clientX - rect.left) / rect.width) * totalW;
     const svgY = ((e.clientY - rect.top) / rect.height) * totalH;
     const fp = toField(svgX, svgY);
@@ -2278,13 +2300,15 @@ export default function MatchRoomPage() {
     }
 
     // Clamp pass distance for pass-type drawing actions
-    if (drawingAction.type === 'pass_low' || drawingAction.type === 'pass_high' || drawingAction.type === 'pass_launch') {
+    if (isAnyPassAction(drawingAction.type)) {
       const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (fromP && fromP.field_x != null && fromP.field_y != null) {
         // For one-touch, origin is the intercept point
         const originX = pendingInterceptChoice?.participantId === drawingAction.fromParticipantId ? pendingInterceptChoice.targetX : fromP.field_x;
         const originY = pendingInterceptChoice?.participantId === drawingAction.fromParticipantId ? pendingInterceptChoice.targetY : fromP.field_y;
-        const clamped = clampPassDistance(originX, originY, finalX, finalY, drawingAction.type);
+        // Map header passes to foot equivalents for distance clamping
+        const clampType = drawingAction.type === 'header_low' ? 'pass_low' : drawingAction.type === 'header_high' ? 'pass_high' : drawingAction.type;
+        const clamped = clampPassDistance(originX, originY, finalX, finalY, clampType);
         finalX = clamped.x;
         finalY = clamped.y;
       }
@@ -2296,8 +2320,8 @@ export default function MatchRoomPage() {
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!drawingAction || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
-    const totalW = FIELD_W + PAD * 2;
-    const totalH = FIELD_H + PAD * 2;
+    const totalW = FIELD_W;
+    const totalH = FIELD_H;
     const svgX = ((e.clientX - rect.left) / rect.width) * totalW;
     const svgY = ((e.clientY - rect.top) / rect.height) * totalH;
     const fp = toField(svgX, svgY);
@@ -2546,8 +2570,8 @@ export default function MatchRoomPage() {
     if (!p || p.field_x == null || p.field_y == null) return null;
     const svgPos = toSVG(p.field_x, p.field_y);
     const rect = svgRef.current.getBoundingClientRect();
-    const totalW = FIELD_W + PAD * 2;
-    const totalH = FIELD_H + PAD * 2;
+    const totalW = FIELD_W;
+    const totalH = FIELD_H;
     return {
       left: rect.left + (svgPos.x / totalW) * rect.width,
       top: rect.top + (svgPos.y / totalH) * rect.height,
@@ -2687,7 +2711,7 @@ export default function MatchRoomPage() {
               onMouseMove={handleSvgMouseMove}
               onClick={handleSvgClick}
               cursor={drawingAction ? 'crosshair' : 'default'}
-              className="w-full rounded-lg"
+              className="max-w-full max-h-full rounded-lg"
             >
               {/* Extra defs not provided by PitchSVG */}
               <defs>
@@ -3000,7 +3024,7 @@ export default function MatchRoomPage() {
                   const interceptPos = toSVG(pendingInterceptChoice!.targetX, pendingInterceptChoice!.targetY);
                   // Ball action: intercept → target
                   let targetFieldX: number, targetFieldY: number;
-                  if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+                  if (isAnyShootAction(drawingAction.type)) {
                     const goalTarget = getShootTarget(drawingFrom);
                     targetFieldX = goalTarget.x;
                     targetFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
@@ -3009,7 +3033,7 @@ export default function MatchRoomPage() {
                     targetFieldY = mouseFieldPct.y;
                   }
                   const targetPos = toSVG(targetFieldX, targetFieldY);
-                  const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+                  const isShoot = isAnyShootAction(drawingAction.type);
                   const ballColor = isShoot ? '#f59e0b' : '#22c55e';
                   return (
                     <g>
@@ -3039,7 +3063,7 @@ export default function MatchRoomPage() {
                 const from = toSVG(fromFieldX, fromFieldY);
                 let to: { x: number; y: number };
                 let toFieldX: number, toFieldY: number;
-                if (drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power') {
+                if (isAnyShootAction(drawingAction.type)) {
                   const goalTarget = getShootTarget(drawingFrom);
                   toFieldX = goalTarget.x;
                   toFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
@@ -3050,7 +3074,7 @@ export default function MatchRoomPage() {
                   to = toSVG(toFieldX, toFieldY);
                 }
                 const isMove = drawingAction.type === 'move';
-                const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+                const isShoot = isAnyShootAction(drawingAction.type);
                 const strokeW = isMove ? 2 : isShoot ? 3.5 : 3;
                 const opacity = 0.85;
 
@@ -3433,6 +3457,7 @@ export default function MatchRoomPage() {
                   ballTrajectoryHolder={ballTrajectoryHolder}
                   pendingInterceptChoice={pendingInterceptChoice}
                   match={match}
+                  activeBallHolderId={activeTurn?.ball_holder_participant_id}
                 />
               );
             })()}
@@ -3441,7 +3466,7 @@ export default function MatchRoomPage() {
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
               const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Media' : 'Ruim';
-              const isShoot = drawingAction.type === 'shoot_controlled' || drawingAction.type === 'shoot_power';
+              const isShoot = isAnyShootAction(drawingAction.type);
               const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
               return (
                 <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-[hsl(140,10%,8%)] rounded px-3 py-1.5 border border-[hsl(140,10%,20%)]">
@@ -3470,16 +3495,6 @@ export default function MatchRoomPage() {
               </div>
             )}
 
-            {/* Intercept zone hint */}
-            {ballTrajectoryAction && !animating && (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
-              <div className="absolute bottom-2 right-2 bg-background/80 border border-blue-500/30 rounded px-3 py-1 z-30">
-                <span className="text-[9px] font-display text-blue-400">
-                  {isAnyShootAction(ballTrajectoryAction.action_type)
-                    ? 'Mova para a zona azul para BLOQUEAR / DEFENDER'
-                    : 'Mova para a zona azul para DOMINAR BOLA'}
-                </span>
-              </div>
-            )}
 
             {/* Status overlay for non-live */}
             {!isLive && !isFinished && (

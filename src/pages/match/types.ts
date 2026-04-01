@@ -93,6 +93,6 @@ export interface TurnMeta {
 }
 
 export interface DrawingState {
-  type: 'move' | 'pass_low' | 'pass_high' | 'pass_launch' | 'shoot_controlled' | 'shoot_power';
+  type: 'move' | 'pass_low' | 'pass_high' | 'pass_launch' | 'shoot_controlled' | 'shoot_power' | 'header_low' | 'header_high' | 'header_controlled' | 'header_power';
   fromParticipantId: string;
 }
