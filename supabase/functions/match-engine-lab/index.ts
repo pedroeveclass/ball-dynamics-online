@@ -869,12 +869,15 @@ async function generateBotActions(
 
   const actions: any[] = [];
 
-  // Query ball holder's action type for defending_response decisions (block vs receive)
+  // Query ball holder's action (type + target) for AI decisions
   let bhActionType: string | null = null;
-  if (phase === 'defending_response' && ballHolderId) {
+  let bhTargetX: number | null = null;
+  let bhTargetY: number | null = null;
+  let bhTargetParticipantId: string | null = null;
+  if ((phase === 'defending_response' || phase === 'attacking_support') && ballHolderId) {
     const { data: bhActions } = await supabase
       .from('match_actions')
-      .select('action_type')
+      .select('action_type, target_x, target_y, target_participant_id')
       .eq('match_id', matchId)
       .eq('participant_id', ballHolderId)
       .eq('status', 'pending')
@@ -882,8 +885,17 @@ async function generateBotActions(
       .limit(1);
     if (bhActions && bhActions.length > 0) {
       bhActionType = bhActions[0].action_type;
+      bhTargetX = bhActions[0].target_x;
+      bhTargetY = bhActions[0].target_y;
+      bhTargetParticipantId = bhActions[0].target_participant_id;
     }
   }
+  // Pre-compute pass destination for bot AI
+  const passDestination = (bhTargetX != null && bhTargetY != null && bhActionType && bhActionType !== 'move')
+    ? { x: bhTargetX, y: bhTargetY } : null;
+
+  // Track pass interceptors (max 2 defenders try to intercept at pass destination)
+  let passInterceptorCount = 0;
 
   // Track loose ball chasers (max 2 per team)
   const looseBallChasersByClub = new Map<string, number>();
@@ -1216,15 +1228,43 @@ async function generateBotActions(
             });
           }
         } else if (role === 'centerBack' || role === 'fullBack') {
-          // ── Defenders: tackle if close, otherwise mark attackers ──
-          if (bhDist <= maxMoveRange) {
-            // Close enough to tackle — use block for shoots or early zone of high passes, receive otherwise
-            const defActionType = (bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_high') && bhDist < 8))) ? 'block' : 'receive';
+          // ── Defenders: intercept pass destination, tackle BH if close, or mark ──
+          // Check distance to pass destination (if a pass is happening)
+          const distToPassDest = passDestination ? Math.sqrt((posX - passDestination.x) ** 2 + (posY - passDestination.y) ** 2) : Infinity;
+          if (passDestination && distToPassDest <= maxMoveRange && passInterceptorCount < 2) {
+            // Near the pass destination — try to intercept the pass there
+            passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: defActionType,
-              target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+              controlled_by_type: 'bot', action_type: 'receive',
+              target_x: passDestination.x, target_y: passDestination.y, status: 'pending',
             });
+          } else if (bhDist <= maxMoveRange) {
+            // Close to BH — only tackle (move) or block (shoot). NOT receive on passes (ball already left)
+            const isBhPassing = bhActionType && (bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_low' || bhActionType === 'header_high');
+            const isBhShooting = bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType));
+            if (isBhShooting) {
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'block',
+                target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+              });
+            } else if (!isBhPassing) {
+              // BH is dribbling (move) — tackle
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'receive',
+                target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+              });
+            } else {
+              // BH is passing — no point pressing the passer, move tactically
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'move',
+                target_x: target.x, target_y: target.y, status: 'pending',
+              });
+            }
           } else {
             // Mark nearest attacker
             const attackersToMark = opponents.filter(opp => {
@@ -1261,15 +1301,52 @@ async function generateBotActions(
             }
           }
         } else if (role === 'defensiveMid' || role === 'centralMid') {
-          // ── Midfielders: press if close, tackle if very close ──
-          if (bhDist <= maxMoveRange) {
-            // Very close — use block for shoots or early zone of high passes, receive otherwise
-            const midActionType = (bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_high') && bhDist < 8))) ? 'block' : 'receive';
+          // ── Midfielders: intercept pass destination, press if close ──
+          const distToPassDest = passDestination ? Math.sqrt((posX - passDestination.x) ** 2 + (posY - passDestination.y) ** 2) : Infinity;
+          if (passDestination && distToPassDest <= maxMoveRange && passInterceptorCount < 2) {
+            passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: midActionType,
-              target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+              controlled_by_type: 'bot', action_type: 'receive',
+              target_x: passDestination.x, target_y: passDestination.y, status: 'pending',
             });
+          } else if (bhDist <= maxMoveRange) {
+            // Close to BH — only tackle (move) or block (shoot). NOT receive on passes
+            const isBhPassing = bhActionType && (bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_low' || bhActionType === 'header_high');
+            const isBhShooting = bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType));
+            if (isBhShooting) {
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'block',
+                target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+              });
+            } else if (!isBhPassing) {
+              // BH dribbling — tackle
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'receive',
+                target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+              });
+            } else {
+              // BH passing — press toward pass destination or move tactically
+              if (bhDist < 18) {
+                const pressX = posX + (ballPos.x - posX) * 0.5;
+                const pressY = posY + (ballPos.y - posY) * 0.5;
+                actions.push({
+                  match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                  controlled_by_type: 'bot', action_type: 'move',
+                  target_x: Math.max(2, Math.min(98, pressX)), target_y: Math.max(2, Math.min(98, pressY)),
+                  status: 'pending',
+                });
+              } else {
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+                actions.push({
+                  match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                  controlled_by_type: 'bot', action_type: 'move',
+                  target_x: target.x, target_y: target.y, status: 'pending',
+                });
+              }
+            }
           } else if (bhDist < 18) {
             // Press toward ball
             const pressX = posX + (ballPos.x - posX) * 0.5;
@@ -1326,6 +1403,26 @@ async function generateBotActions(
           controlled_by_type: 'bot', action_type: 'move',
           target_x: target.x, target_y: target.y, status: 'pending',
         });
+      } else if (bhTargetParticipantId === bot.id && passDestination) {
+        // ── This bot is the target of the BH's pass — move to receive it ──
+        const distToDest = Math.sqrt((posX - passDestination.x) ** 2 + (posY - passDestination.y) ** 2);
+        if (distToDest <= maxMoveRange) {
+          // Can reach pass destination — submit receive action
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'receive',
+            target_x: passDestination.x, target_y: passDestination.y, status: 'pending',
+          });
+        } else {
+          // Too far — move toward pass destination as close as possible
+          const angle = Math.atan2(passDestination.y - posY, passDestination.x - posX);
+          actions.push({
+            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+            controlled_by_type: 'bot', action_type: 'move',
+            target_x: posX + Math.cos(angle) * maxMoveRange, target_y: posY + Math.sin(angle) * maxMoveRange,
+            status: 'pending',
+          });
+        }
       } else {
         // Move to tactical position with attacking push
         const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
@@ -2219,12 +2316,19 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor})`);
             continue;
           }
+          // ── Early intercept hard cap: at the very start of the trajectory,
+          // only players already pressing the ball holder can intercept ──
+          if (t < 0.05 && distToIntercept > 2.5) {
+            console.log(`[ENGINE] Intercept rejected (early, too far): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > 2.5 at t=${t.toFixed(2)}`);
+            continue;
+          }
           // Timing check: the ball arrives at progress t (0=start, 1=end).
-          // At t=0 the ball just left — interceptor must already be there (~1 unit).
-          // At t=1 the ball arrived — interceptor has full range to get there.
-          const timingRange = t < 0.1
-            ? Math.min(1.0, adjustedMaxRange * 0.05)
-            : adjustedMaxRange * Math.max(0.2, t);
+          // For move (tackle): defender and attacker run at similar speed — scale linearly.
+          // For ball actions: ball is faster — need more restrictive timing at early progress.
+          const isTackle = bhActionType === 'move';
+          const timingRange = isTackle
+            ? adjustedMaxRange * Math.max(0.15, t) // tackle: generous — both running
+            : adjustedMaxRange * Math.max(0.15, t); // pass/shoot: also scales linearly with progress
           if (distToIntercept > timingRange) {
             console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
             continue;

@@ -152,7 +152,7 @@ function StadiumStyleEditor({
 
       {/* Live preview */}
       <div className="mb-5 flex justify-center">
-        <div style={{ width: 400 }}>
+        <div style={{ width: 700, maxWidth: '100%' }}>
           <PitchSVG style={editedStyle} />
         </div>
       </div>

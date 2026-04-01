@@ -141,8 +141,8 @@ function renderGrassPattern(patternType: string): React.ReactNode {
 
 // ─── Lighting overlay ────────────────────────────────────────────────
 function renderLightingOverlay(lighting: string): React.ReactNode {
-  const totalW = FIELD_W + PAD * 2;
-  const totalH = FIELD_H + PAD * 2;
+  const totalW = FIELD_W;
+  const totalH = FIELD_H;
 
   switch (lighting) {
     case 'warm':
@@ -192,35 +192,143 @@ function renderNetPattern(netPattern: string): React.ReactNode {
   );
 }
 
-// ─── Goal nets rendering ─────────────────────────────────────────────
+// ─── Corner flags ────────────────────────────────────────────────────
+function renderCornerFlags(): React.ReactNode {
+  const corners = [
+    { x: PAD + 2, y: PAD + 2, dx: 1, dy: 1 },       // top-left
+    { x: PAD + INNER_W - 2, y: PAD + 2, dx: -1, dy: 1 },   // top-right
+    { x: PAD + 2, y: PAD + INNER_H - 2, dx: 1, dy: -1 },   // bottom-left
+    { x: PAD + INNER_W - 2, y: PAD + INNER_H - 2, dx: -1, dy: -1 }, // bottom-right
+  ];
+  return (
+    <g>
+      {corners.map((c, i) => (
+        <g key={i}>
+          {/* Pole */}
+          <line x1={c.x} y1={c.y} x2={c.x} y2={c.y - 8 * c.dy} stroke="rgba(255,255,255,0.6)" strokeWidth="1" />
+          {/* Flag triangle */}
+          <polygon
+            points={`${c.x},${c.y - 8 * c.dy} ${c.x + 5 * c.dx},${c.y - 5 * c.dy} ${c.x},${c.y - 3 * c.dy}`}
+            fill="rgba(255,60,60,0.75)"
+            stroke="rgba(255,60,60,0.9)"
+            strokeWidth="0.5"
+          />
+          {/* Quarter circle arc */}
+          <path
+            d={`M ${c.x} ${c.y + 6 * c.dy * -1} A 6 6 0 0 ${c.dx === c.dy ? 1 : 0} ${c.x + 6 * c.dx} ${c.y}`}
+            stroke="rgba(255,255,255,0.35)"
+            strokeWidth="1"
+            fill="none"
+          />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+// ─── Goal nets rendering (top-down 3D perspective) ───────────────────
 function renderGoals(netStyle: string): React.ReactNode {
-  const goalTop = PAD + INNER_H * 0.38;
-  const goalH = INNER_H * 0.24;
-  const goalW = 10;
-  const leftX = PAD - 8;
-  const rightX = PAD + INNER_W - 2;
+  // Goal mouth position on the field line
+  const goalMouthTop = PAD + INNER_H * 0.38;
+  const goalMouthH = INNER_H * 0.24;
+  const netDepth = 22; // how far the net extends behind the goal line
+  const postWidth = 2.5;
+
+  // Left goal (extends to the left of the field)
+  const lLineX = PAD + 2;  // goal line x
+  const lNetX = lLineX - netDepth; // back of net
+
+  // Right goal (extends to the right of the field)
+  const rLineX = PAD + INNER_W - 2;
+  const rNetX = rLineX + netDepth;
 
   if (netStyle === 'veil') {
-    // Veil / droopy net: curved bottom (net hangs down)
-    const sag = 6;
-    const leftPath = `M ${leftX} ${goalTop} L ${leftX + goalW} ${goalTop} L ${leftX + goalW} ${goalTop + goalH} Q ${leftX + goalW / 2} ${goalTop + goalH + sag} ${leftX} ${goalTop + goalH} Z`;
-    const rightPath = `M ${rightX} ${goalTop} L ${rightX + goalW} ${goalTop} L ${rightX + goalW} ${goalTop + goalH} Q ${rightX + goalW / 2} ${goalTop + goalH + sag} ${rightX} ${goalTop + goalH} Z`;
-
+    // Véu de noiva: net drapes backward with a curved/wider shape
+    const spread = 8; // net widens at the back
+    const curveSag = 10; // sag of the curve
     return (
       <g>
-        <path d={leftPath} fill="url(#net-fill)" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
-        <path d={rightPath} fill="url(#net-fill)" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
+        {/* ── Left goal ── */}
+        {/* Net area (véu de noiva shape: wider at back, curved) */}
+        <path
+          d={`M ${lLineX} ${goalMouthTop}
+              C ${lLineX - netDepth * 0.3} ${goalMouthTop - spread * 0.5},
+                ${lNetX + curveSag} ${goalMouthTop - spread},
+                ${lNetX} ${goalMouthTop - spread}
+              L ${lNetX} ${goalMouthTop + goalMouthH + spread}
+              C ${lNetX + curveSag} ${goalMouthTop + goalMouthH + spread},
+                ${lLineX - netDepth * 0.3} ${goalMouthTop + goalMouthH + spread * 0.5},
+                ${lLineX} ${goalMouthTop + goalMouthH}`}
+          fill="url(#net-fill)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.5"
+        />
+        {/* Side net lines (strings from posts to back) */}
+        <line x1={lLineX} y1={goalMouthTop} x2={lNetX} y2={goalMouthTop - spread} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        <line x1={lLineX} y1={goalMouthTop + goalMouthH} x2={lNetX} y2={goalMouthTop + goalMouthH + spread} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        {/* Back net line (curved) */}
+        <path
+          d={`M ${lNetX} ${goalMouthTop - spread}
+              Q ${lNetX - 3} ${goalMouthTop + goalMouthH / 2}, ${lNetX} ${goalMouthTop + goalMouthH + spread}`}
+          stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" fill="none"
+        />
+        {/* Posts (white circles for top-down view) */}
+        <circle cx={lLineX} cy={goalMouthTop} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+        <circle cx={lLineX} cy={goalMouthTop + goalMouthH} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+        {/* Crossbar (on the goal line) */}
+        <line x1={lLineX} y1={goalMouthTop} x2={lLineX} y2={goalMouthTop + goalMouthH} stroke="white" strokeWidth="2.5" />
+
+        {/* ── Right goal ── */}
+        <path
+          d={`M ${rLineX} ${goalMouthTop}
+              C ${rLineX + netDepth * 0.3} ${goalMouthTop - spread * 0.5},
+                ${rNetX - curveSag} ${goalMouthTop - spread},
+                ${rNetX} ${goalMouthTop - spread}
+              L ${rNetX} ${goalMouthTop + goalMouthH + spread}
+              C ${rNetX - curveSag} ${goalMouthTop + goalMouthH + spread},
+                ${rLineX + netDepth * 0.3} ${goalMouthTop + goalMouthH + spread * 0.5},
+                ${rLineX} ${goalMouthTop + goalMouthH}`}
+          fill="url(#net-fill)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.5"
+        />
+        <line x1={rLineX} y1={goalMouthTop} x2={rNetX} y2={goalMouthTop - spread} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        <line x1={rLineX} y1={goalMouthTop + goalMouthH} x2={rNetX} y2={goalMouthTop + goalMouthH + spread} stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+        <path
+          d={`M ${rNetX} ${goalMouthTop - spread}
+              Q ${rNetX + 3} ${goalMouthTop + goalMouthH / 2}, ${rNetX} ${goalMouthTop + goalMouthH + spread}`}
+          stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" fill="none"
+        />
+        <circle cx={rLineX} cy={goalMouthTop} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+        <circle cx={rLineX} cy={goalMouthTop + goalMouthH} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+        <line x1={rLineX} y1={goalMouthTop} x2={rLineX} y2={goalMouthTop + goalMouthH} stroke="white" strokeWidth="2.5" />
       </g>
     );
   }
 
-  // 'classic' (default): flat rectangular net
+  // 'classic' (default): Rede quadrada — straight rectangular box net
   return (
     <g>
-      <rect x={leftX} y={goalTop} width={goalW} height={goalH} rx="1"
-        fill="url(#net-fill)" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
-      <rect x={rightX} y={goalTop} width={goalW} height={goalH} rx="1"
-        fill="url(#net-fill)" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
+      {/* ── Left goal ── */}
+      {/* Net area (rectangle extending behind goal line) */}
+      <rect x={lNetX} y={goalMouthTop} width={netDepth} height={goalMouthH}
+        fill="url(#net-fill)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.5" />
+      {/* Side net lines */}
+      <line x1={lLineX} y1={goalMouthTop} x2={lNetX} y2={goalMouthTop} stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+      <line x1={lLineX} y1={goalMouthTop + goalMouthH} x2={lNetX} y2={goalMouthTop + goalMouthH} stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+      {/* Back net line */}
+      <line x1={lNetX} y1={goalMouthTop} x2={lNetX} y2={goalMouthTop + goalMouthH} stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+      {/* Posts */}
+      <circle cx={lLineX} cy={goalMouthTop} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+      <circle cx={lLineX} cy={goalMouthTop + goalMouthH} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+      {/* Crossbar */}
+      <line x1={lLineX} y1={goalMouthTop} x2={lLineX} y2={goalMouthTop + goalMouthH} stroke="white" strokeWidth="2.5" />
+
+      {/* ── Right goal ── */}
+      <rect x={rLineX} y={goalMouthTop} width={netDepth} height={goalMouthH}
+        fill="url(#net-fill)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.5" />
+      <line x1={rLineX} y1={goalMouthTop} x2={rNetX} y2={goalMouthTop} stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+      <line x1={rLineX} y1={goalMouthTop + goalMouthH} x2={rNetX} y2={goalMouthTop + goalMouthH} stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+      <line x1={rNetX} y1={goalMouthTop} x2={rNetX} y2={goalMouthTop + goalMouthH} stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+      <circle cx={rLineX} cy={goalMouthTop} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+      <circle cx={rLineX} cy={goalMouthTop + goalMouthH} r={postWidth} fill="white" stroke="rgba(200,200,200,0.8)" strokeWidth="0.5" />
+      <line x1={rLineX} y1={goalMouthTop} x2={rLineX} y2={goalMouthTop + goalMouthH} stroke="white" strokeWidth="2.5" />
     </g>
   );
 }
@@ -236,8 +344,8 @@ export function PitchSVG({
   className,
 }: PitchSVGProps) {
   const s = stadiumStyle ?? DEFAULT_STADIUM_STYLE;
-  const totalW = FIELD_W + PAD * 2;
-  const totalH = FIELD_H + PAD * 2;
+  const totalW = FIELD_W;
+  const totalH = FIELD_H;
 
   const grassPatternEl = renderGrassPattern(s.pitch_pattern);
   const isGradient = s.pitch_pattern === 'concentric_circles';
@@ -270,20 +378,37 @@ export function PitchSVG({
       {/* Border frame */}
       <rect x="0" y="0" width={totalW} height={totalH} fill={s.border_color} rx="8" />
 
-      {/* Ad boards - top */}
-      <rect x={PAD} y={PAD - 4} width={INNER_W} height={4} fill={s.ad_board_color} />
-      {/* Ad boards - bottom */}
-      <rect x={PAD} y={PAD + INNER_H} width={INNER_W} height={4} fill={s.ad_board_color} />
+      {/* Ad boards - top (taller with stripe detail) */}
+      <rect x={PAD - 1} y={PAD - 10} width={INNER_W + 2} height={10} rx="1" fill={s.ad_board_color} />
+      <rect x={PAD - 1} y={PAD - 10} width={INNER_W + 2} height={2.5} rx="1" fill="rgba(255,255,255,0.08)" />
+      {/* Ad board segments (simulated ads) */}
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect key={`ad-t-${i}`} x={PAD + i * (INNER_W / 12) + 1} y={PAD - 8.5} width={INNER_W / 12 - 2} height={6} rx="0.5"
+          fill={i % 3 === 0 ? 'rgba(200,50,50,0.25)' : i % 3 === 1 ? 'rgba(50,100,200,0.2)' : 'rgba(50,180,80,0.2)'}
+        />
+      ))}
 
-      {/* Bench areas - centered in border zone, bottom side */}
-      <rect
-        x={totalW / 2 - 60}
-        y={PAD + INNER_H + 8}
-        width={120}
-        height={6}
-        rx={2}
-        fill={s.bench_color}
-      />
+      {/* Ad boards - bottom */}
+      <rect x={PAD - 1} y={PAD + INNER_H} width={INNER_W + 2} height={10} rx="1" fill={s.ad_board_color} />
+      <rect x={PAD - 1} y={PAD + INNER_H + 7.5} width={INNER_W + 2} height={2.5} rx="1" fill="rgba(255,255,255,0.08)" />
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect key={`ad-b-${i}`} x={PAD + i * (INNER_W / 12) + 1} y={PAD + INNER_H + 1.5} width={INNER_W / 12 - 2} height={6} rx="0.5"
+          fill={i % 3 === 0 ? 'rgba(200,180,30,0.25)' : i % 3 === 1 ? 'rgba(200,50,50,0.2)' : 'rgba(50,100,200,0.2)'}
+        />
+      ))}
+
+      {/* Bench areas - two benches on bottom side */}
+      <g>
+        <rect x={totalW / 2 - 100} y={PAD + INNER_H + 13} width={80} height={5} rx={1.5} fill={s.bench_color} />
+        <rect x={totalW / 2 + 20} y={PAD + INNER_H + 13} width={80} height={5} rx={1.5} fill={s.bench_color} />
+        {/* Bench seat marks */}
+        {Array.from({ length: 6 }, (_, i) => (
+          <React.Fragment key={`bench-${i}`}>
+            <rect x={totalW / 2 - 98 + i * 13} y={PAD + INNER_H + 13.5} width={10} height={3.5} rx={0.5} fill="rgba(255,255,255,0.06)" />
+            <rect x={totalW / 2 + 22 + i * 13} y={PAD + INNER_H + 13.5} width={10} height={3.5} rx={0.5} fill="rgba(255,255,255,0.06)" />
+          </React.Fragment>
+        ))}
+      </g>
 
       {/* Grass surface */}
       <rect x={PAD} y={PAD} width={INNER_W} height={INNER_H} fill={grassFill} />
@@ -304,6 +429,9 @@ export function PitchSVG({
 
       {/* Goals with net pattern */}
       {renderGoals(s.net_style)}
+
+      {/* Corner flags */}
+      {renderCornerFlags()}
 
       {/* Lighting overlay */}
       {renderLightingOverlay(s.lighting)}
