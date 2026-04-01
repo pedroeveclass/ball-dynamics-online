@@ -37,7 +37,7 @@ export interface MatchTurn {
 }
 
 export interface EventLog {
-  id: string; event_type: string; title: string; body: string; created_at: string;
+  id: string; event_type: string; title: string; body: string; created_at: string; payload?: Record<string, any> | null;
 }
 
 export interface MatchAction {

@@ -1436,29 +1436,12 @@ export default function MatchRoomPage() {
           // Direct click on trajectory line
           const directHit = distToTraj <= INTERCEPT_RADIUS && movePct <= tCursor;
           
-          // Circle overlap: even if cursor isn't on trajectory, if the player's
-          // movement circle from CURRENT position overlaps the trajectory, trigger intercept.
+          // Circle overlap: click must be NEAR the trajectory (within circle visual radius),
+          // and the player must be able to reach that point in time.
           let circleOverlap = false;
-          if (!directHit) {
-            // Check from player's CURRENT position: find closest trajectory point reachable
-            const playerX = drawingParticipant.field_x!;
-            const playerY = drawingParticipant.field_y!;
-            // Find closest point on trajectory to the player
-            const tPlayer = _tlen2 > 0 ? clamp(((playerX - bfx) * _tdx + (playerY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
-            const closestOnTrajX = bfx + _tdx * tPlayer;
-            const closestOnTrajY = bfy + _tdy * tPlayer;
-            const distPlayerToTraj = Math.sqrt((playerX - closestOnTrajX) ** 2 + (playerY - closestOnTrajY) ** 2);
-            if (distPlayerToTraj <= maxRange + INTERCEPT_RADIUS) {
-              // Player can reach the trajectory — check timing (arrive before/with ball)
-              const movePctToTraj = maxRange > 0 ? Math.min(1, distPlayerToTraj / maxRange) : 0;
-              if (movePctToTraj <= tPlayer || tPlayer < 0.05) {
-                circleOverlap = true;
-                interceptTargetX = closestOnTrajX;
-                interceptTargetY = closestOnTrajY;
-              }
-            }
-            // Also check at cursor position: if cursor is near trajectory within circle radius
-            if (!circleOverlap && moveDist <= maxRange && distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor) {
+          if (!directHit && moveDist <= maxRange) {
+            // Click is within movement range — check if click + circle radius overlaps trajectory
+            if (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor) {
               circleOverlap = true;
             }
           }
@@ -2387,8 +2370,15 @@ export default function MatchRoomPage() {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
     if (carriedLooseBallPos) return carriedLooseBallPos;
+    // Check event logs for ball position (ball_inertia, block, etc.)
+    for (let i = events.length - 1; i >= Math.max(0, events.length - 5); i--) {
+      const evt = events[i];
+      const payload = evt.payload as any;
+      if (payload?.x != null && payload?.y != null) return { x: Number(payload.x), y: Number(payload.y) };
+      if (payload?.ball_x != null && payload?.ball_y != null) return { x: Number(payload.ball_x), y: Number(payload.ball_y) };
+    }
     const lastBallAction = turnActions.find(a =>
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' || a.action_type === 'shoot' || a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' || a.action_type === 'move') &&
+      (isAnyPassAction(a.action_type) || isAnyShootAction(a.action_type) || a.action_type === 'move') &&
       a.target_x != null && a.target_y != null
     );
     if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
