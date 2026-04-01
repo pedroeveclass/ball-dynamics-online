@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Participant, MatchAction, PendingInterceptChoice, MatchData } from './types';
-import { ACTION_LABELS, isShootAction } from './constants';
+import { ACTION_LABELS, isShootAction, isAnyShootAction } from './constants';
 
 // ─── MatchActionMenu (extracted, memoized) ─────────────────────
 export interface MatchActionMenuProps {
@@ -65,7 +65,7 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
             if (bhAction.action_type === 'move' && isOpponent) {
               label = 'DESARME';
               icon = '\uD83E\uDDB5';
-            } else if (isShootAction(bhAction.action_type)) {
+            } else if (isAnyShootAction(bhAction.action_type)) {
               // When receive appears alongside block for GK on shoots, it means "Agarrar" (catch)
               const isGK = menuPlayer.field_pos === 'GK' || menuPlayer?.slot_position === 'GK';
               if (isGK) {

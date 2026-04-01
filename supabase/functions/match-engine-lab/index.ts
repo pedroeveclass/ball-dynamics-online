@@ -1192,7 +1192,7 @@ async function generateBotActions(
             
             if (distToIntercept <= maxMoveRange) {
               // Can reach — GK prefers block (espalmar) 70% for shoots, receive (agarrar) 30%
-              const gkActionType = (bhActionType && isShootType(bhActionType) && Math.random() < 0.7) ? 'block' : 'receive';
+              const gkActionType = (bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType)) && Math.random() < 0.7) ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: gkActionType,
@@ -1219,7 +1219,7 @@ async function generateBotActions(
           // ── Defenders: tackle if close, otherwise mark attackers ──
           if (bhDist <= maxMoveRange) {
             // Close enough to tackle — use block for shoots or early zone of high passes, receive otherwise
-            const defActionType = (bhActionType && (isShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch') && bhDist < 8))) ? 'block' : 'receive';
+            const defActionType = (bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_high') && bhDist < 8))) ? 'block' : 'receive';
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: defActionType,
@@ -1264,7 +1264,7 @@ async function generateBotActions(
           // ── Midfielders: press if close, tackle if very close ──
           if (bhDist <= maxMoveRange) {
             // Very close — use block for shoots or early zone of high passes, receive otherwise
-            const midActionType = (bhActionType && (isShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch') && bhDist < 8))) ? 'block' : 'receive';
+            const midActionType = (bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType) || ((bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_high') && bhDist < 8))) ? 'block' : 'receive';
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: midActionType,
@@ -1496,6 +1496,30 @@ function computeDeviation(
       skillFactor = (normalizeAttr(attrs.acuracia_chute ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
       minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
+    case 'header_low': {
+      difficultyMultiplier = 30; // slightly harder than pass_low
+      skillFactor = normalizeAttr(attrs.cabeceio ?? 40);
+      minRandomDeviation = dist < 15 ? 1.0 : dist < 30 ? 4.0 + (dist / 50) * 7.0 : 7.0 + (dist / 50) * 11.0;
+      break;
+    }
+    case 'header_high':
+      difficultyMultiplier = 45; // harder than pass_high
+      skillFactor = normalizeAttr(attrs.cabeceio ?? 40);
+      minRandomDeviation = 5.0 + (dist / 50) * 9.0;
+      break;
+    case 'header_controlled': {
+      // Like shoot_controlled but use cabeceio skill
+      difficultyMultiplier = 30;
+      skillFactor = normalizeAttr(attrs.cabeceio ?? 40);
+      minRandomDeviation = dist < 15 ? 1.0 : dist < 30 ? 4.0 + (dist / 50) * 7.0 : 7.0 + (dist / 50) * 11.0;
+      break;
+    }
+    case 'header_power':
+      // Like shoot_power but use cabeceio skill
+      difficultyMultiplier = 45;
+      skillFactor = (normalizeAttr(attrs.cabeceio ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
+      minRandomDeviation = 5.0 + (dist / 50) * 9.0;
+      break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
   }
@@ -1509,7 +1533,7 @@ function computeDeviation(
   // Final deviation
   const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4);
 
-  const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power';
+  const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || isHeaderShootType(actionType);
 
   let actualX: number;
   let actualY: number;
@@ -1527,8 +1551,8 @@ function computeDeviation(
     actualX = targetX;
     actualY = targetY + lateralDeviation;
 
-    // For shoot_power: if deviation is large, ball goes over the goal (wide)
-    if (actionType === 'shoot_power' && deviationRadius > 1.0) {
+    // For shoot_power/header_power: if deviation is large, ball goes over the goal (wide)
+    if ((actionType === 'shoot_power' || actionType === 'header_power') && deviationRadius > 1.0) {
       if (actualY >= 38 && actualY <= 62) {
         // Ball was still on target despite deviation — push it wide
         actualY = lateralSign > 0 ? 65 + Math.random() * 5 : 35 - Math.random() * 5;
@@ -1555,15 +1579,19 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
   if (interceptActionType === 'block') {
     switch (actionType) {
       case 'shoot_power':
+      case 'header_power':
         return [[0, 0.3]]; // ball rises early
       case 'pass_high':
+      case 'header_high':
         return [[0, 0.2], [0.8, 1]]; // yellow zones of high pass
       case 'pass_launch':
         return [[0, 0.35], [0.65, 1]]; // yellow zones of launch
       // Ground balls: NO block allowed
       case 'pass_low':
+      case 'header_low':
       case 'move':
       case 'shoot_controlled':
+      case 'header_controlled':
       default:
         return [];
     }
@@ -1571,14 +1599,18 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
   // Receive/dominate - allowed in green + yellow, NOT red
   switch (actionType) {
     case 'pass_low':
+    case 'header_low':
       return [[0, 1]]; // fully green, fully interceptable
     case 'pass_high':
+    case 'header_high':
       return [[0, 0.2], [0.8, 1]]; // only yellow zones (red in middle)
     case 'pass_launch':
       return [[0, 0.35], [0.65, 1]]; // only yellow zones
     case 'shoot_controlled':
+    case 'header_controlled':
       return [[0, 1]]; // ground ball, fully green
     case 'shoot_power':
+    case 'header_power':
       return [[0, 0.3]]; // only early part (yellow, before it rises to red)
     case 'move':
       return [[0, 1]]; // ground, fully green
@@ -1596,6 +1628,22 @@ function isShootType(action: string): boolean {
 }
 
 function isBlockType(t: string): boolean { return t === 'block'; }
+
+function isHeaderType(action: string): boolean {
+  return action === 'header_low' || action === 'header_high' || action === 'header_controlled' || action === 'header_power';
+}
+
+function isHeaderShootType(action: string): boolean {
+  return action === 'header_controlled' || action === 'header_power';
+}
+
+function isHeaderPassType(action: string): boolean {
+  return action === 'header_low' || action === 'header_high';
+}
+
+function isBallActionType(action: string): boolean {
+  return isPassType(action) || isShootType(action) || isHeaderType(action);
+}
 
 // ─── Skill-based interception probability ────────────────────
 interface InterceptContext {
@@ -1619,15 +1667,15 @@ function getInterceptContext(bhActionType: string, interceptorClubId: string, bh
   if (bhActionType === 'move' && isOpponent) {
     return { type: 'tackle', baseChance: 0.45 };
   }
-  if (isShootType(bhActionType)) {
+  if (isShootType(bhActionType) || isHeaderShootType(bhActionType)) {
     if (interceptorRoleType === 'GK' || !isOpponent) {
       return { type: 'gk_save', baseChance: 0.35 };
     }
     return { type: 'block_shot', baseChance: 0.25 };
   }
-  // Pass types
-  if (bhActionType === 'pass_low') return { type: 'receive_pass', baseChance: 0.85 };
-  if (bhActionType === 'pass_high') return { type: 'receive_pass', baseChance: 0.60 };
+  // Pass types (foot and header)
+  if (bhActionType === 'pass_low' || bhActionType === 'header_low') return { type: 'receive_pass', baseChance: 0.85 };
+  if (bhActionType === 'pass_high' || bhActionType === 'header_high') return { type: 'receive_pass', baseChance: 0.60 };
   if (bhActionType === 'pass_launch') return { type: 'receive_pass', baseChance: 0.70 };
 
   return { type: 'receive_pass', baseChance: 0.75 };
@@ -1738,8 +1786,8 @@ function computeInterceptSuccess(
         );
       } else {
         // Outfield block - attacker skill depends on whether it's a shot or pass
-        if (isShootType(ballActionType || '')) {
-          // Block Chute - attacker's accuracy and curve make it harder to block
+        if (isShootType(ballActionType || '') || isHeaderShootType(ballActionType || '')) {
+          // Block Chute/Cabeceio - attacker's accuracy and curve make it harder to block
           attackerSkill = (
             normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.50 +
             normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.30 +
@@ -1756,7 +1804,7 @@ function computeInterceptSuccess(
           );
         }
         // Defender blocking
-        if (isShootType(ballActionType || '')) {
+        if (isShootType(ballActionType || '') || isHeaderShootType(ballActionType || '')) {
           // Block Chute
           defenderSkill = (
             normalizeAttr(defenderAttrs.coragem ?? 40) * 0.25 +
@@ -1926,8 +1974,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     else console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
   }
 
-  if (isShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
-  if (isPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
+  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
+  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
@@ -3306,10 +3354,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const existing = seenParticipants.get(a.participant_id);
       const isBH = a.participant_id === activeTurn.ball_holder_participant_id;
       if (isBH) {
-        const isBallAction = isPassType(a.action_type) || isShootType(a.action_type);
+        const isBallAction = isBallActionType(a.action_type);
         const isMoveAction = a.action_type === 'move';
         if (existing) {
-          const hasBallAction = existing.types.some(t => isPassType(t) || isShootType(t));
+          const hasBallAction = existing.types.some(t => isBallActionType(t));
           const hasMoveAction = existing.types.some(t => t === 'move');
           if (isBallAction && hasBallAction) continue;
           if (isMoveAction && hasMoveAction) continue;
@@ -3356,13 +3404,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         acuracia_chute: Number(raw?.acuracia_chute ?? 40),
         controle_bola: Number(raw?.controle_bola ?? 40),
         um_toque: Number(raw?.um_toque ?? 40),
+        cabeceio: Number(raw?.cabeceio ?? 40),
       };
     };
 
     // ── Apply accuracy deviation to ball actions before resolution ──
     if (ballHolder) {
       const bhAction = allActions.find(a => a.participant_id === ballHolder.id);
-      if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
+      if (bhAction && isBallActionType(bhAction.action_type) && bhAction.target_x != null && bhAction.target_y != null) {
         // Check if deviation was already applied at phase transition
         const alreadyDeviated = bhAction.payload && typeof bhAction.payload === 'object' && (bhAction.payload as any).deviated;
         if (!alreadyDeviated) {
@@ -3396,7 +3445,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // ── Apply movement ──
     // Check if ball holder has a ball action (pass/shoot) — if so, defer their move until after resolution
     const bhHasBallAction = ballHolder && allActions.some(a =>
-      a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+      a.participant_id === ballHolder.id && isBallActionType(a.action_type));
 
     console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction}`);
     const resolutionMoveUpdates: Promise<any>[] = [];
@@ -3450,7 +3499,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ballHolder) {
       // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
       const ballHolderAction = allActions
-        .find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+        .find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
       if (ballHolderAction) {
@@ -3633,7 +3682,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               }
             }
           }
-        } else if (isPassType(ballHolderAction.action_type)) {
+        } else if (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) {
           // RULE: Only players who explicitly did 'receive' can get possession.
           // If nobody did receive on the ball trajectory, it's a loose ball.
           const receiversOnTrajectory = allActions.filter((a: any) =>
@@ -3674,7 +3723,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           nextBallHolderParticipantId = ballHolder.id;
         }
 
-        if (ballHolderAction && isPassType(ballHolderAction.action_type) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
+        if (ballHolderAction && (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
           const receiver = (participants || []).find(p => p.id === nextBallHolderParticipantId);
           if (receiver && receiver.club_id === possClubId && checkOffside(receiver, ballHolder, participants || [], possClubId || '', match)) {
             const defClub = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
@@ -3740,7 +3789,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             body: 'A bola perdeu a inércia e está parada no campo.',
           });
         } else {
-          const prevBhAction = allActions.find(a => isPassType(a.action_type) || isShootType(a.action_type));
+          const prevBhAction = allActions.find(a => isBallActionType(a.action_type));
           let inertiaBallX = ballEndPos ? (ballEndPos as { x: number; y: number }).x : 50;
           let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
           if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
@@ -3811,7 +3860,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       } else if (ballHolder) {
         // Loose ball — ball is at the pass/shot target
-        const bhAction = allActions.find((a: any) => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)));
+        const bhAction = allActions.find((a: any) => a.participant_id === ballHolder.id && isBallActionType(a.action_type));
         if (bhAction?.target_x != null && bhAction?.target_y != null) {
           ballEndPos = { x: Number(bhAction.target_x), y: Number(bhAction.target_y) };
         }
@@ -3824,7 +3873,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const inAwayGoal = ballEndPos.x >= 99 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
       if (inHomeGoal || inAwayGoal) {
         const ballAction = ballHolder
-          ? allActions.find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type) || a.action_type === 'move'))
+          ? allActions.find(a => a.participant_id === ballHolder.id && (isBallActionType(a.action_type) || a.action_type === 'move'))
           : null;
         const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
         if (!isOverGoal) {
@@ -3834,10 +3883,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             if (possClubId === match.away_club_id) awayScore++; else homeScore++;
           }
           const ballGoalAction = ballHolder
-            ? allActions.find(a => a.participant_id === ballHolder.id && (isPassType(a.action_type) || isShootType(a.action_type)))
+            ? allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
             : null;
-          const ballGoalType = ballGoalAction && isShootType(ballGoalAction.action_type) ? 'shot'
-            : (ballGoalAction && (ballGoalAction.action_type === 'pass_high' || ballGoalAction.action_type === 'pass_launch') ? 'header' : 'shot');
+          const ballGoalType = ballGoalAction && (isShootType(ballGoalAction.action_type) || isHeaderShootType(ballGoalAction.action_type)) ? 'shot'
+            : (ballGoalAction && isHeaderType(ballGoalAction.action_type) ? 'header'
+            : (ballGoalAction && (ballGoalAction.action_type === 'pass_high' || ballGoalAction.action_type === 'pass_launch') ? 'header' : 'shot'));
           const isBallGoalOwnGoal = (inAwayGoal && possClubId !== match.home_club_id && possClubId !== match.away_club_id)
             || (inHomeGoal && possClubId === match.home_club_id);
           eventsToLog.push({
@@ -4217,13 +4267,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
       const bhAction = bhActionsFromCache[0];
-      if (bhAction && (isPassType(bhAction.action_type) || isShootType(bhAction.action_type)) && bhAction.target_x != null && bhAction.target_y != null) {
+      if (bhAction && isBallActionType(bhAction.action_type) && bhAction.target_x != null && bhAction.target_y != null) {
         const raw = ballHolder.player_profile_id ? devAttrByProfile[ballHolder.player_profile_id] : null;
         const devAttrs: Record<string, number> = {
           passe_baixo: Number(raw?.passe_baixo ?? 40),
           passe_alto: Number(raw?.passe_alto ?? 40),
           forca_chute: Number(raw?.forca_chute ?? 40),
           acuracia_chute: Number(raw?.acuracia_chute ?? 40),
+          cabeceio: Number(raw?.cabeceio ?? 40),
         };
         const startX = Number(ballHolder.pos_x ?? 50);
         const startY = Number(ballHolder.pos_y ?? 50);

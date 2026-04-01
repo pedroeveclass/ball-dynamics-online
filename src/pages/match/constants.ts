@@ -11,6 +11,8 @@ export const ACTION_LABELS: Record<string, string> = {
   move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
   pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
   shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
+  header_low: 'CABECEIO BAIXO', header_high: 'CABECEIO ALTO',
+  header_controlled: 'CABECEIO CONTROLADO', header_power: 'CABECEIO FORTE',
   press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
   block_lane: 'BLOQUEAR ROTA', block: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
 };
@@ -62,6 +64,9 @@ export const pointToSegmentDistance = (px: number, py: number, ax: number, ay: n
 
 export const isShootAction = (t: string) => t === 'shoot' || t === 'shoot_controlled' || t === 'shoot_power';
 export const isPassAction = (t: string) => t === 'pass_low' || t === 'pass_high' || t === 'pass_launch';
+export const isHeaderAction = (t: string) => t === 'header_low' || t === 'header_high' || t === 'header_controlled' || t === 'header_power';
+export const isAnyShootAction = (t: string) => isShootAction(t) || t === 'header_controlled' || t === 'header_power';
+export const isAnyPassAction = (t: string) => isPassAction(t) || t === 'header_low' || t === 'header_high';
 
 // Safe date formatter
 export function formatScheduledDate(dateStr: string): string {
