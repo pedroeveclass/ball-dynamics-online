@@ -153,7 +153,15 @@ export function buildParticipantLayout(
   const awayFormation = awayClub?.formation || DEFAULT_FORMATION;
   const homeWithPos = ensureEleven(homeParts, isTestMatch ? 'test-home' : homeFormation, true, matchData.home_club_id);
   const awayWithPos = ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFormation, false, matchData.away_club_id);
-  const managersAndSpecs = enriched.filter(participant => participant.role_type !== 'player');
+  const managersAndSpecs = enriched
+    .filter(participant => participant.role_type !== 'player')
+    .map(participant => ({
+      ...participant,
+      // Give bench players a field_pos from their slot_position or player profile
+      field_pos: participant.field_pos
+        || (participant.slot_position ? participant.slot_position.replace(/^BENCH_?/i, '') : undefined)
+        || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined),
+    }));
 
   return [...homeWithPos, ...awayWithPos, ...managersAndSpecs];
 }
