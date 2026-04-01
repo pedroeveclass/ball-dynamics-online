@@ -1551,36 +1551,37 @@ function computeDeviation(
 
 // ─── Height-based interception zones ─────────────────────────────
 function getInterceptableRanges(actionType: string, interceptActionType?: string): Array<[number, number]> {
-  // Block actions have different interceptable zones than receive
+  // Block actions - only allowed in yellow zones (elevated ball)
   if (interceptActionType === 'block') {
     switch (actionType) {
-      case 'shoot_controlled':
       case 'shoot_power':
-      case 'shoot':
-        return [[0, 1]]; // entire trajectory is blockable for shoots
+        return [[0, 0.3]]; // ball rises early
       case 'pass_high':
+        return [[0, 0.2], [0.8, 1]]; // yellow zones of high pass
       case 'pass_launch':
-        return [[0, 0.2]]; // block-only zone at start of high passes
+        return [[0, 0.35], [0.65, 1]]; // yellow zones of launch
+      // Ground balls: NO block allowed
       case 'pass_low':
-        return []; // no block needed for pass_low (use receive instead)
+      case 'move':
+      case 'shoot_controlled':
       default:
         return [];
     }
   }
-  // Receive actions (default)
+  // Receive/dominate - allowed in green + yellow, NOT red
   switch (actionType) {
     case 'pass_low':
-      return [[0, 1]]; // fully interceptable
+      return [[0, 1]]; // fully green, fully interceptable
     case 'pass_high':
-      return [[0, 0.2], [0.8, 1]]; // yellow zones only
+      return [[0, 0.2], [0.8, 1]]; // only yellow zones (red in middle)
     case 'pass_launch':
-      return [[0, 0.35], [0.65, 1]]; // yellow zones (interceptable)
+      return [[0, 0.35], [0.65, 1]]; // only yellow zones
     case 'shoot_controlled':
-      return [[0, 1]]; // ground ball, fully interceptable
+      return [[0, 1]]; // ground ball, fully green
     case 'shoot_power':
-      return [[0, 0.3]]; // only near start
+      return [[0, 0.3]]; // only early part (yellow, before it rises to red)
     case 'move':
-      return [[0, 1]];
+      return [[0, 1]]; // ground, fully green
     default:
       return [[0, 1]];
   }
@@ -1645,41 +1646,139 @@ function computeInterceptSuccess(
 
   switch (context.type) {
     case 'tackle':
-      attackerSkill = (normalizeAttr(attackerAttrs.drible ?? 40) * 0.35 + normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.25 +
-        normalizeAttr(attackerAttrs.forca ?? 40) * 0.2 + normalizeAttr(attackerAttrs.agilidade ?? 40) * 0.2);
-      defenderSkill = (normalizeAttr(defenderAttrs.desarme ?? 40) * 0.3 + normalizeAttr(defenderAttrs.marcacao ?? 40) * 0.25 +
-        normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.2 + normalizeAttr(defenderAttrs.forca ?? 40) * 0.15 +
-        normalizeAttr(defenderAttrs.antecipacao ?? 40) * 0.1);
+      // Attacker: trying to dribble past
+      attackerSkill = (
+        normalizeAttr(attackerAttrs.drible ?? 40) * 0.30 +
+        normalizeAttr(attackerAttrs.agilidade ?? 40) * 0.20 +
+        normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.20 +
+        normalizeAttr(attackerAttrs.coragem ?? 40) * 0.10 +
+        normalizeAttr(attackerAttrs.equilibrio ?? 40) * 0.10 +
+        normalizeAttr(attackerAttrs.forca ?? 40) * 0.10
+      );
+      // Defender: trying to steal
+      defenderSkill = (
+        normalizeAttr(defenderAttrs.desarme ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.marcacao ?? 40) * 0.20 +
+        normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.antecipacao ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.coragem ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.posicionamento_defensivo ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.05
+      );
       break;
     case 'receive_pass':
-      attackerSkill = (normalizeAttr(attackerAttrs.passe_baixo ?? 40) * 0.4 + normalizeAttr(attackerAttrs.visao_jogo ?? 40) * 0.3 +
-        normalizeAttr(attackerAttrs.passe_alto ?? 40) * 0.3);
-      defenderSkill = (normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.3 + normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.2 +
-        normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.2 + normalizeAttr(defenderAttrs.um_toque ?? 40) * 0.3);
+      attackerSkill = (
+        normalizeAttr(attackerAttrs.passe_baixo ?? 40) * 0.50 +
+        normalizeAttr(attackerAttrs.visao_jogo ?? 40) * 0.15 +
+        normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.15 +
+        normalizeAttr(attackerAttrs.curva ?? 40) * 0.10 +
+        normalizeAttr(attackerAttrs.tomada_decisao ?? 40) * 0.10
+      );
+      defenderSkill = (
+        normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.visao_jogo ?? 40) * 0.20 +
+        normalizeAttr(defenderAttrs.equilibrio ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.posicionamento_ofensivo ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.trabalho_equipe ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.um_toque ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.05
+      );
       break;
     case 'block_shot':
-      attackerSkill = (normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.4 + normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.3 +
-        normalizeAttr(attackerAttrs.curva ?? 40) * 0.3);
-      defenderSkill = (normalizeAttr(defenderAttrs.antecipacao ?? 40) * 0.3 + normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.25 +
-        normalizeAttr(defenderAttrs.coragem ?? 40) * 0.25 + normalizeAttr(defenderAttrs.forca ?? 40) * 0.2);
+      // Attacker (shooter) skill
+      attackerSkill = (
+        normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.50 +
+        normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.30 +
+        normalizeAttr(attackerAttrs.curva ?? 40) * 0.10 +
+        normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.10
+      );
+      // Defender blocking
+      defenderSkill = (
+        normalizeAttr(defenderAttrs.coragem ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.20 +
+        normalizeAttr(defenderAttrs.marcacao ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.forca ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.posicionamento_defensivo ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.desarme ?? 40) * 0.05
+      );
       break;
     case 'gk_save':
-      attackerSkill = (normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.4 + normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.3 +
-        normalizeAttr(attackerAttrs.curva ?? 40) * 0.3);
-      defenderSkill = (normalizeAttr(defenderAttrs.reflexo ?? 40) * 0.3 + normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) * 0.25 +
-        normalizeAttr(defenderAttrs.um_contra_um ?? 40) * 0.25 + normalizeAttr(defenderAttrs.tempo_reacao ?? 40) * 0.2);
+      attackerSkill = (
+        normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.50 +
+        normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.30 +
+        normalizeAttr(attackerAttrs.curva ?? 40) * 0.10 +
+        normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.10
+      );
+      defenderSkill = (
+        normalizeAttr(defenderAttrs.reflexo ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.pegada ?? 40) * 0.25 +
+        normalizeAttr(defenderAttrs.tempo_reacao ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.15 +
+        normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) * 0.10 +
+        normalizeAttr(defenderAttrs.um_contra_um ?? 40) * 0.10
+      );
       break;
     case 'block':
       if (context.defenderRole === 'goalkeeper') {
-        // GK espalmar: easier than agarrar
-        attackerSkill = (normalizeAttr(attackerAttrs.acuracia_chute ?? 40) + normalizeAttr(attackerAttrs.forca_chute ?? 40)) / 2;
-        defenderSkill = (normalizeAttr(defenderAttrs.reflexo ?? 40) + normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) + normalizeAttr(defenderAttrs.pegada ?? 40)) / 3;
+        // Espalmar
+        attackerSkill = (
+          normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.50 +
+          normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.30 +
+          normalizeAttr(attackerAttrs.curva ?? 40) * 0.10 +
+          normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.10
+        );
+        defenderSkill = (
+          normalizeAttr(defenderAttrs.reflexo ?? 40) * 0.30 +
+          normalizeAttr(defenderAttrs.tempo_reacao ?? 40) * 0.20 +
+          normalizeAttr(defenderAttrs.posicionamento_gol ?? 40) * 0.15 +
+          normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.15 +
+          normalizeAttr(defenderAttrs.pegada ?? 40) * 0.10 +
+          normalizeAttr(defenderAttrs.um_contra_um ?? 40) * 0.10
+        );
       } else {
-        // Outfield block: much harder
-        attackerSkill = isShootType(ballActionType || '')
-          ? (normalizeAttr(attackerAttrs.forca_chute ?? 40) + normalizeAttr(attackerAttrs.acuracia_chute ?? 40)) / 2
-          : (normalizeAttr(attackerAttrs.passe_alto ?? 40) + normalizeAttr(attackerAttrs.passe_baixo ?? 40)) / 2;
-        defenderSkill = (normalizeAttr(defenderAttrs.antecipacao ?? 40) + normalizeAttr(defenderAttrs.coragem ?? 40) + normalizeAttr(defenderAttrs.posicionamento_defensivo ?? 40)) / 3;
+        // Outfield block - attacker skill depends on whether it's a shot or pass
+        if (isShootType(ballActionType || '')) {
+          // Block Chute - attacker's accuracy and curve make it harder to block
+          attackerSkill = (
+            normalizeAttr(attackerAttrs.acuracia_chute ?? 40) * 0.50 +
+            normalizeAttr(attackerAttrs.forca_chute ?? 40) * 0.30 +
+            normalizeAttr(attackerAttrs.curva ?? 40) * 0.10 +
+            normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.10
+          );
+        } else {
+          // Block Passe - passer's curve and pass skill make it harder
+          attackerSkill = (
+            normalizeAttr(attackerAttrs.curva ?? 40) * 0.30 +
+            normalizeAttr(attackerAttrs.passe_alto ?? 40) * 0.30 +
+            normalizeAttr(attackerAttrs.visao_jogo ?? 40) * 0.20 +
+            normalizeAttr(attackerAttrs.controle_bola ?? 40) * 0.20
+          );
+        }
+        // Defender blocking
+        if (isShootType(ballActionType || '')) {
+          // Block Chute
+          defenderSkill = (
+            normalizeAttr(defenderAttrs.coragem ?? 40) * 0.25 +
+            normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.20 +
+            normalizeAttr(defenderAttrs.marcacao ?? 40) * 0.15 +
+            normalizeAttr(defenderAttrs.forca ?? 40) * 0.15 +
+            normalizeAttr(defenderAttrs.posicionamento_defensivo ?? 40) * 0.10 +
+            normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.10 +
+            normalizeAttr(defenderAttrs.desarme ?? 40) * 0.05
+          );
+        } else {
+          // Block Passe
+          defenderSkill = (
+            normalizeAttr(defenderAttrs.marcacao ?? 40) * 0.20 +
+            normalizeAttr(defenderAttrs.desarme ?? 40) * 0.15 +
+            normalizeAttr(defenderAttrs.agilidade ?? 40) * 0.15 +
+            normalizeAttr(defenderAttrs.forca ?? 40) * 0.15 +
+            normalizeAttr(defenderAttrs.coragem ?? 40) * 0.15 +
+            normalizeAttr(defenderAttrs.posicionamento_defensivo ?? 40) * 0.10 +
+            normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.10
+          );
+        }
       }
       break;
   }
@@ -1750,7 +1849,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     const keys = ['drible','controle_bola','forca','agilidade','desarme','marcacao','antecipacao',
       'passe_baixo','passe_alto','visao_jogo','tomada_decisao','um_toque','acuracia_chute',
       'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao',
-      'cabeceio','pulo','defesa_aerea','posicionamento_defensivo','pegada'];
+      'cabeceio','pulo','defesa_aerea','posicionamento_defensivo','pegada',
+      'equilibrio','posicionamento_ofensivo','trabalho_equipe'];
     for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
     return result;
   };
@@ -1781,6 +1881,10 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     } else if (bhActionType === 'pass_launch') {
       if (t > 0.35 && t < 0.65) ballHeightZone = 'red';
       else if (t > 0.05 && t < 0.95) ballHeightZone = 'yellow';
+    }
+    if (ballHeightZone === 'red') {
+      console.log(`[ENGINE] Intercept skipped (red zone): ball too high at t=${t.toFixed(2)}`);
+      continue;
     }
     const defHeight = getPlayerHeight(candidate.participant);
     const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType);
