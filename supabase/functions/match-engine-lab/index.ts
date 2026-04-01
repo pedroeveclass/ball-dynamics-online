@@ -1456,6 +1456,7 @@ function computeDeviation(
   startY: number,
   actionType: string,
   attrs: Record<string, number>,
+  isGK: boolean = false,
 ): DeviationResult {
   const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
 
@@ -1467,20 +1468,22 @@ function computeDeviation(
     case 'pass_low': {
       // Short (<15): ~1u | Medium (20-30): 5-11u | Long (50): ~20u
       difficultyMultiplier = 25;
-      skillFactor = normalizeAttr(attrs.passe_baixo ?? 40);
+      skillFactor = normalizeAttr(isGK ? (attrs.distribuicao_curta ?? 40) : (attrs.passe_baixo ?? 40));
       minRandomDeviation = dist < 15 ? 0.5 : dist < 30 ? 3.0 + (dist / 50) * 6.0 : 6.0 + (dist / 50) * 10.0;
       break;
     }
     case 'pass_high':
       // dist=25: 8-15u | dist=35: 10-18u | dist=50: 15-25u
       difficultyMultiplier = 40;
-      skillFactor = normalizeAttr(attrs.passe_alto ?? 40);
+      skillFactor = normalizeAttr(isGK ? (attrs.distribuicao_longa ?? 40) : (attrs.passe_alto ?? 40));
       minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
     case 'pass_launch':
       // dist=30: 10-18u | dist=50: 18-30u | dist=70: 30-50u
       difficultyMultiplier = 35;
-      skillFactor = (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
+      skillFactor = isGK
+        ? normalizeAttr(attrs.distribuicao_longa ?? 40)
+        : (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
       minRandomDeviation = 5.0 + (dist / 50) * 10.0;
       break;
     case 'shoot_controlled': {
@@ -1688,6 +1691,7 @@ function computeInterceptSuccess(
   ballHeightZone?: 'green' | 'yellow' | 'red',
   defenderHeight?: string,
   ballActionType?: string,
+  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string },
 ): { success: boolean; chance: number; foul: boolean; card?: 'yellow' } {
   let attackerSkill: number;
   let defenderSkill: number;
@@ -1722,15 +1726,22 @@ function computeInterceptSuccess(
         normalizeAttr(attackerAttrs.curva ?? 40) * 0.10 +
         normalizeAttr(attackerAttrs.tomada_decisao ?? 40) * 0.10
       );
-      defenderSkill = (
-        normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.25 +
-        normalizeAttr(defenderAttrs.visao_jogo ?? 40) * 0.20 +
-        normalizeAttr(defenderAttrs.equilibrio ?? 40) * 0.15 +
-        normalizeAttr(defenderAttrs.posicionamento_ofensivo ?? 40) * 0.15 +
-        normalizeAttr(defenderAttrs.trabalho_equipe ?? 40) * 0.10 +
-        normalizeAttr(defenderAttrs.um_toque ?? 40) * 0.10 +
-        normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.05
-      );
+      {
+        // Dynamic positioning: use offensive if ball in attack half, defensive if in defense half
+        const receiverX = interceptContext?.interceptX ?? 50;
+        const receiverIsHome = interceptContext?.participantClubId === interceptContext?.homeClubId;
+        const isInAttackHalf = receiverIsHome ? receiverX > 50 : receiverX < 50;
+        const posAttr = isInAttackHalf ? 'posicionamento_ofensivo' : 'posicionamento_defensivo';
+        defenderSkill = (
+          normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.25 +
+          normalizeAttr(defenderAttrs.visao_jogo ?? 40) * 0.20 +
+          normalizeAttr(defenderAttrs.equilibrio ?? 40) * 0.15 +
+          normalizeAttr(defenderAttrs[posAttr] ?? 40) * 0.15 +
+          normalizeAttr(defenderAttrs.trabalho_equipe ?? 40) * 0.10 +
+          normalizeAttr(defenderAttrs.um_toque ?? 40) * 0.10 +
+          normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.05
+        );
+      }
       break;
     case 'block_shot':
       // Attacker (shooter) skill
@@ -1843,6 +1854,11 @@ function computeInterceptSuccess(
     };
     const heightMod = heightMods[defenderHeight || 'Médio'] ?? 0;
     successChance *= (0.7 + heightBonus * 0.6 + heightMod);
+
+    // Extra GK aerial bonus for agarrar/espalmar
+    if (context.type === 'gk_save' || (context.type === 'block' && context.defenderRole === 'goalkeeper')) {
+      successChance += normalizeAttr(defenderAttrs.defesa_aerea ?? 40) * 0.10;
+    }
   }
 
   successChance = Math.max(0.05, Math.min(0.95, successChance));
@@ -1926,6 +1942,25 @@ function resolveDispute(
     defSkill = defSkill * 0.85 + normalizeAttr(defA('pulo')) * 0.15;
   }
 
+  // GK bonuses for defender
+  const defSlotPos = defenderCandidate.participant._slot_position || defenderCandidate.participant.field_pos || '';
+  if (defSlotPos === 'GK') {
+    // Saída do gol: bonus when GK comes out of goal area
+    const defX = Number(defenderCandidate.participant.pos_x ?? 50);
+    const isGKFarFromGoal = defX > 18 && defX < 82; // GK outside their box
+    if (isGKFarFromGoal) {
+      defSkill += normalizeAttr(defA('saida_gol')) * 0.10;
+    }
+    // Comando de área: bonus in aerial disputes inside the box
+    if (ballHeightZone === 'yellow') {
+      defSkill += normalizeAttr(defA('comando_area')) * 0.10;
+    }
+    // Defesa aérea: general aerial bonus
+    if (ballHeightZone === 'yellow') {
+      defSkill += normalizeAttr(defA('defesa_aerea')) * 0.05;
+    }
+  }
+
   // Base chance: 50/50, modified by skills
   let attackerChance = 0.50 + (atkSkill - defSkill) * 0.30;
   attackerChance = Math.max(0.15, Math.min(0.85, attackerChance));
@@ -1956,7 +1991,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       'passe_baixo','passe_alto','visao_jogo','tomada_decisao','um_toque','acuracia_chute',
       'forca_chute','curva','coragem','reflexo','posicionamento_gol','um_contra_um','tempo_reacao',
       'cabeceio','pulo','defesa_aerea','posicionamento_defensivo','pegada',
-      'equilibrio','posicionamento_ofensivo','trabalho_equipe'];
+      'equilibrio','posicionamento_ofensivo','trabalho_equipe',
+      'distribuicao_curta','distribuicao_longa','saida_gol','comando_area','resistencia','stamina'];
     for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
     return result;
   };
@@ -2070,7 +2106,11 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       continue;
     }
     const defHeight = getPlayerHeight(candidate.participant);
-    const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType);
+    const { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType, {
+      interceptX: candidate.interceptX,
+      participantClubId: candidate.participant.club_id,
+      homeClubId: bh?.club_id || possClubId,
+    });
     const chancePct = `${(chance * 100).toFixed(0)}%`;
 
     if (success) {
