@@ -17,37 +17,37 @@ const SKILL_CONFIG: Record<string, { label: string; description: string; icon: t
     label: 'Tática',
     description: 'Reduz penalização de jogador fora de posição.',
     icon: Brain,
-    bonusLabel: '-1.4% penalidade/nível',
+    bonusLabel: '-0.7% penalidade/nível (7% max)',
   },
   formation: {
     label: 'Formação',
     description: 'Bônus de atributos ao usar a formação treinada.',
     icon: Target,
-    bonusLabel: '+1% atributos/nível',
+    bonusLabel: '+0.5% atributos/nível (5% max)',
   },
   fitness: {
     label: 'Preparação Física',
     description: 'Reduz perda de stamina por turno.',
     icon: Dumbbell,
-    bonusLabel: '-1% stamina/nível',
+    bonusLabel: '-0.5% stamina/nível (5% max)',
   },
   set_piece: {
     label: 'Bola Parada',
     description: 'Melhora precisão em cobranças (falta, escanteio, pênalti).',
     icon: Target,
-    bonusLabel: '-2% desvio/nível',
+    bonusLabel: '-1% desvio/nível (10% max)',
   },
   mentality: {
     label: 'Mentalidade',
     description: 'Bônus em atributos mentais quando perdendo.',
     icon: Heart,
-    bonusLabel: '+1% mentais/nível',
+    bonusLabel: '+0.5% mentais/nível (5% max)',
   },
   high_press: {
     label: 'Pressão Alta',
     description: 'Aumenta chance de roubar a bola.',
     icon: Zap,
-    bonusLabel: '+1% roubo/nível',
+    bonusLabel: '+0.5% roubo/nível (5% max)',
   },
 };
 
@@ -134,7 +134,7 @@ export default function ManagerCoachPage() {
           {Object.entries(SKILL_CONFIG).map(([key, config]) => {
             const skill = skills.find(s => s.skill_type === key);
             const level = skill?.level || 0;
-            const isMaxed = level >= 5;
+            const isMaxed = level >= 10;
             const Icon = config.icon;
 
             return (
@@ -145,7 +145,7 @@ export default function ManagerCoachPage() {
                     <span className="font-display font-bold text-sm">{config.label}</span>
                   </div>
                   <span className="font-display font-bold text-lg text-tactical">
-                    {level}/5
+                    {level}/10
                   </span>
                 </div>
 
@@ -153,7 +153,7 @@ export default function ManagerCoachPage() {
 
                 {/* Level bar */}
                 <div className="flex gap-1">
-                  {Array.from({ length: 5 }, (_, i) => (
+                  {Array.from({ length: 10 }, (_, i) => (
                     <div key={i} className={`h-2 flex-1 rounded-full ${i < level ? 'bg-tactical' : 'bg-muted/30'}`} />
                   ))}
                 </div>
