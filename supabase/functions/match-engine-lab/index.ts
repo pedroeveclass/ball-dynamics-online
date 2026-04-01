@@ -164,15 +164,16 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     // If still no position, try to infer from initial field position
     // (bots created by fillBots have pos_x/pos_y matching formation slots)
     if (!p._slot_position && p.is_bot && p.pos_x != null) {
-      // Find the closest formation position based on coordinates
       const px = Number(p.pos_x);
       const py = Number(p.pos_y);
       const formSlots = FORMATION_POSITIONS['4-4-2']; // default
       let bestDist = Infinity;
       let bestPos = 'CM';
+      // Check if this team already has an explicit GK
+      const teamHasGK = gkIdByClub.has(p.club_id);
       for (const slot of formSlots) {
-        const sx = p.club_id === participants.find((pp: any) => pp.club_id === p.club_id)?.club_id
-          ? slot.x : 100 - slot.x; // approximate home/away
+        // Skip GK slot if team already has one
+        if (slot.pos === 'GK' && teamHasGK) continue;
         const d = Math.sqrt((px - slot.x) ** 2 + (py - slot.y) ** 2);
         const dMirror = Math.sqrt((px - (100 - slot.x)) ** 2 + (py - slot.y) ** 2);
         const minD = Math.min(d, dMirror);
@@ -894,6 +895,13 @@ async function generateBotActions(
   const passDestination = (bhTargetX != null && bhTargetY != null && bhActionType && bhActionType !== 'move')
     ? { x: bhTargetX, y: bhTargetY } : null;
 
+  // Ball speed factor for intercept range (bot AI should match engine validation)
+  const bhBallSpeedFactor = bhActionType === 'shoot_power' ? 0.25
+    : bhActionType === 'shoot_controlled' ? 0.35
+    : bhActionType === 'pass_launch' ? 0.5
+    : bhActionType === 'pass_high' ? 0.65
+    : 1.0;
+
   // Track pass interceptors (max 2 defenders try to intercept at pass destination)
   let passInterceptorCount = 0;
 
@@ -1253,7 +1261,7 @@ async function generateBotActions(
           // ── Defenders: intercept pass destination, tackle BH if close, or mark ──
           // Check distance to pass destination (if a pass is happening)
           const distToPassDest = passDestination ? Math.sqrt((posX - passDestination.x) ** 2 + (posY - passDestination.y) ** 2) : Infinity;
-          if (passDestination && distToPassDest <= maxMoveRange && passInterceptorCount < 2) {
+          if (passDestination && distToPassDest <= maxMoveRange * bhBallSpeedFactor && passInterceptorCount < 2) {
             // Near the pass destination — try to intercept the pass there
             passInterceptorCount++;
             actions.push({
@@ -1325,7 +1333,7 @@ async function generateBotActions(
         } else if (role === 'defensiveMid' || role === 'centralMid') {
           // ── Midfielders: intercept pass destination, press if close ──
           const distToPassDest = passDestination ? Math.sqrt((posX - passDestination.x) ** 2 + (posY - passDestination.y) ** 2) : Infinity;
-          if (passDestination && distToPassDest <= maxMoveRange && passInterceptorCount < 2) {
+          if (passDestination && distToPassDest <= maxMoveRange * bhBallSpeedFactor && passInterceptorCount < 2) {
             passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -3441,8 +3449,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       await supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds);
     }
 
-    // Brief delay so clients see bot positions update before phase transitions
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Brief delay so clients see bot positions update via realtime before phase transitions
+    await new Promise(resolve => setTimeout(resolve, 800));
 
     // Resolve current positioning turn
     await supabase.from('match_turns')
@@ -4141,8 +4149,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const startY = Number(ballHolder.pos_y ?? 50);
             const dirX = Number(prevBhAction.target_x) - startX;
             const dirY = Number(prevBhAction.target_y) - startY;
-            inertiaBallX = Math.max(0, Math.min(100, Number(prevBhAction.target_x) + dirX * 0.15));
-            inertiaBallY = Math.max(0, Math.min(100, Number(prevBhAction.target_y) + dirY * 0.15));
+            // Don't clamp — allow ball to go out of bounds so detectOutOfBounds handles it
+            inertiaBallX = Number(prevBhAction.target_x) + dirX * 0.15;
+            inertiaBallY = Number(prevBhAction.target_y) + dirY * 0.15;
           }
           ballEndPos = { x: inertiaBallX, y: inertiaBallY };
           eventsToLog.push({
