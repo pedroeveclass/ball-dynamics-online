@@ -844,13 +844,6 @@ export default function MatchRoomPage() {
   // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
   const isDeadBall = activeTurn?.phase === 'ball_holder' && prevTurnWasPositioningRef.current;
 
-  // ── Apply pending substitutions when dead ball / positioning phase starts ──
-  useEffect(() => {
-    if (pendingSubstitutions.length > 0 && isPositioningTurn) {
-      applyPendingSubstitutions();
-    }
-  }, [isPositioningTurn, pendingSubstitutions.length, applyPendingSubstitutions]);
-
   // ── Possession change detection ────────────────────────────
   useEffect(() => {
     if (!activeTurn) return;
@@ -1283,6 +1276,13 @@ export default function MatchRoomPage() {
       toast.success(`Substituição: ${inPlayer.player_name?.split(' ')[0] || 'Jogador'} entrou!`);
     }
   }, [matchId]);
+
+  // ── Apply pending substitutions when dead ball / positioning phase starts ──
+  useEffect(() => {
+    if (pendingSubstitutions.length > 0 && isPositioningTurn) {
+      applyPendingSubstitutions();
+    }
+  }, [isPositioningTurn, pendingSubstitutions.length, applyPendingSubstitutions]);
 
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
