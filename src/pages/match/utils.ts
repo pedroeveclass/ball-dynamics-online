@@ -90,15 +90,17 @@ export function buildParticipantLayout(
   const assignPositions = (list: Participant[], formation: string, isHome: boolean): Participant[] => {
     const positions = getFormationPositions(formation, isHome, isKickoffStart);
     const sorted = [...list].sort((a, b) => {
+      // GK ALWAYS first — highest priority, overrides sort_order
+      const aIsGK = isGoalkeeper(a);
+      const bIsGK = isGoalkeeper(b);
+      if (aIsGK && !bIsGK) return -1;
+      if (!aIsGK && bIsGK) return 1;
+      // Then by sort_order
       const aSortOrder = a.lineup_slot_id ? slotMap.get(a.lineup_slot_id)?.sort_order ?? null : null;
       const bSortOrder = b.lineup_slot_id ? slotMap.get(b.lineup_slot_id)?.sort_order ?? null : null;
       if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
       if (aSortOrder != null && bSortOrder == null) return -1;
       if (aSortOrder == null && bSortOrder != null) return 1;
-      const aIsGK = isGoalkeeper(a);
-      const bIsGK = isGoalkeeper(b);
-      if (aIsGK && !bIsGK) return -1;
-      if (!aIsGK && bIsGK) return 1;
       return a.id.localeCompare(b.id);
     });
 
