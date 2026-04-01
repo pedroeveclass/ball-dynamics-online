@@ -3600,6 +3600,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
   }
 
+  // Helper to get coach bonus for a club (uses tickCache)
+  const getCoachBonus = (clubId: string, skillType: string): number => {
+    const bonuses = clubId === match.home_club_id ? (tickCache.coachBonuses?.home || []) : (tickCache.coachBonuses?.away || []);
+    const b = bonuses.find((x: any) => x.skill_type === skillType);
+    return b?.bonus_value ?? 0;
+  };
+
   const ballHolder = activeTurn.ball_holder_participant_id
     ? (participants || []).find(p => p.id === activeTurn.ball_holder_participant_id)
     : null;

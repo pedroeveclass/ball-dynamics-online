@@ -54,6 +54,7 @@ export type Database = {
           balance: number
           club_id: string
           created_at: string
+          debt_warning_since: string | null
           id: string
           projected_expense: number
           projected_income: number
@@ -64,6 +65,7 @@ export type Database = {
           balance?: number
           club_id: string
           created_at?: string
+          debt_warning_since?: string | null
           id?: string
           projected_expense?: number
           projected_income?: number
@@ -74,6 +76,7 @@ export type Database = {
           balance?: number
           club_id?: string
           created_at?: string
+          debt_warning_since?: string | null
           id?: string
           projected_expense?: number
           projected_income?: number
@@ -225,6 +228,47 @@ export type Database = {
             columns: ["manager_profile_id"]
             isOneToOne: true
             referencedRelation: "manager_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_training: {
+        Row: {
+          club_id: string
+          created_at: string
+          id: string
+          last_trained_at: string | null
+          level: number
+          skill_type: string
+          trained_formation: string | null
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          id?: string
+          last_trained_at?: string | null
+          level?: number
+          skill_type: string
+          trained_formation?: string | null
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          id?: string
+          last_trained_at?: string | null
+          level?: number
+          skill_type?: string
+          trained_formation?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_training_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
             referencedColumns: ["id"]
           },
         ]
@@ -1605,6 +1649,7 @@ export type Database = {
           full_name: string
           height: string
           id: string
+          last_match_at: string | null
           last_trained_at: string | null
           money: number
           overall: number
@@ -1626,6 +1671,7 @@ export type Database = {
           full_name: string
           height?: string
           id?: string
+          last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
           overall?: number
@@ -1647,6 +1693,7 @@ export type Database = {
           full_name?: string
           height?: string
           id?: string
+          last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
           overall?: number
@@ -1658,6 +1705,82 @@ export type Database = {
           weekly_salary?: number
         }
         Relationships: []
+      }
+      player_transfers: {
+        Row: {
+          cancel_reason: string | null
+          cancelled_at: string | null
+          completed_at: string | null
+          contract_months: number
+          created_at: string
+          from_club_id: string | null
+          id: string
+          player_profile_id: string
+          release_clause: number
+          requested_at: string
+          status: string
+          to_club_id: string
+          transfer_fee: number
+          weekly_salary: number
+          window_month: string | null
+        }
+        Insert: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          contract_months?: number
+          created_at?: string
+          from_club_id?: string | null
+          id?: string
+          player_profile_id: string
+          release_clause?: number
+          requested_at?: string
+          status?: string
+          to_club_id: string
+          transfer_fee?: number
+          weekly_salary?: number
+          window_month?: string | null
+        }
+        Update: {
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          contract_months?: number
+          created_at?: string
+          from_club_id?: string | null
+          id?: string
+          player_profile_id?: string
+          release_clause?: number
+          requested_at?: string
+          status?: string
+          to_club_id?: string
+          transfer_fee?: number
+          weekly_salary?: number
+          window_month?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_transfers_from_club_id_fkey"
+            columns: ["from_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_transfers_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_transfers_to_club_id_fkey"
+            columns: ["to_club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -2001,6 +2124,9 @@ export type Database = {
           ticket_price: number
         }[]
       }
+      can_fire_just_cause: { Args: { p_player_id: string }; Returns: boolean }
+      cancel_transfer: { Args: { p_transfer_id: string }; Returns: boolean }
+      check_bankruptcies: { Args: never; Returns: number }
       claim_match_turn_for_processing: {
         Args: {
           p_match_id: string
@@ -2041,6 +2167,28 @@ export type Database = {
         Args: { p_club_id: string; p_fine_amount?: number; p_player_id: string }
         Returns: undefined
       }
+      fire_player_just_cause: {
+        Args: { p_club_id: string; p_player_id: string }
+        Returns: boolean
+      }
+      get_bankruptcy_status: {
+        Args: { p_club_id: string }
+        Returns: {
+          balance: number
+          days_remaining: number
+          debt_since: string
+          is_in_debt: boolean
+        }[]
+      }
+      get_coach_bonuses: {
+        Args: { p_club_id: string }
+        Returns: {
+          bonus_value: number
+          level: number
+          skill_type: string
+          trained_formation: string
+        }[]
+      }
       get_facility_stats: {
         Args: { p_facility_type: string; p_level: number }
         Returns: {
@@ -2053,10 +2201,12 @@ export type Database = {
         Args: { p_current_level: number }
         Returns: number
       }
+      get_next_window_month: { Args: never; Returns: string }
       is_same_active_club_as_current_user: {
         Args: { _player_profile_id: string }
         Returns: boolean
       }
+      is_transfer_window_open: { Args: never; Returns: boolean }
       payoff_loan: {
         Args: { p_entity_id: string; p_entity_type: string; p_loan_id: string }
         Returns: undefined
@@ -2072,10 +2222,31 @@ export type Database = {
         }
         Returns: string
       }
+      process_single_transfer: {
+        Args: { p_transfer_id: string }
+        Returns: boolean
+      }
+      process_transfer_window: { Args: never; Returns: number }
       release_club_to_bot: { Args: { p_club_id: string }; Returns: undefined }
       release_match_turn_processing: {
         Args: { p_processing_token: string; p_turn_id: string }
         Returns: undefined
+      }
+      request_transfer: {
+        Args: {
+          p_contract_months?: number
+          p_from_club_id: string
+          p_player_id: string
+          p_release_clause: number
+          p_to_club_id: string
+          p_transfer_fee: number
+          p_weekly_salary: number
+        }
+        Returns: string
+      }
+      train_coach_skill: {
+        Args: { p_club_id: string; p_formation?: string; p_skill_type: string }
+        Returns: boolean
       }
       transfer_player: {
         Args: {
@@ -2086,6 +2257,10 @@ export type Database = {
           p_old_contract_id: string
           p_player_id: string
         }
+        Returns: undefined
+      }
+      update_player_last_match: {
+        Args: { p_match_id: string }
         Returns: undefined
       }
     }
