@@ -403,8 +403,8 @@ export default function ManagerChallengesPage() {
       }).select('id').single();
       if (matchError || !match) throw matchError || new Error('Falha');
       const userId = (await supabase.auth.getUser()).data.user?.id;
-      // 5v5 test: GK + 4 field players per team
-      const testHome = [{ x: 5, y: 50 }, { x: 22, y: 30 }, { x: 22, y: 70 }, { x: 38, y: 35 }, { x: 38, y: 65 }];
+      // 5v5 test: GK + 2CB + CM + ST per team
+      const testHome = [{ x: 5, y: 50 }, { x: 22, y: 35 }, { x: 22, y: 65 }, { x: 38, y: 50 }, { x: 45, y: 50 }];
       const testAway = testHome.map(p => ({ x: 100 - p.x, y: p.y }));
       await supabase.from('match_participants').insert([
         ...testHome.map(p => ({ match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),
