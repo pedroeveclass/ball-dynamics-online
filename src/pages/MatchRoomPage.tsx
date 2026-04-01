@@ -2924,6 +2924,12 @@ export default function MatchRoomPage() {
                 const fromPart = participants.find(p => p.id === action.participant_id);
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
+                // Hide bot receive/block arrows that are clearly impossible (too far from trajectory)
+                if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
+                  const moveDist = Math.sqrt((fromPart.field_x - action.target_x) ** 2 + (fromPart.field_y - action.target_y) ** 2);
+                  if (moveDist > 15) return null; // >15% of field = clearly impossible
+                }
+
                 const lockedOrigin = activeTurn?.phase === 'resolution' ? resolutionStartPositions[action.participant_id] : null;
                 const isBHAction = action.participant_id === activeTurn?.ball_holder_participant_id && (isPassAction(action.action_type) || isShootAction(action.action_type) || isHeaderAction(action.action_type));
                 const baseFromX = lockedOrigin?.x ?? fromPart.field_x;
@@ -3051,7 +3057,15 @@ export default function MatchRoomPage() {
                       textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.68)"
                       fontFamily="'Barlow Condensed', sans-serif"
                     >
-                      {controlLabel} {ACTION_LABELS[action.action_type] || action.action_type}
+                      {controlLabel} {(() => {
+                        if (action.action_type === 'receive') {
+                          // If BH is doing a move (dribble) and this player is opponent → "DESARME"
+                          const bhAction = visibleActions.find(a => a.participant_id === activeTurn?.ball_holder_participant_id && (a.action_type === 'move'));
+                          if (bhAction && fromPart.club_id !== ballHolder?.club_id) return 'DESARME';
+                          return ACTION_LABELS[action.action_type];
+                        }
+                        return ACTION_LABELS[action.action_type] || action.action_type;
+                      })()}
                     </text>
                   </g>
                 );
