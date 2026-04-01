@@ -3284,6 +3284,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const payload = evt.payload as any;
       if (payload?.x != null && payload?.y != null) {
         looseBallPos = { x: Number(payload.x), y: Number(payload.y) };
+      } else if (payload?.ball_x != null && payload?.ball_y != null) {
+        looseBallPos = { x: Number(payload.ball_x), y: Number(payload.ball_y) };
       } else if (evt.body) {
         // Try parsing coordinates from body like "Bola espirrou para (45,67)"
         const coordMatch = evt.body.match(/\((\d+),\s*(\d+)\)/);
@@ -4147,7 +4149,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             match_id, event_type: 'ball_inertia',
             title: '⚽ Bola continua rolando...',
             body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-            payload: { ball_x: inertiaBallX, ball_y: inertiaBallY },
+            payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
           });
         }
       }
