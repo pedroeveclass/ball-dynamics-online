@@ -3317,7 +3317,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     let participants: any[];
     if (tickCache.enrichedParticipants) {
       // Re-use cached enriched participants but refresh positions from DB
-      const { data: freshParts } = await supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off').eq('match_id', match_id).eq('role_type', 'player');
+      const { data: freshParts } = await supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off').eq('match_id', match_id).eq('role_type', 'player') as { data: any[] | null };
       const posMap = new Map((freshParts || []).map((p: any) => [p.id, p]));
       participants = tickCache.enrichedParticipants.map((p: any) => {
         const fresh = posMap.get(p.id);
