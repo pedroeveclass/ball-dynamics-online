@@ -155,13 +155,25 @@ export function buildParticipantLayout(
   const awayWithPos = ensureEleven(awayParts, isTestMatch ? 'test-away' : awayFormation, false, matchData.away_club_id);
   const managersAndSpecs = enriched
     .filter(participant => participant.role_type !== 'player')
-    .map(participant => ({
-      ...participant,
-      // Give bench players a field_pos from their slot_position or player profile
-      field_pos: participant.field_pos
-        || (participant.slot_position ? participant.slot_position.replace(/^BENCH_?/i, '') : undefined)
-        || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined),
-    }));
+    .map(participant => {
+      // Determine position for bench players from multiple sources
+      let benchPos: string | undefined = undefined;
+      if (participant.role_type === 'bench') {
+        // 1. From player profile primary_position (most reliable for bots)
+        if (participant.player_profile_id) {
+          const profile = playerMap.get(participant.player_profile_id);
+          if (profile?.primary_position) benchPos = profile.primary_position;
+        }
+        // 2. From lineup slot_position (stripped of BENCH_ prefix)
+        if (!benchPos && participant.slot_position) {
+          benchPos = participant.slot_position.replace(/^BENCH_?/i, '') || undefined;
+        }
+      }
+      return {
+        ...participant,
+        field_pos: benchPos || participant.field_pos || undefined,
+      };
+    });
 
   return [...homeWithPos, ...awayWithPos, ...managersAndSpecs];
 }
