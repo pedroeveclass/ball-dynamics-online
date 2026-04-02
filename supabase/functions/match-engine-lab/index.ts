@@ -841,6 +841,7 @@ async function generateBotActions(
   if (botsToAct.length === 0) return;
 
   const homeClubId = match?.home_club_id;
+  const isSecondHalfBot = (match?.current_half ?? 1) >= 2;
 
   // Load formations (use cache if available)
   let homeFormation = '4-4-2';
@@ -988,8 +989,10 @@ async function generateBotActions(
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
     const isBH = bot.id === ballHolderId;
-    const isHome = bot.club_id === homeClubId;
-    const formation = isHome ? homeFormation : awayFormation;
+    // In 2nd half, sides are flipped (home plays on right, away on left)
+    const isHomeRaw = bot.club_id === homeClubId;
+    const isHome = isSecondHalfBot ? !isHomeRaw : isHomeRaw;
+    const formation = isHomeRaw ? homeFormation : awayFormation; // formation doesn't change, only field side
     const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
     const role = getPositionRole(slotPos);
     const isGK = role === 'goalkeeper';
@@ -1651,7 +1654,8 @@ async function generateBotActions(
     if (!botPart) continue;
     const botPos = botPart._slot_position || botPart.slot_position || '';
     if (botPos !== 'GK') continue;
-    const botIsHome = botPart.club_id === match?.home_club_id;
+    const botIsHomeRaw = botPart.club_id === match?.home_club_id;
+    const botIsHome = isSecondHalfBot ? !botIsHomeRaw : botIsHomeRaw;
     if (botIsHome) {
       action.target_x = Math.min(action.target_x, 20);
       action.target_y = Math.max(20, Math.min(80, action.target_y));
@@ -2754,30 +2758,36 @@ interface OOBResult {
 function detectOutOfBounds(
   ballX: number, ballY: number,
   lastTouchClubId: string,
-  match: { home_club_id: string; away_club_id: string }
+  match: { home_club_id: string; away_club_id: string; current_half?: number }
 ): OOBResult | null {
   const oppositeClub = lastTouchClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+  const isSecondHalf = (match.current_half ?? 1) >= 2;
+
+  // In 2nd half, sides are flipped: home defends RIGHT (x>=99), away defends LEFT (x<=1)
+  const leftDefender = isSecondHalf ? match.away_club_id : match.home_club_id;
+  const rightDefender = isSecondHalf ? match.home_club_id : match.away_club_id;
 
   // Sidelines: y <= 1 or y >= 99 → throw-in
   if (ballY <= 1 || ballY >= 99) {
     return { type: 'throw_in', awardedClubId: oppositeClub, exitX: ballX, exitY: ballY, side: ballY <= 1 ? 'top' : 'bottom' };
   }
 
-  // Home end line (x <= 1): home defends left side
+  // Left end line (x <= 1)
   if (ballX <= 1) {
-    if (lastTouchClubId === match.home_club_id) {
-      return { type: 'corner', awardedClubId: match.away_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    if (lastTouchClubId === leftDefender) {
+      // Defending team touched last → corner for opponent
+      return { type: 'corner', awardedClubId: lastTouchClubId === match.home_club_id ? match.away_club_id : match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
     } else {
-      return { type: 'goal_kick', awardedClubId: match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+      return { type: 'goal_kick', awardedClubId: leftDefender, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
     }
   }
 
-  // Away end line (x >= 99)
+  // Right end line (x >= 99)
   if (ballX >= 99) {
-    if (lastTouchClubId === match.away_club_id) {
-      return { type: 'corner', awardedClubId: match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+    if (lastTouchClubId === rightDefender) {
+      return { type: 'corner', awardedClubId: lastTouchClubId === match.home_club_id ? match.away_club_id : match.home_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
     } else {
-      return { type: 'goal_kick', awardedClubId: match.away_club_id, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
+      return { type: 'goal_kick', awardedClubId: rightDefender, exitX: ballX, exitY: ballY, side: ballY < 50 ? 'top' : 'bottom' };
     }
   }
 
@@ -3518,8 +3528,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const partSlotPos = part._slot_position || part.slot_position || '';
       const partIsGK = partSlotPos === 'GK';
       if (partIsGK) {
-        const isHome = part.club_id === match.home_club_id;
-        if (isHome) {
+        const isHomeRaw = part.club_id === match.home_club_id;
+        const isSecondHalfPos = (match.current_half ?? 1) >= 2;
+        const effectiveHome = isSecondHalfPos ? !isHomeRaw : isHomeRaw;
+        if (effectiveHome) {
           targetX = Math.min(targetX, 18);
           targetY = Math.max(20, Math.min(80, targetY));
         } else {
@@ -3530,7 +3542,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       // Kickoff constraints: half-field + center circle exclusion
       if (isKickoff) {
-        const isHome = part.club_id === match.home_club_id;
+        const isHomeRaw = part.club_id === match.home_club_id;
+        const isSecondHalfPos = (match.current_half ?? 1) >= 2;
+        const isHome = isSecondHalfPos ? !isHomeRaw : isHomeRaw;
         if (isHome) targetX = Math.min(targetX, 49);
         else targetX = Math.max(targetX, 51);
         // Center circle exclusion for defending team
@@ -3952,8 +3966,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // ── GK constraint: goalkeeper must stay near their goal ──
         const partSlotPos = part?._slot_position || part?.slot_position || '';
         if (partSlotPos === 'GK') {
-          const isHome = part?.club_id === match.home_club_id;
-          if (isHome) {
+          const isHomeRaw = part?.club_id === match.home_club_id;
+          const isSecondHalfRes = (match.current_half ?? 1) >= 2;
+          const effectiveHome = isSecondHalfRes ? !isHomeRaw : isHomeRaw;
+          if (effectiveHome) {
             finalX = Math.min(finalX, 22); // stay in/near box
             finalY = Math.max(18, Math.min(82, finalY));
           } else {
@@ -4356,13 +4372,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           : null;
         const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
         if (!isOverGoal) {
-          // Goal logic: the team whose goal was scored in concedes (regardless of who had possession)
+          // Goal logic: in 2nd half, goals are flipped (sides swapped)
+          const isSecondHalfGoal = (match.current_half ?? 1) >= 2;
+          const rightGoalScorer = isSecondHalfGoal ? 'away' : 'home'; // who scores when ball enters right goal
           if (inAwayGoal) {
-            // Ball in away goal → home team scores (or own goal by away)
-            homeScore++;
+            // Ball in right goal (x>=99)
+            if (rightGoalScorer === 'home') homeScore++; else awayScore++;
           } else {
-            // Ball in home goal → away team scores (or own goal by home)
-            awayScore++;
+            // Ball in left goal (x<=1)
+            if (rightGoalScorer === 'home') awayScore++; else homeScore++;
           }
           const ballGoalAction = ballHolder
             ? allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
@@ -4370,9 +4388,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const ballGoalType = ballGoalAction && (isShootType(ballGoalAction.action_type) || isHeaderShootType(ballGoalAction.action_type)) ? 'shot'
             : (ballGoalAction && isHeaderType(ballGoalAction.action_type) ? 'header'
             : (ballGoalAction && (ballGoalAction.action_type === 'pass_high' || ballGoalAction.action_type === 'pass_launch') ? 'header' : 'shot'));
-          // Own goal: ball went into the goal of the team with possession
-          const isBallGoalOwnGoal = (inAwayGoal && possClubId === match.away_club_id)
-            || (inHomeGoal && possClubId === match.home_club_id);
+          // Own goal: ball went into the goal defended by the team with possession
+          const rightGoalDefender = isSecondHalfGoal ? match.home_club_id : match.away_club_id;
+          const leftGoalDefender = isSecondHalfGoal ? match.away_club_id : match.home_club_id;
+          const isBallGoalOwnGoal = (inAwayGoal && possClubId === rightGoalDefender)
+            || (inHomeGoal && possClubId === leftGoalDefender);
           eventsToLog.push({
             match_id, event_type: 'goal',
             title: isBallGoalOwnGoal ? `⚽ GOL CONTRA! ${homeScore} – ${awayScore}` : `⚽ GOL! ${homeScore} – ${awayScore}`,
@@ -4385,7 +4405,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             },
           });
           // Team that conceded gets the kickoff
-          const concedingClubId = inAwayGoal ? match.away_club_id : match.home_club_id;
+          const concedingClubId = inAwayGoal ? rightGoalDefender : leftGoalDefender;
           newPossessionClubId = concedingClubId;
           nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
           nextSetPieceType = 'kickoff';
@@ -4401,7 +4421,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const inHomeGoal = moveEndX <= 2 && moveEndY >= 38 && moveEndY <= 62;
         const inAwayGoal = moveEndX >= 98 && moveEndY >= 38 && moveEndY <= 62;
         if (inHomeGoal || inAwayGoal) {
-          if (inAwayGoal) homeScore++; else awayScore++;
+          const isSecondHalfGoal2 = (match.current_half ?? 1) >= 2;
+          const rightScorer2 = isSecondHalfGoal2 ? 'away' : 'home';
+          if (inAwayGoal) { if (rightScorer2 === 'home') homeScore++; else awayScore++; }
+          else { if (rightScorer2 === 'home') awayScore++; else homeScore++; }
           eventsToLog.push({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
             payload: {
