@@ -1973,7 +1973,24 @@ export default function MatchRoomPage() {
                     if (actualHolder) {
                       const actualPos = finals[actualHolder.id]
                         ?? { x: actualHolder.field_x ?? actualHolder.pos_x ?? 50, y: actualHolder.field_y ?? actualHolder.pos_y ?? 50 };
-                      fbp = { x: actualPos.x + 1.2, y: actualPos.y - 1.2 };
+                      // Ball position near new holder, offset toward where ball came from
+                      const prevBhAction = turnActionsRef.current.find(a => a.participant_id === bhId && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
+                      if (prevBhAction?.target_x != null && prevBhAction?.target_y != null) {
+                        const dx = prevBhAction.target_x - actualPos.x;
+                        const dy = prevBhAction.target_y - actualPos.y;
+                        const len = Math.sqrt(dx * dx + dy * dy);
+                        if (len > 0.5) {
+                          // Ball slightly toward where it came from (at player's feet in receive direction)
+                          const fromDx = actualPos.x - prevBhAction.target_x;
+                          const fromDy = actualPos.y - prevBhAction.target_y;
+                          const fromLen = Math.sqrt(fromDx * fromDx + fromDy * fromDy);
+                          fbp = { x: actualPos.x + (fromDx / fromLen) * 1.2, y: actualPos.y + (fromDy / fromLen) * 1.2 };
+                        } else {
+                          fbp = { x: actualPos.x + 1.2, y: actualPos.y };
+                        }
+                      } else {
+                        fbp = { x: actualPos.x + 1.2, y: actualPos.y };
+                      }
                     }
                   } else if (!isNextTurnReady) {
                     // Next turn hasn't arrived yet -- check resolution event logs
@@ -2425,7 +2442,40 @@ export default function MatchRoomPage() {
     }
 
     const holderRenderPos = getAnimatedPos(ballHolder);
-    const defaultBallPos = { x: holderRenderPos.x + 1.2, y: holderRenderPos.y - 1.2 };
+
+    // Dynamic ball offset: position ball relative to movement/action direction
+    const computeBallOffset = (playerPos: { x: number; y: number }): { x: number; y: number } => {
+      const BALL_DIST = 1.5; // distance from player center in field %
+
+      // If BH has a move action, ball is IN FRONT of movement direction
+      const moveAction = turnActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move' && a.target_x != null);
+      if (moveAction?.target_x != null && moveAction?.target_y != null) {
+        const dx = moveAction.target_x - playerPos.x;
+        const dy = moveAction.target_y - playerPos.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0.5) {
+          return { x: playerPos.x + (dx / len) * BALL_DIST, y: playerPos.y + (dy / len) * BALL_DIST };
+        }
+      }
+
+      // If BH has a pass/shoot action, ball is between player and target (slightly ahead)
+      const ballAction = turnActions.find(a => a.participant_id === ballHolder.id && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
+      if (ballAction?.target_x != null && ballAction?.target_y != null) {
+        const dx = ballAction.target_x - playerPos.x;
+        const dy = ballAction.target_y - playerPos.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0.5) {
+          return { x: playerPos.x + (dx / len) * BALL_DIST, y: playerPos.y + (dy / len) * BALL_DIST };
+        }
+      }
+
+      // Default: ball slightly ahead (right for home, left for away)
+      const isHome = ballHolder.club_id === match?.home_club_id;
+      const dir = isHome ? 1 : -1;
+      return { x: playerPos.x + dir * BALL_DIST, y: playerPos.y };
+    };
+
+    const defaultBallPos = computeBallOffset(holderRenderPos);
 
     // Prioritize pass/shoot over move for ball animation
     const bhAllActions = turnActions
@@ -2442,9 +2492,18 @@ export default function MatchRoomPage() {
       x: ballHolder.field_x ?? 50,
       y: ballHolder.field_y ?? 50,
     };
-    // Ball starts from player + offset (matching arrow origin)
-    const ballStartX = startPos.x + 1.2;
-    const ballStartY = startPos.y - 1.2;
+    // Ball starts from player, offset toward the pass/shoot target direction
+    let ballStartX = startPos.x + 1.2;
+    let ballStartY = startPos.y - 1.2;
+    if (ballAction?.target_x != null && ballAction?.target_y != null) {
+      const dx = ballAction.target_x - startPos.x;
+      const dy = ballAction.target_y - startPos.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0.5) {
+        ballStartX = startPos.x + (dx / len) * 1.5;
+        ballStartY = startPos.y + (dy / len) * 1.5;
+      }
+    }
 
     // Physics-based ball easing: exponential decay (fast launch, decelerating)
     const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
