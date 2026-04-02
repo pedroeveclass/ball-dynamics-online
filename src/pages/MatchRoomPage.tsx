@@ -1966,7 +1966,10 @@ export default function MatchRoomPage() {
                   // visual matches the server-resolved outcome (block/intercept).
                   const nextTurn = activeTurnRef.current;
                   const isNextTurnReady = nextTurn && nextTurn.id !== activeTurn?.id;
-                  if (isNextTurnReady && nextTurn.ball_holder_participant_id) {
+                  // Only override ball position if NO interception happened
+                  // (if intercepted, keep ball at intercept point)
+                  const wasIntercepted = interceptAction && interceptAction.participant_id !== bhId;
+                  if (isNextTurnReady && nextTurn.ball_holder_participant_id && !wasIntercepted) {
                     const actualHolder = participantsRef.current.find(
                       p => p.id === nextTurn.ball_holder_participant_id
                     );
