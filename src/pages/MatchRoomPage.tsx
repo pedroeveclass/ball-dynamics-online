@@ -2056,25 +2056,32 @@ export default function MatchRoomPage() {
       return { x: startX, y: startY };
     }
 
-    // Physics-based easing: slow start (acceleration), fast mid, slight decel at end
+    const effectiveTarget = getEffectiveActionTarget(moveAction, { x: startX, y: startY }, turnActions);
+    const targetX = effectiveTarget?.x ?? moveAction.target_x;
+    const targetY = effectiveTarget?.y ?? moveAction.target_y;
+
+    // Calculate move distance as fraction of max range (~12% of field)
+    const moveDist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
+    const MAX_RANGE_APPROX = 12; // approximate max move range in field %
+    const moveFraction = Math.min(1, moveDist / MAX_RANGE_APPROX);
+
+    // Scale animation: player arrives at (moveFraction * 100%) of the animation timeline
+    // e.g., if player moves 50% of max range, they arrive at 50% of the animation
     const raw = animProgressRef.current;
+    const arrivalTime = Math.max(0.1, moveFraction); // at least 10% of animation
+    const scaledRaw = Math.min(1, raw / arrivalTime); // 0→1 within the arrival window
+
+    // Easing within the scaled time
     let t: number;
-    if (raw < 0.3) {
-      const seg = raw / 0.3;
-      t = seg * seg * 0.3;
-    } else if (raw < 0.8) {
-      const seg = (raw - 0.3) / 0.5;
-      t = 0.3 + seg * 0.55;
+    if (scaledRaw < 0.4) {
+      t = (scaledRaw / 0.4) ** 2 * 0.4;
     } else {
-      const seg = (raw - 0.8) / 0.2;
-      t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
+      t = 0.4 + (1 - Math.pow(1 - (scaledRaw - 0.4) / 0.6, 2)) * 0.6;
     }
 
-    const effectiveTarget = getEffectiveActionTarget(moveAction, { x: startX, y: startY }, turnActions);
-
     return {
-      x: startX + ((effectiveTarget?.x ?? moveAction.target_x) - startX) * t,
-      y: startY + ((effectiveTarget?.y ?? moveAction.target_y) - startY) * t,
+      x: startX + (targetX - startX) * t,
+      y: startY + (targetY - startY) * t,
     };
   }, [finalPositions, animating, activeTurn?.phase, turnActions, resolutionStartPositions, getEffectiveActionTarget]);
 
