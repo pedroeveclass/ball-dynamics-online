@@ -190,7 +190,7 @@ function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubs
                 {p.is_bot
                   ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
                   : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
-                <span className="font-display w-6 text-white/40 shrink-0">{positionToPT((p.field_pos || p.slot_position || '').replace(/^BENCH_?/i, '') || '?')}</span>
+                <span className="font-display w-6 text-white/40 shrink-0">{positionToPT((p.field_pos || p.slot_position || '').replace(/^BENCH_?/i, '')) || 'RES'}</span>
                 <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
                 {isPendingIn && (
                   <span className="text-[7px] font-display text-amber-400 bg-amber-400/10 px-1 rounded">Aguardando...</span>

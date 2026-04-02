@@ -1246,30 +1246,57 @@ async function generateBotActions(
       if (ballHolderId) {
         const bhDist = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
 
-        // ── GK: actively try to save if ball is coming toward goal ──
+        // ── GK: actively try to save shots + position for passes ──
         if (isGK) {
-          // Check if ball holder has a shot or pass action heading toward goal
-          // GK positions between ball and goal, and if close enough, submits receive
           const ownGoalX = isHome ? 0 : 100;
-          const ballToGoalDist = Math.abs(ballPos.x - ownGoalX);
-          
-          if (ballToGoalDist < 40 && bhDist < maxMoveRange + 5) {
-            // Ball is near our goal — try to intercept
-            // Position on the ball trajectory toward goal
-            const interceptX = isHome ? Math.max(2, Math.min(18, ballPos.x * 0.3)) : Math.max(82, Math.min(98, 100 - (100 - ballPos.x) * 0.3));
-            const interceptY = Math.max(25, Math.min(75, ballPos.y));
+          const isBhShooting = bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType));
+          const isBhPassing = bhActionType && (bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_low' || bhActionType === 'header_high');
+
+          if (isBhShooting && passDestination) {
+            // SHOT: GK ALWAYS tries to save — position on the shot trajectory near goal line
+            const shotTargetY = passDestination.y;
+            const interceptX = isHome ? Math.max(2, Math.min(posX, 8)) : Math.min(98, Math.max(posX, 92));
+            const interceptY = Math.max(25, Math.min(75, shotTargetY));
             const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
-            
             if (distToIntercept <= maxMoveRange) {
-              // Can reach — GK prefers block (espalmar) 70% for shoots, receive (agarrar) 30%
-              const gkActionType = (bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType)) && Math.random() < 0.7) ? 'block' : 'receive';
+              const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: gkActionType,
                 target_x: interceptX, target_y: interceptY, status: 'pending',
               });
             } else {
-              // Move toward best defensive position
+              // Too far — move toward intercept position
+              const angle = Math.atan2(interceptY - posY, interceptX - posX);
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'move',
+                target_x: posX + Math.cos(angle) * maxMoveRange, target_y: posY + Math.sin(angle) * maxMoveRange,
+                status: 'pending',
+              });
+            }
+          } else {
+            // Non-shot: position between ball and goal
+            const ballToGoalDist = Math.abs(ballPos.x - ownGoalX);
+            if (ballToGoalDist < 50) {
+              const interceptX = isHome ? Math.max(2, Math.min(18, ballPos.x * 0.3)) : Math.max(82, Math.min(98, 100 - (100 - ballPos.x) * 0.3));
+              const interceptY = Math.max(25, Math.min(75, ballPos.y));
+              const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
+              if (distToIntercept <= maxMoveRange && !isBhPassing) {
+                actions.push({
+                  match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                  controlled_by_type: 'bot', action_type: 'receive',
+                  target_x: interceptX, target_y: interceptY, status: 'pending',
+                });
+              } else {
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+                actions.push({
+                  match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                  controlled_by_type: 'bot', action_type: 'move',
+                  target_x: target.x, target_y: target.y, status: 'pending',
+                });
+              }
+            } else {
               const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -1277,13 +1304,6 @@ async function generateBotActions(
                 target_x: target.x, target_y: target.y, status: 'pending',
               });
             }
-          } else {
-            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
-            actions.push({
-              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'move',
-              target_x: target.x, target_y: target.y, status: 'pending',
-            });
           }
         } else if (role === 'centerBack' || role === 'fullBack') {
           // ── Defenders: use trajectory-aware interception ──
