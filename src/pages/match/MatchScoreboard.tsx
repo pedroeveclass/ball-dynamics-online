@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye, Square, LogOut, User } from 'lucide-react';
@@ -49,6 +49,15 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
     homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
   } = props;
 
+  // Tick every second for halftime countdown
+  const [, setTick] = useState(0);
+  const isHalftimeNow = currentHalf === 2 && halfStartedAt && new Date(halfStartedAt).getTime() > Date.now();
+  useEffect(() => {
+    if (!isHalftimeNow) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [isHalftimeNow]);
+
   return (
     <div className="bg-[hsl(220,15%,16%)] border-b border-[hsl(220,10%,25%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
       <div className="flex items-center gap-2">
@@ -91,7 +100,14 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
             return (
               <div className="flex items-center gap-1.5 ml-2 bg-[hsl(220,15%,22%)] rounded px-2 py-0.5">
                 {isHalftime ? (
-                  <span className="text-[11px] font-display font-bold text-warning animate-pulse">&#x23F8; INT</span>
+                  <span className="text-[11px] font-display font-bold text-warning animate-pulse">
+                    &#x23F8; INT {(() => {
+                      const remaining = Math.max(0, Math.ceil((new Date(halfStartedAt!).getTime() - Date.now()) / 1000));
+                      const mins = Math.floor(remaining / 60);
+                      const secs = remaining % 60;
+                      return mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : `${secs}s`;
+                    })()}
+                  </span>
                 ) : (
                   <>
                     <span className="text-[9px] font-display text-white/50">{half}</span>
