@@ -1323,7 +1323,11 @@ async function generateBotActions(
           const distToTraj = Math.sqrt((posX - closestX) ** 2 + (posY - closestY) ** 2);
           const adjustedRange = maxMoveRange * bhBallSpeedFactor;
 
-          if (isBhShooting && distToTraj <= adjustedRange && passInterceptorCount < 2) {
+          // Timing check: match engine's formula — timingRange = adjustedRange * max(0.15, t)
+          const trajTimingRange = adjustedRange * Math.max(0.15, t);
+          const canReachTraj = distToTraj <= trajTimingRange && (t >= 0.05 || distToTraj <= 2.5);
+
+          if (isBhShooting && canReachTraj && passInterceptorCount < 2) {
             // Can reach shot trajectory — block
             passInterceptorCount++;
             actions.push({
@@ -1331,7 +1335,7 @@ async function generateBotActions(
               controlled_by_type: 'bot', action_type: 'block',
               target_x: closestX, target_y: closestY, status: 'pending',
             });
-          } else if (isBhPassing && passDestination && distToTraj <= adjustedRange && passInterceptorCount < 2) {
+          } else if (isBhPassing && passDestination && canReachTraj && passInterceptorCount < 2) {
             // Can reach pass trajectory — intercept at closest point
             passInterceptorCount++;
             actions.push({
@@ -1339,8 +1343,8 @@ async function generateBotActions(
               controlled_by_type: 'bot', action_type: 'receive',
               target_x: closestX, target_y: closestY, status: 'pending',
             });
-          } else if (isBhDribbling && bhDist <= maxMoveRange) {
-            // BH dribbling and close enough — tackle on trajectory
+          } else if (isBhDribbling) {
+            // BH dribbling — tackle on trajectory (with timing validation matching engine)
             const moveTargetX = bhTargetX ?? ballPos.x;
             const moveTargetY = bhTargetY ?? ballPos.y;
             const mtdx = moveTargetX - ballPos.x;
@@ -1350,7 +1354,10 @@ async function generateBotActions(
             const tackleX = ballPos.x + mtdx * mt;
             const tackleY = ballPos.y + mtdy * mt;
             const distToTackle = Math.sqrt((posX - tackleX) ** 2 + (posY - tackleY) ** 2);
-            if (distToTackle <= maxMoveRange) {
+            // Match engine timing validation: timingRange = adjustedMaxRange * max(0.15, t)
+            const tackleTimingRange = maxMoveRange * Math.max(0.15, mt);
+            const canTackle = distToTackle <= tackleTimingRange && (mt >= 0.05 || distToTackle <= 2.5);
+            if (canTackle) {
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'receive',
@@ -1417,22 +1424,25 @@ async function generateBotActions(
           const distToTraj = Math.sqrt((posX - closestX) ** 2 + (posY - closestY) ** 2);
           const adjustedRange = maxMoveRange * bhBallSpeedFactor;
 
-          if (isBhShooting && distToTraj <= adjustedRange && passInterceptorCount < 2) {
+          const trajTimingRange = adjustedRange * Math.max(0.15, mt);
+          const canReachTraj = distToTraj <= trajTimingRange && (mt >= 0.05 || distToTraj <= 2.5);
+
+          if (isBhShooting && canReachTraj && passInterceptorCount < 2) {
             passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'block',
               target_x: closestX, target_y: closestY, status: 'pending',
             });
-          } else if (isBhPassing && distToTraj <= adjustedRange && passInterceptorCount < 2) {
+          } else if (isBhPassing && canReachTraj && passInterceptorCount < 2) {
             passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'receive',
               target_x: closestX, target_y: closestY, status: 'pending',
             });
-          } else if (isBhDribbling && bhDist <= maxMoveRange) {
-            // Tackle on dribble trajectory
+          } else if (isBhDribbling) {
+            // Tackle on dribble trajectory (with timing validation matching engine)
             const dribTrajEnd = bhTargetX != null && bhTargetY != null ? { x: bhTargetX, y: bhTargetY } : ballPos;
             const dtdx = dribTrajEnd.x - ballPos.x;
             const dtdy = dribTrajEnd.y - ballPos.y;
@@ -1441,7 +1451,9 @@ async function generateBotActions(
             const tackleX = ballPos.x + dtdx * dt;
             const tackleY = ballPos.y + dtdy * dt;
             const distToTackle = Math.sqrt((posX - tackleX) ** 2 + (posY - tackleY) ** 2);
-            if (distToTackle <= maxMoveRange) {
+            const tackleTimingRange = maxMoveRange * Math.max(0.15, dt);
+            const canTackle = distToTackle <= tackleTimingRange && (dt >= 0.05 || distToTackle <= 2.5);
+            if (canTackle) {
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'receive',
