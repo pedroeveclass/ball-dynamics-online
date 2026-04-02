@@ -590,15 +590,24 @@ export default function LeaguePage() {
                         <div className="px-4 min-w-[80px] text-center flex flex-col items-center">
                           {hasResult || isLive ? (
                             <>
-                              <span className={`font-display font-bold text-lg ${isLive ? 'text-pitch' : ''}`}>
+                              <span className={`font-display font-bold text-lg ${isLive ? 'text-pitch animate-pulse' : ''}`}>
                                 {lm.match.home_score} - {lm.match.away_score}
                               </span>
+                              {isLive && lm.match_id && (
+                                <Link to={`/match/${lm.match_id}`} className="text-[10px] font-display font-bold text-pitch hover:text-pitch/80 transition-colors mt-0.5">
+                                  AO VIVO — Assistir
+                                </Link>
+                              )}
                               {hasResult && lm.match_id && (
-                                <Link to={`/match/${lm.match_id}/replay`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-0.5">
-                                  Ver Replay
+                                <Link to={`/match/${lm.match_id}`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-0.5">
+                                  Ver Resultado
                                 </Link>
                               )}
                             </>
+                          ) : lm.match_id ? (
+                            <Link to={`/match/${lm.match_id}`} className="text-muted-foreground text-sm hover:text-pitch transition-colors">
+                              Entrar
+                            </Link>
                           ) : (
                             <span className="text-muted-foreground text-sm">vs</span>
                           )}

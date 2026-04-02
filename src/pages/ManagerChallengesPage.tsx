@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot } from 'lucide-react';
+import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { FORMATION_POSITIONS, getFormationPositions } from '@/lib/formations';
 import { ptBR } from 'date-fns/locale';
@@ -69,6 +69,32 @@ export default function ManagerChallengesPage() {
   const [accept3v3Selected, setAccept3v3Selected] = useState<string[]>(['', '', '', '', '']);
   const [accept3v3Squad, setAccept3v3Squad] = useState<{ id: string; full_name: string; primary_position: string; overall: number }[]>([]);
 
+  // League matches
+  const [leagueMatches, setLeagueMatches] = useState<any[]>([]);
+
+  const loadLeagueMatches = useCallback(async () => {
+    if (!club) return;
+    try {
+      const { data } = await supabase
+        .from('matches')
+        .select('id, status, scheduled_at, home_score, away_score, home_club_id, away_club_id, home_club:clubs!matches_home_club_id_fkey(name, short_name, primary_color, secondary_color), away_club:clubs!matches_away_club_id_fkey(name, short_name, primary_color, secondary_color)')
+        .or(`home_club_id.eq.${club.id},away_club_id.eq.${club.id}`)
+        .in('status', ['scheduled', 'live', 'finished'])
+        .order('scheduled_at', { ascending: false })
+        .limit(10);
+      // Filter to league matches (those linked in league_matches)
+      if (data && data.length > 0) {
+        const matchIds = data.map(m => m.id);
+        const { data: leagueLinks } = await supabase
+          .from('league_matches')
+          .select('match_id')
+          .in('match_id', matchIds);
+        const leagueMatchIds = new Set((leagueLinks || []).map(l => l.match_id));
+        setLeagueMatches(data.filter(m => leagueMatchIds.has(m.id)));
+      }
+    } catch { /* ignore */ }
+  }, [club]);
+
   const loadChallenges = useCallback(async () => {
     if (!club) return;
     const { data } = await supabase.from('match_challenges').select('*').order('created_at', { ascending: false });
@@ -80,7 +106,7 @@ export default function ManagerChallengesPage() {
     setLoading(false);
   }, [club]);
 
-  useEffect(() => { loadChallenges(); }, [loadChallenges]);
+  useEffect(() => { loadChallenges(); loadLeagueMatches(); }, [loadChallenges, loadLeagueMatches]);
 
   const fetchClubPlayers = async (clubId: string) => {
     const { data: contracts } = await supabase.from('contracts').select('player_profile_id').eq('club_id', clubId).eq('status', 'active');
@@ -543,7 +569,7 @@ export default function ManagerChallengesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-            <Swords className="h-6 w-6 text-tactical" /> Amistosos
+            <Swords className="h-6 w-6 text-tactical" /> Jogos
           </h1>
           <div className="flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => navigate('/match-lab/solo')} className="font-display text-xs border-tactical/40 text-tactical hover:bg-tactical/10">
@@ -560,6 +586,50 @@ export default function ManagerChallengesPage() {
             </Button>
           </div>
         </div>
+
+        {/* League Matches Section */}
+        {leagueMatches.length > 0 && (
+          <section className="mb-6">
+            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-amber-400" /> Jogos da Liga ({leagueMatches.length})
+            </h2>
+            <div className="space-y-2">
+              {leagueMatches.map((m: any) => {
+                const isHome = m.home_club_id === club?.id;
+                const opponent = isHome ? m.away_club : m.home_club;
+                const isLive = m.status === 'live';
+                const isFinished = m.status === 'finished';
+                const scheduledDate = new Date(m.scheduled_at);
+                return (
+                  <Link key={m.id} to={`/match/${m.id}`} className="stat-card flex items-center justify-between hover:border-tactical/40 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: opponent?.primary_color, color: opponent?.secondary_color }}>
+                        {opponent?.short_name}
+                      </div>
+                      <div>
+                        <p className="font-display font-semibold text-sm">
+                          {isHome ? 'vs' : '@'} {opponent?.name}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {isFinished ? 'Encerrado' : isLive ? 'AO VIVO' : format(scheduledDate, 'dd/MM HH:mm')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {(isLive || isFinished) ? (
+                        <span className={`font-display font-bold text-lg ${isLive ? 'text-pitch animate-pulse' : ''}`}>
+                          {m.home_score} - {m.away_score}
+                        </span>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px]">Agendado</Badge>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <section>
           <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Convites Recebidos ({received.length})</h2>

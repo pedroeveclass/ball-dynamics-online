@@ -73,13 +73,26 @@ Deno.serve(async (req) => {
         for (const lm of (leagueMatches || [])) {
           if (!lm.match_id) continue;
 
-          // Update match to scheduled with current time so the engine can pick it up
+          // Update match to scheduled with current time
           await supabase.from('matches').update({
             scheduled_at: now,
             status: 'scheduled',
           }).eq('id', lm.match_id).eq('status', 'scheduled');
 
-          // The match-engine-lab's auto_start will handle transitioning from scheduled to live
+          // Trigger match-engine-lab to auto-start this match
+          try {
+            await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/match-engine-lab`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              },
+              body: JSON.stringify({ action: 'auto_start', match_id: lm.match_id }),
+            });
+          } catch (e) {
+            console.error(`[SCHEDULER] Failed to trigger auto_start for match ${lm.match_id}:`, e);
+          }
+
           matchesStarted++;
         }
 

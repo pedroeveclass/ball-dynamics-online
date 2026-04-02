@@ -20,7 +20,7 @@ const managerNav = [
   { title: 'Treinamento', url: '/manager/coach', icon: Brain },
   { title: 'Liga', url: '/league', icon: Trophy },
   { title: 'Votação Liga', url: '/league/vote', icon: Vote },
-  { title: 'Amistosos', url: '/manager/challenges', icon: CalendarDays },
+  { title: 'Jogos', url: '/manager/challenges', icon: CalendarDays },
   { title: 'Banco', url: '/bank', icon: Landmark },
   { title: 'Loja', url: '/store', icon: Store },
 ];
