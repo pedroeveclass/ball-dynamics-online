@@ -113,7 +113,7 @@ export function buildParticipantLayout(
         field_y: participant.pos_y ?? positions[index]?.y ?? 50,
         field_pos: isGoalkeeper(participant)
           ? 'GK'
-          : participant.slot_position
+          : (participant.slot_position ? participant.slot_position.replace(/^BENCH_?/i, '') : undefined)
           || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined)
           || positions[index]?.pos
           || '?',
