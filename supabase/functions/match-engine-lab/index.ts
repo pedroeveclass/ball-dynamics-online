@@ -2499,6 +2499,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             continue;
           }
         }
+        console.log(`[ENGINE] Intercept ACCEPTED: player ${a.participant_id.slice(0,8)} at t=${t.toFixed(2)} dist=${dist.toFixed(1)} intercept=(${cx.toFixed(1)},${cy.toFixed(1)})`);
         interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy });
       } else {
         console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
@@ -2706,13 +2707,22 @@ function computeBallControlDifficulty(
   return Math.max(0.1, Math.min(1.0, chance));
 }
 
-function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number): any | null {
+function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number, ballPos?: { x: number; y: number } | null): any | null {
   const receiveActions = allActions.filter((a) => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
 
   for (const action of receiveActions) {
     const participant = participants.find((p: any) => p.id === action.participant_id);
     if (!participant) continue;
+
+    // If we know ball position, reject receives that are too far from the ball
+    if (ballPos) {
+      const distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
+      if (distToBall > 15) { // receive target must be within 15 units of ball
+        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball (${distToBall.toFixed(1)} > 15)`);
+        continue;
+      }
+    }
 
     const startX = participant.pos_x ?? 50;
     const startY = participant.pos_y ?? 50;
@@ -4262,7 +4272,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
 
-      const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1);
+      const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1, ballEndPos as { x: number; y: number } | null);
 
       if (looseBallClaimer) {
         nextBallHolderParticipantId = looseBallClaimer.id;
