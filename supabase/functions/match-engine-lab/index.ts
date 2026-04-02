@@ -4578,6 +4578,19 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         set_piece_type: 'kickoff',
       });
 
+      // Mirror all player positions (swap sides: x → 100-x)
+      const mirrorUpdates: Promise<any>[] = [];
+      for (const p of (participants || [])) {
+        if (p.role_type !== 'player' || p.pos_x == null) continue;
+        mirrorUpdates.push(
+          supabase.from('match_participants').update({
+            pos_x: 100 - Number(p.pos_x),
+          }).eq('id', p.id)
+        );
+      }
+      if (mirrorUpdates.length > 0) await Promise.all(mirrorUpdates);
+      console.log(`[ENGINE] Second half: mirrored ${mirrorUpdates.length} player positions`);
+
       await supabase.from('match_event_logs').insert({
         match_id, event_type: 'second_half',
         title: '⚽ Segundo tempo!',
@@ -4617,15 +4630,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
+        const isSecondHalf = (match.current_half ?? 1) >= 2 || homeScore > match.home_score || awayScore > match.away_score;
         const resetTeam = async (clubId: string, formation: string, isHome: boolean) => {
           const teamParts = (participants || []).filter((p: any) => p.club_id === clubId && p.role_type === 'player' && p.id !== nextBallHolderParticipantId);
-          const positions = getFormationForFill(formation, isHome);
+          // In second half, flip sides (home plays on right, away on left)
+          const effectiveIsHome = isSecondHalf ? !isHome : isHome;
+          const positions = getFormationForFill(formation, effectiveIsHome);
           const updates: Promise<any>[] = [];
           teamParts.forEach((p: any, i: number) => {
             const pos = positions[i] || { x: isHome ? 30 : 70, y: 50 };
             let x = pos.x;
-            // Clamp to own half for kickoff
-            x = isHome ? Math.min(x, 48) : Math.max(x, 52);
+            // Clamp to own half for kickoff (flipped in second half)
+            x = effectiveIsHome ? Math.min(x, 48) : Math.max(x, 52);
             updates.push(supabase.from('match_participants').update({ pos_x: x, pos_y: pos.y }).eq('id', p.id));
           });
           await Promise.all(updates);
