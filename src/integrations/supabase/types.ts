@@ -1369,6 +1369,7 @@ export type Database = {
           current_half: number
           current_phase: string | null
           current_turn_number: number
+          engine_cache: Json | null
           finished_at: string | null
           half_started_at: string | null
           home_club_id: string
@@ -1393,6 +1394,7 @@ export type Database = {
           current_half?: number
           current_phase?: string | null
           current_turn_number?: number
+          engine_cache?: Json | null
           finished_at?: string | null
           half_started_at?: string | null
           home_club_id: string
@@ -1417,6 +1419,7 @@ export type Database = {
           current_half?: number
           current_phase?: string | null
           current_turn_number?: number
+          engine_cache?: Json | null
           finished_at?: string | null
           half_started_at?: string | null
           home_club_id?: string
@@ -2112,6 +2115,10 @@ export type Database = {
         Returns: undefined
       }
       apply_league_schedule_votes: { Args: never; Returns: undefined }
+      batch_update_participant_positions: {
+        Args: { p_updates: Json }
+        Returns: undefined
+      }
       calculate_matchday_revenue: {
         Args: { p_club_id: string; p_opponent_reputation?: number }
         Returns: {
@@ -2257,6 +2264,10 @@ export type Database = {
           p_old_contract_id: string
           p_player_id: string
         }
+        Returns: undefined
+      }
+      trigger_match_engine: {
+        Args: { delay_seconds?: number }
         Returns: undefined
       }
       update_player_last_match: {
