@@ -73,10 +73,18 @@ Deno.serve(async (req) => {
         for (const lm of (leagueMatches || [])) {
           if (!lm.match_id) continue;
 
-          // Update match to scheduled with current time
+          // Refresh lineup IDs with current active lineups before starting
+          const [{ data: homeLineup }, { data: awayLineup }] = await Promise.all([
+            supabase.from('lineups').select('id').eq('club_id', lm.home_club_id).eq('is_active', true).maybeSingle(),
+            supabase.from('lineups').select('id').eq('club_id', lm.away_club_id).eq('is_active', true).maybeSingle(),
+          ]);
+
+          // Update match to scheduled with current time + fresh lineup IDs
           await supabase.from('matches').update({
             scheduled_at: now,
             status: 'scheduled',
+            home_lineup_id: homeLineup?.id || null,
+            away_lineup_id: awayLineup?.id || null,
           }).eq('id', lm.match_id).eq('status', 'scheduled');
 
           // Trigger match-engine-lab to auto-start this match
