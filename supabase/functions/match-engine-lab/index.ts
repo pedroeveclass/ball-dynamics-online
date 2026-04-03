@@ -3359,25 +3359,20 @@ async function processDueMatches(supabase: any, functionUrl: string, matchId?: s
   let busy = 0;
   let failed = 0;
 
-  // Process up to 10 ticks per match to handle bot-only games faster
-  const MAX_TICKS_PER_CALL = 10;
   for (const dueMatchId of dueMatchIds) {
-    for (let tick = 0; tick < MAX_TICKS_PER_CALL; tick++) {
-      try {
-        const result = await executeTickForMatch(supabase, String(dueMatchId), false);
-        if (result?.status === 'busy') {
-          busy += 1;
-          break;
-        }
-        if (result?.status === 'waiting') {
-          break; // No more due turns for this match
-        }
-        advanced += 1;
-      } catch (error) {
-        failed += 1;
-        console.error('[ENGINE] process_due_matches tick error', { matchId: dueMatchId, error });
-        break;
+    try {
+      const result = await executeTickForMatch(supabase, String(dueMatchId), false);
+      if (result?.status === 'busy') {
+        busy += 1;
+        continue;
       }
+      if (result?.status === 'waiting') {
+        continue;
+      }
+      advanced += 1;
+    } catch (error) {
+      failed += 1;
+      console.error('[ENGINE] process_due_matches tick error', { matchId: dueMatchId, error });
     }
   }
 
