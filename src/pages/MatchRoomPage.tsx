@@ -1443,7 +1443,9 @@ export default function MatchRoomPage() {
             // playerCircleRadius on the field in % (visual radius of the player circle)
             const playerCircleFieldR = 7 / INNER_W * 100; // ~0.8% (player circle SVG r=7)
             // Check if click position + player visual circle overlaps trajectory
-            if (distToTraj <= (playerCircleFieldR + INTERCEPT_RADIUS + 0.5) && movePct <= tCursor) {
+            // Also verify timing: player must reach the trajectory point before the ball passes
+            const timingCheck = tCursor >= 0.05 ? movePct <= tCursor : moveDist <= 2.5;
+            if (distToTraj <= (playerCircleFieldR + INTERCEPT_RADIUS) && timingCheck) {
               circleOverlap = true;
             }
           }
@@ -1987,7 +1989,7 @@ export default function MatchRoomPage() {
                           const fromDx = actualPos.x - prevBhAction.target_x;
                           const fromDy = actualPos.y - prevBhAction.target_y;
                           const fromLen = Math.sqrt(fromDx * fromDx + fromDy * fromDy);
-                          fbp = { x: actualPos.x + (fromDx / fromLen) * 1.2, y: actualPos.y + (fromDy / fromLen) * 1.2 };
+                          fbp = { x: actualPos.x + (fromDx / fromLen) * 0.8, y: actualPos.y + (fromDy / fromLen) * 0.8 };
                         } else {
                           fbp = { x: actualPos.x + 1.2, y: actualPos.y };
                         }
@@ -2448,7 +2450,7 @@ export default function MatchRoomPage() {
 
     // Dynamic ball offset: position ball relative to movement/action direction
     const computeBallOffset = (playerPos: { x: number; y: number }): { x: number; y: number } => {
-      const BALL_DIST = 1.5; // distance from player center in field %
+      const BALL_DIST = 0.8; // distance from player center in field %
 
       // If BH has a move action, ball is IN FRONT of movement direction
       const moveAction = turnActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move' && a.target_x != null);
@@ -2503,8 +2505,8 @@ export default function MatchRoomPage() {
       const dy = ballAction.target_y - startPos.y;
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len > 0.5) {
-        ballStartX = startPos.x + (dx / len) * 1.5;
-        ballStartY = startPos.y + (dy / len) * 1.5;
+        ballStartX = startPos.x + (dx / len) * 0.8;
+        ballStartY = startPos.y + (dy / len) * 0.8;
       }
     }
 
@@ -2995,6 +2997,15 @@ export default function MatchRoomPage() {
 
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
+
+                // Hide BH deferred move arrow when they have a ball action (pass/shoot/header)
+                if (action.action_type === 'move' && action.participant_id === activeTurn?.ball_holder_participant_id) {
+                  const hasBallAction = visibleActions.some(a =>
+                    a.participant_id === action.participant_id &&
+                    (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
+                  );
+                  if (hasBallAction) return null;
+                }
 
                 // Hide bot receive/block arrows that are clearly impossible (too far from trajectory)
                 if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
