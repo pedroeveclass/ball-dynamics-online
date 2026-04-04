@@ -3427,7 +3427,7 @@ export default function MatchRoomPage() {
                   const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
                   let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
 
-                  // Apply ball speed factor for outfield players (GK uses full range on shots)
+                  // Apply ball speed factor (GK uses full range on shots)
                   const actionType = effectiveBallTrajectoryAction.action_type;
                   const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
                   const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
@@ -3463,13 +3463,18 @@ export default function MatchRoomPage() {
                     const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
                                       (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
 
-                    // Proximity override: if the player is already on the trajectory (barely needs to move), always allow
+                    // Proximity override: if the player's circle overlaps the ball trajectory, always allow
                     const playerDistToTraj = drawingFrom.field_x != null ? pointToSegmentDistance(drawingFrom.field_x, drawingFrom.field_y!, bfx, bfy, btx, bty) : Infinity;
                     const isPlayerOnTrajectory = playerDistToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
 
-                    // Core reachability: player arrives at this trajectory point (tCursor) before ball does
-                    // OR player is already standing on the ball's path
-                    canReachBall = !isRedZone && distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && (movePct <= tCursor || isPlayerOnTrajectory);
+                    // Core reachability:
+                    // 1. Cursor is near trajectory AND player arrives before ball (timing check)
+                    // 2. OR player's circle overlaps trajectory (ball passes through them — always can act)
+                    const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
+                    canReachBall = !isRedZone && (
+                      (cursorNearTraj && (movePct <= tCursor || isPlayerOnTrajectory)) ||
+                      isPlayerOnTrajectory
+                    );
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
