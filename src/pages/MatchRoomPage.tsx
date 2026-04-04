@@ -2484,22 +2484,25 @@ export default function MatchRoomPage() {
     const computeBallOffset = (playerPos: { x: number; y: number }): { x: number; y: number } => {
       const BALL_DIST = 0.8; // distance from player center in field %
 
+      // Use START position to compute direction (not interpolated pos, which flips near target)
+      const startPos = resolutionStartPositions[ballHolder.id] ?? { x: ballHolder.field_x ?? 50, y: ballHolder.field_y ?? 50 };
+
       // If BH has a move action, ball is IN FRONT of movement direction
       const moveAction = turnActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move' && a.target_x != null);
       if (moveAction?.target_x != null && moveAction?.target_y != null) {
-        const dx = moveAction.target_x - playerPos.x;
-        const dy = moveAction.target_y - playerPos.y;
+        const dx = moveAction.target_x - startPos.x;
+        const dy = moveAction.target_y - startPos.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len > 0.5) {
           return { x: playerPos.x + (dx / len) * BALL_DIST, y: playerPos.y + (dy / len) * BALL_DIST };
         }
       }
 
-      // If BH has a pass/shoot action, ball is between player and target (slightly ahead)
+      // If BH has a pass/shoot action, ball is between player and target
       const ballAction = turnActions.find(a => a.participant_id === ballHolder.id && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
       if (ballAction?.target_x != null && ballAction?.target_y != null) {
-        const dx = ballAction.target_x - playerPos.x;
-        const dy = ballAction.target_y - playerPos.y;
+        const dx = ballAction.target_x - startPos.x;
+        const dy = ballAction.target_y - startPos.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len > 0.5) {
           return { x: playerPos.x + (dx / len) * BALL_DIST, y: playerPos.y + (dy / len) * BALL_DIST };
@@ -2508,7 +2511,8 @@ export default function MatchRoomPage() {
 
       // Default: ball slightly ahead (right for home, left for away)
       const isHome = ballHolder.club_id === match?.home_club_id;
-      const dir = isHome ? 1 : -1;
+      const isSecondHalf = (match?.current_half ?? 1) >= 2;
+      const dir = (isHome ? !isSecondHalf : isSecondHalf) ? 1 : -1;
       return { x: playerPos.x + dir * BALL_DIST, y: playerPos.y };
     };
 
