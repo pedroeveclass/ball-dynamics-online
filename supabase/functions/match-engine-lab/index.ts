@@ -4517,7 +4517,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           nextBallHolderParticipantId = ballHolder.id;
         }
 
-        if (ballHolderAction && (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
+        // Offside check — NOT applied on throw-ins, goal kicks, or corners (FIFA rules)
+        const noOffsideSetPieces = new Set(['throw_in', 'goal_kick', 'corner']);
+        const skipOffside = activeTurn.set_piece_type && noOffsideSetPieces.has(activeTurn.set_piece_type);
+        if (!skipOffside && ballHolderAction && (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
           const receiver = (participants || []).find(p => p.id === nextBallHolderParticipantId);
           if (receiver && receiver.club_id === possClubId && checkOffside(receiver, ballHolder, participants || [], possClubId || '', match)) {
             const defClub = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
