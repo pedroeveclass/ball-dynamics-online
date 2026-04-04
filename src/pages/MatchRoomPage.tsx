@@ -1447,14 +1447,29 @@ export default function MatchRoomPage() {
           const mdx = pctX - drawingParticipant.field_x;
           const mdy = pctY - drawingParticipant.field_y;
           const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
-          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+          let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+
+          // Apply ball speed factor for outfield players (GK uses full range on shots)
+          const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
+          const clickActionType = ballPathAction.action_type;
+          const clickIsShot = clickActionType === 'shoot_controlled' || clickActionType === 'shoot_power' || clickActionType === 'header_controlled' || clickActionType === 'header_power';
+          if (!(clickIsGK && clickIsShot)) {
+            const clickBallSpeedFactor =
+              (clickActionType === 'shoot_power' || clickActionType === 'header_power') ? 0.25 :
+              (clickActionType === 'shoot_controlled' || clickActionType === 'header_controlled') ? 0.35 :
+              clickActionType === 'pass_launch' ? 0.5 :
+              (clickActionType === 'pass_high' || clickActionType === 'header_high') ? 0.65 :
+              1.0;
+            maxRange *= clickBallSpeedFactor;
+          }
+
           const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
-          
+
           const bfx = _bhOriginX;
           const bfy = _bhOriginY;
           const btx = ballPathAction.target_x;
           const bty = ballPathAction.target_y;
-          
+
           const circleRadiusField = 9 / INNER_W * 100;
           
           const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
@@ -3410,7 +3425,22 @@ export default function MatchRoomPage() {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
                   const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
-                  const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                  let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+
+                  // Apply ball speed factor for outfield players (GK uses full range on shots)
+                  const actionType = effectiveBallTrajectoryAction.action_type;
+                  const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
+                  const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
+                  if (!(drawingIsGK && isShot)) {
+                    const ballSpeedFactor =
+                      (actionType === 'shoot_power' || actionType === 'header_power') ? 0.25 :
+                      (actionType === 'shoot_controlled' || actionType === 'header_controlled') ? 0.35 :
+                      actionType === 'pass_launch' ? 0.5 :
+                      (actionType === 'pass_high' || actionType === 'header_high') ? 0.65 :
+                      1.0;
+                    maxRange *= ballSpeedFactor;
+                  }
+
                   const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
 
                   const bfx = effectiveHolder.field_x!;
