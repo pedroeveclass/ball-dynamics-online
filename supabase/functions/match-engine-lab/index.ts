@@ -1968,16 +1968,17 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
         return [];
     }
   }
-  // Receive/dominate - allowed in green + yellow, NOT red
+  // Receive/dominate - allowed in green zones + descending yellow, NOT red or ascending yellow
+  // Ascending yellow (ball going up) = only block; descending yellow (coming down) = receive OK
   switch (actionType) {
     case 'pass_low':
     case 'header_low':
       return [[0, 1]]; // fully green, fully interceptable
     case 'pass_high':
     case 'header_high':
-      return [[0, 0.2], [0.8, 1]]; // only yellow zones (red in middle)
+      return [[0, 0.12], [0.8, 1]]; // green start + descending yellow+green (skip ascending yellow 0.12-0.2)
     case 'pass_launch':
-      return [[0, 0.35], [0.65, 1]]; // only yellow zones
+      return [[0, 0.08], [0.65, 1]]; // green start + descending yellow+green (skip ascending yellow 0.08-0.35)
     case 'shoot_controlled':
     case 'header_controlled':
       return [[0, 1]]; // ground ball, fully green

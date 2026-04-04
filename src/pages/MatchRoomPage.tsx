@@ -2198,9 +2198,15 @@ export default function MatchRoomPage() {
     // Determine zone
     const zone = trajType ? getBallZoneAtProgress(trajType, trajProgress) : 'green';
 
-    // Yellow zone: headed interception
+    // Yellow zone: check if ascending (ball going up) or descending (ball coming down)
     if (zone === 'yellow') {
-      return ['receive']; // Engine treats as header-based receive in yellow zone
+      // Ascending yellow = ball rising, only block allowed
+      // Descending yellow = ball falling, receive allowed
+      const isAscending = trajProgress < 0.5; // first half of trajectory = ascending
+      if (isAscending) {
+        return ['block'];
+      }
+      return ['receive']; // descending yellow — can receive (header)
     }
 
     // Green zone: normal foot receive
