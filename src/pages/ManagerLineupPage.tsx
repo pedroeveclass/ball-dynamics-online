@@ -383,13 +383,14 @@ export default function ManagerLineupPage() {
         return;
       }
       setBenchPlayers(prev => [...prev, playerId]);
+      // Keep dialog open for multi-select — don't close
     } else {
       setAssignments(prev => {
         const filtered = prev.filter(a => a.slot_position !== pickSlot);
         return [...filtered, { slot_position: pickSlot, player_profile_id: playerId, role_type: 'starter' }];
       });
+      setPickSlot(null);
     }
-    setPickSlot(null);
   };
 
   const removeFromSlot = (slotPos: string) => {
@@ -958,32 +959,95 @@ export default function ManagerLineupPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="font-display">
-              {pickType === 'bench' ? 'Adicionar ao Banco' : `Escolher Jogador — ${pickSlot}`}
+              {pickType === 'bench' ? `Banco de Reservas (${benchPlayers.length}/${MAX_BENCH})` : `Escolher Jogador — ${pickSlot}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
-            {availablePlayers.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador disponível</p>
+            {pickType === 'bench' ? (
+              <>
+                {/* Show available players with toggle selection */}
+                {availablePlayers.length === 0 && benchPlayers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador disponível</p>
+                ) : (
+                  <>
+                    {/* Already selected bench players (can remove) */}
+                    {benchPlayers.map(id => {
+                      const p = getPlayer(id);
+                      if (!p) return null;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => removeFromBench(p.id)}
+                          className="w-full flex items-center gap-3 p-2 rounded-lg bg-pitch/10 border border-pitch/30 text-left transition-colors"
+                        >
+                          <span className="font-display text-lg font-extrabold text-pitch w-8 text-center">{p.overall}</span>
+                          <div className="flex-1">
+                            <p className="font-display font-bold text-sm">{p.full_name}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <PositionBadge position={p.primary_position} />
+                              {p.secondary_position && <PositionBadge position={p.secondary_position} />}
+                              <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                            </div>
+                          </div>
+                          <span className="text-xs text-pitch font-bold">✓</span>
+                        </button>
+                      );
+                    })}
+                    {/* Available players (can add) */}
+                    {availablePlayers.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => assignToSlot(p.id)}
+                        disabled={benchPlayers.length >= MAX_BENCH}
+                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors disabled:opacity-40"
+                      >
+                        <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
+                        <div className="flex-1">
+                          <p className="font-display font-bold text-sm">{p.full_name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <PositionBadge position={p.primary_position} />
+                            {p.secondary_position && <PositionBadge position={p.secondary_position} />}
+                            <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </>
             ) : (
-              availablePlayers.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => assignToSlot(p.id)}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors"
-                >
-                  <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
-                  <div className="flex-1">
-                    <p className="font-display font-bold text-sm">{p.full_name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <PositionBadge position={p.primary_position} />
-                      {p.secondary_position && <PositionBadge position={p.secondary_position} />}
-                      <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
-                    </div>
-                  </div>
-                </button>
-              ))
+              <>
+                {availablePlayers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador disponível</p>
+                ) : (
+                  availablePlayers.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => assignToSlot(p.id)}
+                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors"
+                    >
+                      <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
+                      <div className="flex-1">
+                        <p className="font-display font-bold text-sm">{p.full_name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <PositionBadge position={p.primary_position} />
+                          {p.secondary_position && <PositionBadge position={p.secondary_position} />}
+                          <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </>
             )}
           </div>
+          {pickType === 'bench' && (
+            <div className="pt-2 border-t">
+              <Button onClick={() => setPickSlot(null)} className="w-full">
+                Confirmar ({benchPlayers.length})
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </ManagerLayout>
