@@ -1725,7 +1725,7 @@ async function generateBotActions(
   }
 
   // ── Post-processing: validate receive/block targets are near ball/trajectory ──
-  if (phase === 'defending_response' && ballHolderParticipantId) {
+  if (phase === 'defending_response' && ballHolderId) {
     for (const action of actions) {
       if (action.action_type !== 'receive' && action.action_type !== 'block') continue;
       const botPart = participants.find((p: any) => p.id === action.participant_id);
