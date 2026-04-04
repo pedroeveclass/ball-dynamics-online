@@ -5479,16 +5479,16 @@ Deno.serve(async (req) => {
 
       const isOwnParticipant = participant?.connected_user_id === user.id;
 
-      const { data: managerClub } = managerProfile?.id
-        ? await supabase.from('clubs').select('id').eq('manager_profile_id', managerProfile.id).single()
-        : { data: null };
-
-      const isManagerOfClub = managerClub?.id === participant?.club_id;
+      // Check if the user manages the participant's specific club (supports multi-club managers)
+      const isManagerOfClub = managerProfile?.id
+        ? (await supabase.from('clubs').select('id').eq('id', participant?.club_id).eq('manager_profile_id', managerProfile.id).maybeSingle()).data !== null
+        : false;
       const isTestMatch = (allParts || []).length <= 4;
-      const isManagerOfMatch = isTestMatch && (
-        managerClub?.id === (participant as any)?.matches?.home_club_id ||
-        managerClub?.id === (participant as any)?.matches?.away_club_id
-      );
+      const isManagerOfMatch = isTestMatch && managerProfile?.id
+        ? (await supabase.from('clubs').select('id').eq('manager_profile_id', managerProfile.id)
+            .in('id', [(participant as any)?.matches?.home_club_id, (participant as any)?.matches?.away_club_id].filter(Boolean))
+            .maybeSingle()).data !== null
+        : false;
 
       if (!isOwnParticipant && !isManagerOfClub && !isManagerOfMatch) {
         return new Response(JSON.stringify({ error: 'Not authorized to control this participant' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
