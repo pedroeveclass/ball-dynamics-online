@@ -2360,8 +2360,10 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   foulPosition?: { x: number; y: number };
   card?: 'yellow';
   disputeInfo?: { winner: 'attacker' | 'defender'; zone: string };
+  gkSaveAttempt?: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean };
 } {
   let _disputeInfo: { winner: 'attacker' | 'defender'; zone: string } | undefined;
+  let gkSaveAttempt: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean } | undefined;
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
     const result: Record<string, number> = {};
@@ -2379,6 +2381,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     if (!participant?.player_profile_id || !playerProfilesMap) return 'Médio';
     return playerProfilesMap[participant.player_profile_id]?.height || 'Médio';
   };
+
 
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
   const bhAttrs = getFullAttrs(bh);
@@ -2531,7 +2534,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         return { success: false, event: 'block', description: blockDesc, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
       }
       if (context.type === 'gk_save') {
-        return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+        return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } };
       }
       return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
     }
@@ -2544,11 +2547,14 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     }
 
     if (context.type === 'block_shot' || context.type === 'block') console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Bola continua.`);
-    else if (context.type === 'gk_save') console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
+    else if (context.type === 'gk_save') {
+      console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
+      gkSaveAttempt = { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: false };
+    }
     else console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
   }
 
-  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true };
+  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt };
   if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
   if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
@@ -4317,6 +4323,26 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (ballHolderAction) {
         const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type);
 
+        // Log GK save attempt if there was one
+        if (result.gkSaveAttempt) {
+          const gka = result.gkSaveAttempt;
+          if (gka.saved) {
+            eventsToLog.push({
+              match_id, event_type: 'gk_save',
+              title: `🧤 Goleiro defendeu! (${gka.chance})`,
+              body: `Goleiro fez a defesa com ${gka.chance} de chance.`,
+              payload: { gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId, save_chance: gka.chance, result: 'saved' },
+            });
+          } else {
+            eventsToLog.push({
+              match_id, event_type: 'gk_save_failed',
+              title: `🧤 Goleiro tentou defender (${gka.chance}) — não conseguiu!`,
+              body: `Goleiro tentou a defesa com ${gka.chance} de chance, mas a bola passou.`,
+              payload: { gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId, save_chance: gka.chance, result: 'failed' },
+            });
+          }
+        }
+
         if (result.goal) {
           // Check if the shot is actually on target
           const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
@@ -4368,18 +4394,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           nextBallHolderParticipantId = result.newBallHolderId;
           newPossessionClubId = result.newPossessionClubId || possClubId;
 
-          const resolvedEventType = result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete');
-          const resolvedPayload: Record<string, any> = {};
-          if (resolvedEventType === 'tackle') {
-            resolvedPayload.tackler_participant_id = result.newBallHolderId;
-            resolvedPayload.tackled_participant_id = ballHolder.id;
+          // Skip duplicate event for GK save (already logged above as gk_save)
+          if (!result.gkSaveAttempt?.saved) {
+            const resolvedEventType = result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete');
+            const resolvedPayload: Record<string, any> = {};
+            if (resolvedEventType === 'tackle') {
+              resolvedPayload.tackler_participant_id = result.newBallHolderId;
+              resolvedPayload.tackled_participant_id = ballHolder.id;
+            }
+            eventsToLog.push({
+              match_id, event_type: resolvedEventType,
+              title: result.possession_change ? `🔄 Troca de posse` : result.description,
+              body: result.description,
+              ...(Object.keys(resolvedPayload).length > 0 ? { payload: resolvedPayload } : {}),
+            });
           }
-          eventsToLog.push({
-            match_id, event_type: resolvedEventType,
-            title: result.possession_change ? `🔄 Troca de posse` : result.description,
-            body: result.description,
-            ...(Object.keys(resolvedPayload).length > 0 ? { payload: resolvedPayload } : {}),
-          });
         } else if (result.foul && result.foulPosition) {
           // Check if foul is inside penalty area
           const foulX = result.foulPosition.x;
