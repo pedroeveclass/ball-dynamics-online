@@ -3662,7 +3662,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (tickCache.enrichedParticipants) {
       const posMap = new Map((participantsResult.data || []).map((p: any) => [p.id, p]));
       participants = tickCache.enrichedParticipants.map((p: any) => {
-        const fresh = posMap.get(p.id);
+        const fresh: any = posMap.get(p.id);
         return fresh ? { ...p, pos_x: fresh.pos_x, pos_y: fresh.pos_y, is_sent_off: fresh.is_sent_off } : p;
       });
     } else {
