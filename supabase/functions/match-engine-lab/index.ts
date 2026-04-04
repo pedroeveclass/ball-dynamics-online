@@ -3521,7 +3521,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           const energyUpdates: Promise<any>[] = [];
           for (const part of (allMatchParts || [])) {
             if (!part.player_profile_id) continue;
-            const profile = energyMap.get(part.player_profile_id);
+            const profile = energyMap.get(part.player_profile_id) as any;
             const energyPct = profile
               ? Math.round((Number(profile.energy_current ?? 100) / Math.max(1, Number(profile.energy_max ?? 100))) * 100)
               : 100;
