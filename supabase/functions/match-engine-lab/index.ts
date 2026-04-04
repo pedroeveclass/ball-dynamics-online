@@ -1670,7 +1670,7 @@ async function generateBotActions(
           ).length;
           // Top 3 closest non-GK defenders form a wall
           if (closerTeammates < 3 && role !== 'goalkeeper') {
-            const wallDist = 8; // ~8 units from ball (10-yard rule in scaled coords)
+            const wallDist = 11; // outside the 10-unit exclusion zone
             const angleToBall = Math.atan2(ballPos.y - 50, ballPos.x - ownGoalX);
             const wallSpread = closerTeammates * 2.5; // spread players across wall
             target = {
@@ -1700,6 +1700,17 @@ async function generateBotActions(
             if (isHome) target.x = Math.min(target.x, 49);
             else target.x = Math.max(target.x, 51);
           }
+        }
+      }
+
+      // Free kick / set piece exclusion zone for defending team
+      if (setPieceType && setPieceType !== 'kickoff' && isDefending) {
+        const FREE_KICK_R = 10;
+        const distToBall = Math.sqrt((target.x - ballPos.x) ** 2 + (target.y - ballPos.y) ** 2);
+        if (distToBall < FREE_KICK_R) {
+          const angle = Math.atan2(target.y - ballPos.y, target.x - ballPos.x);
+          target.x = ballPos.x + Math.cos(angle) * (FREE_KICK_R + 1);
+          target.y = ballPos.y + Math.sin(angle) * (FREE_KICK_R + 1);
         }
       }
 
@@ -3834,6 +3845,25 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
 
+      // Free kick / corner / throw-in: defending team must stay 10% away from ball
+      const setPieceType = activeTurn.set_piece_type;
+      if (setPieceType && setPieceType !== 'kickoff') {
+        const isDefending = part.club_id !== possClubId;
+        if (isDefending && bhId) {
+          const bhPart = (participants || []).find((p: any) => p.id === bhId);
+          const ballX = bhPart ? Number(bhPart.pos_x ?? 50) : 50;
+          const ballY = bhPart ? Number(bhPart.pos_y ?? 50) : 50;
+          const FREE_KICK_EXCLUSION_R = 10; // ~9.15m in real football
+          const distToBall = Math.sqrt((targetX - ballX) ** 2 + (targetY - ballY) ** 2);
+          if (distToBall < FREE_KICK_EXCLUSION_R) {
+            // Push away from ball
+            const angle = Math.atan2(targetY - ballY, targetX - ballX);
+            targetX = ballX + Math.cos(angle) * (FREE_KICK_EXCLUSION_R + 1);
+            targetY = ballY + Math.sin(angle) * (FREE_KICK_EXCLUSION_R + 1);
+          }
+        }
+      }
+
       // Clamp to field
       targetX = Math.max(1, Math.min(99, targetX));
       targetY = Math.max(1, Math.min(99, targetY));
@@ -4362,6 +4392,23 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             });
             nextSetPieceType = 'free_kick';
             ballEndPos = { x: foulX, y: foulY };
+
+            // Push defending players out of the exclusion zone (10 units from ball)
+            const FREE_KICK_EXCLUSION = 10;
+            const defClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+            for (const p of (participants || [])) {
+              if (p.club_id !== defClubId || p.role_type !== 'player' || p.is_sent_off) continue;
+              if (p.id === result.failedContestParticipantId) continue; // fouler handled separately
+              const px = Number(p.pos_x ?? 50);
+              const py = Number(p.pos_y ?? 50);
+              const distToFoul = Math.sqrt((px - foulX) ** 2 + (py - foulY) ** 2);
+              if (distToFoul < FREE_KICK_EXCLUSION) {
+                const angle = Math.atan2(py - foulY, px - foulX);
+                const newX = Math.max(1, Math.min(99, foulX + Math.cos(angle) * (FREE_KICK_EXCLUSION + 1)));
+                const newY = Math.max(1, Math.min(99, foulY + Math.sin(angle) * (FREE_KICK_EXCLUSION + 1)));
+                deferredPositionUpdates.push({ id: p.id, pos_x: newX, pos_y: newY });
+              }
+            }
           }
           if (result.failedContestLog) {
             eventsToLog.push({
