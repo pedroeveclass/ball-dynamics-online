@@ -51,15 +51,20 @@ export default function MatchRoomPage() {
     }
   }, []);
   const invokeMatchEngine = useCallback(async (body: Record<string, unknown>) => {
-    // Try current session first, refresh if expired
+    // Always get fresh session - check expiry to avoid sending stale tokens
     let { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
+    const expiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
+    if (!session?.access_token || expiresAt < Date.now() + 60000) {
       const { data: refreshed } = await supabase.auth.refreshSession();
       session = refreshed.session;
     }
+    if (!session?.access_token) {
+      toast.error('Sessão expirada. Faça login novamente.');
+      return { response: new Response(null, { status: 401 }), result: { error: 'No session' }, resolvedFunction: '' };
+    }
     return invokeConfiguredMatchEngine({
       body,
-      accessToken: session?.access_token,
+      accessToken: session.access_token,
       onServerNow: updateServerOffset,
       resolvedFunctionRef: resolvedMatchEngineRef,
     });

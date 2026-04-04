@@ -3346,6 +3346,40 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       existingParts = [...homeSeeded, ...awaySeeded];
     }
 
+    // ── Backfill missing manager participants ──
+    // If participants exist but manager participants are missing (e.g. RLS blocked
+    // the challenger manager_profile read during challenge acceptance), create them now.
+    {
+      const { data: existingManagers } = await supabase
+        .from('match_participants')
+        .select('id, club_id, connected_user_id')
+        .eq('match_id', m.id)
+        .eq('role_type', 'manager');
+      const managerClubIds = new Set((existingManagers || []).map((p: any) => p.club_id));
+      const missingManagerParts: any[] = [];
+      for (const clubId of [m.home_club_id, m.away_club_id]) {
+        if (!managerClubIds.has(clubId)) {
+          const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', clubId).maybeSingle();
+          if (club?.manager_profile_id) {
+            const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle();
+            if (mgr?.user_id) {
+              missingManagerParts.push({
+                match_id: m.id,
+                club_id: clubId,
+                role_type: 'manager',
+                is_bot: false,
+                connected_user_id: mgr.user_id,
+              });
+            }
+          }
+        }
+      }
+      if (missingManagerParts.length > 0) {
+        await supabase.from('match_participants').insert(missingManagerParts);
+        console.log(`[ENGINE] Backfilled ${missingManagerParts.length} missing manager participants`);
+      }
+    }
+
     const homeParts = (existingParts || []).filter((p: any) => p.club_id === m.home_club_id && p.role_type === 'player');
     const awayParts = (existingParts || []).filter((p: any) => p.club_id === m.away_club_id && p.role_type === 'player');
 
@@ -5474,7 +5508,7 @@ Deno.serve(async (req) => {
         supabase.from('match_participants')
           .select('*, matches!inner(home_club_id, away_club_id)')
           .eq('id', participant_id).single(),
-        supabase.from('manager_profiles').select('id').eq('user_id', user.id).single(),
+        supabase.from('manager_profiles').select('id').eq('user_id', user.id).maybeSingle(),
         supabase.from('match_participants')
           .select('id, club_id, connected_user_id, role_type')
           .eq('match_id', match_id).eq('role_type', 'player'),
