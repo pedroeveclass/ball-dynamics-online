@@ -1362,20 +1362,18 @@ async function generateBotActions(
             const interceptX = isHome ? Math.max(2, Math.min(posX, 8)) : Math.min(98, Math.max(posX, 92));
             const interceptY = Math.max(25, Math.min(75, shotTargetY));
             const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
+            const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
             if (distToIntercept <= maxMoveRange) {
-              // Within range: block/receive at intercept point
-              const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: gkActionType,
                 target_x: interceptX, target_y: interceptY, status: 'pending',
               });
             } else {
-              // Out of range: STILL try to block/receive — move as close as possible toward intercept
+              // Out of range: STILL try — move as close as possible toward intercept
               const angle = Math.atan2(interceptY - posY, interceptX - posX);
               const targetX = posX + Math.cos(angle) * maxMoveRange;
               const targetY = posY + Math.sin(angle) * maxMoveRange;
-              const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: gkActionType,
@@ -1950,20 +1948,21 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
   // Block actions - only allowed in yellow zones (elevated ball)
   if (interceptActionType === 'block') {
     switch (actionType) {
+      // All shots: GK can block (espalmar) at any point in trajectory
       case 'shoot_power':
       case 'header_power':
-        return [[0, 0.3]]; // ball rises early
+      case 'shoot_controlled':
+      case 'header_controlled':
+        return [[0, 1]];
       case 'pass_high':
       case 'header_high':
         return [[0, 0.2], [0.8, 1]]; // yellow zones of high pass
       case 'pass_launch':
         return [[0, 0.35], [0.65, 1]]; // yellow zones of launch
-      // Ground balls: NO block allowed
+      // Ground balls (non-shot): NO block allowed
       case 'pass_low':
       case 'header_low':
       case 'move':
-      case 'shoot_controlled':
-      case 'header_controlled':
       default:
         return [];
     }
@@ -1979,12 +1978,12 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
       return [[0, 0.12], [0.8, 1]]; // green start + descending yellow+green (skip ascending yellow 0.12-0.2)
     case 'pass_launch':
       return [[0, 0.08], [0.65, 1]]; // green start + descending yellow+green (skip ascending yellow 0.08-0.35)
+    // All shots: GK can receive (agarrar) at any point in trajectory
     case 'shoot_controlled':
     case 'header_controlled':
-      return [[0, 1]]; // ground ball, fully green
     case 'shoot_power':
     case 'header_power':
-      return [[0, 0.3]]; // only early part (yellow, before it rises to red)
+      return [[0, 1]];
     case 'move':
       return [[0, 1]]; // ground, fully green
     default:
@@ -2212,7 +2211,14 @@ function computeInterceptSuccess(
       break;
   }
 
-  let successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
+  let successChance: number;
+  if (context.type === 'tackle') {
+    // Tackle: 50% base when skills are equal, skill difference shifts ±35%, randomness ±10%
+    const skillDelta = defenderSkill - attackerSkill;
+    successChance = 0.50 + skillDelta * 0.35 + (Math.random() - 0.5) * 0.20;
+  } else {
+    successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
+  }
 
   if (ballHeightZone === 'yellow') {
     const heightBonus = (normalizeAttr(defenderAttrs.cabeceio ?? 40) * 0.3 +
