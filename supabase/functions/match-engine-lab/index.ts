@@ -2973,7 +2973,7 @@ async function handleSetPiece(
   matchId: string,
   oob: OOBResult,
   participants: any[],
-  match: { home_club_id: string; away_club_id: string; home_lineup_id?: string | null; away_lineup_id?: string | null },
+  match: { home_club_id: string; away_club_id: string; home_lineup_id?: string | null; away_lineup_id?: string | null; current_half?: number },
   allActions: any[],
   lineupRoles?: { home: LineupRoles | null; away: LineupRoles | null }
 ): Promise<{ playerId: string; clubId: string; title: string; body: string } | null> {
