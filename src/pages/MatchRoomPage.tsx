@@ -1502,7 +1502,9 @@ export default function MatchRoomPage() {
               const tdy = ballTrajectoryAction.target_y - looseBallPos.y;
               const tlen2 = tdx * tdx + tdy * tdy;
               const tCursor = tlen2 > 0 ? clamp(((pctX - looseBallPos.x) * tdx + (pctY - looseBallPos.y) * tdy) / tlen2, 0, 1) : 0;
-              if (movePct <= tCursor) {
+              // Allow intercept if player can reach the trajectory point OR is very close to the ball
+              const distToBallDirect = Math.sqrt((pctX - looseBallPos.x) ** 2 + (pctY - looseBallPos.y) ** 2);
+              if (movePct <= tCursor || distToBallDirect <= 3) {
                 setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY, trajectoryActionType: ballTrajectoryAction.action_type, trajectoryProgress: tCursor });
                 setShowActionMenu(drawingAction.fromParticipantId);
                 setDrawingAction(null);
