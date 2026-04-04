@@ -1181,6 +1181,7 @@ export type Database = {
           is_ready: boolean
           is_sent_off: boolean
           lineup_slot_id: string | null
+          match_energy: number
           match_id: string
           player_profile_id: string | null
           pos_x: number | null
@@ -1198,6 +1199,7 @@ export type Database = {
           is_ready?: boolean
           is_sent_off?: boolean
           lineup_slot_id?: string | null
+          match_energy?: number
           match_id: string
           player_profile_id?: string | null
           pos_x?: number | null
@@ -1215,6 +1217,7 @@ export type Database = {
           is_ready?: boolean
           is_sent_off?: boolean
           lineup_slot_id?: string | null
+          match_energy?: number
           match_id?: string
           player_profile_id?: string | null
           pos_x?: number | null
