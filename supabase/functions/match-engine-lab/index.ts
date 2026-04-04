@@ -4478,19 +4478,22 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
         } else if (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) {
-          // RULE: Only players who explicitly did 'receive' can get possession.
-          // If nobody did receive on the ball trajectory, it's a loose ball.
-          const receiversOnTrajectory = allActions.filter((a: any) =>
-            a.participant_id !== ballHolder.id &&
-            a.action_type === 'receive' &&
-            a.target_x != null && a.target_y != null
-          );
+          // RULE: resolveAction already processed interceptions from opponents.
+          // Here we only match SAME-TEAM receivers (teammates trying to receive the pass).
+          // Opponent 'receive' actions were already contested inside resolveAction.
+          const teammateReceivers = allActions.filter((a: any) => {
+            if (a.participant_id === ballHolder.id) return false;
+            if (a.action_type !== 'receive') return false;
+            if (a.target_x == null || a.target_y == null) return false;
+            const p = (participants || []).find((pp: any) => pp.id === a.participant_id);
+            return p && p.club_id === possClubId; // Only same-team receivers
+          });
 
-          if (receiversOnTrajectory.length > 0) {
-            // Find the receiver closest to the pass destination
+          if (teammateReceivers.length > 0) {
+            // Find the teammate receiver closest to the pass destination
             let bestDist = Infinity;
             let bestId: string | null = null;
-            for (const rcv of receiversOnTrajectory) {
+            for (const rcv of teammateReceivers) {
               const dist = Math.sqrt(
                 (Number(rcv.target_x) - ballHolderAction.target_x) ** 2 +
                 (Number(rcv.target_y) - ballHolderAction.target_y) ** 2
@@ -4499,16 +4502,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
             if (bestId) {
               nextBallHolderParticipantId = bestId;
-              const receiver = (participants || []).find((p: any) => p.id === bestId);
-              if (receiver && receiver.club_id !== possClubId) {
-                newPossessionClubId = receiver.club_id;
-                eventsToLog.push({ match_id, event_type: 'possession_change', title: '🔄 Troca de posse', body: 'Passe interceptado!' });
-              }
+              // Same-team receiver — no possession change
             } else {
               nextBallHolderParticipantId = null;
             }
           } else {
-            // Nobody did receive — ball is loose at the pass destination
+            // No teammate did receive — ball is loose at the pass destination
             nextBallHolderParticipantId = null;
             const looseDest = { x: Number(ballHolderAction.target_x ?? 50), y: Number(ballHolderAction.target_y ?? 50) };
             ballEndPos = looseDest;
