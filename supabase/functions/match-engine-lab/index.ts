@@ -2349,7 +2349,7 @@ function resolveDispute(
   return { winner, chance: attackerChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number, setPieceType?: string | null): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -2383,7 +2383,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
   const bhAttrs = getFullAttrs(bh);
   const bhActionType = _attacker.action_type || action;
-  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile);
+  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId);
 
   // ── DISPUTE DETECTION ──
   // If multiple interceptors from DIFFERENT teams target the same area (within 3 units),
@@ -2554,7 +2554,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
   if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
   if (!bh) return [];
@@ -2580,6 +2580,17 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
     if ((a.action_type !== 'receive' && a.action_type !== 'block') || a.target_x == null || a.target_y == null) continue;
     const actionParticipant = participants.find((p: any) => p.id === a.participant_id);
     if (actionParticipant?.is_sent_off) continue;
+
+    // Free kick exclusion zone: defending players within 10 units of ball origin cannot intercept
+    if (setPieceType && setPieceType !== 'kickoff' && actionParticipant && actionParticipant.club_id !== possClubId) {
+      const posX = Number(actionParticipant.pos_x ?? 50);
+      const posY = Number(actionParticipant.pos_y ?? 50);
+      const distToBallOrigin = Math.sqrt((posX - startX) ** 2 + (posY - startY) ** 2);
+      if (distToBallOrigin < 10) {
+        console.log(`[ENGINE] Intercept rejected (free kick exclusion): player ${a.participant_id.slice(0,8)} dist=${distToBallOrigin.toFixed(1)} < 10 from ball origin`);
+        continue;
+      }
+    }
 
     const dx = endX - startX;
     const dy = endY - startY;
@@ -4270,7 +4281,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
       if (ballHolderAction) {
-        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus);
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type);
 
         if (result.goal) {
           // Check if the shot is actually on target
