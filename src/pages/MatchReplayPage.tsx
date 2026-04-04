@@ -117,6 +117,7 @@ interface Snapshot {
   positions: Record<string, { x: number; y: number }>;
   ballPosition: { x: number; y: number };
   events: EventRow[];
+  actions: ActionRow[];
 }
 
 // ─── Speed options ───────────────────────────────────────────────
@@ -305,6 +306,7 @@ export default function MatchReplayPage() {
           positions: { ...currentPositions },
           ballPosition,
           events: turnEventMap.get(turn.turn_number) || [],
+          actions: turnActions,
         });
       }
 
@@ -567,6 +569,12 @@ export default function MatchReplayPage() {
                   <rect x="40" y="0" width="40" height={INNER_H} fill="hsl(100,42%,25%)" />
                 </pattern>
                 <filter id="rp-shadow"><feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.5" /></filter>
+                {/* Arrow markers */}
+                <marker id="rp-ah-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#22c55e" /></marker>
+                <marker id="rp-ah-yellow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#f59e0b" /></marker>
+                <marker id="rp-ah-red" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#ef4444" /></marker>
+                <marker id="rp-ah-black" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#1a1a2e" /></marker>
+                <marker id="rp-ah-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#06b6d4" /></marker>
               </defs>
 
               {/* Border */}
@@ -606,6 +614,64 @@ export default function MatchReplayPage() {
                   </g>
                 ))}
               </g>
+
+              {/* Action arrows */}
+              {currentSnapshot?.actions.map((action) => {
+                if (action.target_x == null || action.target_y == null) return null;
+                const startPositions = prevSnapshot?.positions ?? currentSnapshot.positions;
+                const startPos = startPositions[action.participant_id];
+                if (!startPos) return null;
+
+                const from = toSVG(startPos.x, startPos.y);
+                const to = toSVG(action.target_x, action.target_y);
+
+                // Skip tiny moves (already at target)
+                const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
+                if (dist < 3) return null;
+
+                const isPass = ['pass_low', 'pass_high', 'pass_launch', 'header_low', 'header_high'].includes(action.action_type);
+                const isShoot = ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'].includes(action.action_type);
+                const isReceive = action.action_type === 'receive';
+                const isBlock = action.action_type === 'block';
+                const isMove = action.action_type === 'move';
+
+                let stroke = '#1a1a2e'; // move = dark
+                let marker = 'rp-ah-black';
+                let strokeW = 1.5;
+                let dashArray = 'none';
+
+                if (isPass) {
+                  stroke = '#22c55e'; marker = 'rp-ah-green'; strokeW = 2.5;
+                  if (action.action_type === 'pass_high' || action.action_type === 'header_high') {
+                    stroke = '#f59e0b'; marker = 'rp-ah-green'; // yellow→green for high passes
+                  }
+                  if (action.action_type === 'pass_launch') {
+                    stroke = '#f59e0b'; marker = 'rp-ah-green';
+                  }
+                } else if (isShoot) {
+                  stroke = '#f59e0b'; marker = 'rp-ah-green'; strokeW = 3;
+                } else if (isReceive) {
+                  stroke = '#06b6d4'; marker = 'rp-ah-cyan'; strokeW = 1.5; dashArray = '3,2';
+                } else if (isBlock) {
+                  stroke = '#f59e0b'; marker = 'rp-ah-yellow'; strokeW = 2; dashArray = '3,2';
+                } else if (isMove) {
+                  dashArray = '4,3';
+                }
+
+                // Fade arrows as animation progresses
+                const opacity = animProgress < 1 ? 0.7 : 0.35;
+
+                return (
+                  <line
+                    key={action.id}
+                    x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                    stroke={stroke} strokeWidth={strokeW}
+                    strokeLinecap="round" opacity={opacity}
+                    strokeDasharray={dashArray}
+                    markerEnd={`url(#${marker})`}
+                  />
+                );
+              })}
 
               {/* Players */}
               {fieldParts.map((p) => {

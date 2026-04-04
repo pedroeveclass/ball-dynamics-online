@@ -670,12 +670,21 @@ export default function MatchRoomPage() {
 
     if (overrideMultiplier != null) range *= overrideMultiplier;
 
-    // One-touch turn: everyone moves at 50% (less reaction time)
-    const isOneTouchTurn = turnActions.some(a =>
+    // One-touch turn: movement scaled by ball speed (faster ball = less reaction time)
+    const oneTouchAct = turnActions.find(a =>
       a.payload && typeof a.payload === 'object' &&
       ((a.payload as any).one_touch_executed === true || (a.payload as any).one_touch === true)
     );
-    if (isOneTouchTurn) range *= 0.5;
+    if (oneTouchAct) {
+      const originType = (oneTouchAct.payload as any).origin_action_type || 'pass_low';
+      const otSpeedFactor =
+        (originType === 'shoot_power' || originType === 'header_power') ? 0.25 :
+        (originType === 'shoot_controlled' || originType === 'header_controlled') ? 0.35 :
+        originType === 'pass_launch' ? 0.5 :
+        (originType === 'pass_high' || originType === 'header_high') ? 0.65 :
+        1.0;
+      range *= otSpeedFactor * 0.5;
+    }
 
     return range;
   }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions]);
@@ -1002,6 +1011,17 @@ export default function MatchRoomPage() {
               setActiveTurn(nextTurn);
               scheduleTurnActionsReconcile(true);
               setTimeout(() => scheduleTurnActionsReconcile(true), 500);
+
+              // Pre-schedule engine trigger for when this phase expires
+              // This ensures instant processing without waiting for cron
+              if (nextTurn.ends_at) {
+                const msUntilExpiry = new Date(nextTurn.ends_at).getTime() - Date.now() + 300; // +300ms buffer
+                if (msUntilExpiry > 0 && msUntilExpiry < 30000) {
+                  setTimeout(() => {
+                    invokeMatchEngineRef.current({ action: 'process_due_matches', match_id: matchId }).catch(() => {});
+                  }, msUntilExpiry);
+                }
+              }
             };
 
             if (animatedResolutionIdRef.current && animFrameRef.current) {
@@ -1089,8 +1109,8 @@ export default function MatchRoomPage() {
     if (match?.status !== 'live' || !activeTurn || phaseTimeLeft > 0) return;
 
     let cancelled = false;
-    const STALE_THRESHOLD_MS = 3000; // only fire if cron hasn't produced a turn change in 3s
-    const RETRY_INTERVAL = 4000;
+    const STALE_THRESHOLD_MS = 500; // fire quickly after phase expires
+    const RETRY_INTERVAL = 2000;
 
     const triggerProcessing = async () => {
       if (cancelled || phaseProcessorInFlightRef.current) return;
@@ -1116,7 +1136,7 @@ export default function MatchRoomPage() {
       }
     };
 
-    // Wait 3s before first attempt (let cron handle it)
+    // Fire quickly after phase expires (don't wait for cron)
     const initialTimeout = setTimeout(() => {
       if (!cancelled) void triggerProcessing();
     }, STALE_THRESHOLD_MS);
@@ -1338,6 +1358,7 @@ export default function MatchRoomPage() {
       // the pass/shot executes automatically in the next turn's phase 1
       const oneTouchNextPayload = {
         one_touch: true,
+        origin_action_type: pendingInterceptChoice!.trajectoryActionType || 'pass_low',
         intercept_x: pendingInterceptChoice!.targetX,
         intercept_y: pendingInterceptChoice!.targetY,
         next_action_type: drawingAction.type,
@@ -1821,7 +1842,7 @@ export default function MatchRoomPage() {
         return Math.sin(raw * Math.PI) * arcHeight;
       };
 
-      const duration = 2500;
+      const duration = 1800;
       let startTime: number | null = null;
 
       const animate = (now: number) => {
@@ -2205,9 +2226,12 @@ export default function MatchRoomPage() {
     const hasReceivePrompt = pendingInterceptChoice?.participantId === participantId;
 
     // Check if player is in attacking half (can shoot)
+    // In second half, sides are flipped: home attacks left, away attacks right
     const isHomeTeam = p.club_id === match.home_club_id;
+    const isSecondHalf = (match.current_half ?? 1) >= 2;
     const playerX = p.field_x ?? p.pos_x ?? 50;
-    const inAttackingHalf = isHomeTeam ? playerX >= 45 : playerX <= 55; // slight margin
+    const attacksRight = isHomeTeam ? !isSecondHalf : isSecondHalf;
+    const inAttackingHalf = attacksRight ? playerX >= 45 : playerX <= 55; // slight margin
 
     const filterShots = (actions: string[]) => {
       if (inAttackingHalf) return actions;
@@ -2620,7 +2644,10 @@ export default function MatchRoomPage() {
   // Shot target: for shoot, arrow goes slightly inside the goal
   const getShootTarget = (fromPart: Participant): { x: number; y: number } => {
     const isHome = fromPart.club_id === match.home_club_id;
-    return isHome ? { x: 100 + GOAL_LINE_OVERFLOW_PCT, y: 50 } : { x: 0 - GOAL_LINE_OVERFLOW_PCT, y: 50 };
+    const isSecondHalf = (match?.current_half ?? 1) >= 2;
+    // In second half, sides flip: home attacks left, away attacks right
+    const shootsRight = isHome ? !isSecondHalf : isSecondHalf;
+    return shootsRight ? { x: 100 + GOAL_LINE_OVERFLOW_PCT, y: 50 } : { x: 0 - GOAL_LINE_OVERFLOW_PCT, y: 50 };
   };
 
   // Arrow quality based on distance
@@ -3007,10 +3034,17 @@ export default function MatchRoomPage() {
                   if (hasBallAction) return null;
                 }
 
-                // Hide bot receive/block arrows that are clearly impossible (too far from trajectory)
+                // Hide bot receive/block arrows that are clearly impossible
                 if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
-                  const moveDist = Math.sqrt((fromPart.field_x - action.target_x) ** 2 + (fromPart.field_y - action.target_y) ** 2);
+                  const moveDist = Math.sqrt((fromPart.field_x - action.target_x!) ** 2 + (fromPart.field_y - action.target_y!) ** 2);
                   if (moveDist > 15) return null; // >15% of field = clearly impossible
+                  // Hide bot desarme when target is too far from ball holder (not a real tackle)
+                  if (ballHolder && fromPart.club_id !== ballHolder.club_id && action.target_x != null) {
+                    const bhX = ballHolder.field_x ?? 50;
+                    const bhY = ballHolder.field_y ?? 50;
+                    const distTargetToBh = Math.sqrt((action.target_x - bhX) ** 2 + (action.target_y! - bhY) ** 2);
+                    if (distTargetToBh > 15) return null; // target nowhere near ball holder
+                  }
                 }
 
                 // Hide bot move arrows where bot already arrived (distance ≈ 0)
@@ -3038,7 +3072,14 @@ export default function MatchRoomPage() {
                   const dx = to.x - from.x;
                   const dy = to.y - from.y;
 
-                  if (action.action_type === 'pass_high') {
+                  // Map header types to their visual equivalents
+                  const visualType = action.action_type === 'header_low' ? 'pass_low'
+                    : action.action_type === 'header_high' ? 'pass_high'
+                    : action.action_type === 'header_controlled' ? 'shoot_controlled'
+                    : action.action_type === 'header_power' ? 'shoot_power'
+                    : action.action_type;
+
+                  if (visualType === 'pass_high') {
                     // Yellow (20%) → Red (60%) → Yellow (20%), tip green
                     const seg = [
                       { t0: 0, t1: 0.2, color: '#f59e0b' },
@@ -3057,7 +3098,7 @@ export default function MatchRoomPage() {
                     ));
                   }
 
-                  if (action.action_type === 'pass_launch') {
+                  if (visualType === 'pass_launch') {
                     // Yellow (35%) → Red (30%) → Yellow (35%), tip green
                     const seg = [
                       { t0: 0, t1: 0.35, color: '#f59e0b' },
@@ -3076,7 +3117,7 @@ export default function MatchRoomPage() {
                     ));
                   }
 
-                  if (action.action_type === 'shoot_power') {
+                  if (visualType === 'shoot_power') {
                     // Yellow→Red segments based on quality
                     if (color === '#ef4444') {
                       // Full red = terrible
@@ -3129,7 +3170,7 @@ export default function MatchRoomPage() {
                   return [(
                     <line key="single"
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke={action.action_type === 'pass_low' || action.action_type === 'shoot_controlled' ? '#22c55e' : color}
+                      stroke={visualType === 'pass_low' || visualType === 'shoot_controlled' ? '#22c55e' : color}
                       strokeWidth={strokeW}
                       strokeLinecap="round" opacity={opacity}
                       markerEnd={`url(#${markerId})`}
@@ -3237,8 +3278,15 @@ export default function MatchRoomPage() {
                   );
                 }
 
+                // Map header types to visual equivalents for preview
+                const previewType = drawingAction.type === 'header_low' ? 'pass_low'
+                  : drawingAction.type === 'header_high' ? 'pass_high'
+                  : drawingAction.type === 'header_controlled' ? 'shoot_controlled'
+                  : drawingAction.type === 'header_power' ? 'shoot_power'
+                  : drawingAction.type;
+
                 // Multi-segment preview for passes
-                if (drawingAction.type === 'pass_high') {
+                if (previewType === 'pass_high') {
                   const dx = to.x - from.x;
                   const dy = to.y - from.y;
                   const seg = [
@@ -3256,7 +3304,7 @@ export default function MatchRoomPage() {
                     />
                   ))}</>);
                 }
-                if (drawingAction.type === 'pass_launch') {
+                if (previewType === 'pass_launch') {
                   const dx = to.x - from.x;
                   const dy = to.y - from.y;
                   const seg = [
@@ -3274,7 +3322,7 @@ export default function MatchRoomPage() {
                     />
                   ))}</>);
                 }
-                if (drawingAction.type === 'pass_low') {
+                if (previewType === 'pass_low') {
                   return (
                     <line
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
@@ -3286,7 +3334,7 @@ export default function MatchRoomPage() {
                 }
                 // Shots: preview only green/yellow (no red — surprise)
                 const color = getArrowQuality(fromFieldX, fromFieldY, toFieldX, toFieldY, drawingAction.type, drawingAction.fromParticipantId);
-                const previewColor = drawingAction.type === 'shoot_controlled' ? '#22c55e' :
+                const previewColor = previewType === 'shoot_controlled' ? '#22c55e' :
                   (color === '#ef4444' ? '#f59e0b' : color); // cap at yellow for shots
                 const markerId = previewColor === '#22c55e' ? 'ah-green' : 'ah-yellow';
                 return (
