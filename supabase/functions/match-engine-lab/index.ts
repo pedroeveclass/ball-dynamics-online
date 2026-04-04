@@ -4417,6 +4417,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         } else if (result.looseBallPos) {
           // Shot/pass blocked — ball deflects to random position
           nextBallHolderParticipantId = null;
+          ballEndPos = { x: result.looseBallPos.x, y: result.looseBallPos.y };
           eventsToLog.push({
             match_id, event_type: result.event || 'blocked',
             title: result.description,
