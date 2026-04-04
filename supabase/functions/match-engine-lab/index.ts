@@ -2060,7 +2060,7 @@ function computeInterceptSuccess(
   ballHeightZone?: 'green' | 'yellow' | 'red',
   defenderHeight?: string,
   ballActionType?: string,
-  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string },
+  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string; gkMovementRatio?: number },
 ): { success: boolean; chance: number; foul: boolean; card?: 'yellow' } {
   let attackerSkill: number;
   let defenderSkill: number;
@@ -2216,6 +2216,16 @@ function computeInterceptSuccess(
     // Tackle: 50% base when skills are equal, skill difference shifts ±35%, randomness ±10%
     const skillDelta = defenderSkill - attackerSkill;
     successChance = 0.50 + skillDelta * 0.35 + (Math.random() - 0.5) * 0.20;
+  } else if (context.type === 'gk_save' || (context.type === 'block' && context.defenderRole === 'goalkeeper')) {
+    // GK save/block: movement-based difficulty + skill difference ±80% + randomness ±10%
+    const moveRatio = interceptContext?.gkMovementRatio ?? 0.5;
+    const skillDelta = defenderSkill - attackerSkill;
+    const isEspalmar = context.type === 'block';
+    // Agarrar: 50% still → 27.5% max move | Espalmar: 60% still → 45% max move
+    const baseChance = isEspalmar
+      ? 0.60 - moveRatio * 0.15
+      : 0.50 - moveRatio * 0.225;
+    successChance = baseChance + skillDelta * 0.80 + (Math.random() - 0.5) * 0.20;
   } else {
     successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
   }
@@ -2502,10 +2512,20 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       continue;
     }
     const defHeight = getPlayerHeight(candidate.participant);
+    // Calculate GK movement ratio for save difficulty scaling
+    let gkMovementRatio: number | undefined;
+    if (isGK) {
+      const gkOrigX = Number(candidate.participant.pos_x ?? candidate.participant.field_x ?? 50);
+      const gkOrigY = Number(candidate.participant.pos_y ?? candidate.participant.field_y ?? 50);
+      const gkMoveDist = Math.sqrt((candidate.interceptX - gkOrigX) ** 2 + (candidate.interceptY - gkOrigY) ** 2);
+      const gkMaxRange = 11.8; // approximate max move range
+      gkMovementRatio = Math.min(1, gkMoveDist / gkMaxRange);
+    }
     let { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType, {
       interceptX: candidate.interceptX,
       participantClubId: candidate.participant.club_id,
       homeClubId: bh?.club_id || possClubId,
+      gkMovementRatio,
     });
 
     // ── Coach bonuses ──

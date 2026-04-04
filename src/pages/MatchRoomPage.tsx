@@ -1554,7 +1554,10 @@ export default function MatchRoomPage() {
         const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
         if (isKickoff && moveFrom) {
           const isHome = moveFrom.club_id === match?.home_club_id;
-          if (isHome) mx = Math.min(mx, 49);
+          const isSecondHalf = (match?.current_half ?? 1) >= 2;
+          // In 2nd half, home is on the RIGHT side, away on LEFT
+          const ownHalfIsLeft = isHome ? !isSecondHalf : isSecondHalf;
+          if (ownHalfIsLeft) mx = Math.min(mx, 49);
           else mx = Math.max(mx, 51);
           // Center circle restriction for opponents (defending team during kickoff)
           const possClubId = activeTurn?.possession_club_id;
@@ -1568,7 +1571,7 @@ export default function MatchRoomPage() {
               mx = 50 + Math.cos(angle) * CENTER_CIRCLE_RADIUS;
               my = 50 + Math.sin(angle) * CENTER_CIRCLE_RADIUS;
               // Re-apply half restriction
-              if (isHome) mx = Math.min(mx, 49);
+              if (ownHalfIsLeft) mx = Math.min(mx, 49);
               else mx = Math.max(mx, 51);
             }
           }
@@ -2914,8 +2917,11 @@ export default function MatchRoomPage() {
                       stroke="rgba(239,68,68,0.4)" strokeWidth="1.5" strokeDasharray="6,4" />
                     {drawingAction && drawingPlayer && (() => {
                       const isHome = drawingPlayer.club_id === match.home_club_id;
-                      const shadeX = isHome ? toSVG(50, 0).x : PAD;
-                      const shadeW = isHome ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
+                      const isSecondHalf = (match?.current_half ?? 1) >= 2;
+                      // In 2nd half, home's own half is on the RIGHT
+                      const ownHalfIsLeft = isHome ? !isSecondHalf : isSecondHalf;
+                      const shadeX = ownHalfIsLeft ? toSVG(50, 0).x : PAD;
+                      const shadeW = ownHalfIsLeft ? (PAD + INNER_W - toSVG(50, 0).x) : (toSVG(50, 0).x - PAD);
                       return (
                         <rect x={shadeX} y={PAD} width={shadeW} height={INNER_H}
                           fill="rgba(239,68,68,0.12)" stroke="rgba(239,68,68,0.3)" strokeWidth="1" strokeDasharray="6,4" />
