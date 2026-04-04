@@ -1455,23 +1455,24 @@ export default function MatchRoomPage() {
           const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
           const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
           
+          // Proximity override: if the player is already on the trajectory, always allow
+          const playerDistToTraj = pointToSegmentDistance(drawingParticipant.field_x, drawingParticipant.field_y!, bfx, bfy, btx, bty);
+          const actionCircleR = 9 / INNER_W * 100;
+          const isPlayerOnTrajectory = playerDistToTraj <= (actionCircleR + INTERCEPT_RADIUS + 1);
+
           // Direct click on trajectory line
-          const directHit = distToTraj <= INTERCEPT_RADIUS && movePct <= tCursor;
-          
-          // Circle overlap: click must be near the trajectory OR the player's circle at that
-          // position must visually overlap the ball path.
+          const directHit = distToTraj <= INTERCEPT_RADIUS && (movePct <= tCursor || isPlayerOnTrajectory);
+
+          // Circle overlap: click must be near the trajectory OR the player's action circle
+          // visually overlaps the ball path.
           let circleOverlap = false;
           if (!directHit && moveDist <= maxRange) {
-            // Action circle radius on the field in % (matches visual purple circle SVG r=9)
-            const playerCircleFieldR = 9 / INNER_W * 100;
-            // Check if click position + player visual circle overlaps trajectory
-            // Also verify timing: player must reach the trajectory point before the ball passes
-            const timingCheck = tCursor >= 0.05 ? movePct <= tCursor : moveDist <= 2.5;
-            if (distToTraj <= (playerCircleFieldR + INTERCEPT_RADIUS) && timingCheck) {
+            const timingCheck = tCursor >= 0.05 ? (movePct <= tCursor || isPlayerOnTrajectory) : moveDist <= 2.5;
+            if (distToTraj <= (actionCircleR + INTERCEPT_RADIUS) && timingCheck) {
               circleOverlap = true;
             }
           }
-          
+
           canReach = directHit || circleOverlap;
         }
         
@@ -3414,8 +3415,13 @@ export default function MatchRoomPage() {
                     const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
                                       (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
 
+                    // Proximity override: if the player is already on the trajectory (barely needs to move), always allow
+                    const playerDistToTraj = drawingFrom.field_x != null ? pointToSegmentDistance(drawingFrom.field_x, drawingFrom.field_y!, bfx, bfy, btx, bty) : Infinity;
+                    const isPlayerOnTrajectory = playerDistToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
+
                     // Core reachability: player arrives at this trajectory point (tCursor) before ball does
-                    canReachBall = (!isRedZone && distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
+                    // OR player is already standing on the ball's path
+                    canReachBall = !isRedZone && distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && (movePct <= tCursor || isPlayerOnTrajectory);
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
