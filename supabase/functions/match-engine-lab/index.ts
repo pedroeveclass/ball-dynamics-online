@@ -3774,7 +3774,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       console.log(`[ENGINE] Positioning move: ${part.id.slice(0,8)} → (${targetX.toFixed(1)},${targetY.toFixed(1)})`);
     }
     if (positioningBatch.length > 0) {
-      await supabase.rpc('batch_update_participant_positions', { p_updates: JSON.stringify(positioningBatch) });
+      await supabase.rpc('batch_update_participant_positions', { p_updates: positioningBatch });
     }
 
     // Batch: mark actions used + resolve turn + create next turn + log event (all in parallel)
@@ -4176,7 +4176,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
     if (resolutionMoveBatch.length > 0) {
-      await supabase.rpc('batch_update_participant_positions', { p_updates: JSON.stringify(resolutionMoveBatch) });
+      await supabase.rpc('batch_update_participant_positions', { p_updates: resolutionMoveBatch });
     }
 
     if (ballHolder) {
@@ -4661,7 +4661,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const batchOps: Promise<any>[] = [];
     if (deferredPositionUpdates.length > 0) {
       const deferredBatch = deferredPositionUpdates.map(u => ({ id: u.id, x: u.pos_x, y: u.pos_y }));
-      batchOps.push(supabase.rpc('batch_update_participant_positions', { p_updates: JSON.stringify(deferredBatch) }));
+      batchOps.push(supabase.rpc('batch_update_participant_positions', { p_updates: deferredBatch }));
     }
     if (eventsToLog.length > 0) {
       batchOps.push(supabase.from('match_event_logs').insert(eventsToLog));
@@ -4884,7 +4884,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
 
         if (halftimeBatch.length > 0) {
-          await supabase.rpc('batch_update_participant_positions', { p_updates: JSON.stringify(halftimeBatch) });
+          await supabase.rpc('batch_update_participant_positions', { p_updates: halftimeBatch });
         }
         console.log(`[ENGINE] Second half: reset ${halftimeBatch.length} players to formation positions (field inverted)`);
       }
@@ -5007,7 +5007,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         buildResetBatch(match.home_club_id, homeFormation, true);
         buildResetBatch(match.away_club_id, awayFormation, false);
         if (resetBatch.length > 0) {
-          await supabase.rpc('batch_update_participant_positions', { p_updates: JSON.stringify(resetBatch) });
+          await supabase.rpc('batch_update_participant_positions', { p_updates: resetBatch });
         }
         console.log(`[ENGINE] Post-goal reset: all players moved to formation positions`);
       }
