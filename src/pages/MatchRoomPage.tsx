@@ -2624,6 +2624,7 @@ export default function MatchRoomPage() {
 
       if (isBallShoot) {
         const isHome = ballHolder.club_id === match.home_club_id;
+        const isSecondHalf = (match?.current_half ?? 1) >= 2;
         // In 2nd half, home attacks LEFT instead of RIGHT
         const attacksRight = isHome ? !isSecondHalf : isSecondHalf;
         const goalX = attacksRight ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
