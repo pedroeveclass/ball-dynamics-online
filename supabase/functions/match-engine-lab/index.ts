@@ -5537,10 +5537,8 @@ Deno.serve(async (req) => {
         const bhPartId = activeTurn.ball_holder_participant_id;
 
         // Reuse allParts from auth check (already has club_id, connected_user_id, role_type)
-        // Include both directly connected players AND manager-controlled players (same club as the submitter)
-        const humanParts = (allParts || []).filter((p: any) =>
-          p.connected_user_id || (managerClub && p.club_id === managerClub.id)
-        );
+        // Include players with a connected user (human-controlled)
+        const humanParts = (allParts || []).filter((p: any) => p.connected_user_id);
 
         let expectedHumans: any[] = [];
         if (phase === 'ball_holder') {
