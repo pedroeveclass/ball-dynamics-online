@@ -1363,6 +1363,7 @@ async function generateBotActions(
             const interceptY = Math.max(25, Math.min(75, shotTargetY));
             const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
             if (distToIntercept <= maxMoveRange) {
+              // Within range: block/receive at intercept point
               const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -1370,13 +1371,15 @@ async function generateBotActions(
                 target_x: interceptX, target_y: interceptY, status: 'pending',
               });
             } else {
-              // Too far — move toward intercept position
+              // Out of range: STILL try to block/receive — move as close as possible toward intercept
               const angle = Math.atan2(interceptY - posY, interceptX - posX);
+              const targetX = posX + Math.cos(angle) * maxMoveRange;
+              const targetY = posY + Math.sin(angle) * maxMoveRange;
+              const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: 'move',
-                target_x: posX + Math.cos(angle) * maxMoveRange, target_y: posY + Math.sin(angle) * maxMoveRange,
-                status: 'pending',
+                controlled_by_type: 'bot', action_type: gkActionType,
+                target_x: targetX, target_y: targetY, status: 'pending',
               });
             }
           } else {
@@ -3024,7 +3027,11 @@ async function handleSetPiece(
     const fallback = forwards.length > 0 ? forwards[0] : teamPlayers.filter((p: any) => getSlotPos(p) !== 'GK')[0] || teamPlayers[0];
     const chosen = designatedTaker || fallback;
 
-    const cornerX = isHomeTeam ? 99 : 1;
+    const isSecondHalf = (match.current_half ?? 1) >= 2;
+    // In 2nd half, home attacks left (x=0), away attacks right (x=100)
+    const cornerX = isHomeTeam
+      ? (isSecondHalf ? 1 : 99)
+      : (isSecondHalf ? 99 : 1);
     const cornerY = oob.side === 'top' ? 1 : 99;
     await supabase.from('match_participants').update({ pos_x: cornerX, pos_y: cornerY }).eq('id', chosen.id);
 
@@ -3037,7 +3044,11 @@ async function handleSetPiece(
 
   if (oob.type === 'goal_kick') {
     const gk = teamPlayers.find((p: any) => isGKPosition(getSlotPos(p))) || teamPlayers[0];
-    const gkX = isHomeTeam ? 6 : 94;
+    const isSecondHalf = (match.current_half ?? 1) >= 2;
+    // In 2nd half sides are flipped: home defends right, away defends left
+    const gkX = isHomeTeam
+      ? (isSecondHalf ? 94 : 6)
+      : (isSecondHalf ? 6 : 94);
     const gkY = Math.max(40, Math.min(60, oob.exitY));
     await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
 
@@ -3068,25 +3079,30 @@ function checkOffside(
   passerParticipant: any,
   participants: any[],
   possClubId: string,
-  match: { home_club_id: string; away_club_id: string },
+  match: { home_club_id: string; away_club_id: string; current_half?: number },
 ): boolean {
   if (!receiverParticipant || !passerParticipant) return false;
   if (receiverParticipant.club_id !== possClubId) return false;
-  const isHomeAttacking = possClubId === match.home_club_id;
+  const isSecondHalf = (match.current_half ?? 1) >= 2;
+  // In 2nd half, home attacks LEFT (decreasing X), away attacks RIGHT (increasing X)
+  const isHomeRaw = possClubId === match.home_club_id;
+  const attacksRight = isHomeRaw ? !isSecondHalf : isSecondHalf;
   const receiverX = Number(receiverParticipant.pos_x ?? 50);
   const passerX = Number(passerParticipant.pos_x ?? 50);
-  if (isHomeAttacking && receiverX <= passerX) return false;
-  if (!isHomeAttacking && receiverX >= passerX) return false;
-  if (isHomeAttacking && receiverX < 50) return false;
-  if (!isHomeAttacking && receiverX > 50) return false;
+  // Receiver must be ahead of passer in attacking direction
+  if (attacksRight && receiverX <= passerX) return false;
+  if (!attacksRight && receiverX >= passerX) return false;
+  // Can't be offside in own half
+  if (attacksRight && receiverX < 50) return false;
+  if (!attacksRight && receiverX > 50) return false;
   const defenders = participants.filter(p => p.club_id !== possClubId && p.role_type === 'player');
-  const sortedX = isHomeAttacking
+  const sortedX = attacksRight
     ? defenders.map(d => Number(d.pos_x ?? 50)).sort((a, b) => b - a)
     : defenders.map(d => Number(d.pos_x ?? 50)).sort((a, b) => a - b);
   if (sortedX.length < 2) return false;
   const penultimateX = sortedX[1];
-  const isOffside = isHomeAttacking ? receiverX > penultimateX : receiverX < penultimateX;
-  if (isOffside) console.log(`[ENGINE] 🚩 OFFSIDE! receiverX=${receiverX.toFixed(1)} penultimateDefX=${penultimateX.toFixed(1)} passerX=${passerX.toFixed(1)}`);
+  const isOffside = attacksRight ? receiverX > penultimateX : receiverX < penultimateX;
+  if (isOffside) console.log(`[ENGINE] 🚩 OFFSIDE! receiverX=${receiverX.toFixed(1)} penultimateDefX=${penultimateX.toFixed(1)} passerX=${passerX.toFixed(1)} attacksRight=${attacksRight}`);
   return isOffside;
 }
 

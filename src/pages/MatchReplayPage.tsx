@@ -284,10 +284,14 @@ export default function MatchReplayPage() {
       for (const turn of turns) {
         const turnActions = actionsByTurn.get(turn.id) || [];
 
-        // Apply actions: move players to their target positions
+        // Apply actions: only move/receive/block update player positions.
+        // Pass and shoot actions move the BALL, not the player.
+        const ballMovingTypes = new Set(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power']);
         for (const action of turnActions) {
           if (action.target_x != null && action.target_y != null && currentPositions[action.participant_id]) {
-            currentPositions[action.participant_id] = { x: action.target_x, y: action.target_y };
+            if (!ballMovingTypes.has(action.action_type)) {
+              currentPositions[action.participant_id] = { x: action.target_x, y: action.target_y };
+            }
           }
         }
 

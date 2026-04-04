@@ -484,7 +484,7 @@ export default function MatchRoomPage() {
         supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
           .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('match_event_logs').select('*').eq('match_id', matchId)
-          .order('created_at', { ascending: true }).limit(LIVE_EVENT_LIMIT),
+          .order('created_at', { ascending: false }).limit(LIVE_EVENT_LIMIT),
       ]);
 
       if (matchRes.data) {
@@ -507,7 +507,8 @@ export default function MatchRoomPage() {
         setActiveTurn(null);
       }
 
-      setEvents(((eventsRes.data || []) as EventLog[]).slice(-LIVE_EVENT_LIMIT));
+      // Query fetches latest N events in descending order; reverse for chronological display
+      setEvents(((eventsRes.data || []) as EventLog[]).reverse());
       scheduleTurnActionsReconcile(true);
     } finally {
       liveSnapshotInFlightRef.current = false;
@@ -1461,8 +1462,8 @@ export default function MatchRoomPage() {
           // position must visually overlap the ball path.
           let circleOverlap = false;
           if (!directHit && moveDist <= maxRange) {
-            // playerCircleRadius on the field in % (visual radius of the player circle)
-            const playerCircleFieldR = 7 / INNER_W * 100; // ~0.8% (player circle SVG r=7)
+            // Action circle radius on the field in % (matches visual purple circle SVG r=9)
+            const playerCircleFieldR = 9 / INNER_W * 100;
             // Check if click position + player visual circle overlaps trajectory
             // Also verify timing: player must reach the trajectory point before the ball passes
             const timingCheck = tCursor >= 0.05 ? movePct <= tCursor : moveDist <= 2.5;
@@ -3407,13 +3408,14 @@ export default function MatchRoomPage() {
                   if (trajLen2 > 0) {
                     const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
                     const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
-                    
+
+                    // Red zone check: ball is too high to intercept
+                    const actionType = effectiveBallTrajectoryAction.action_type;
+                    const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
+                                      (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
+
                     // Core reachability: player arrives at this trajectory point (tCursor) before ball does
-                    // movePct = fraction of player's range used to reach cursor (lower = arrives sooner)
-                    // tCursor = fraction of ball's trajectory at that point (lower = ball arrives sooner)
-                    // Player can act if movePct <= tCursor (needs less % of range than ball needs of trajectory)
-                    // Once reachable at a point, everything from that point to END is also reachable
-                    canReachBall = (distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
+                    canReachBall = (!isRedZone && distToTraj <= (circleRadiusField + INTERCEPT_RADIUS) && movePct <= tCursor);
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
