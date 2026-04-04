@@ -71,17 +71,18 @@ export default function ManagerChallengesPage() {
 
   // League matches
   const [leagueMatches, setLeagueMatches] = useState<any[]>([]);
+  const [leagueFilter, setLeagueFilter] = useState<'upcoming' | 'finished' | 'all'>('upcoming');
 
   const loadLeagueMatches = useCallback(async () => {
     if (!club) return;
     try {
+      // Load ALL league matches for this club (no limit)
       const { data } = await supabase
         .from('matches')
         .select('id, status, scheduled_at, home_score, away_score, home_club_id, away_club_id, home_club:clubs!matches_home_club_id_fkey(name, short_name, primary_color, secondary_color), away_club:clubs!matches_away_club_id_fkey(name, short_name, primary_color, secondary_color)')
         .or(`home_club_id.eq.${club.id},away_club_id.eq.${club.id}`)
         .in('status', ['scheduled', 'live', 'finished'])
-        .order('scheduled_at', { ascending: false })
-        .limit(10);
+        .order('scheduled_at', { ascending: true });
       // Filter to league matches (those linked in league_matches)
       if (data && data.length > 0) {
         const matchIds = data.map(m => m.id);
@@ -590,11 +591,35 @@ export default function ManagerChallengesPage() {
         {/* League Matches Section */}
         {leagueMatches.length > 0 && (
           <section className="mb-6">
-            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-amber-400" /> Jogos da Liga ({leagueMatches.length})
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-amber-400" /> Jogos da Liga
+              </h2>
+              <div className="flex gap-1">
+                {(['upcoming', 'finished', 'all'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setLeagueFilter(f)}
+                    className={`text-[10px] font-display px-2 py-0.5 rounded transition-colors ${leagueFilter === f ? 'bg-tactical text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                  >
+                    {f === 'upcoming' ? 'Próximos' : f === 'finished' ? 'Encerrados' : 'Todos'}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-2">
-              {leagueMatches.map((m: any) => {
+              {leagueMatches
+                .filter(m => {
+                  if (leagueFilter === 'upcoming') return m.status === 'scheduled' || m.status === 'live';
+                  if (leagueFilter === 'finished') return m.status === 'finished';
+                  return true;
+                })
+                .sort((a, b) => {
+                  // Upcoming: closest first (ascending). Finished: most recent first (descending)
+                  if (leagueFilter === 'finished') return new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime();
+                  return new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+                })
+                .map((m: any) => {
                 const isHome = m.home_club_id === club?.id;
                 const opponent = isHome ? m.away_club : m.home_club;
                 const isLive = m.status === 'live';
