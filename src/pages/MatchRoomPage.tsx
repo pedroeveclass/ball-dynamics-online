@@ -3681,6 +3681,32 @@ export default function MatchRoomPage() {
               );
             })()}
 
+            {/* Energy bar: shown for player (own energy) or manager (selected player) */}
+            {(() => {
+              // Player sees own energy; manager sees selected player energy
+              const energyParticipant = isPlayer && myParticipant
+                ? myParticipant
+                : (isManager && selectedParticipantId)
+                  ? participants.find(p => p.id === selectedParticipantId && p.club_id === myClubId)
+                  : null;
+              if (!energyParticipant || !isLive) return null;
+              const energy = Number(energyParticipant.match_energy ?? 100);
+              const barColor = energy > 50 ? '#22c55e' : energy > 30 ? '#f59e0b' : energy > 15 ? '#f97316' : '#ef4444';
+              const playerName = energyParticipant.player_name || `#${energyParticipant.jersey_number ?? '?'}`;
+              const posLabel = energyParticipant.field_pos || energyParticipant.slot_position || '';
+              return (
+                <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-[hsl(140,10%,8%)] rounded px-3 py-1.5 border border-[hsl(140,10%,20%)] z-30">
+                  <span className="text-[10px] font-display text-muted-foreground uppercase tracking-wide">
+                    {posLabel} {playerName}
+                  </span>
+                  <div className="w-20 h-3 bg-[hsl(140,10%,15%)] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${energy}%`, backgroundColor: barColor }} />
+                  </div>
+                  <span className="text-[10px] font-display font-bold tabular-nums" style={{ color: barColor }}>{Math.round(energy)}%</span>
+                </div>
+              );
+            })()}
+
             {/* Clock moved to scoreboard — removed from field */}
 
             {(animating || isPhaseProcessing) && (

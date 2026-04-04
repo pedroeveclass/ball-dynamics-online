@@ -27,6 +27,7 @@ export interface Participant {
   player_name?: string; slot_position?: string; overall?: number;
   field_x?: number; field_y?: number; field_pos?: string;
   jersey_number?: number;
+  match_energy?: number;
 }
 
 export interface MatchTurn {

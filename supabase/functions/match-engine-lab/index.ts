@@ -19,6 +19,44 @@ const HALFTIME_DURATION_MS = 5 * 60 * 1000;    // 5 min halftime break
 const MAX_INJURY_TIME_TURNS = 3;               // 1-3 extra turns after time is up
 const MAX_TURNS_SAFETY = 200;                  // absolute safety cap to prevent infinite games
 
+// ─── Energy system constants ───────────────────────────────
+const ENERGY_BASE_DRAIN = 0.20;          // base drain per turn (just existing on field)
+const ENERGY_BASE_STAMINA_FACTOR = 0.6;  // how much stamina reduces base drain
+const ENERGY_MOVE_WEIGHT = 1.2;          // multiplier for movement distance
+const ENERGY_STAMINA_FACTOR = 0.55;      // how much stamina reduces activity drain
+const ENERGY_GK_FACTOR = 0.35;           // GK activity drain multiplier
+const ENERGY_HALFTIME_RECOVERY = 5;      // % energy recovered at halftime
+const ENERGY_ACTION_COSTS: Record<string, number> = {
+  pass_low: 0.15, pass_high: 0.15, pass_launch: 0.2,
+  header_low: 0.15, header_high: 0.15,
+  shoot_controlled: 0.25, shoot_power: 0.3,
+  header_controlled: 0.25, header_power: 0.3,
+  receive: 0.1, block: 0.2, move: 0, no_action: 0,
+};
+
+function computeEnergyDrain(
+  staminaAttr: number, distanceMoved: number, maxMoveRange: number,
+  actionType: string, isGoalkeeper: boolean
+): number {
+  const S = Math.max(0, Math.min(1, (staminaAttr - 10) / 89)); // normalize 10-99 → 0-1
+  const baseDrain = ENERGY_BASE_DRAIN * (1 - S * ENERGY_BASE_STAMINA_FACTOR);
+  const moveRatio = maxMoveRange > 0 ? Math.min(1, distanceMoved / maxMoveRange) : 0;
+  const actionCost = ENERGY_ACTION_COSTS[actionType] ?? 0;
+  let activityDrain = (moveRatio * ENERGY_MOVE_WEIGHT + actionCost) * (1 - S * ENERGY_STAMINA_FACTOR);
+  if (isGoalkeeper) activityDrain *= ENERGY_GK_FACTOR;
+  return baseDrain + activityDrain;
+}
+
+function getEnergyPenalty(energyPct: number): number {
+  if (energyPct > 50) return 0;
+  if (energyPct > 40) return 0.05;
+  if (energyPct > 30) return 0.10;
+  if (energyPct > 20) return 0.25;
+  if (energyPct > 10) return 0.40;
+  if (energyPct > 5)  return 0.50;
+  return 0.75;
+}
+
 // ─── Match minute calculation (real-time clock) ─────────────
 function computeMatchMinute(match: any): number {
   if (!match.half_started_at) return 0;
@@ -648,11 +686,11 @@ function getFormationAnchor(
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
   const maxSpeed = 8 + normalizeAttr(attrs.velocidade) * 11; // ~12% of field per turn for avg player
-  const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
+  // Energy-based stamina system replaces old time-based staminaDecay
   let totalDist = 0;
   let vel = 0;
   for (let i = 0; i < NUM_SUBSTEPS; i++) {
-    vel = vel * (1 - accelFactor) + (maxSpeed / NUM_SUBSTEPS) * staminaDecay * accelFactor;
+    vel = vel * (1 - accelFactor) + (maxSpeed / NUM_SUBSTEPS) * accelFactor;
     const speed = Math.min(vel, maxSpeed / NUM_SUBSTEPS);
     totalDist += speed;
   }
@@ -2225,7 +2263,13 @@ function resolveDispute(
 ): { winner: 'attacker' | 'defender'; chance: number } {
   const getAttrs = (p: any) => {
     const raw = p?.player_profile_id ? attrByProfile[p.player_profile_id] : null;
-    return (key: string) => Number(raw?.[key] ?? 40);
+    const energyPct = Number(p?.match_energy ?? 100);
+    const penalty = getEnergyPenalty(energyPct);
+    return (key: string) => {
+      const val = Number(raw?.[key] ?? 40);
+      if (key === 'stamina') return val; // stamina NOT penalized
+      return Math.max(10, Math.round(val * (1 - penalty)));
+    };
   };
 
   const atkA = getAttrs(attackerCandidate.participant);
@@ -2683,7 +2727,7 @@ function simulatePlayerMovement(
   const agilityFactor = 0.4 + normalizeAttr(attrs.agilidade) * 0.5;
   const forceFactor = normalizeAttr(attrs.forca);
   const maxSpeed = (10 + normalizeAttr(attrs.velocidade) * 14) / NUM_SUBSTEPS;
-  const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.15;
+  // Energy-based stamina system replaces old time-based staminaDecay
 
   const state: PhysicsPlayerState = { pos: { ...startPos }, vel: { x: 0, y: 0 } };
 
@@ -2693,7 +2737,7 @@ function simulatePlayerMovement(
     if (dist < 0.1) break;
 
     const desired = vecNorm(toTarget);
-    const desiredVel = { x: desired.x * maxSpeed * staminaDecay, y: desired.y * maxSpeed * staminaDecay };
+    const desiredVel = { x: desired.x * maxSpeed, y: desired.y * maxSpeed };
 
     const angle = angleBetween(state.vel, desiredVel);
     const basePenalty = angle / Math.PI;
@@ -3466,6 +3510,30 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
 
       const profileIds = (allMatchParts || []).filter((p: any) => p.player_profile_id).map((p: any) => p.player_profile_id);
 
+      // Initialize match energy from player_profiles.energy_current/energy_max
+      if (profileIds.length > 0) {
+        const { data: energyProfiles } = await supabase
+          .from('player_profiles')
+          .select('id, energy_current, energy_max')
+          .in('id', profileIds);
+        if (energyProfiles && energyProfiles.length > 0) {
+          const energyMap = new Map(energyProfiles.map((p: any) => [p.id, p]));
+          const energyUpdates: Promise<any>[] = [];
+          for (const part of (allMatchParts || [])) {
+            if (!part.player_profile_id) continue;
+            const profile = energyMap.get(part.player_profile_id);
+            const energyPct = profile
+              ? Math.round((Number(profile.energy_current ?? 100) / Math.max(1, Number(profile.energy_max ?? 100))) * 100)
+              : 100;
+            energyUpdates.push(
+              supabase.from('match_participants').update({ match_energy: energyPct }).eq('id', part.id)
+            );
+          }
+          if (energyUpdates.length > 0) await Promise.all(energyUpdates);
+          console.log(`[ENGINE] Initialized match energy for ${energyUpdates.length} players`);
+        }
+      }
+
       const roleFields = 'captain_player_id, free_kick_taker_id, corner_right_taker_id, corner_left_taker_id, throw_in_right_taker_id, throw_in_left_taker_id';
       const [attrRes, homeSettingsRes, awaySettingsRes, homeLineupFormRes, awayLineupFormRes, homeCoachRes, awayCoachRes] = await Promise.all([
         profileIds.length > 0
@@ -4055,19 +4123,22 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
     const getAttrs = (participant: any) => {
       const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+      const energyPct = Number(participant?.match_energy ?? 100);
+      const penalty = getEnergyPenalty(energyPct);
+      const apply = (val: number) => Math.max(10, Math.round(val * (1 - penalty)));
       return {
-        aceleracao: Number(raw?.aceleracao ?? 40),
-        agilidade: Number(raw?.agilidade ?? 40),
-        velocidade: Number(raw?.velocidade ?? 40),
-        forca: Number(raw?.forca ?? 40),
-        stamina: Number(raw?.stamina ?? 40),
-        passe_baixo: Number(raw?.passe_baixo ?? 40),
-        passe_alto: Number(raw?.passe_alto ?? 40),
-        forca_chute: Number(raw?.forca_chute ?? 40),
-        acuracia_chute: Number(raw?.acuracia_chute ?? 40),
-        controle_bola: Number(raw?.controle_bola ?? 40),
-        um_toque: Number(raw?.um_toque ?? 40),
-        cabeceio: Number(raw?.cabeceio ?? 40),
+        aceleracao: apply(Number(raw?.aceleracao ?? 40)),
+        agilidade: apply(Number(raw?.agilidade ?? 40)),
+        velocidade: apply(Number(raw?.velocidade ?? 40)),
+        forca: apply(Number(raw?.forca ?? 40)),
+        stamina: Number(raw?.stamina ?? 40), // stamina NOT penalized (controls drain rate)
+        passe_baixo: apply(Number(raw?.passe_baixo ?? 40)),
+        passe_alto: apply(Number(raw?.passe_alto ?? 40)),
+        forca_chute: apply(Number(raw?.forca_chute ?? 40)),
+        acuracia_chute: apply(Number(raw?.acuracia_chute ?? 40)),
+        controle_bola: apply(Number(raw?.controle_bola ?? 40)),
+        um_toque: apply(Number(raw?.um_toque ?? 40)),
+        cabeceio: apply(Number(raw?.cabeceio ?? 40)),
       };
     };
 
@@ -4668,6 +4739,52 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
     if (batchOps.length > 0) await Promise.all(batchOps);
 
+    // ── Energy drain: compute and apply for all players ──
+    {
+      const energyUpdates: Array<{id: string, energy: number}> = [];
+      for (const p of (participants || [])) {
+        if (p.role_type !== 'player' || p.is_sent_off) continue;
+        const oldX = Number(p.pos_x ?? 50);
+        const oldY = Number(p.pos_y ?? 50);
+        // Find new position from resolution moves or deferred updates
+        const moveAction = allActions.find((a: any) => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
+        const newX = moveAction?.target_x != null ? Number(moveAction.target_x) : oldX;
+        const newY = moveAction?.target_y != null ? Number(moveAction.target_y) : oldY;
+        const distMoved = Math.sqrt((newX - oldX) ** 2 + (newY - oldY) ** 2);
+
+        // Find ball action if this player is the BH
+        const ballAction = allActions.find((a: any) => a.participant_id === p.id &&
+          ['pass_low','pass_high','pass_launch','shoot_controlled','shoot_power',
+           'header_low','header_high','header_controlled','header_power'].includes(a.action_type));
+        const actionType = ballAction?.action_type || moveAction?.action_type || 'no_action';
+
+        const pAttrs = getAttrs(p);
+        const rawStamina = Number(p.player_profile_id ? (attrByProfile[p.player_profile_id]?.stamina ?? 40) : 40);
+        const maxRange = computeMaxMoveRange(pAttrs, match.current_turn_number ?? 1);
+        const slotPos = (p._slot_position || p.slot_position || '').replace(/[0-9]/g, '').toUpperCase();
+        const isGK = slotPos === 'GK' || slotPos === 'GOL';
+
+        const drain = computeEnergyDrain(rawStamina, distMoved, maxRange, actionType, isGK);
+        const currentEnergy = Number(p.match_energy ?? 100);
+        const newEnergy = Math.max(0, Math.round((currentEnergy - drain) * 100) / 100);
+
+        if (newEnergy !== currentEnergy) {
+          energyUpdates.push({ id: p.id, energy: newEnergy });
+          // Update in-memory for snapshot and next tick
+          p.match_energy = newEnergy;
+        }
+      }
+      if (energyUpdates.length > 0) {
+        // Batch update energy using the same RPC (position unchanged, only energy)
+        const energyBatch = energyUpdates.map(u => ({ id: u.id, x: -1, y: -1, energy: u.energy }));
+        // Use direct updates since we don't want to change positions
+        const energyOps = energyUpdates.map(u =>
+          supabase.from('match_participants').update({ match_energy: u.energy }).eq('id', u.id)
+        );
+        await Promise.all(energyOps);
+      }
+    }
+
     // ── Save turn snapshot for replay ──
     try {
       const snapshotPlayers = (participants || []).filter((p: any) => p.role_type === 'player').map((p: any) => {
@@ -4887,6 +5004,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           await supabase.rpc('batch_update_participant_positions', { p_updates: halftimeBatch });
         }
         console.log(`[ENGINE] Second half: reset ${halftimeBatch.length} players to formation positions (field inverted)`);
+      }
+
+      // Halftime energy recovery
+      {
+        const recoveryOps = (participants || [])
+          .filter((p: any) => p.role_type === 'player' && !p.is_sent_off)
+          .map((p: any) => {
+            const currentEnergy = Number(p.match_energy ?? 100);
+            const newEnergy = Math.min(100, currentEnergy + ENERGY_HALFTIME_RECOVERY);
+            p.match_energy = newEnergy;
+            return supabase.from('match_participants').update({ match_energy: newEnergy }).eq('id', p.id);
+          });
+        if (recoveryOps.length > 0) await Promise.all(recoveryOps);
+        console.log(`[ENGINE] Halftime: ${recoveryOps.length} players recovered ${ENERGY_HALFTIME_RECOVERY}% energy`);
       }
 
       await supabase.from('match_event_logs').insert({
