@@ -226,11 +226,26 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
   });
 }
 
+// ─── GK detection helper (handles EN + PT-BR) ───────────────
+function isGKPosition(pos: string): boolean {
+  const p = (pos || '').replace(/[0-9]/g, '').toUpperCase();
+  return p === 'GK' || p === 'GOL';
+}
+
 // ─── Tactical Role System ────────────────────────────────────
 type TacticalRole = 'goalkeeper' | 'centerBack' | 'fullBack' | 'defensiveMid' | 'centralMid' | 'attackingMid' | 'wideMid' | 'winger' | 'striker';
 
 function getPositionRole(slotPos: string): TacticalRole {
-  const pos = (slotPos || '').toUpperCase();
+  // Normalize PT-BR → EN first
+  const raw = (slotPos || '').replace(/[0-9]/g, '').toUpperCase();
+  const NORM: Record<string, string> = {
+    'GK':'GK','GOL':'GK','CB':'CB','ZAG':'CB','LB':'LB','LE':'LB','RB':'RB','LD':'RB',
+    'LWB':'LWB','ALE':'LWB','RWB':'RWB','ALD':'RWB',
+    'CDM':'CDM','DM':'CDM','VOL':'CDM','CM':'CM','MC':'CM','CAM':'CAM','MEI':'CAM',
+    'LM':'LM','ME':'LM','RM':'RM','MD':'RM','LW':'LW','PE':'LW','RW':'RW','PD':'RW',
+    'ST':'ST','ATA':'ST','CF':'CF','SA':'CF',
+  };
+  const pos = NORM[raw] || raw;
   if (pos === 'GK') return 'goalkeeper';
   if (pos === 'CB') return 'centerBack';
   if (['LB', 'RB', 'LWB', 'RWB'].includes(pos)) return 'fullBack';
@@ -1761,7 +1776,7 @@ async function generateBotActions(
     const botPart = participants.find((p: any) => p.id === action.participant_id);
     if (!botPart) continue;
     const botPos = botPart._slot_position || botPart.slot_position || '';
-    if (botPos !== 'GK') continue;
+    if (!isGKPosition(botPos)) continue;
     const botIsHomeRaw = botPart.club_id === match?.home_club_id;
     const botIsHome = isSecondHalfBot ? !botIsHomeRaw : botIsHomeRaw;
     if (botIsHome) {
@@ -1780,7 +1795,7 @@ async function generateBotActions(
       const botPart = participants.find((p: any) => p.id === action.participant_id);
       if (!botPart) continue;
       const botSlot = botPart._slot_position || botPart.slot_position || '';
-      if (botSlot === 'GK') continue; // GK receives are special (positioning near goal)
+      if (isGKPosition(botSlot)) continue; // GK receives are special (positioning near goal)
       // Check distance from receive target to ball position
       const distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
       if (distToBall > 20) {
@@ -2030,7 +2045,7 @@ function getInterceptContext(bhActionType: string, interceptorClubId: string, bh
 
   // If interceptor explicitly chose 'block' action
   if (interceptorActionType === 'block') {
-    const isGK = interceptorRoleType === 'GK';
+    const isGK = isGKPosition(interceptorRoleType);
     if (isGK) {
       return { type: 'block', baseChance: 0.50, defenderRole: 'goalkeeper' };
     }
@@ -2041,7 +2056,7 @@ function getInterceptContext(bhActionType: string, interceptorClubId: string, bh
     return { type: 'tackle', baseChance: 0.45 };
   }
   if (isShootType(bhActionType) || isHeaderShootType(bhActionType)) {
-    if (interceptorRoleType === 'GK' || !isOpponent) {
+    if (isGKPosition(interceptorRoleType) || !isOpponent) {
       return { type: 'gk_save', baseChance: 0.35 };
     }
     return { type: 'block_shot', baseChance: 0.25 };
@@ -2320,7 +2335,7 @@ function resolveDispute(
 
   // GK bonuses for defender
   const defSlotPos = defenderCandidate.participant._slot_position || defenderCandidate.participant.field_pos || '';
-  if (defSlotPos === 'GK') {
+  if (isGKPosition(defSlotPos)) {
     // Saída do gol: bonus when GK comes out of goal area
     const defX = Number(defenderCandidate.participant.pos_x ?? 50);
     const isGKFarFromGoal = defX > 18 && defX < 82; // GK outside their box
@@ -2474,7 +2489,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   for (const candidate of interceptors) {
     const defAttrs = getFullAttrs(candidate.participant);
     const slotPos = candidate.participant.slot_position || candidate.participant._slot_position || candidate.participant.field_pos || '';
-    const isGK = slotPos === 'GK';
+    const isGK = isGKPosition(slotPos);
     // Find the interceptor's action to check if they used 'block'
     const interceptorAction = allActions.find((a: any) => a.participant_id === candidate.participant.id && (a.action_type === 'receive' || a.action_type === 'block'));
     const interceptorActionType = interceptorAction?.action_type;
@@ -3039,7 +3054,7 @@ async function handleSetPiece(
   }
 
   if (oob.type === 'goal_kick') {
-    const gk = teamPlayers.find((p: any) => getSlotPos(p).toUpperCase() === 'GK') || teamPlayers[0];
+    const gk = teamPlayers.find((p: any) => isGKPosition(getSlotPos(p))) || teamPlayers[0];
     const gkX = isHomeTeam ? 6 : 94;
     const gkY = Math.max(40, Math.min(60, oob.exitY));
     await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
@@ -3810,7 +3825,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       // GK constraint: keep goalkeeper inside the box
       const partSlotPos = part._slot_position || part.slot_position || '';
-      const partIsGK = partSlotPos === 'GK';
+      const partIsGK = isGKPosition(partSlotPos);
       if (partIsGK) {
         const isHomeRaw = part.club_id === match.home_club_id;
         const isSecondHalfPos = (match.current_half ?? 1) >= 2;
@@ -4259,7 +4274,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
         // ── GK constraint: goalkeeper must stay near their goal ──
         const partSlotPos = part?._slot_position || part?.slot_position || '';
-        if (partSlotPos === 'GK') {
+        if (isGKPosition(partSlotPos)) {
           const isHomeRaw = part?.club_id === match.home_club_id;
           const isSecondHalfRes = (match.current_half ?? 1) >= 2;
           const effectiveHome = isSecondHalfRes ? !isHomeRaw : isHomeRaw;
@@ -4810,7 +4825,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const rawStamina = Number(p.player_profile_id ? (attrByProfile[p.player_profile_id]?.stamina ?? 40) : 40);
         const maxRange = computeMaxMoveRange(pAttrs, match.current_turn_number ?? 1);
         const slotPos = (p._slot_position || p.slot_position || '').replace(/[0-9]/g, '').toUpperCase();
-        const isGK = slotPos === 'GK' || slotPos === 'GOL';
+        const isGK = isGKPosition(slotPos);
 
         const drain = computeEnergyDrain(rawStamina, distMoved, maxRange, actionType, isGK);
         const currentEnergy = Number(p.match_energy ?? 100);
