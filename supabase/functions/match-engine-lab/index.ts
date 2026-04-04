@@ -1770,24 +1770,6 @@ async function generateBotActions(
     }
   }
 
-  // ── GK constraint: clamp GK move targets to their box ──
-  for (const action of actions) {
-    if (action.action_type !== 'move' && action.action_type !== 'receive') continue;
-    const botPart = participants.find((p: any) => p.id === action.participant_id);
-    if (!botPart) continue;
-    const botPos = botPart._slot_position || botPart.slot_position || '';
-    if (!isGKPosition(botPos)) continue;
-    const botIsHomeRaw = botPart.club_id === match?.home_club_id;
-    const botIsHome = isSecondHalfBot ? !botIsHomeRaw : botIsHomeRaw;
-    if (botIsHome) {
-      action.target_x = Math.min(action.target_x, 20);
-      action.target_y = Math.max(20, Math.min(80, action.target_y));
-    } else {
-      action.target_x = Math.max(action.target_x, 80);
-      action.target_y = Math.max(20, Math.min(80, action.target_y));
-    }
-  }
-
   // ── Post-processing: validate receive/block targets are near ball/trajectory ──
   if (phase === 'defending_response' && ballHolderId) {
     for (const action of actions) {
@@ -3823,22 +3805,6 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       let targetX = Number(a.target_x ?? part.pos_x ?? 50);
       let targetY = Number(a.target_y ?? part.pos_y ?? 50);
 
-      // GK constraint: keep goalkeeper inside the box
-      const partSlotPos = part._slot_position || part.slot_position || '';
-      const partIsGK = isGKPosition(partSlotPos);
-      if (partIsGK) {
-        const isHomeRaw = part.club_id === match.home_club_id;
-        const isSecondHalfPos = (match.current_half ?? 1) >= 2;
-        const effectiveHome = isSecondHalfPos ? !isHomeRaw : isHomeRaw;
-        if (effectiveHome) {
-          targetX = Math.min(targetX, 18);
-          targetY = Math.max(20, Math.min(80, targetY));
-        } else {
-          targetX = Math.max(targetX, 82);
-          targetY = Math.max(20, Math.min(80, targetY));
-        }
-      }
-
       // Kickoff constraints: half-field + center circle exclusion
       if (isKickoff) {
         const isHomeRaw = part.club_id === match.home_club_id;
@@ -4270,21 +4236,6 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const scale = maxRange / dist;
           finalX = startX + dx * scale;
           finalY = startY + dy * scale;
-        }
-
-        // ── GK constraint: goalkeeper must stay near their goal ──
-        const partSlotPos = part?._slot_position || part?.slot_position || '';
-        if (isGKPosition(partSlotPos)) {
-          const isHomeRaw = part?.club_id === match.home_club_id;
-          const isSecondHalfRes = (match.current_half ?? 1) >= 2;
-          const effectiveHome = isSecondHalfRes ? !isHomeRaw : isHomeRaw;
-          if (effectiveHome) {
-            finalX = Math.min(finalX, 22); // stay in/near box
-            finalY = Math.max(18, Math.min(82, finalY));
-          } else {
-            finalX = Math.max(finalX, 78);
-            finalY = Math.max(18, Math.min(82, finalY));
-          }
         }
 
         console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
