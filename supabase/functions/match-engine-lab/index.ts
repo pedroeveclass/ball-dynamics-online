@@ -2556,8 +2556,9 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         const deflectDist = 5 + Math.random() * 15; // 5-20 units
         const looseBallX = Math.max(1, Math.min(99, blockX + Math.cos(deflectAngle) * deflectDist));
         const looseBallY = Math.max(1, Math.min(99, blockY + Math.sin(deflectAngle) * deflectDist));
-        const blockDesc = (context.type === 'block' && context.defenderRole === 'goalkeeper') ? `🧤 Goleiro espalmou! (${chancePct})` : `🛡️ Bloqueio! (${chancePct})`;
-        return { success: false, event: 'block', description: blockDesc, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY } };
+        const isGKBlock = context.type === 'block' && context.defenderRole === 'goalkeeper';
+        const blockDesc = isGKBlock ? `🧤 Goleiro espalmou! (${chancePct})` : `🛡️ Bloqueio! (${chancePct})`;
+        return { success: false, event: 'block', description: blockDesc, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY }, ...(isGKBlock ? { gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } } : {}) };
       }
       if (context.type === 'gk_save') {
         return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } };
@@ -2572,7 +2573,12 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `🦵 Desarme falhou! (${chancePct})` };
     }
 
-    if (context.type === 'block_shot' || context.type === 'block') console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Bola continua.`);
+    if (context.type === 'block_shot' || context.type === 'block') {
+      console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Bola continua.`);
+      if (context.defenderRole === 'goalkeeper') {
+        gkSaveAttempt = { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: false };
+      }
+    }
     else if (context.type === 'gk_save') {
       console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
       gkSaveAttempt = { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: false };

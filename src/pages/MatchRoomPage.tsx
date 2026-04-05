@@ -3463,17 +3463,22 @@ export default function MatchRoomPage() {
                     const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
                                       (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
 
-                    // Proximity override: if the player's circle overlaps the ball trajectory, always allow
+                    // Proximity override: if the player's circle overlaps the ball trajectory
                     const playerDistToTraj = drawingFrom.field_x != null ? pointToSegmentDistance(drawingFrom.field_x, drawingFrom.field_y!, bfx, bfy, btx, bty) : Infinity;
                     const isPlayerOnTrajectory = playerDistToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
 
+                    // Calculate where the player sits on the trajectory (0=start, 1=end)
+                    const tPlayer = trajLen2 > 0 ? clamp(((drawingFrom.field_x! - bfx) * trajDx + (drawingFrom.field_y! - bfy) * trajDy) / trajLen2, 0, 1) : 0;
+                    // Ball hasn't passed the player yet (cursor is before or at player + circle tolerance)
+                    const ballNotPastPlayer = tCursor <= tPlayer + (circleRadiusField + INTERCEPT_RADIUS) / Math.sqrt(trajLen2);
+
                     // Core reachability:
-                    // 1. Cursor is near trajectory AND player arrives before ball (timing check)
-                    // 2. OR player's circle overlaps trajectory (ball passes through them — always can act)
+                    // 1. Cursor near trajectory AND player arrives before ball (timing)
+                    // 2. OR player on trajectory AND ball hasn't passed them yet
                     const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
                     canReachBall = !isRedZone && (
-                      (cursorNearTraj && (movePct <= tCursor || isPlayerOnTrajectory)) ||
-                      isPlayerOnTrajectory
+                      (cursorNearTraj && (movePct <= tCursor || (isPlayerOnTrajectory && ballNotPastPlayer))) ||
+                      (isPlayerOnTrajectory && ballNotPastPlayer)
                     );
                   } else {
                     // Stationary ball holder — if within reach, can tackle
