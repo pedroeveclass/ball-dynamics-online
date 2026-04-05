@@ -3514,7 +3514,22 @@ export default function MatchRoomPage() {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
                   const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
-                  const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                  let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
+
+                  // Apply ball speed factor to match engine behavior
+                  const previewActionType = ballTrajectoryAction.action_type;
+                  const previewIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
+                  const previewIsShot = previewActionType === 'shoot_controlled' || previewActionType === 'shoot_power' || previewActionType === 'header_controlled' || previewActionType === 'header_power';
+                  if (!(previewIsGK && previewIsShot)) {
+                    const previewBallSpeedFactor =
+                      (previewActionType === 'shoot_power' || previewActionType === 'header_power') ? 0.25 :
+                      (previewActionType === 'shoot_controlled' || previewActionType === 'header_controlled') ? 0.35 :
+                      previewActionType === 'pass_launch' ? 0.5 :
+                      (previewActionType === 'pass_high' || previewActionType === 'header_high') ? 0.65 :
+                      1.0;
+                    maxRange *= previewBallSpeedFactor;
+                  }
+
                   const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
 
                   const bfx = ballTrajectoryHolder.field_x!;
