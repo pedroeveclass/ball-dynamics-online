@@ -174,7 +174,7 @@ function getGoalkeeperIdsByClub(
 }
 
 // ─── Enrich participants with slot_position ──────────────────
-async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[]): Promise<any[]> {
+async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[], formationByClub?: Record<string, string>): Promise<any[]> {
   const slotIds = participants.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
   const { data: slots } = slotIds.length > 0
     ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
@@ -204,7 +204,8 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     if (!p._slot_position && p.is_bot && p.pos_x != null) {
       const px = Number(p.pos_x);
       const py = Number(p.pos_y);
-      const formSlots = FORMATION_POSITIONS['4-4-2']; // default
+      const clubFormation = formationByClub?.[p.club_id] || '4-4-2';
+      const formSlots = FORMATION_POSITIONS[clubFormation] || FORMATION_POSITIONS['4-4-2'];
       let bestDist = Infinity;
       let bestPos = 'CM';
       // Check if this team already has an explicit GK
@@ -3848,7 +3849,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         return fresh ? { ...p, pos_x: fresh.pos_x, pos_y: fresh.pos_y, is_sent_off: fresh.is_sent_off } : p;
       });
     } else {
-      participants = await enrichParticipantsWithSlotPosition(supabase, participantsResult.data || []);
+      const formByClub: Record<string, string> = {};
+      if (tickCache.clubSettings) {
+        formByClub[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
+        formByClub[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
+      }
+      participants = await enrichParticipantsWithSlotPosition(supabase, participantsResult.data || [], formByClub);
       tickCache.enrichedParticipants = participants;
     }
     const rawActions = actionsResult.data;
@@ -4020,7 +4026,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     var turnRowsResult: any = turnRowsRes;
     if (isResolution) {
       // Full enrichment only needed for resolution (slot positions, etc.)
-      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || []);
+      const formByClub2: Record<string, string> = {};
+      if (tickCache.clubSettings) {
+        formByClub2[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
+        formByClub2[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
+      }
+      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || [], formByClub2);
       tickCache.enrichedParticipants = participants;
     } else {
       // Non-resolution phases: skip expensive enrichment, raw participants suffice for bot generation
