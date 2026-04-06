@@ -3995,6 +3995,76 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const nextPhase = isAttackPhase ? 'positioning_defense' : 'ball_holder';
     const nextPhaseEnd = new Date(Date.now() + (isAttackPhase ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS)).toISOString();
 
+    // ── Enforce exclusion zones BEFORE ball_holder starts ──
+    if (!isAttackPhase) {
+      const { data: allParts } = await supabase
+        .from('match_participants')
+        .select('id, club_id, pos_x, pos_y, role_type, is_sent_off')
+        .eq('match_id', match_id)
+        .eq('role_type', 'player');
+
+      const exclusionUpdates: Array<{ id: string; pos_x: number; pos_y: number }> = [];
+      const setPiece = activeTurn.set_piece_type;
+
+      if (setPiece === 'kickoff') {
+        // Kickoff: opposing team must stay out of center circle (10 units from center)
+        const CENTER_CIRCLE_R = 10;
+        for (const p of (allParts || [])) {
+          if (p.club_id === possClubId || p.is_sent_off) continue;
+          const px = Number(p.pos_x ?? 50);
+          const py = Number(p.pos_y ?? 50);
+          const distToCenter = Math.sqrt((px - 50) ** 2 + (py - 50) ** 2);
+          if (distToCenter < CENTER_CIRCLE_R) {
+            const angle = Math.atan2(py - 50, px - 50);
+            const newX = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
+            const newY = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
+            // Also enforce own half
+            const isHomeP = p.club_id === match.home_club_id;
+            const isSecondHalfNow = (match.current_half ?? 1) >= 2;
+            const ownHalfLeft = isHomeP ? !isSecondHalfNow : isSecondHalfNow;
+            const clampedX = ownHalfLeft ? Math.min(newX, 49) : Math.max(newX, 51);
+            exclusionUpdates.push({ id: p.id, pos_x: Math.max(1, Math.min(99, clampedX)), pos_y: Math.max(1, Math.min(99, newY)) });
+          }
+          // Also enforce own half for all defending players at kickoff
+          const isHomeP2 = p.club_id === match.home_club_id;
+          const isSecondHalf2 = (match.current_half ?? 1) >= 2;
+          const ownHalfLeft2 = isHomeP2 ? !isSecondHalf2 : isSecondHalf2;
+          const px2 = Number(p.pos_x ?? 50);
+          if ((ownHalfLeft2 && px2 > 49) || (!ownHalfLeft2 && px2 < 51)) {
+            if (!exclusionUpdates.find(u => u.id === p.id)) {
+              exclusionUpdates.push({ id: p.id, pos_x: ownHalfLeft2 ? 49 : 51, pos_y: Number(p.pos_y ?? 50) });
+            }
+          }
+        }
+      } else if (setPiece && setPiece !== 'kickoff') {
+        // Free kick / corner / throw-in: defending team must stay 10 units from ball
+        const EXCLUSION_R = 10;
+        const bhPart = (allParts || []).find((p: any) => p.id === bhId);
+        const ballX = bhPart ? Number(bhPart.pos_x ?? 50) : 50;
+        const ballY = bhPart ? Number(bhPart.pos_y ?? 50) : 50;
+        const defClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+        for (const p of (allParts || [])) {
+          if (p.club_id !== defClubId || p.is_sent_off) continue;
+          const px = Number(p.pos_x ?? 50);
+          const py = Number(p.pos_y ?? 50);
+          const distToBall = Math.sqrt((px - ballX) ** 2 + (py - ballY) ** 2);
+          if (distToBall < EXCLUSION_R) {
+            const angle = Math.atan2(py - ballY, px - ballX);
+            const newX = Math.max(1, Math.min(99, ballX + Math.cos(angle) * (EXCLUSION_R + 1)));
+            const newY = Math.max(1, Math.min(99, ballY + Math.sin(angle) * (EXCLUSION_R + 1)));
+            exclusionUpdates.push({ id: p.id, pos_x: newX, pos_y: newY });
+          }
+        }
+      }
+
+      if (exclusionUpdates.length > 0) {
+        await Promise.all(exclusionUpdates.map(u =>
+          supabase.from('match_participants').update({ pos_x: u.pos_x, pos_y: u.pos_y }).eq('id', u.id)
+        ));
+        console.log(`[ENGINE] Exclusion zone enforcement: moved ${exclusionUpdates.length} players`);
+      }
+    }
+
     await Promise.all([
       actionIds.length > 0 ? supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds) : Promise.resolve(),
       supabase.from('match_turns').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', activeTurn.id),
