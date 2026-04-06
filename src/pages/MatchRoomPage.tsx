@@ -1769,26 +1769,35 @@ export default function MatchRoomPage() {
         const startPos = snapshot[pId];
         if (!startPos) return null;
         const moveAction = actionsSnap.find(
-          a => a.participant_id === pId && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null
+          a => a.participant_id === pId && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null
         );
         if (!moveAction || moveAction.target_x == null || moveAction.target_y == null) {
           return startPos;
         }
+
+        // Scale player arrival by move distance (short moves arrive early)
+        const targetX = moveAction.target_x;
+        const targetY = moveAction.target_y;
+        const moveDist = Math.sqrt((targetX - startPos.x) ** 2 + (targetY - startPos.y) ** 2);
+        const MAX_RANGE_APPROX = 12;
+        const arrivalFraction = Math.max(0.15, Math.min(1, moveDist / MAX_RANGE_APPROX));
+        const scaledRaw = Math.min(1, raw / arrivalFraction);
+
         let t: number;
-        if (raw < 0.3) {
-          const seg = raw / 0.3;
+        if (scaledRaw < 0.3) {
+          const seg = scaledRaw / 0.3;
           t = seg * seg * 0.3;
-        } else if (raw < 0.8) {
-          const seg = (raw - 0.3) / 0.5;
+        } else if (scaledRaw < 0.8) {
+          const seg = (scaledRaw - 0.3) / 0.5;
           t = 0.3 + seg * 0.55;
         } else {
-          const seg = (raw - 0.8) / 0.2;
+          const seg = (scaledRaw - 0.8) / 0.2;
           t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
         }
         const effectiveTarget = getEffectiveActionTarget(moveAction, startPos, actionsSnap);
         return {
-          x: startPos.x + ((effectiveTarget?.x ?? moveAction.target_x) - startPos.x) * t,
-          y: startPos.y + ((effectiveTarget?.y ?? moveAction.target_y) - startPos.y) * t,
+          x: startPos.x + ((effectiveTarget?.x ?? targetX) - startPos.x) * t,
+          y: startPos.y + ((effectiveTarget?.y ?? targetY) - startPos.y) * t,
         };
       };
 
@@ -1893,7 +1902,16 @@ export default function MatchRoomPage() {
         return Math.sin(raw * Math.PI) * arcHeight;
       };
 
-      const duration = 1800;
+      // Animation duration varies by ball action speed
+      const bhAction = actionsSnap.find(a => a.participant_id === (activeTurn?.ball_holder_participant_id ?? '') && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
+      const bhActionType = bhAction?.action_type || 'move';
+      const speedFactor =
+        (bhActionType === 'shoot_power' || bhActionType === 'header_power') ? 0.6 :
+        (bhActionType === 'shoot_controlled' || bhActionType === 'header_controlled') ? 0.7 :
+        bhActionType === 'pass_launch' ? 0.8 :
+        (bhActionType === 'pass_high' || bhActionType === 'header_high') ? 0.9 :
+        1.0;
+      const duration = Math.round(1800 * speedFactor);
       let startTime: number | null = null;
 
       const animate = (now: number) => {
@@ -2140,9 +2158,9 @@ export default function MatchRoomPage() {
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
 
-    // Both 'move' and 'receive' actions cause the player to move to target
+    // Move, receive, and block actions cause the player to move to target
     const moveAction = turnActions.find(
-      a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null
+      a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null
     );
     const startPos = resolutionStartPositions[p.id];
     const startX = startPos?.x ?? p.field_x ?? 50;
