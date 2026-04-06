@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
-import { Dumbbell, TrendingUp, History, ArrowUp, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Dumbbell, TrendingUp, History, ArrowUp, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap } from 'lucide-react';
 
 const ENERGY_COST = 25;
 
@@ -31,6 +31,7 @@ export default function PlayerAttributesPage() {
   const [trainingCenterLevel, setTrainingCenterLevel] = useState<number>(0);
   const [showBonusInfo, setShowBonusInfo] = useState(false);
   const [hasClub, setHasClub] = useState<boolean>(true);
+  const [trainerBonus, setTrainerBonus] = useState<{ level: number; value: number } | null>(null);
 
   const weeklyEvolution = (() => {
     const oneWeekAgo = new Date();
@@ -70,6 +71,31 @@ export default function PlayerAttributesPage() {
     // Get training center level
     const { data: trainingFacility } = await supabase.from('club_facilities').select('level').eq('club_id', playerProfile.club_id).eq('facility_type', 'training_center').maybeSingle();
     setTrainingCenterLevel(trainingFacility?.level || 0);
+
+    // Get active trainer subscription from store
+    const { data: trainerPurchases } = await supabase
+      .from('store_purchases')
+      .select('store_item_id, level')
+      .eq('player_profile_id', playerProfile.id)
+      .eq('status', 'active');
+
+    if (trainerPurchases && trainerPurchases.length > 0) {
+      const itemIds = trainerPurchases.map(p => p.store_item_id);
+      const { data: trainerItems } = await (supabase as any)
+        .from('store_items')
+        .select('id, bonus_value, level, category')
+        .in('id', itemIds)
+        .eq('category', 'trainer');
+
+      if (trainerItems && trainerItems.length > 0) {
+        const best = trainerItems.reduce((a: any, b: any) => (Number(b.bonus_value || 0) > Number(a.bonus_value || 0) ? b : a));
+        setTrainerBonus({ level: best.level || 1, value: Number(best.bonus_value || 0) });
+      } else {
+        setTrainerBonus(null);
+      }
+    } else {
+      setTrainerBonus(null);
+    }
   };
 
   const fetchHistory = async () => {
@@ -116,10 +142,11 @@ export default function PlayerAttributesPage() {
     }
     // Apply tier multiplier
     growth = growth * tierMultiplier;
-    // Apply coach and training center bonuses
+    // Apply coach, training center, and private trainer bonuses
     const coachBonusValue = hasClub ? getCoachBonus(coachType, attrKey) : 0;
     const tcBonusValue = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
-    growth = growth * (1 + coachBonusValue + tcBonusValue);
+    const trainerBonusValue = trainerBonus ? trainerBonus.value / 100 : 0;
+    growth = growth * (1 + coachBonusValue + tcBonusValue + trainerBonusValue);
     growth = Math.round(growth * 100) / 100;
     const newVal = Math.min(99, Math.round((currentVal + growth) * 100) / 100);
 
@@ -176,7 +203,8 @@ export default function PlayerAttributesPage() {
           const tierMult = getTrainingTierMultiplier(value);
           const attrCoachBonus = hasClub ? getCoachBonus(coachType, key) : 0;
           const attrTcBonus = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
-          const bonusFactor = 1 + attrCoachBonus + attrTcBonus;
+          const attrTrainerBonus = trainerBonus ? trainerBonus.value / 100 : 0;
+          const bonusFactor = 1 + attrCoachBonus + attrTcBonus + attrTrainerBonus;
           const effectiveGrowthMin = (growthRate * tierMult * bonusFactor).toFixed(2);
           const effectiveGrowthMax = ((growthRate + 0.99) * tierMult * bonusFactor).toFixed(2);
           return (
@@ -225,6 +253,9 @@ export default function PlayerAttributesPage() {
                   )}
                   {hasClub && attrTcBonus > 0 && (
                     <p className="text-xs text-amber-400">Bônus Centro de Treino (Nv.{trainingCenterLevel}): +{Math.round(attrTcBonus * 100)}%</p>
+                  )}
+                  {attrTrainerBonus > 0 && (
+                    <p className="text-xs text-green-400">Bônus Treinador Particular (Nv.{trainerBonus?.level}): +{Math.round(attrTrainerBonus * 100)}%</p>
                   )}
                   {!hasClub && (
                     <p className="text-xs text-muted-foreground">Sem clube — sem bônus de treino</p>
@@ -321,11 +352,18 @@ export default function PlayerAttributesPage() {
                     <span className="text-muted-foreground">Bônus Centro de Treino (Nv.{trainingCenterLevel}):</span>
                     <span className="font-display font-bold text-amber-400">+{Math.round(getTrainingCenterBonus(trainingCenterLevel) * 100)}%</span>
                   </div>
+                  {trainerBonus && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <GraduationCap className="h-4 w-4 text-green-400" />
+                      <span className="text-muted-foreground">Bônus Treinador Particular (Nv.{trainerBonus.level}):</span>
+                      <span className="font-display font-bold text-green-400">+{trainerBonus.value}%</span>
+                    </div>
+                  )}
                   <div className="border-t border-muted pt-2 flex items-center gap-2 text-sm">
                     <TrendingUp className="h-4 w-4 text-pitch" />
                     <span className="text-muted-foreground">Bônus combinado máximo:</span>
                     <span className="font-display font-bold text-pitch">
-                      +{Math.round(((COACH_BONUS_RATE[coachType] || 0.10) + getTrainingCenterBonus(trainingCenterLevel)) * 100)}%
+                      +{Math.round(((COACH_BONUS_RATE[coachType] || 0.10) + getTrainingCenterBonus(trainingCenterLevel) + (trainerBonus ? trainerBonus.value / 100 : 0)) * 100)}%
                     </span>
                   </div>
                 </>
