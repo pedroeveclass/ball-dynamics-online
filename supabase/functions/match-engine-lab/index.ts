@@ -4862,17 +4862,56 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             body: 'A bola perdeu a inércia e está parada no campo.',
           });
         } else {
-          const prevBhAction = allActions.find(a => isBallActionType(a.action_type));
+          // First try current turn's ball action, then look at previous turn's actions
+          let prevBhAction = allActions.find(a => isBallActionType(a.action_type));
+          let bhStartPos = ballHolder ? { x: Number(ballHolder.pos_x ?? 50), y: Number(ballHolder.pos_y ?? 50) } : null;
+
+          if (!prevBhAction) {
+            // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
+            const prevTurnNumber = match.current_turn_number - 1;
+            if (prevTurnNumber >= 1) {
+              const { data: prevTurnRows } = await supabase
+                .from('match_turns')
+                .select('id')
+                .eq('match_id', match_id)
+                .eq('turn_number', prevTurnNumber)
+                .order('created_at', { ascending: false });
+              const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+              if (prevTurnIds.length > 0) {
+                const { data: prevActions } = await supabase
+                  .from('match_actions')
+                  .select('action_type, target_x, target_y, participant_id')
+                  .in('match_turn_id', prevTurnIds)
+                  .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
+                  .order('created_at', { ascending: false })
+                  .limit(1);
+                if (prevActions && prevActions.length > 0) {
+                  prevBhAction = prevActions[0];
+                  // Get the BH position from the previous turn
+                  const prevBhPart = (participants || []).find((p: any) => p.id === prevActions[0].participant_id);
+                  if (prevBhPart) {
+                    // Use ballEndPos as approximate start (where the ball ended up)
+                    bhStartPos = ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
+                  }
+                }
+              }
+            }
+          }
+
           let inertiaBallX = ballEndPos ? (ballEndPos as { x: number; y: number }).x : 50;
           let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
-          if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && ballHolder) {
-            const startX = Number(ballHolder.pos_x ?? 50);
-            const startY = Number(ballHolder.pos_y ?? 50);
-            const dirX = Number(prevBhAction.target_x) - startX;
-            const dirY = Number(prevBhAction.target_y) - startY;
-            // Don't clamp — allow ball to go out of bounds so detectOutOfBounds handles it
-            inertiaBallX = Number(prevBhAction.target_x) + dirX * 0.15;
-            inertiaBallY = Number(prevBhAction.target_y) + dirY * 0.15;
+          if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
+            const dirX = Number(prevBhAction.target_x) - bhStartPos.x;
+            const dirY = Number(prevBhAction.target_y) - bhStartPos.y;
+            const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+            if (dirLen > 0.1) {
+              // Apply inertia: continue in the same direction from current ball position
+              const normDirX = dirX / dirLen;
+              const normDirY = dirY / dirLen;
+              const inertiaDistance = dirLen * 0.15; // 15% of original pass distance
+              inertiaBallX = inertiaBallX + normDirX * inertiaDistance;
+              inertiaBallY = inertiaBallY + normDirY * inertiaDistance;
+            }
           }
           ballEndPos = { x: inertiaBallX, y: inertiaBallY };
           eventsToLog.push({
