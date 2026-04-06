@@ -2507,18 +2507,24 @@ export default function MatchRoomPage() {
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
-  // Find if anyone intercepted the ball this turn (has a 'receive' or 'block' action)
-  // BUT only if the interception actually succeeded (no goal scored, no gk_save_failed)
+  // Find the interceptor whose receive/block actually SUCCEEDED
+  // Skip those who failed (receive_failed event), and skip if goal scored
   const interceptorAction = (() => {
-    const candidate = turnActions.find(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null) || null;
-    if (!candidate) return null;
-    // If a goal was scored or GK save failed, the interception didn't work — ball continues
     const resEvents = resolutionEventsRef.current;
     const goalScored = resEvents.some(e => e.event_type === 'goal');
     const gkFailed = resEvents.some(e => e.event_type === 'gk_save_failed');
-    const receiveFailed = resEvents.some(e => e.event_type === 'receive_failed' && (e.payload as any)?.participant_id === candidate.participant_id);
-    if (goalScored || gkFailed || receiveFailed) return null;
-    return candidate;
+    if (goalScored || gkFailed) return null;
+
+    const candidates = turnActions.filter(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
+    const failedIds = new Set(
+      resEvents.filter(e => e.event_type === 'receive_failed').map(e => (e.payload as any)?.participant_id).filter(Boolean)
+    );
+
+    // Return the first candidate that didn't fail
+    for (const c of candidates) {
+      if (!failedIds.has(c.participant_id)) return c;
+    }
+    return null;
   })();
 
   // Loose ball position: persist across turns until someone regains possession
