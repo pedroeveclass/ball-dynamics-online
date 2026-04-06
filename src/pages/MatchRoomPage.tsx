@@ -2236,7 +2236,9 @@ export default function MatchRoomPage() {
     const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
     const isHome = p?.club_id === match.home_club_id;
     const gkX = p?.field_x ?? 50;
-    const inBox = isGK && (isHome ? (gkX <= 18) : (gkX >= 82));
+    const isSecondHalf = (match?.current_half ?? 1) >= 2;
+    const ownGoalIsLeft = isHome ? !isSecondHalf : isSecondHalf;
+    const inBox = isGK && (ownGoalIsLeft ? (gkX <= 18) : (gkX >= 82));
 
     // Shoot trajectory
     if (trajType && isAnyShootAction(trajType)) {
