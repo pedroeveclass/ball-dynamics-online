@@ -5397,25 +5397,34 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         body: `Partida encerrada aos ${matchMinute}'.`,
       });
 
-      // ── Stadium ticket revenue for home team ──
+      // ── Stadium ticket revenue for home team (uses occupancy model) ──
       try {
         const homeClubId = match.home_club_id;
-        const { data: homeStadium } = await supabase.from('stadiums').select('id').eq('club_id', homeClubId).maybeSingle();
-        if (homeStadium) {
-          const { data: sectors } = await supabase.from('stadium_sectors').select('capacity, ticket_price').eq('stadium_id', homeStadium.id);
-          const maxTicketRevenue = (sectors || []).reduce((sum: number, s: any) => sum + (s.capacity * s.ticket_price), 0);
+        const awayClubId = match.away_club_id;
+        // Get opponent reputation for demand calculation
+        const { data: awayClub } = await supabase.from('clubs').select('reputation').eq('id', awayClubId).maybeSingle();
+        const opponentRep = awayClub?.reputation ?? 20;
+        // Use the same occupancy model as the stadium preview
+        const { data: revenueData } = await supabase.rpc('calculate_matchday_revenue', {
+          p_club_id: homeClubId,
+          p_opponent_reputation: opponentRep,
+        });
+        if (revenueData && revenueData.length > 0) {
+          const totalTicketRevenue = (revenueData as any[]).reduce((sum: number, r: any) => sum + Number(r.sector_revenue || 0), 0);
+          const totalAttendance = (revenueData as any[]).reduce((sum: number, r: any) => sum + Number(r.expected_attendance || 0), 0);
+          // League = 100%, Friendly = 30%
           const { data: leagueMatch } = await supabase.from('league_matches').select('id').eq('match_id', match_id).maybeSingle();
           const revenueMultiplier = leagueMatch ? 1.0 : 0.3;
-          const ticketRevenue = Math.round(maxTicketRevenue * revenueMultiplier);
-          if (ticketRevenue > 0) {
+          const finalRevenue = Math.round(totalTicketRevenue * revenueMultiplier);
+          if (finalRevenue > 0) {
             const { data: finance } = await supabase.from('club_finances').select('balance').eq('club_id', homeClubId).maybeSingle();
-            await supabase.from('club_finances').update({ balance: (Number(finance?.balance ?? 0)) + ticketRevenue }).eq('club_id', homeClubId);
+            await supabase.from('club_finances').update({ balance: (Number(finance?.balance ?? 0)) + finalRevenue }).eq('club_id', homeClubId);
             await supabase.from('match_event_logs').insert({
               match_id, event_type: 'ticket_revenue',
-              title: `🎫 Bilheteria: R$ ${ticketRevenue.toLocaleString('pt-BR')}`,
-              body: `${leagueMatch ? 'Jogo da liga' : 'Amistoso (30%)'} — receita creditada ao mandante.`,
+              title: `🎫 Bilheteria: R$ ${finalRevenue.toLocaleString('pt-BR')}`,
+              body: `Público: ${totalAttendance.toLocaleString('pt-BR')} | ${leagueMatch ? 'Jogo da liga' : 'Amistoso (30%)'} — receita creditada ao mandante.`,
             });
-            console.log(`[ENGINE] Ticket revenue: home=${homeClubId.slice(0,8)} amount=${ticketRevenue} type=${leagueMatch ? 'league' : 'friendly'}`);
+            console.log(`[ENGINE] Ticket revenue: home=${homeClubId.slice(0,8)} attendance=${totalAttendance} revenue=${finalRevenue} type=${leagueMatch ? 'league' : 'friendly'}`);
           }
         }
       } catch (e) {
