@@ -3097,6 +3097,9 @@ export default function MatchRoomPage() {
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
 
+                // Hide positioning phase arrows once we've moved past positioning
+                if (!isPositioningTurn && (action.turn_phase === 'positioning_attack' || action.turn_phase === 'positioning_defense')) return null;
+
                 // Hide BH deferred move arrow when they have a ball action (pass/shoot/header)
                 if (action.action_type === 'move' && action.participant_id === activeTurn?.ball_holder_participant_id) {
                   const hasBallAction = visibleActions.some(a =>
