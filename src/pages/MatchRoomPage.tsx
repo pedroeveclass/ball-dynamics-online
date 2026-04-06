@@ -2667,6 +2667,17 @@ export default function MatchRoomPage() {
         };
       }
 
+      // Check if tackle happened during dribble — if so, ball stops at tackle point
+      const tackleEvent = resolutionEventsRef.current.find(e => e.event_type === 'tackle');
+      if (tackleEvent) {
+        // Ball stops partway through the dribble (at ~t progress)
+        const tackleT = Math.min(t, 0.7); // ball reaches tackle point before end
+        return {
+          x: startPos.x + dx * tackleT + 1.2,
+          y: startPos.y + dy * tackleT - 1.2,
+        };
+      }
+
       // Ball sticks to player during dribbling — use player's animated position
       const playerAnimPos = getAnimatedPos(ballHolder);
       return {
