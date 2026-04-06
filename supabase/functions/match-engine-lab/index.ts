@@ -4048,6 +4048,38 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
         }
+      } else if (setPiece === 'penalty') {
+        // Penalty: everyone outside the box except the kicker and GK
+        const isSecondHalfNow = (match.current_half ?? 1) >= 2;
+        const isHomeAttacking = possClubId === match.home_club_id;
+        const attacksRight = isHomeAttacking ? !isSecondHalfNow : isSecondHalfNow;
+        // Penalty area: x 82-100 (right) or 0-18 (left), y 20-80
+        const boxMinX = attacksRight ? 82 : 0;
+        const boxMaxX = attacksRight ? 100 : 18;
+        const penaltyX = attacksRight ? 88 : 12;
+        const goalX = attacksRight ? 99 : 1;
+        const defClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+
+        for (const p of (allParts || [])) {
+          if (p.is_sent_off) continue;
+          const px = Number(p.pos_x ?? 50);
+          const py = Number(p.pos_y ?? 50);
+          const isInBox = px >= boxMinX && px <= boxMaxX && py >= 20 && py <= 80;
+          const isKicker = p.id === bhId;
+          const isDefGK = p.club_id === defClubId && isGKPosition(p._slot_position || p.slot_position || '');
+
+          if (isDefGK) {
+            // GK goes to center of goal line
+            exclusionUpdates.push({ id: p.id, pos_x: goalX, pos_y: 50 });
+          } else if (isKicker) {
+            // Kicker stays at penalty spot
+            exclusionUpdates.push({ id: p.id, pos_x: penaltyX, pos_y: 50 });
+          } else if (isInBox) {
+            // Everyone else must leave the box
+            const pushX = attacksRight ? boxMinX - 2 : boxMaxX + 2;
+            exclusionUpdates.push({ id: p.id, pos_x: pushX, pos_y: py });
+          }
+        }
       } else if (setPiece && setPiece !== 'kickoff') {
         // Free kick / corner / throw-in: defending team must stay 10 units from ball
         const EXCLUSION_R = 10;
@@ -5433,11 +5465,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const nextPhaseStart = new Date().toISOString();
       const isNextLooseBall = nextBallHolderParticipantId === null;
 
-      // Penalty: skip positioning, go directly to ball_holder phase
+      // Penalty now goes through positioning so players can be repositioned correctly
       const isPenalty = nextSetPieceType === 'penalty';
-      const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType) && !isPenalty;
+      const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType);
       const usePositioning = hasDeadBallRestart;
-      const nextPhase = isPenalty ? 'ball_holder' : (isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder'));
+      const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
       const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
       const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
 
