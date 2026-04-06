@@ -1326,29 +1326,40 @@ async function generateBotActions(
       const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
       const clubChasers = looseBallChasersByClub.get(bot.club_id) ?? 0;
 
-      if (distToBall < 12 && clubChasers < 2) {
+      // Find if this bot is the closest player on their team to the ball
+      const teamPlayers = (playersByClub.get(bot.club_id) || []).filter((p: any) => p.role_type === 'player' && !p.is_sent_off);
+      const isClosestOnTeam = !teamPlayers.some((t: any) => {
+        if (t.id === bot.id) return false;
+        const tDist = Math.sqrt((Number(t.pos_x ?? 50) - ballPos.x) ** 2 + (Number(t.pos_y ?? 50) - ballPos.y) ** 2);
+        return tDist < distToBall;
+      });
+
+      // Closest player on each team ALWAYS chases the ball, regardless of distance
+      // Second closest also chases if within reasonable range
+      if (isClosestOnTeam || (distToBall < 15 && clubChasers < 2)) {
         looseBallChasersByClub.set(bot.club_id, clubChasers + 1);
-        if (distToBall <= 3) {
-          // Already on top of the ball — can receive
+        if (distToBall <= maxMoveRange) {
+          // Can reach the ball this turn — try to receive
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: 'receive',
             target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
           });
         } else {
-          // Move toward ball first — need to get there before receiving
-          const targetX = posX + (ballPos.x - posX) * 0.7;
-          const targetY = posY + (ballPos.y - posY) * 0.7;
+          // Move as close as possible toward ball
+          const angle = Math.atan2(ballPos.y - posY, ballPos.x - posX);
+          const targetX = posX + Math.cos(angle) * maxMoveRange;
+          const targetY = posY + Math.sin(angle) * maxMoveRange;
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: 'move',
-            target_x: Math.max(2, Math.min(98, targetX)), target_y: Math.max(2, Math.min(98, targetY)),
+            target_x: Math.max(1, Math.min(99, targetX)), target_y: Math.max(1, Math.min(99, targetY)),
             status: 'pending',
           });
         }
       } else {
-        // Maintain formation position, don't chase
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex);
+        // Not closest — move toward ball but maintain some formation
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex, maxMoveRange);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
