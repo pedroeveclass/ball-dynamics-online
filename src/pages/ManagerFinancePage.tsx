@@ -36,6 +36,7 @@ export default function ManagerFinancePage() {
   const [facilities, setFacilities] = useState<FacilityRow[]>([]);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [matchdayRevenue, setMatchdayRevenue] = useState(0);
+  const [ticketHistory, setTicketHistory] = useState<Array<{ match_id: string; title: string; body: string; created_at: string; home_club: string; away_club: string; score: string }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,6 +59,41 @@ export default function ManagerFinancePage() {
     setMatchdayRevenue(
       ((mdRes.data || []) as any[]).reduce((sum: number, r: any) => sum + Number(r.sector_revenue || 0), 0)
     );
+
+    // Fetch ticket revenue history from home matches
+    const { data: ticketEvents } = await supabase
+      .from('match_event_logs')
+      .select('match_id, title, body, created_at')
+      .eq('event_type', 'ticket_revenue')
+      .in('match_id', (await supabase.from('matches').select('id').eq('home_club_id', club!.id).eq('status', 'finished')).data?.map(m => m.id) || [])
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (ticketEvents && ticketEvents.length > 0) {
+      const matchIds = [...new Set(ticketEvents.map(e => e.match_id))];
+      const { data: matches } = await supabase
+        .from('matches')
+        .select('id, home_club_id, away_club_id, home_score, away_score, finished_at')
+        .in('id', matchIds);
+
+      const clubIds = [...new Set((matches || []).flatMap(m => [m.home_club_id, m.away_club_id]))];
+      const { data: clubs } = await supabase.from('clubs').select('id, name').in('id', clubIds);
+      const clubMap = new Map((clubs || []).map(c => [c.id, c.name]));
+
+      setTicketHistory(ticketEvents.map(e => {
+        const m = (matches || []).find(mm => mm.id === e.match_id);
+        return {
+          match_id: e.match_id,
+          title: e.title,
+          body: e.body,
+          created_at: m?.finished_at || e.created_at,
+          home_club: clubMap.get(m?.home_club_id || '') || '?',
+          away_club: clubMap.get(m?.away_club_id || '') || '?',
+          score: m ? `${m.home_score} x ${m.away_score}` : '',
+        };
+      }));
+    }
+
     setLoading(false);
   }
 
@@ -183,6 +219,25 @@ export default function ManagerFinancePage() {
             </div>
           </div>
         </div>
+
+        {/* Ticket revenue history */}
+        {ticketHistory.length > 0 && (
+          <div className="stat-card">
+            <h2 className="font-display font-semibold text-sm mb-4 text-amber-500">Receita de Bilheteria</h2>
+            <div className="space-y-2 text-sm max-h-[300px] overflow-y-auto">
+              {ticketHistory.map((t, i) => (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                  <div>
+                    <div className="font-medium">{t.home_club} {t.score} {t.away_club}</div>
+                    <div className="text-xs text-muted-foreground">{t.body}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                  </div>
+                  <span className="font-display font-bold text-amber-500 whitespace-nowrap ml-4">{t.title.replace('🎫 Bilheteria: ', '')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Weekly summary */}
         <div className={`stat-card border-2 ${weeklyProfit >= 0 ? 'border-pitch/30 bg-pitch/5' : 'border-destructive/30 bg-destructive/5'}`}>
