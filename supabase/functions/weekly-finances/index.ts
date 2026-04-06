@@ -64,6 +64,52 @@ Deno.serve(async (req) => {
         }
       }
 
+      // ── Stadium ticket revenue from HOME matches this week ──
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: homeMatches } = await supabase
+        .from('matches')
+        .select('id, home_club_id, away_club_id, status')
+        .eq('home_club_id', club.id)
+        .eq('status', 'finished')
+        .gte('finished_at', oneWeekAgo);
+
+      if (homeMatches && homeMatches.length > 0) {
+        // Fetch stadium sectors for this club's stadium
+        const { data: stadium } = await supabase
+          .from('stadiums')
+          .select('id')
+          .eq('club_id', club.id)
+          .maybeSingle();
+
+        if (stadium) {
+          const { data: sectors } = await supabase
+            .from('stadium_sectors')
+            .select('capacity, ticket_price')
+            .eq('stadium_id', stadium.id);
+
+          // Calculate max ticket revenue per match (all sectors full)
+          const maxTicketRevenuePerMatch = (sectors || []).reduce(
+            (sum, s) => sum + (s.capacity * s.ticket_price), 0
+          );
+
+          for (const match of homeMatches) {
+            // Check if this is a league match or friendly
+            const { data: leagueMatch } = await supabase
+              .from('league_matches')
+              .select('id')
+              .eq('match_id', match.id)
+              .maybeSingle();
+
+            const isLeagueMatch = !!leagueMatch;
+            // League = 100% revenue, Friendly = 30% revenue
+            const revenueMultiplier = isLeagueMatch ? 1.0 : 0.3;
+            const matchRevenue = Math.round(maxTicketRevenuePerMatch * revenueMultiplier);
+            totalRevenue += matchRevenue;
+            console.log(`[FINANCES] Ticket revenue: club=${club.name} match=${match.id.slice(0,8)} type=${isLeagueMatch ? 'league' : 'friendly'} revenue=${matchRevenue}`);
+          }
+        }
+      }
+
       // Fetch active contracts for wage bill
       const { data: contracts } = await supabase
         .from('contracts')
