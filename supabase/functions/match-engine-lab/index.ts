@@ -5397,6 +5397,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         body: `Partida encerrada aos ${matchMinute}'.`,
       });
 
+      // ── Stadium ticket revenue for home team ──
+      try {
+        const homeClubId = match.home_club_id;
+        const { data: homeStadium } = await supabase.from('stadiums').select('id').eq('club_id', homeClubId).maybeSingle();
+        if (homeStadium) {
+          const { data: sectors } = await supabase.from('stadium_sectors').select('capacity, ticket_price').eq('stadium_id', homeStadium.id);
+          const maxTicketRevenue = (sectors || []).reduce((sum: number, s: any) => sum + (s.capacity * s.ticket_price), 0);
+          const { data: leagueMatch } = await supabase.from('league_matches').select('id').eq('match_id', match_id).maybeSingle();
+          const revenueMultiplier = leagueMatch ? 1.0 : 0.3;
+          const ticketRevenue = Math.round(maxTicketRevenue * revenueMultiplier);
+          if (ticketRevenue > 0) {
+            const { data: finance } = await supabase.from('club_finances').select('balance').eq('club_id', homeClubId).maybeSingle();
+            await supabase.from('club_finances').update({ balance: (Number(finance?.balance ?? 0)) + ticketRevenue }).eq('club_id', homeClubId);
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'ticket_revenue',
+              title: `🎫 Bilheteria: R$ ${ticketRevenue.toLocaleString('pt-BR')}`,
+              body: `${leagueMatch ? 'Jogo da liga' : 'Amistoso (30%)'} — receita creditada ao mandante.`,
+            });
+            console.log(`[ENGINE] Ticket revenue: home=${homeClubId.slice(0,8)} amount=${ticketRevenue} type=${leagueMatch ? 'league' : 'friendly'}`);
+          }
+        }
+      } catch (e) {
+        console.error(`[ENGINE] Failed to process ticket revenue:`, e);
+      }
+
       // Trigger standings update for league matches
       try {
         await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/league-scheduler`, {
