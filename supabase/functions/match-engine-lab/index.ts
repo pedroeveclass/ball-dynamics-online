@@ -4005,6 +4005,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       const exclusionUpdates: Array<{ id: string; pos_x: number; pos_y: number }> = [];
       const setPiece = activeTurn.set_piece_type;
+      console.log(`[ENGINE] Exclusion zone check: setPiece=${setPiece} possClub=${possClubId} players=${(allParts || []).length}`);
 
       if (setPiece === 'kickoff') {
         // Kickoff: opposing team must stay out of center circle (10 units from center)
@@ -4487,7 +4488,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
-        // Log failed receive attempts (ball not dominated)
+        // Log failed receive attempts (always show — even if another player succeeded after)
         if (result.failedReceiveAttempts) {
           for (const fra of result.failedReceiveAttempts) {
             eventsToLog.push({
@@ -4497,6 +4498,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: { participant_id: fra.participantId, chance: fra.chance },
             });
           }
+        }
+
+        // Log successful receive (intercepted = someone dominated the ball)
+        if (result.event === 'intercepted' && result.newBallHolderId) {
+          const chancePctMatch = result.description.match(/\((\d+%)\)/);
+          const chance = chancePctMatch ? chancePctMatch[1] : '';
+          eventsToLog.push({
+            match_id, event_type: 'receive_success',
+            title: `🤲 Dominio com sucesso! (${chance})`,
+            body: `Jogador dominou a bola com ${chance} de chance.`,
+            payload: { participant_id: result.newBallHolderId, chance },
+          });
         }
 
         if (result.goal) {
