@@ -4384,8 +4384,40 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         ? await supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
         : { data: [] };
       for (const row of (attrRows || [])) {
-        attrByProfile[row.player_profile_id] = row;
+        attrByProfile[row.player_profile_id] = { ...row };
       }
+
+      // ── Apply store item bonuses (boots, gloves) to attributes ──
+      if (profileIds.length > 0) {
+        const { data: activePurchases } = await supabase
+          .from('store_purchases')
+          .select('player_profile_id, store_item_id')
+          .in('player_profile_id', profileIds)
+          .eq('status', 'active');
+
+        if (activePurchases && activePurchases.length > 0) {
+          const itemIds = [...new Set(activePurchases.map(p => p.store_item_id))];
+          const { data: storeItems } = await supabase
+            .from('store_items')
+            .select('id, bonus_type, bonus_value, category')
+            .in('id', itemIds)
+            .in('category', ['boots', 'gloves']);
+
+          if (storeItems) {
+            const itemMap = new Map(storeItems.map(i => [i.id, i]));
+            for (const purchase of activePurchases) {
+              const item = itemMap.get(purchase.store_item_id);
+              if (item && item.bonus_type && item.bonus_value && attrByProfile[purchase.player_profile_id]) {
+                const attrs = attrByProfile[purchase.player_profile_id];
+                if (attrs[item.bonus_type] != null) {
+                  attrs[item.bonus_type] = Number(attrs[item.bonus_type]) + Number(item.bonus_value);
+                }
+              }
+            }
+          }
+        }
+      }
+
       tickCache.attrByProfile = attrByProfile;
     }
     const getAttrs = (participant: any) => {
