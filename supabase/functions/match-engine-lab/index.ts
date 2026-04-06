@@ -4039,9 +4039,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || [], formByClub2);
       tickCache.enrichedParticipants = participants;
     } else {
-      // Non-resolution phases: skip expensive enrichment, raw participants suffice for bot generation
-      participants = rawParticipants2 || [];
-      // Store raw participants in cache (will be replaced with enriched version at resolution)
+      // Non-resolution phases also need enrichment for bot AI to know slot_position
+      const formByClub3: Record<string, string> = {};
+      if (tickCache.clubSettings) {
+        formByClub3[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
+        formByClub3[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
+      }
+      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || [], formByClub3);
       tickCache.enrichedParticipants = participants;
     }
   }
