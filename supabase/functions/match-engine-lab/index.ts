@@ -755,7 +755,7 @@ function computeTacticalTarget(
     const attractY = attractOverride ? attractOverride.y : ballPos.y;
     const zoneWidthX = zone.maxX - zone.minX;
     const zoneWidthY = zone.maxY - zone.minY;
-    const isAttackMoment = moment === 'attacking' || moment === 'transition';
+    const isAttackMoment = moment === 'offensive' || moment === 'transition';
     const pullStrengthX = isAttackMoment ? 0.25 : 0.10; // 25% pull when attacking (was 10%)
     const pullStrengthY = isAttackMoment ? 0.12 : 0.05; // 12% pull when attacking (was 5%)
     const ballPullX = (attractX - targetX) * pullStrengthX;
