@@ -2378,9 +2378,11 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   card?: 'yellow';
   disputeInfo?: { winner: 'attacker' | 'defender'; zone: string };
   gkSaveAttempt?: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean };
+  failedReceiveAttempts?: Array<{ participantId: string; chance: string }>;
 } {
   let _disputeInfo: { winner: 'attacker' | 'defender'; zone: string } | undefined;
   let gkSaveAttempt: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean } | undefined;
+  const failedReceiveAttempts: Array<{ participantId: string; chance: string }> = [];
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
     const result: Record<string, number> = {};
@@ -2589,12 +2591,16 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       console.log(`[ENGINE] 🧤 Goleiro não segurou! (${chancePct})`);
       gkSaveAttempt = { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: false };
     }
-    else console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
+    else {
+      console.log(`[ENGINE] ❌ Falhou o domínio! (${chancePct}) Bola continua.`);
+      failedReceiveAttempts.push({ participantId: candidate.participant.id, chance: chancePct });
+    }
   }
 
-  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt };
-  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false };
-  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false };
+  const frAttempts = failedReceiveAttempts.length > 0 ? failedReceiveAttempts : undefined;
+  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt, failedReceiveAttempts: frAttempts };
+  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false, failedReceiveAttempts: frAttempts };
+  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false, failedReceiveAttempts: frAttempts };
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
@@ -4397,6 +4403,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               title: `🧤 Goleiro tentou defender (${gka.chance}) — não conseguiu!`,
               body: `Goleiro tentou a defesa com ${gka.chance} de chance, mas a bola passou.`,
               payload: { gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId, save_chance: gka.chance, result: 'failed' },
+            });
+          }
+        }
+
+        // Log failed receive attempts (ball not dominated)
+        if (result.failedReceiveAttempts) {
+          for (const fra of result.failedReceiveAttempts) {
+            eventsToLog.push({
+              match_id, event_type: 'receive_failed',
+              title: `❌ Falhou o dominio! (${fra.chance})`,
+              body: `Jogador tentou dominar com ${fra.chance} de chance, mas a bola escapou.`,
+              payload: { participant_id: fra.participantId, chance: fra.chance },
             });
           }
         }
