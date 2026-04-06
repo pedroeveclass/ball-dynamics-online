@@ -2046,12 +2046,12 @@ function getInterceptContext(bhActionType: string, interceptorClubId: string, bh
     }
     return { type: 'block_shot', baseChance: 0.25 };
   }
-  // Pass types (foot and header)
-  if (bhActionType === 'pass_low' || bhActionType === 'header_low') return { type: 'receive_pass', baseChance: 0.85 };
-  if (bhActionType === 'pass_high' || bhActionType === 'header_high') return { type: 'receive_pass', baseChance: 0.60 };
-  if (bhActionType === 'pass_launch') return { type: 'receive_pass', baseChance: 0.70 };
+  // Pass types (foot and header) — high base chance, ground passes almost always dominated
+  if (bhActionType === 'pass_low' || bhActionType === 'header_low') return { type: 'receive_pass', baseChance: 1.20 };
+  if (bhActionType === 'pass_high' || bhActionType === 'header_high') return { type: 'receive_pass', baseChance: 0.85 };
+  if (bhActionType === 'pass_launch') return { type: 'receive_pass', baseChance: 0.95 };
 
-  return { type: 'receive_pass', baseChance: 0.75 };
+  return { type: 'receive_pass', baseChance: 1.0 };
 }
 
 function computeInterceptSuccess(
