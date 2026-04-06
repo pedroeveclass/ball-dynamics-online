@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import {
   Store, ShoppingBag, Footprints, Zap, Shield, GraduationCap,
-  Heart, Gift, CreditCard, Check, ShoppingCart,
+  Heart, Gift, CreditCard, Check, ShoppingCart, Package, XCircle, BatteryCharging,
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
 
@@ -40,6 +40,8 @@ interface Purchase {
   status: string;
   level: number;
   created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
 }
 
 const DISPLAY_CATEGORIES: Record<string, string> = {
@@ -49,7 +51,7 @@ const DISPLAY_CATEGORIES: Record<string, string> = {
 };
 
 const CATEGORY_TAB_LABELS: Record<string, string> = {
-  cosmeticos: 'Cosméticos', chuteiras: 'Chuteiras', luvas: 'Luvas de Goleiro',
+  meus_itens: 'Meus Itens', cosmeticos: 'Cosméticos', chuteiras: 'Chuteiras', luvas: 'Luvas de Goleiro',
   consumiveis: 'Consumíveis', servicos: 'Serviços', outros: 'Outros',
 };
 
@@ -83,8 +85,10 @@ export default function StorePage() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState(false);
+  const [acting, setActing] = useState(false);
   const [filterLevel, setFilterLevel] = useState<number | null>(null);
   const [filterBonus, setFilterBonus] = useState<string | null>(null);
+  const [playerPurchases, setPlayerPurchases] = useState<(Purchase & { item?: StoreItem })[]>([]);
 
   // Gift dialog state (for managers)
   const [giftItem, setGiftItem] = useState<StoreItem | null>(null);
@@ -100,12 +104,43 @@ export default function StorePage() {
 
   async function fetchData() {
     setLoading(true);
+    const userId = (await supabase.auth.getUser()).data.user?.id || '';
     const [itemsRes, purchasesRes] = await Promise.all([
       (supabase as any).from('store_items').select('*').eq('is_available', true).order('sort_order'),
-      supabase.from('store_purchases').select('*').eq('user_id', (await supabase.auth.getUser()).data.user?.id || '').eq('status', 'active'),
+      supabase.from('store_purchases').select('*').eq('user_id', userId).eq('status', 'active'),
     ]);
-    setItems((itemsRes.data || []) as StoreItem[]);
+    const allItems = (itemsRes.data || []) as StoreItem[];
+    setItems(allItems);
     setPurchases((purchasesRes.data || []) as Purchase[]);
+
+    // Fetch player's active purchases (includes gifted items by player_profile_id)
+    if (playerProfile?.id) {
+      const { data: playerPurchs } = await supabase
+        .from('store_purchases')
+        .select('*')
+        .eq('player_profile_id', playerProfile.id)
+        .eq('status', 'active');
+
+      const itemMap = new Map(allItems.map(i => [i.id, i]));
+      // If some items not in available list, fetch them separately
+      const missingIds = (playerPurchs || [])
+        .map(p => p.store_item_id)
+        .filter(id => !itemMap.has(id));
+      if (missingIds.length > 0) {
+        const { data: extraItems } = await (supabase as any)
+          .from('store_items')
+          .select('*')
+          .in('id', missingIds);
+        for (const ei of (extraItems || [])) itemMap.set(ei.id, ei as StoreItem);
+      }
+
+      setPlayerPurchases(
+        ((playerPurchs || []) as Purchase[]).map(p => ({
+          ...p,
+          item: itemMap.get(p.store_item_id),
+        }))
+      );
+    }
 
     // Load team players for gift (manager only)
     if (isManager && club) {
@@ -156,6 +191,38 @@ export default function StorePage() {
     }
   }
 
+  async function handleUseEnergetico(purchaseId: string) {
+    setActing(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('use_energetico', { p_purchase_id: purchaseId });
+      if (error) { toast.error(error.message); return; }
+      const result = data as any;
+      if (result?.error) { toast.error(result.error); return; }
+      toast.success(result?.message || 'Energético usado!');
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao usar energético');
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function handleCancelSubscription(purchaseId: string) {
+    setActing(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('cancel_store_subscription', { p_purchase_id: purchaseId });
+      if (error) { toast.error(error.message); return; }
+      const result = data as any;
+      if (result?.error) { toast.error(result.error); return; }
+      toast.success(result?.message || 'Assinatura cancelada!');
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao cancelar');
+    } finally {
+      setActing(false);
+    }
+  }
+
   const grouped = items.reduce<Record<string, StoreItem[]>>((acc, item) => {
     const cat = DISPLAY_CATEGORIES[item.category] || 'outros';
     if (!acc[cat]) acc[cat] = [];
@@ -163,9 +230,8 @@ export default function StorePage() {
     return acc;
   }, {});
 
-  const categoryOrder = ['cosmeticos', 'chuteiras', 'luvas', 'consumiveis', 'servicos', 'outros'];
-  const availableCategories = categoryOrder.filter(c => grouped[c]?.length);
-  const defaultTab = availableCategories[0] || 'cosmeticos';
+  const categoryOrder = ['meus_itens', 'cosmeticos', 'chuteiras', 'luvas', 'consumiveis', 'servicos', 'outros'];
+  const defaultTab = playerPurchases.length > 0 ? 'meus_itens' : (Object.keys(grouped).find(k => grouped[k]?.length) || 'cosmeticos');
 
   function renderItemCard(item: StoreItem) {
     const owned = isOwned(item.id);
@@ -239,7 +305,14 @@ export default function StorePage() {
       ) : (
         <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="flex flex-wrap h-auto gap-1">
-            {categoryOrder.map(cat => {
+            {!isManager && playerPurchases.length > 0 && (
+              <TabsTrigger value="meus_itens" className="flex items-center gap-1 text-xs">
+                <Package className="h-3 w-3" />
+                {CATEGORY_TAB_LABELS['meus_itens']}
+                <span className="text-[10px] text-muted-foreground">({playerPurchases.length})</span>
+              </TabsTrigger>
+            )}
+            {categoryOrder.filter(c => c !== 'meus_itens').map(cat => {
               const count = grouped[cat]?.length || 0;
               if (count === 0) return null;
               return (
@@ -251,7 +324,73 @@ export default function StorePage() {
             })}
           </TabsList>
 
-          {categoryOrder.map(cat => {
+          {/* Meus Itens tab */}
+          {!isManager && (
+            <TabsContent value="meus_itens" className="mt-4 space-y-4">
+              {playerPurchases.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum item ativo.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {playerPurchases.map(p => {
+                    const item = p.item;
+                    if (!item) return null;
+                    const isConsumable = item.category === 'consumable' && item.bonus_type === 'energy';
+                    const isMonthly = item.duration === 'monthly';
+                    const canUseNow = isConsumable && (!p.last_used_at || new Date(p.last_used_at).getTime() < Date.now() - 24 * 60 * 60 * 1000);
+                    const cooldownRemaining = isConsumable && p.last_used_at
+                      ? Math.max(0, 24 * 60 * 60 * 1000 - (Date.now() - new Date(p.last_used_at).getTime()))
+                      : 0;
+                    const cooldownHours = Math.ceil(cooldownRemaining / (60 * 60 * 1000));
+
+                    return (
+                      <Card key={p.id} className="overflow-hidden border-pitch/50 bg-pitch/5">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              {getItemIcon(item.category)}
+                              <CardTitle className="text-sm font-display leading-tight">
+                                {item.name}
+                                {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">Nv. {item.level}</span>}
+                              </CardTitle>
+                            </div>
+                            <Badge className="bg-pitch text-[10px]"><Check className="h-3 w-3 mr-0.5" />Ativo</Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-2 pb-3">
+                          {item.description && <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>}
+                          {item.bonus_type && item.bonus_value != null && (
+                            <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {item.bonus_type}</Badge>
+                          )}
+                          {p.expires_at && (
+                            <p className="text-xs text-muted-foreground">Expira: {new Date(p.expires_at).toLocaleDateString('pt-BR')}</p>
+                          )}
+                          <div className="flex items-center gap-2 pt-1">
+                            {isConsumable && canUseNow && (
+                              <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700" disabled={acting}
+                                onClick={() => handleUseEnergetico(p.id)}>
+                                <BatteryCharging className="h-3 w-3 mr-1" />Usar Energético
+                              </Button>
+                            )}
+                            {isConsumable && !canUseNow && cooldownRemaining > 0 && (
+                              <span className="text-xs text-muted-foreground">Disponível em {cooldownHours}h</span>
+                            )}
+                            {isMonthly && (
+                              <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={acting}
+                                onClick={() => handleCancelSubscription(p.id)}>
+                                <XCircle className="h-3 w-3 mr-1" />Cancelar
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </TabsContent>
+          )}
+
+          {categoryOrder.filter(c => c !== 'meus_itens').map(cat => {
             let catItems = grouped[cat];
             if (!catItems?.length) return null;
             const hasFilters = cat === 'chuteiras' || cat === 'luvas';
