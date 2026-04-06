@@ -1863,7 +1863,9 @@ export default function MatchRoomPage() {
           }
           if (isBallShoot) {
             const isHome = bhPart.club_id === matchRef.current?.home_club_id;
-            const goalX = isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
+            const isSecondHalf = (matchRef.current?.current_half ?? 1) >= 2;
+            const attacksRight = isHome ? !isSecondHalf : isSecondHalf;
+            const goalX = attacksRight ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT;
             return { x: ballStartX + (goalX - ballStartX) * t, y: ballStartY + (ballAction.target_y - ballStartY) * t };
           }
           return { x: ballStartX + (ballAction.target_x - ballStartX) * t, y: ballStartY + (ballAction.target_y - ballStartY) * t };
@@ -2016,7 +2018,9 @@ export default function MatchRoomPage() {
                   } else {
                     const shooter = participantsRef.current.find(p => p.id === bhId);
                     const isHome = shooter?.club_id === matchRef.current?.home_club_id;
-                    fbp = { x: isHome ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y };
+                    const isSecondHalf2 = (matchRef.current?.current_half ?? 1) >= 2;
+                    const attacksRight2 = isHome ? !isSecondHalf2 : isSecondHalf2;
+                    fbp = { x: attacksRight2 ? 100 + GOAL_LINE_OVERFLOW_PCT : 0 - GOAL_LINE_OVERFLOW_PCT, y: ballAction.target_y };
                   }
                   // Store direction for missed shots too
                   if (sp) {
