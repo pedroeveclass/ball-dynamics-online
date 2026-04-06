@@ -2094,7 +2094,7 @@ export default function MatchRoomPage() {
                     // Next turn hasn't arrived yet -- check resolution event logs
                     // for blocks/intercepts to correct the end position early
                     const resEvents = resolutionEventsRef.current;
-                    const hasBlock = resEvents.some(e => e.event_type === 'blocked' || e.event_type === 'saved');
+                    const hasBlock = resEvents.some(e => e.event_type === 'blocked' || e.event_type === 'saved' || e.event_type === 'block' || e.event_type === 'gk_save');
                     const hasIntercept = resEvents.some(e => e.event_type === 'intercepted');
                     if (hasBlock || hasIntercept) {
                       // Ball was blocked/intercepted -- use intercept point if
@@ -2107,6 +2107,8 @@ export default function MatchRoomPage() {
                           fbp = { x: holderFinal.x + 1.2, y: holderFinal.y - 1.2 };
                         }
                       }
+                      // Block/espalmar: clear inertia direction so loose ball doesn't fly toward original shot target
+                      lastBallDirRef.current = null;
                     }
                   }
 
