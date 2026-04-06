@@ -1810,8 +1810,9 @@ export default function MatchRoomPage() {
           // Loose ball with inertia
           if (ballInertiaDir && carriedLooseBallPos) {
             const INERTIA_DISPLAY = 0.15;
-            const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
-            const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+            // Don't clamp — let the ball go out of bounds visually (straight line)
+            const endX = carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
+            const endY = carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
             const ballEaseK = 3;
             const expDecay = 1 - Math.exp(-ballEaseK * raw);
             const normFactor = 1 - Math.exp(-ballEaseK);
@@ -2117,10 +2118,10 @@ export default function MatchRoomPage() {
                 }
               }
             } else if (!bhId && carriedLooseBallPos && ballInertiaDir) {
-              // Loose ball with inertia: move ball to post-inertia position
+              // Loose ball with inertia: move ball to post-inertia position (no clamp — can go OOB)
               const INERTIA_DISPLAY = 0.15;
-              const newX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
-              const newY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+              const newX = carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
+              const newY = carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
               const newPos = { x: newX, y: newY };
               setCarriedLooseBallPos(newPos);
               finalBallPosRef.current = newPos;
@@ -2891,8 +2892,9 @@ export default function MatchRoomPage() {
         const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
         if (inertiaLen >= 0.5) {
           const INERTIA_DISPLAY = 0.15;
-          const endX = clamp(looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
-          const endY = clamp(looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+          // Don't clamp — let inertia arrow point outside field if that's where the ball goes
+          const endX = looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
+          const endY = looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
           return {
             id: '__inertia__',
             match_id: matchId || '',
