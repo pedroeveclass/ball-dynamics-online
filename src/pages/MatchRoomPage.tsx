@@ -1903,7 +1903,8 @@ export default function MatchRoomPage() {
       };
 
       // Animation duration varies by ball action speed
-      const bhAction = actionsSnap.find(a => a.participant_id === (activeTurn?.ball_holder_participant_id ?? '') && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
+      const actionsForDuration = turnActionsRef.current;
+      const bhAction = actionsForDuration.find(a => a.participant_id === (activeTurn?.ball_holder_participant_id ?? '') && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
       const bhActionType = bhAction?.action_type || 'move';
       const speedFactor =
         (bhActionType === 'shoot_power' || bhActionType === 'header_power') ? 0.6 :
