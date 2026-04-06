@@ -2672,12 +2672,10 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             forca: Number(pRaw?.forca ?? 40),
           };
           const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
-          // Block actions use full range (player puts body in the way, doesn't need to catch up to ball)
-          // Receive actions get ballSpeed reduction (harder to control fast ball)
-          // GK always uses full range on shots
+          // GK uses full range on shots, everyone else gets ballSpeed reduction
           const isInterceptorGK = isGKPosition(interceptor._slot_position || interceptor.primary_position || '');
           const isShot = bhActionType === 'shoot_controlled' || bhActionType === 'shoot_power' || bhActionType === 'header_controlled' || bhActionType === 'header_power';
-          const useFullRange = a.action_type === 'block' || (isInterceptorGK && isShot);
+          const useFullRange = isInterceptorGK && isShot;
           const adjustedMaxRange = useFullRange ? maxRange : maxRange * ballSpeedFactor;
           const posX = Number(interceptor.pos_x ?? 50);
           const posY = Number(interceptor.pos_y ?? 50);
