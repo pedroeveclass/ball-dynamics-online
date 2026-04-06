@@ -10,6 +10,7 @@ interface AuthContextType {
   playerProfile: Tables<'player_profiles'> | null;
   managerProfile: Tables<'manager_profiles'> | null;
   club: Tables<'clubs'> | null;
+  isAdmin: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshPlayerProfile: () => Promise<void>;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   playerProfile: null,
   managerProfile: null,
   club: null,
+  isAdmin: false,
   loading: true,
   signOut: async () => {},
   refreshPlayerProfile: async () => {},
@@ -48,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const currentUserIdRef = useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    stableSet(setProfile, data);
+    const { data } = await supabase.from('profiles').select('id, username, role_selected, created_at, updated_at, avatar_url, active_player_profile_id, is_admin').eq('id', userId).single();
+    stableSet(setProfile, data as any);
     return data;
   };
 
@@ -163,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, loading, signOut, refreshPlayerProfile, refreshManagerProfile, switchPlayerProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, isAdmin: !!(profile as any)?.is_admin, loading, signOut, refreshPlayerProfile, refreshManagerProfile, switchPlayerProfile }}>
       {children}
     </AuthContext.Provider>
   );

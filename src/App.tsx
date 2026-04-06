@@ -5,7 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
-import { ProtectedRoute, PlayerRoute, ManagerRoute } from "@/components/ProtectedRoute";
+import { ProtectedRoute, PlayerRoute, ManagerRoute, AdminRoute } from "@/components/ProtectedRoute";
 
 // Critical pages — static imports (landing, auth, 404)
 import LandingPage from "./pages/LandingPage";
@@ -43,6 +43,7 @@ const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const MatchReplayPage = lazy(() => import("./pages/MatchReplayPage"));
 const StorePage = lazy(() => import("./pages/StorePage"));
 const BankPage = lazy(() => import("./pages/BankPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -96,6 +97,7 @@ const App = () => (
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute><StorePage /></ProtectedRoute>} />
             <Route path="/bank" element={<ProtectedRoute><BankPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>

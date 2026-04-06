@@ -695,6 +695,24 @@ export default function MatchRoomPage() {
     return range;
   }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions]);
 
+  // Apply ballSpeedFactor to a player's range based on current ball trajectory action.
+  // Outfield players get reduced range (fast ball = less time to react).
+  // GK gets full range on shots (can always try to save).
+  const applyBallSpeedFactor = useCallback((baseRange: number, participantId: string, trajectoryActionType: string | null | undefined): number => {
+    if (!trajectoryActionType) return baseRange;
+    const player = participants.find(p => p.id === participantId);
+    const isGK = player?.field_pos === 'GK' || (player as any)?.slot_position === 'GK';
+    const isShot = trajectoryActionType === 'shoot_controlled' || trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_controlled' || trajectoryActionType === 'header_power';
+    if (isGK && isShot) return baseRange;
+    const factor =
+      (trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_power') ? 0.25 :
+      (trajectoryActionType === 'shoot_controlled' || trajectoryActionType === 'header_controlled') ? 0.35 :
+      trajectoryActionType === 'pass_launch' ? 0.5 :
+      (trajectoryActionType === 'pass_high' || trajectoryActionType === 'header_high') ? 0.65 :
+      1.0;
+    return baseRange * factor;
+  }, [participants]);
+
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
     if (!match || match.status !== 'scheduled') return;
@@ -1596,7 +1614,11 @@ export default function MatchRoomPage() {
         const dy = pctY - moveFrom.field_y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
-        const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
+        let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
+        // Apply ballSpeedFactor when there's an active ball trajectory (match ball preview limit)
+        if ((activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && ballTrajectoryAction?.action_type) {
+          maxRange = applyBallSpeedFactor(maxRange, drawingAction.fromParticipantId, ballTrajectoryAction.action_type);
+        }
         if (dist > maxRange) {
           const scale = maxRange / dist;
           mx = moveFrom.field_x + dx * scale;
@@ -2411,7 +2433,10 @@ export default function MatchRoomPage() {
           const dy = finalY - fromP.field_y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
-          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
+          let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
+          if ((activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && ballTrajectoryAction?.action_type) {
+            maxRange = applyBallSpeedFactor(maxRange, drawingAction.fromParticipantId, ballTrajectoryAction.action_type);
+          }
           if (dist > maxRange) {
             const scale = maxRange / dist;
             finalX = fromP.field_x + dx * scale;
@@ -3307,6 +3332,21 @@ export default function MatchRoomPage() {
                 } else {
                   toFieldX = mouseFieldPct.x;
                   toFieldY = mouseFieldPct.y;
+                  // Clamp move arrow to maxRange (with ballSpeedFactor applied when there's active ball trajectory)
+                  if (drawingAction.type === 'move' && drawingFrom.field_x != null && drawingFrom.field_y != null) {
+                    const mdx = toFieldX - drawingFrom.field_x;
+                    const mdy = toFieldY - drawingFrom.field_y;
+                    const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+                    let arrowMaxRange = computeMaxMoveRange(drawingAction.fromParticipantId, mdist > 0.1 ? { x: mdx, y: mdy } : undefined);
+                    if ((activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && ballTrajectoryAction?.action_type) {
+                      arrowMaxRange = applyBallSpeedFactor(arrowMaxRange, drawingAction.fromParticipantId, ballTrajectoryAction.action_type);
+                    }
+                    if (mdist > arrowMaxRange) {
+                      const scale = arrowMaxRange / mdist;
+                      toFieldX = drawingFrom.field_x + mdx * scale;
+                      toFieldY = drawingFrom.field_y + mdy * scale;
+                    }
+                  }
                   to = toSVG(toFieldX, toFieldY);
                 }
                 const isMove = drawingAction.type === 'move';
