@@ -190,7 +190,7 @@ export default function MatchRoomPage() {
 
   const appendEventLog = useCallback((event: EventLog) => {
     // Track resolution-relevant events so animation can incorporate actual results
-    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal'];
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block'];
     if (resolutionEventTypes.includes(event.event_type)) {
       resolutionEventsRef.current = [...resolutionEventsRef.current, event];
     }
@@ -2504,8 +2504,19 @@ export default function MatchRoomPage() {
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
-  // Find if anyone intercepted the ball this turn (has a 'receive' action)
-  const interceptorAction = turnActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
+  // Find if anyone intercepted the ball this turn (has a 'receive' or 'block' action)
+  // BUT only if the interception actually succeeded (no goal scored, no gk_save_failed)
+  const interceptorAction = (() => {
+    const candidate = turnActions.find(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null) || null;
+    if (!candidate) return null;
+    // If a goal was scored or GK save failed, the interception didn't work — ball continues
+    const resEvents = resolutionEventsRef.current;
+    const goalScored = resEvents.some(e => e.event_type === 'goal');
+    const gkFailed = resEvents.some(e => e.event_type === 'gk_save_failed');
+    const receiveFailed = resEvents.some(e => e.event_type === 'receive_failed' && (e.payload as any)?.participant_id === candidate.participant_id);
+    if (goalScored || gkFailed || receiveFailed) return null;
+    return candidate;
+  })();
 
   // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
