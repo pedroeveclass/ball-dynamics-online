@@ -148,6 +148,14 @@ Deno.serve(async (req) => {
         }
       }
 
+      // --- Expire monthly subscriptions (trainer/physio) that passed 30 days ---
+      await supabase
+        .from('store_purchases')
+        .update({ status: 'expired' })
+        .eq('status', 'active')
+        .lt('expires_at', new Date().toISOString())
+        .not('expires_at', 'is', null);
+
       // --- Process club loan payments ---
       const { data: clubLoans } = await supabase
         .from('loans')

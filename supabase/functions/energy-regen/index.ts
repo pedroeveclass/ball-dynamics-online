@@ -32,9 +32,42 @@ Deno.serve(async (req) => {
     const needsRegen = (players || []).filter(p => p.energy_current < p.energy_max);
     let updated = 0;
 
+    // Load active physio purchases for all players
+    const playerIds = needsRegen.map(p => p.id);
+    let physioBonusByPlayer = new Map<string, number>();
+    if (playerIds.length > 0) {
+      const { data: physioPurchases } = await supabase
+        .from('store_purchases')
+        .select('player_profile_id, store_item_id')
+        .in('player_profile_id', playerIds)
+        .eq('status', 'active');
+
+      if (physioPurchases && physioPurchases.length > 0) {
+        const itemIds = [...new Set(physioPurchases.map(p => p.store_item_id))];
+        const { data: physioItems } = await supabase
+          .from('store_items')
+          .select('id, bonus_value')
+          .in('id', itemIds)
+          .eq('category', 'physio');
+
+        if (physioItems) {
+          const itemMap = new Map(physioItems.map(i => [i.id, Number(i.bonus_value || 0)]));
+          for (const purchase of physioPurchases) {
+            const bonus = itemMap.get(purchase.store_item_id);
+            if (bonus) {
+              physioBonusByPlayer.set(purchase.player_profile_id, bonus);
+            }
+          }
+        }
+      }
+    }
+
     for (const p of needsRegen) {
-      // Random 25-30% de energia máxima
-      const regenPct = 0.25 + Math.random() * 0.10;
+      // Base regen: random 25-30% of max energy
+      const baseRegenPct = 0.25 + Math.random() * 0.10;
+      // Physio bonus: adds % on top (e.g., physio nv3 = +15% → base 27% + 15% = 42%)
+      const physioBonus = physioBonusByPlayer.get(p.id) || 0;
+      const regenPct = baseRegenPct + (physioBonus / 100);
       const regenAmount = Math.floor(p.energy_max * regenPct);
       const newEnergy = Math.min(p.energy_max, p.energy_current + regenAmount);
 
