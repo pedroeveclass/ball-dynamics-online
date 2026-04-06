@@ -750,16 +750,19 @@ function computeTacticalTarget(
     targetX = Math.max(zone.minX, Math.min(zone.maxX, targetX));
     targetY = Math.max(zone.minY, Math.min(zone.maxY, targetY));
   } else {
-    // Ball attraction: gentle pull toward ball, proportional to zone size
+    // Ball attraction: pull toward ball — stronger when attacking, gentler when defending
     const attractX = attractOverride ? attractOverride.x : ballPos.x;
     const attractY = attractOverride ? attractOverride.y : ballPos.y;
     const zoneWidthX = zone.maxX - zone.minX;
     const zoneWidthY = zone.maxY - zone.minY;
-    const ballPullX = (attractX - targetX) * 0.10; // max 10% of displacement
-    const ballPullY = (attractY - targetY) * 0.05; // max 5% in Y
-    // Clamp the pull to not exceed 15% of zone dimensions
-    const maxPullX = zoneWidthX * 0.15;
-    const maxPullY = zoneWidthY * 0.10;
+    const isAttackMoment = moment === 'attacking' || moment === 'transition';
+    const pullStrengthX = isAttackMoment ? 0.25 : 0.10; // 25% pull when attacking (was 10%)
+    const pullStrengthY = isAttackMoment ? 0.12 : 0.05; // 12% pull when attacking (was 5%)
+    const ballPullX = (attractX - targetX) * pullStrengthX;
+    const ballPullY = (attractY - targetY) * pullStrengthY;
+    // Clamp the pull — higher when attacking to push the whole block forward
+    const maxPullX = zoneWidthX * (isAttackMoment ? 0.30 : 0.15);
+    const maxPullY = zoneWidthY * (isAttackMoment ? 0.20 : 0.10);
     targetX += Math.max(-maxPullX, Math.min(maxPullX, ballPullX));
     targetY += Math.max(-maxPullY, Math.min(maxPullY, ballPullY));
 
