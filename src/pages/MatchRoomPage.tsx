@@ -2358,6 +2358,9 @@ export default function MatchRoomPage() {
     const receiveActions = getReceiveActions(participantId);
     const interceptZone = hasReceivePrompt ? getInterceptZone(participantId) : 'green';
 
+    // GK-specific: check if participant is GK
+    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
+
     // Tackle (move trajectory) or block-only = no one-touch options
     // GK facing a shot: no one-touch, only agarrar/espalmar
     const isTackle = pendingInterceptChoice?.participantId === participantId && pendingInterceptChoice?.trajectoryActionType === 'move';
@@ -2371,9 +2374,6 @@ export default function MatchRoomPage() {
     const oneTouchActions = interceptZone === 'yellow'
       ? [...headerOneTouchActions, ...footOneTouchActions]
       : footOneTouchActions;
-
-    // GK-specific: check if BH is GK
-    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
 
     // Positioning turn: move only, ball holder can't move
     if (isPositioningTurn) {
