@@ -1336,7 +1336,27 @@ export default function MatchRoomPage() {
       setPendingInterceptChoice(null);
       return;
     }
-    if (actionType === 'receive' || actionType === 'block') {
+    if (actionType === 'receive') {
+      if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
+        submitAction(actionType, participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
+      } else {
+        submitAction(actionType, participantId);
+      }
+      setShowActionMenu(null);
+      setPendingInterceptChoice(null);
+      return;
+    }
+    if (actionType === 'block') {
+      // GK block (espalmar): enter drawing mode to choose deflection direction
+      const p = participants.find(x => x.id === participantId);
+      const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
+      if (isGK && pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
+        // GK: enter deflection drawing mode — keep pendingInterceptChoice alive
+        setDrawingAction({ type: 'block' as DrawingState['type'], fromParticipantId: participantId });
+        setShowActionMenu(null);
+        return;
+      }
+      // Non-GK block or no intercept context: submit immediately
       if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
         submitAction(actionType, participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
       } else {
@@ -1365,6 +1385,19 @@ export default function MatchRoomPage() {
 
   const handleFieldClick = (pctX: number, pctY: number) => {
     if (!drawingAction) return;
+
+    // GK block deflection drawing: submit block with deflection target in payload
+    if (drawingAction.type === 'block' && pendingInterceptChoice && pendingInterceptChoice.participantId === drawingAction.fromParticipantId) {
+      const deflectPayload = {
+        deflect_target_x: pctX,
+        deflect_target_y: pctY,
+      };
+      submitAction('block', drawingAction.fromParticipantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY, undefined, deflectPayload);
+      setDrawingAction(null);
+      setPendingInterceptChoice(null);
+      return;
+    }
+
     const allPlayers = [...homePlayers, ...awayPlayers];
     const nearPlayer = allPlayers.find(p => {
       if (!p.field_x || !p.field_y) return false;
@@ -2326,8 +2359,11 @@ export default function MatchRoomPage() {
     const interceptZone = hasReceivePrompt ? getInterceptZone(participantId) : 'green';
 
     // Tackle (move trajectory) or block-only = no one-touch options
+    // GK facing a shot: no one-touch, only agarrar/espalmar
     const isTackle = pendingInterceptChoice?.participantId === participantId && pendingInterceptChoice?.trajectoryActionType === 'move';
-    const canOneTouch = receiveActions.includes('receive') && !isTackle;
+    const trajType2 = pendingInterceptChoice?.participantId === participantId ? pendingInterceptChoice?.trajectoryActionType : null;
+    const isGKFacingShot = isGK && trajType2 && isAnyShootAction(trajType2);
+    const canOneTouch = receiveActions.includes('receive') && !isTackle && !isGKFacingShot;
 
     // One-touch actions: in yellow zone, offer BOTH header and foot actions
     const footOneTouchActions = ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];

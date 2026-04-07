@@ -1848,8 +1848,13 @@ function computeDeviation(
   actionType: string,
   attrs: Record<string, number>,
   isGK: boolean = false,
+  setPieceType?: string | null,
 ): DeviationResult {
   const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
+
+  // Set pieces have much less deviation (dead ball = more control)
+  const isSetPiece = setPieceType && setPieceType !== 'kickoff';
+  const setPieceDeviationScale = isSetPiece ? 0.35 : 1.0;
 
   let difficultyMultiplier: number;
   let skillFactor: number;
@@ -1924,8 +1929,8 @@ function computeDeviation(
   const skillCurve = Math.pow(1 - skillFactor, 1.5);
   // Distance amplifier: 25+ units get progressively worse
   const distAmplifier = dist > 25 ? 1 + Math.pow((dist - 25) / 25, 1.5) : 1;
-  // Final deviation
-  const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4);
+  // Final deviation (set pieces reduce deviation significantly — dead ball = more control)
+  const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4) * setPieceDeviationScale;
 
   const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || isHeaderShootType(actionType);
 
@@ -2572,8 +2577,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
       }
       if (context.type === 'block' || context.type === 'block_shot') {
-        // Block: ball deflects opposite to shot direction + randomness (loose ball)
-        // For GK blocks, use the GK's actual position as the deflect origin (espalmar)
+        // Block: ball deflects — GK can choose direction (with high deviation), outfield is random
         const isGKBlockCtx = context.type === 'block' && context.defenderRole === 'goalkeeper';
         const blockX = isGKBlockCtx
           ? Number(candidate.participant.pos_x ?? candidate.interceptX ?? 50)
@@ -2581,10 +2585,22 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         const blockY = isGKBlockCtx
           ? Number(candidate.participant.pos_y ?? candidate.interceptY ?? 50)
           : (candidate.interceptY ?? 50);
-        const shotDx = _attacker.target_x - Number(bh?.pos_x ?? 50);
-        const shotDy = _attacker.target_y - Number(bh?.pos_y ?? 50);
-        const shotAngle = Math.atan2(shotDy, shotDx);
-        const deflectAngle = shotAngle + Math.PI + (Math.random() - 0.5) * Math.PI; // opposite + up to ±90°
+
+        let deflectAngle: number;
+        // Check if GK chose a deflection direction (payload.deflect_target_x/y)
+        const blockAction = allActions.find((a: any) => a.participant_id === candidate.participant.id && a.action_type === 'block');
+        const deflectPayload = blockAction?.payload && typeof blockAction.payload === 'object' ? blockAction.payload as any : null;
+        if (isGKBlockCtx && deflectPayload?.deflect_target_x != null && deflectPayload?.deflect_target_y != null) {
+          // GK chose a direction: use it as base with high deviation (±60°)
+          const chosenAngle = Math.atan2(deflectPayload.deflect_target_y - blockY, deflectPayload.deflect_target_x - blockX);
+          deflectAngle = chosenAngle + (Math.random() - 0.5) * (Math.PI / 1.5); // ±60°
+        } else {
+          // Default: opposite to shot direction + randomness (±90°)
+          const shotDx = _attacker.target_x - Number(bh?.pos_x ?? 50);
+          const shotDy = _attacker.target_y - Number(bh?.pos_y ?? 50);
+          const shotAngle = Math.atan2(shotDy, shotDx);
+          deflectAngle = shotAngle + Math.PI + (Math.random() - 0.5) * Math.PI;
+        }
         const deflectDist = 5 + Math.random() * 15; // 5-20 units
         const looseBallX = Math.max(1, Math.min(99, blockX + Math.cos(deflectAngle) * deflectDist));
         const looseBallY = Math.max(1, Math.min(99, blockY + Math.sin(deflectAngle) * deflectDist));
@@ -4010,9 +4026,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (!isAttackPhase) {
       const { data: allParts } = await supabase
         .from('match_participants')
-        .select('id, club_id, pos_x, pos_y, role_type, is_sent_off')
+        .select('id, club_id, pos_x, pos_y, role_type, is_sent_off, lineup_slot_id, player_profile_id')
         .eq('match_id', match_id)
         .eq('role_type', 'player');
+
+      // Enrich with slot_position for GK detection
+      if (allParts) {
+        const slotIds = allParts.map(p => (p as any).lineup_slot_id).filter(Boolean);
+        const profileIds = allParts.map(p => (p as any).player_profile_id).filter(Boolean);
+        const [slotsRes, profilesRes] = await Promise.all([
+          slotIds.length > 0 ? supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds) : { data: [] },
+          profileIds.length > 0 ? supabase.from('player_profiles').select('id, primary_position').in('id', profileIds) : { data: [] },
+        ]);
+        const slotMap = new Map((slotsRes.data || []).map((s: any) => [s.id, s.slot_position]));
+        const profMap = new Map((profilesRes.data || []).map((p: any) => [p.id, p.primary_position]));
+        for (const p of allParts) {
+          (p as any)._slot_position = slotMap.get((p as any).lineup_slot_id) || profMap.get((p as any).player_profile_id) || '';
+        }
+      }
 
       const exclusionUpdates: Array<{ id: string; pos_x: number; pos_y: number }> = [];
       const setPiece = activeTurn.set_piece_type;
@@ -4458,6 +4489,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             startY,
             bhAction.action_type,
             bhAttrs,
+            false,
+            activeTurn.set_piece_type,
           );
           bhAction.target_x = deviation.actualX;
           bhAction.target_y = deviation.actualY;
@@ -4887,72 +4920,64 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         });
       } else {
         nextBallHolderParticipantId = null;
-        if (wasAlreadyLoose) {
-          eventsToLog.push({
-            match_id, event_type: 'ball_stopped',
-            title: '⚽ Bola parada',
-            body: 'A bola perdeu a inércia e está parada no campo.',
-          });
-        } else {
-          // First try current turn's ball action, then look at previous turn's actions
-          let prevBhAction = allActions.find(a => isBallActionType(a.action_type));
-          let bhStartPos = ballHolder ? { x: Number(ballHolder.pos_x ?? 50), y: Number(ballHolder.pos_y ?? 50) } : null;
 
-          if (!prevBhAction) {
-            // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
-            const prevTurnNumber = match.current_turn_number - 1;
-            if (prevTurnNumber >= 1) {
-              const { data: prevTurnRows } = await supabase
-                .from('match_turns')
-                .select('id')
-                .eq('match_id', match_id)
-                .eq('turn_number', prevTurnNumber)
-                .order('created_at', { ascending: false });
-              const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
-              if (prevTurnIds.length > 0) {
-                const { data: prevActions } = await supabase
-                  .from('match_actions')
-                  .select('action_type, target_x, target_y, participant_id')
-                  .in('match_turn_id', prevTurnIds)
-                  .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
-                  .order('created_at', { ascending: false })
-                  .limit(1);
-                if (prevActions && prevActions.length > 0) {
-                  prevBhAction = prevActions[0];
-                  // Get the BH position from the previous turn
-                  const prevBhPart = (participants || []).find((p: any) => p.id === prevActions[0].participant_id);
-                  if (prevBhPart) {
-                    // Use ballEndPos as approximate start (where the ball ended up)
-                    bhStartPos = ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
-                  }
-                }
+        // Apply inertia (decayed on consecutive loose turns)
+        // First try current turn's ball action, then look at previous turn's actions
+        let prevBhAction = allActions.find(a => isBallActionType(a.action_type));
+        let bhStartPos = ballHolder ? { x: Number(ballHolder.pos_x ?? 50), y: Number(ballHolder.pos_y ?? 50) } : null;
+
+        if (!prevBhAction) {
+          // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
+          const prevTurnNumber = match.current_turn_number - 1;
+          if (prevTurnNumber >= 1) {
+            const { data: prevTurnRows } = await supabase
+              .from('match_turns')
+              .select('id')
+              .eq('match_id', match_id)
+              .eq('turn_number', prevTurnNumber)
+              .order('created_at', { ascending: false });
+            const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+            if (prevTurnIds.length > 0) {
+              const { data: prevActions } = await supabase
+                .from('match_actions')
+                .select('action_type, target_x, target_y, participant_id')
+                .in('match_turn_id', prevTurnIds)
+                .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
+                .order('created_at', { ascending: false })
+                .limit(1);
+              if (prevActions && prevActions.length > 0) {
+                prevBhAction = prevActions[0];
+                // Use ballEndPos as approximate start (where the ball ended up)
+                bhStartPos = ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
               }
             }
           }
-
-          let inertiaBallX = ballEndPos ? (ballEndPos as { x: number; y: number }).x : 50;
-          let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
-          if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
-            const dirX = Number(prevBhAction.target_x) - bhStartPos.x;
-            const dirY = Number(prevBhAction.target_y) - bhStartPos.y;
-            const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
-            if (dirLen > 0.1) {
-              // Apply inertia: continue in the same direction from current ball position
-              const normDirX = dirX / dirLen;
-              const normDirY = dirY / dirLen;
-              const inertiaDistance = dirLen * 0.15; // 15% of original pass distance
-              inertiaBallX = inertiaBallX + normDirX * inertiaDistance;
-              inertiaBallY = inertiaBallY + normDirY * inertiaDistance;
-            }
-          }
-          ballEndPos = { x: inertiaBallX, y: inertiaBallY };
-          eventsToLog.push({
-            match_id, event_type: 'ball_inertia',
-            title: '⚽ Bola continua rolando...',
-            body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-            payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
-          });
         }
+
+        let inertiaBallX = ballEndPos ? (ballEndPos as { x: number; y: number }).x : 50;
+        let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
+        // Decay factor: 1st loose turn = 15%, 2nd+ = 8% (ball slowing down)
+        const inertiaFactor = wasAlreadyLoose ? 0.08 : 0.15;
+        if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
+          const dirX = Number(prevBhAction.target_x) - bhStartPos.x;
+          const dirY = Number(prevBhAction.target_y) - bhStartPos.y;
+          const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+          if (dirLen > 0.1) {
+            // Apply inertia: continue in the same direction from current ball position
+            const normDirX = dirX / dirLen;
+            const normDirY = dirY / dirLen;
+            const inertiaDistance = dirLen * inertiaFactor;
+            inertiaBallX = inertiaBallX + normDirX * inertiaDistance;
+            inertiaBallY = inertiaBallY + normDirY * inertiaDistance;
+          }
+        }
+        ballEndPos = { x: inertiaBallX, y: inertiaBallY };
+        eventsToLog.push({
+          match_id, event_type: 'ball_inertia',
+          title: wasAlreadyLoose ? '⚽ Bola desacelerando...' : '⚽ Bola continua rolando...',
+          body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+          payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
+        });
       }
     }
 
@@ -5691,7 +5716,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         };
         const startX = Number(ballHolder.pos_x ?? 50);
         const startY = Number(ballHolder.pos_y ?? 50);
-        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs);
+        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs, false, activeTurn.set_piece_type);
 
         await supabase.from('match_actions').update({
           target_x: deviation.actualX,
