@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown } from 'lucide-react';
+import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -159,13 +159,22 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
             <span className="flex items-center gap-1 text-xs text-pitch"><User className="h-3 w-3" /> Você</span>
           )}
         </div>
-        <Link to={`/match/${m.id}`}>
-          <Button size="sm" variant={isLive ? 'default' : 'outline'}
-            className={`text-xs font-display ${isLive ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}>
-            {isLive ? <Radio className="h-3 w-3 mr-1 animate-pulse" /> : <Play className="h-3 w-3 mr-1" />}
-            {isLive ? 'Entrar' : m.status === 'finished' ? 'Ver' : 'Acompanhar'}
-          </Button>
-        </Link>
+        <div className="flex items-center gap-1.5">
+          {m.status === 'finished' && (
+            <Link to={`/match/${m.id}/replay`}>
+              <Button size="sm" variant="outline" className="text-xs font-display">
+                <RotateCcw className="h-3 w-3 mr-1" />Replay
+              </Button>
+            </Link>
+          )}
+          <Link to={`/match/${m.id}`}>
+            <Button size="sm" variant={isLive ? 'default' : 'outline'}
+              className={`text-xs font-display ${isLive ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}>
+              {isLive ? <Radio className="h-3 w-3 mr-1 animate-pulse" /> : <Play className="h-3 w-3 mr-1" />}
+              {isLive ? 'Entrar' : m.status === 'finished' ? 'Ver' : 'Acompanhar'}
+            </Button>
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot, Trophy } from 'lucide-react';
+import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot, Trophy, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -626,9 +626,9 @@ export default function ManagerChallengesPage() {
                 const isFinished = m.status === 'finished';
                 const scheduledDate = new Date(m.scheduled_at);
                 return (
-                  <Link key={m.id} to={`/match/${m.id}`} className="stat-card flex items-center justify-between hover:border-tactical/40 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: opponent?.primary_color, color: opponent?.secondary_color }}>
+                  <div key={m.id} className="stat-card flex items-center justify-between hover:border-tactical/40 transition-colors">
+                    <Link to={`/match/${m.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="h-8 w-8 rounded flex items-center justify-center text-[8px] font-bold shrink-0" style={{ backgroundColor: opponent?.primary_color, color: opponent?.secondary_color }}>
                         {opponent?.short_name}
                       </div>
                       <div>
@@ -639,8 +639,8 @@ export default function ManagerChallengesPage() {
                           {isFinished ? 'Encerrado' : isLive ? 'AO VIVO' : format(scheduledDate, 'dd/MM HH:mm')}
                         </p>
                       </div>
-                    </div>
-                    <div className="text-right">
+                    </Link>
+                    <div className="flex items-center gap-2">
                       {(isLive || isFinished) ? (
                         <span className={`font-display font-bold text-lg ${isLive ? 'text-pitch animate-pulse' : ''}`}>
                           {m.home_score} - {m.away_score}
@@ -648,8 +648,15 @@ export default function ManagerChallengesPage() {
                       ) : (
                         <Badge variant="outline" className="text-[10px]">Agendado</Badge>
                       )}
+                      {isFinished && (
+                        <Link to={`/match/${m.id}/replay`} onClick={e => e.stopPropagation()}>
+                          <Button size="sm" variant="outline" className="text-xs font-display h-7">
+                            <RotateCcw className="h-3 w-3 mr-1" />Replay
+                          </Button>
+                        </Link>
+                      )}
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
