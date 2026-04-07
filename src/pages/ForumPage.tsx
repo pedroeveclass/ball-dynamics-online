@@ -122,16 +122,19 @@ export default function ForumPage() {
     const { data: topicsData } = await query;
     const topicList = (topicsData || []) as Topic[];
 
-    // Enrich with author usernames
+    // Enrich with author names (try profiles.username, then player/manager full_name)
     const authorIds = [...new Set(topicList.map(t => t.author_id))];
     let authorMap: Record<string, string> = {};
     if (authorIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .in('id', authorIds);
-      for (const p of (profiles || [])) {
-        authorMap[p.id] = p.username || 'Anônimo';
+      const [profilesRes, playersRes, managersRes] = await Promise.all([
+        supabase.from('profiles').select('id, username, role_selected').in('id', authorIds),
+        (supabase as any).from('player_profiles').select('user_id, full_name').in('user_id', authorIds),
+        (supabase as any).from('manager_profiles').select('user_id, full_name').in('user_id', authorIds),
+      ]);
+      const playerNameMap = new Map((playersRes.data || []).map((p: any) => [p.user_id, p.full_name]));
+      const managerNameMap = new Map((managersRes.data || []).map((m: any) => [m.user_id, m.full_name]));
+      for (const p of (profilesRes.data || [])) {
+        authorMap[p.id] = p.username || playerNameMap.get(p.id) || managerNameMap.get(p.id) || 'Anônimo';
       }
     }
 

@@ -112,14 +112,17 @@ export default function ForumTopicPage() {
     const commentList = (commentsData || []) as Comment[];
     setComments(commentList);
 
-    // Enrich authors
+    // Enrich authors (try profiles.username, then player/manager full_name)
     const allAuthorIds = [...new Set([topicData.author_id, ...commentList.map(c => c.author_id)])];
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, username')
-      .in('id', allAuthorIds);
+    const [profilesRes, playersRes, managersRes] = await Promise.all([
+      supabase.from('profiles').select('id, username, role_selected').in('id', allAuthorIds),
+      (supabase as any).from('player_profiles').select('user_id, full_name').in('user_id', allAuthorIds),
+      (supabase as any).from('manager_profiles').select('user_id, full_name').in('user_id', allAuthorIds),
+    ]);
+    const playerNameMap = new Map((playersRes.data || []).map((p: any) => [p.user_id, p.full_name]));
+    const managerNameMap = new Map((managersRes.data || []).map((m: any) => [m.user_id, m.full_name]));
     const aMap: Record<string, string> = {};
-    for (const p of (profiles || [])) aMap[p.id] = p.username || 'Anônimo';
+    for (const p of (profilesRes.data || [])) aMap[p.id] = p.username || playerNameMap.get(p.id) || managerNameMap.get(p.id) || 'Anônimo';
     setAuthorMap(aMap);
 
     // Fetch user reactions
