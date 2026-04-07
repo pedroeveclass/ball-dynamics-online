@@ -4425,7 +4425,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           .from('store_purchases')
           .select('player_profile_id, store_item_id')
           .in('player_profile_id', profileIds)
-          .eq('status', 'active');
+          .in('status', ['active', 'cancelling']);
 
         if (activePurchases && activePurchases.length > 0) {
           const itemIds = [...new Set(activePurchases.map(p => p.store_item_id))];

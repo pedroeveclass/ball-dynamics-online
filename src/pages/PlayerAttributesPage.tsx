@@ -77,7 +77,7 @@ export default function PlayerAttributesPage() {
       .from('store_purchases')
       .select('store_item_id, level')
       .eq('player_profile_id', playerProfile.id)
-      .eq('status', 'active');
+      .in('status', ['active', 'cancelling']);
 
     if (trainerPurchases && trainerPurchases.length > 0) {
       const itemIds = trainerPurchases.map(p => p.store_item_id);

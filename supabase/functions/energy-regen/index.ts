@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
         .from('store_purchases')
         .select('player_profile_id, store_item_id')
         .in('player_profile_id', playerIds)
-        .eq('status', 'active');
+        .in('status', ['active', 'cancelling']);
 
       if (physioPurchases && physioPurchases.length > 0) {
         const itemIds = [...new Set(physioPurchases.map(p => p.store_item_id))];

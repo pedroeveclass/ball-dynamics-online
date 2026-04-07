@@ -107,7 +107,7 @@ export default function StorePage() {
     const userId = (await supabase.auth.getUser()).data.user?.id || '';
     const [itemsRes, purchasesRes] = await Promise.all([
       (supabase as any).from('store_items').select('*').eq('is_available', true).order('sort_order'),
-      supabase.from('store_purchases').select('*').eq('user_id', userId).in('status', ['active', 'inventory']),
+      supabase.from('store_purchases').select('*').eq('user_id', userId).in('status', ['active', 'inventory', 'cancelling']),
     ]);
     const allItems = (itemsRes.data || []) as StoreItem[];
     setItems(allItems);
@@ -119,7 +119,7 @@ export default function StorePage() {
         .from('store_purchases')
         .select('*')
         .eq('player_profile_id', playerProfile.id)
-        .in('status', ['active', 'inventory']);
+        .in('status', ['active', 'inventory', 'cancelling']);
 
       const itemMap = new Map(allItems.map(i => [i.id, i]));
       // If some items not in available list, fetch them separately
@@ -162,7 +162,7 @@ export default function StorePage() {
   }
 
   function isOwned(itemId: string): boolean {
-    return purchases.some(p => p.store_item_id === itemId && (p.status === 'active' || p.status === 'inventory'));
+    return purchases.some(p => p.store_item_id === itemId && (p.status === 'active' || p.status === 'inventory' || p.status === 'cancelling'));
   }
 
   async function handleBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string) {
@@ -371,9 +371,10 @@ export default function StorePage() {
                     const isMonthly = item.duration === 'monthly';
                     const isActive = p.status === 'active';
                     const isInventory = p.status === 'inventory';
+                    const isCancelling = p.status === 'cancelling';
 
                     return (
-                      <Card key={p.id} className={`overflow-hidden ${isActive ? 'border-pitch/50 bg-pitch/5' : 'border-muted'}`}>
+                      <Card key={p.id} className={`overflow-hidden ${isActive || isCancelling ? 'border-pitch/50 bg-pitch/5' : 'border-muted'}`}>
                         <CardHeader className="pb-2">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2">
@@ -384,6 +385,7 @@ export default function StorePage() {
                               </CardTitle>
                             </div>
                             {isActive && <Badge className="bg-pitch text-[10px]"><Check className="h-3 w-3 mr-0.5" />Ativo</Badge>}
+                            {isCancelling && <Badge className="bg-amber-600 text-[10px]">Não renova</Badge>}
                             {isInventory && <Badge variant="outline" className="text-[10px]">Inventário</Badge>}
                           </div>
                         </CardHeader>
@@ -416,12 +418,15 @@ export default function StorePage() {
                                 <BatteryCharging className="h-3 w-3 mr-1" />Usar
                               </Button>
                             )}
-                            {/* Monthly subscription: cancel */}
+                            {/* Monthly subscription: cancel renewal */}
                             {isMonthly && isActive && (
                               <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={acting}
                                 onClick={() => handleCancelSubscription(p.id)}>
-                                <XCircle className="h-3 w-3 mr-1" />Cancelar
+                                <XCircle className="h-3 w-3 mr-1" />Cancelar renovação
                               </Button>
+                            )}
+                            {isCancelling && p.expires_at && (
+                              <span className="text-xs text-amber-500">Ativo até {new Date(p.expires_at).toLocaleDateString('pt-BR')}</span>
                             )}
                           </div>
                         </CardContent>
