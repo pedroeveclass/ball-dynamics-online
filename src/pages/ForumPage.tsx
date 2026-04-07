@@ -16,6 +16,7 @@ import { timeAgo } from '@/lib/formatting';
 import {
   MessageSquare, ArrowLeft, Plus, MessageCircle, ThumbsUp, Pin,
   Lock, Loader2, Globe, Lightbulb, Bug, Swords, ArrowRightLeft, Coffee,
+  ChevronUp, ChevronDown,
 } from 'lucide-react';
 
 function ForumLayout({ children }: { children: ReactNode }) {
@@ -64,6 +65,7 @@ interface Topic {
   body: string;
   is_pinned: boolean;
   is_locked: boolean;
+  pin_order: number;
   comment_count: number;
   like_count: number;
   dislike_count: number;
@@ -77,7 +79,7 @@ interface Topic {
 export default function ForumPage() {
   const { categorySlug } = useParams<{ categorySlug?: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +110,7 @@ export default function ForumPage() {
       .from('forum_topics')
       .select('*')
       .order('is_pinned', { ascending: false })
+      .order('pin_order', { ascending: true })
       .order('last_activity_at', { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
@@ -154,6 +157,21 @@ export default function ForumPage() {
     }
 
     setLoading(false);
+  }
+
+  async function handleReorderPin(topicId: string, direction: 'up' | 'down') {
+    const pinned = topics.filter(t => t.is_pinned).sort((a, b) => a.pin_order - b.pin_order);
+    const idx = pinned.findIndex(t => t.id === topicId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= pinned.length) return;
+    const a = pinned[idx];
+    const b = pinned[swapIdx];
+    await Promise.all([
+      (supabase as any).from('forum_topics').update({ pin_order: b.pin_order }).eq('id', a.id),
+      (supabase as any).from('forum_topics').update({ pin_order: a.pin_order }).eq('id', b.id),
+    ]);
+    fetchData();
   }
 
   async function handleCreateTopic() {
@@ -278,6 +296,16 @@ export default function ForumPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
+                            {isAdmin && topic.is_pinned && (
+                              <div className="flex flex-col -my-1" onClick={e => e.preventDefault()}>
+                                <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'up'); }} title="Subir">
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'down'); }} title="Descer">
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            )}
                             <span className="flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" />{topic.comment_count}</span>
                             <span className="flex items-center gap-1"><ThumbsUp className="h-3.5 w-3.5" />{topic.like_count}</span>
                           </div>
