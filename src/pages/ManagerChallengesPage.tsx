@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot, Trophy, RotateCcw } from 'lucide-react';
+import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, FlaskConical, AlertCircle, Bot, Trophy, RotateCcw, ChevronDown } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -590,11 +591,13 @@ export default function ManagerChallengesPage() {
 
         {/* League Matches Section */}
         {leagueMatches.length > 0 && (
-          <section className="mb-6">
+          <Collapsible defaultOpen>
+            <section className="mb-6">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display font-semibold text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Trophy className="h-4 w-4 text-amber-400" /> Jogos da Liga
-              </h2>
+              <CollapsibleTrigger className="flex items-center gap-2 font-display font-semibold text-sm text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
+                <ChevronDown className="h-4 w-4" />
+                <Trophy className="h-4 w-4 text-amber-400" /> Jogos da Liga ({leagueMatches.length})
+              </CollapsibleTrigger>
               <div className="flex gap-1">
                 {(['upcoming', 'finished', 'all'] as const).map(f => (
                   <button
@@ -607,6 +610,7 @@ export default function ManagerChallengesPage() {
                 ))}
               </div>
             </div>
+            <CollapsibleContent>
             <div className="space-y-2">
               {leagueMatches
                 .filter(m => {
@@ -660,11 +664,18 @@ export default function ManagerChallengesPage() {
                 );
               })}
             </div>
+            </CollapsibleContent>
           </section>
+          </Collapsible>
         )}
 
-        <section>
-          <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Convites Recebidos ({received.length})</h2>
+        <Collapsible defaultOpen>
+          <section>
+          <CollapsibleTrigger className="flex items-center gap-2 font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide hover:text-foreground transition-colors">
+            <ChevronDown className="h-4 w-4" /> Convites Recebidos ({received.length})
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+          {received.length === 0 && <div className="stat-card text-center py-8"><p className="text-muted-foreground text-sm">Nenhum convite recebido.</p></div>}
           {received.length === 0 && <div className="stat-card text-center py-8"><p className="text-muted-foreground text-sm">Nenhum convite recebido.</p></div>}
           <div className="space-y-3">
             {received.map(c => (
@@ -672,10 +683,16 @@ export default function ManagerChallengesPage() {
                 onAccept={() => handleAccept(c)} onReject={() => handleReject(c)} onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)} />
             ))}
           </div>
+          </CollapsibleContent>
         </section>
+        </Collapsible>
 
-        <section>
-          <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Convites Enviados ({sent.length})</h2>
+        <Collapsible defaultOpen>
+          <section>
+          <CollapsibleTrigger className="flex items-center gap-2 font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide hover:text-foreground transition-colors">
+            <ChevronDown className="h-4 w-4" /> Convites Enviados ({sent.length})
+          </CollapsibleTrigger>
+          <CollapsibleContent>
           {sent.length === 0 && <div className="stat-card text-center py-8"><p className="text-muted-foreground text-sm">Nenhum convite enviado.</p></div>}
           <div className="space-y-3">
             {sent.map(c => (
@@ -683,7 +700,9 @@ export default function ManagerChallengesPage() {
                 onCancel={() => handleCancel(c)} onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)} />
             ))}
           </div>
+          </CollapsibleContent>
         </section>
+        </Collapsible>
       </div>
 
       {/* Create Challenge Dialog */}
