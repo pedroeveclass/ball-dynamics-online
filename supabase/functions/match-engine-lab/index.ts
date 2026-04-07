@@ -5047,18 +5047,43 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
-    // ── Goal from shot/header ending in goal area (before OOB) ──
-    // Only shots count as goals. Passes ending in the goal area = goal kick (handled by OOB check below).
+    // ── Goal check: trajectory must cross end line BETWEEN the goalposts ──
+    // We interpolate where the ball trajectory crosses x=1 or x=99 and check if
+    // that crossing Y is between 38-62. If the trajectory crosses OUTSIDE the posts
+    // but the final position is inside, it's a goal kick, not a goal.
     if (nextBallHolderParticipantId === null && ballEndPos) {
-      const inHomeGoal = ballEndPos.x <= 1 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
-      const inAwayGoal = ballEndPos.x >= 99 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
-      const ballActionForGoal = ballHolder
-        ? allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
-        : null;
-      const isShootAction = ballActionForGoal && (isShootType(ballActionForGoal.action_type) || isHeaderShootType(ballActionForGoal.action_type));
-      if ((inHomeGoal || inAwayGoal) && isShootAction) {
-        const ballAction = ballActionForGoal;
-        const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
+      const bhStartX = Number(ballHolder?.pos_x ?? 50);
+      const bhStartY = Number(ballHolder?.pos_y ?? 50);
+      const dx = ballEndPos.x - bhStartX;
+      const dy = ballEndPos.y - bhStartY;
+
+      // Calculate Y at which trajectory crosses the end line
+      let crossingY: number | null = null;
+      let crossingSide: 'home' | 'away' | null = null;
+      if (dx !== 0) {
+        // Left end line (x=1)
+        const tLeft = (1 - bhStartX) / dx;
+        if (tLeft > 0 && tLeft <= 1) {
+          crossingY = bhStartY + dy * tLeft;
+          crossingSide = 'home';
+        }
+        // Right end line (x=99)
+        const tRight = (99 - bhStartX) / dx;
+        if (tRight > 0 && tRight <= 1) {
+          crossingY = bhStartY + dy * tRight;
+          crossingSide = 'away';
+        }
+      }
+
+      const trajectoryInGoal = crossingY !== null && crossingY >= 38 && crossingY <= 62;
+      const inHomeGoal = crossingSide === 'home' && trajectoryInGoal;
+      const inAwayGoal = crossingSide === 'away' && trajectoryInGoal;
+
+      if (inHomeGoal || inAwayGoal) {
+        const ballAction = ballHolder
+          ? allActions.find(a => a.participant_id === ballHolder.id && (isBallActionType(a.action_type) || a.action_type === 'move'))
+          : null;
+        const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, bhStartX);
         if (!isOverGoal) {
           // Goal logic: in 2nd half, goals are flipped (sides swapped)
           const isSecondHalfGoal = (match.current_half ?? 1) >= 2;
