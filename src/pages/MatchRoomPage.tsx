@@ -484,12 +484,13 @@ export default function MatchRoomPage() {
     liveSnapshotInFlightRef.current = true;
 
     try {
-      const [matchRes, turnRes, eventsRes] = await Promise.all([
+      const [matchRes, turnRes, eventsRes, partRes] = await Promise.all([
         supabase.from('matches').select('*').eq('id', matchId).single(),
         supabase.from('match_turns').select('*').eq('match_id', matchId).eq('status', 'active')
           .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('match_event_logs').select('*').eq('match_id', matchId)
           .order('created_at', { ascending: false }).limit(LIVE_EVENT_LIMIT),
+        supabase.from('match_participants').select('id, pos_x, pos_y').eq('match_id', matchId),
       ]);
 
       if (matchRes.data) {
@@ -497,6 +498,16 @@ export default function MatchRoomPage() {
         matchRef.current = matchData;
         setMatch(matchData);
         if (participantRowsRef.current.length > 0) applyParticipantRows(participantRowsRef.current, matchData);
+      }
+
+      // Sync authoritative positions from DB to prevent client desync
+      if (partRes.data && partRes.data.length > 0) {
+        const dbMap = new Map(partRes.data.map((r: any) => [r.id, { x: Number(r.pos_x), y: Number(r.pos_y) }]));
+        setParticipants(prev => prev.map(p => {
+          const db = dbMap.get(p.id);
+          if (db) return { ...p, field_x: db.x, field_y: db.y, pos_x: db.x, pos_y: db.y };
+          return p;
+        }));
       }
 
       if (turnRes.data) {
@@ -2166,12 +2177,17 @@ export default function MatchRoomPage() {
           
           setAnimating(false);
 
-          // Update participant positions
-          setParticipants(prev => prev.map(p => {
-            const f = finals[p.id];
-            if (f) return { ...p, field_x: f.x, field_y: f.y, pos_x: f.x, pos_y: f.y };
-            return p;
-          }));
+          // Fetch authoritative positions from DB (prevents client desync)
+          supabase.from('match_participants').select('id, pos_x, pos_y').eq('match_id', matchId).then(({ data: dbRows }) => {
+            if (dbRows && dbRows.length > 0) {
+              const dbMap = new Map(dbRows.map((r: any) => [r.id, { x: Number(r.pos_x), y: Number(r.pos_y) }]));
+              setParticipants(prev => prev.map(p => {
+                const db = dbMap.get(p.id);
+                if (db) return { ...p, field_x: db.x, field_y: db.y, pos_x: db.x, pos_y: db.y };
+                return p;
+              }));
+            }
+          });
         }
       };
 
