@@ -5047,14 +5047,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
-    // ── Goal from pass/move ending in goal area (before OOB) ──
+    // ── Goal from shot/header ending in goal area (before OOB) ──
+    // Only shots count as goals. Passes ending in the goal area = goal kick (handled by OOB check below).
     if (nextBallHolderParticipantId === null && ballEndPos) {
       const inHomeGoal = ballEndPos.x <= 1 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
       const inAwayGoal = ballEndPos.x >= 99 && ballEndPos.y >= 38 && ballEndPos.y <= 62;
-      if (inHomeGoal || inAwayGoal) {
-        const ballAction = ballHolder
-          ? allActions.find(a => a.participant_id === ballHolder.id && (isBallActionType(a.action_type) || a.action_type === 'move'))
-          : null;
+      const ballActionForGoal = ballHolder
+        ? allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
+        : null;
+      const isShootAction = ballActionForGoal && (isShootType(ballActionForGoal.action_type) || isHeaderShootType(ballActionForGoal.action_type));
+      if ((inHomeGoal || inAwayGoal) && isShootAction) {
+        const ballAction = ballActionForGoal;
         const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, Number(ballHolder?.pos_x ?? 50));
         if (!isOverGoal) {
           // Goal logic: in 2nd half, goals are flipped (sides swapped)
