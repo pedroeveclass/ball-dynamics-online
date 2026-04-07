@@ -44,6 +44,8 @@ const MatchReplayPage = lazy(() => import("./pages/MatchReplayPage"));
 const StorePage = lazy(() => import("./pages/StorePage"));
 const BankPage = lazy(() => import("./pages/BankPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
+const ForumPage = lazy(() => import("./pages/ForumPage"));
+const ForumTopicPage = lazy(() => import("./pages/ForumTopicPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,6 +99,9 @@ const App = () => (
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute><StorePage /></ProtectedRoute>} />
             <Route path="/bank" element={<ProtectedRoute><BankPage /></ProtectedRoute>} />
+            <Route path="/forum" element={<ForumPage />} />
+            <Route path="/forum/t/:topicId" element={<ForumTopicPage />} />
+            <Route path="/forum/:categorySlug" element={<ForumPage />} />
             <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

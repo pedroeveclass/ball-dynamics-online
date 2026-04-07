@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store,
+  LayoutDashboard, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -19,6 +19,7 @@ const playerNav = [
   { title: 'Propostas', url: '/player/offers', icon: Inbox },
   { title: 'Banco', url: '/bank', icon: Landmark },
   { title: 'Loja', url: '/store', icon: Store },
+  { title: 'Fórum', url: '/forum', icon: MessageSquare },
 ];
 
 const accountNav = [
