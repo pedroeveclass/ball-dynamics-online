@@ -702,11 +702,12 @@ function getFormationAnchor(
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
   const maxSpeed = 8 + normalizeAttr(attrs.velocidade) * 11; // ~12% of field per turn for avg player
-  // Energy-based stamina system replaces old time-based staminaDecay
+  // Stamina decay: after turn 20, players with low stamina lose up to 20% range
+  const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.2;
   let totalDist = 0;
   let vel = 0;
   for (let i = 0; i < NUM_SUBSTEPS; i++) {
-    vel = vel * (1 - accelFactor) + (maxSpeed / NUM_SUBSTEPS) * accelFactor;
+    vel = vel * (1 - accelFactor) + (maxSpeed / NUM_SUBSTEPS) * staminaDecay * accelFactor;
     const speed = Math.min(vel, maxSpeed / NUM_SUBSTEPS);
     totalDist += speed;
   }
