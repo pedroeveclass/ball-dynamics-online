@@ -12,8 +12,11 @@ import { toast } from 'sonner';
 import { timeAgo } from '@/lib/formatting';
 import {
   MessageSquare, ArrowLeft, ThumbsUp, ThumbsDown, Share2, Send,
-  Pin, Lock, Loader2, MessageCircle,
+  Pin, PinOff, Lock, Loader2, MessageCircle, Pencil, Trash2, MoreVertical,
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 function ForumLayout({ children }: { children: ReactNode }) {
   const { managerProfile, playerProfile, loading } = useAuth();
@@ -65,7 +68,7 @@ interface Comment {
 export default function ForumTopicPage() {
   const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [topic, setTopic] = useState<Topic | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [authorMap, setAuthorMap] = useState<Record<string, string>>({});
@@ -77,6 +80,16 @@ export default function ForumTopicPage() {
   // Reactions: { [targetId]: 'like' | 'dislike' | null }
   const [userReactions, setUserReactions] = useState<Record<string, string | null>>({});
   const [reacting, setReacting] = useState(false);
+  // Edit dialog
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const isAuthor = profile && topic && profile.id === topic.author_id;
+  const canEdit = isAuthor || isAdmin;
+  const canDelete = isAdmin;
+  const canPin = isAdmin;
 
   useEffect(() => {
     if (topicId) fetchAll();
@@ -182,6 +195,74 @@ export default function ForumTopicPage() {
     toast.success('Link copiado!');
   }
 
+  function openEditTopic() {
+    if (!topic) return;
+    setEditTitle(topic.title);
+    setEditBody(topic.body);
+    setEditingTopic(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!topic || editTitle.length < 5 || editBody.length < 10) {
+      toast.error('Título min 5 chars, conteúdo min 10 chars.');
+      return;
+    }
+    setSaving(true);
+    const { error } = await (supabase as any)
+      .from('forum_topics')
+      .update({ title: editTitle.trim(), body: editBody.trim() })
+      .eq('id', topic.id);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Tópico atualizado!');
+    setEditingTopic(false);
+    fetchAll();
+  }
+
+  async function handleTogglePin() {
+    if (!topic) return;
+    const { error } = await (supabase as any)
+      .from('forum_topics')
+      .update({ is_pinned: !topic.is_pinned })
+      .eq('id', topic.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(topic.is_pinned ? 'Tópico desfixado!' : 'Tópico fixado!');
+    fetchAll();
+  }
+
+  async function handleToggleLock() {
+    if (!topic) return;
+    const { error } = await (supabase as any)
+      .from('forum_topics')
+      .update({ is_locked: !topic.is_locked })
+      .eq('id', topic.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(topic.is_locked ? 'Tópico reaberto!' : 'Tópico trancado!');
+    fetchAll();
+  }
+
+  async function handleDeleteTopic() {
+    if (!topic || !confirm('Tem certeza que deseja apagar este tópico? Esta ação não pode ser desfeita.')) return;
+    const { error } = await (supabase as any)
+      .from('forum_topics')
+      .delete()
+      .eq('id', topic.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Tópico apagado!');
+    navigate(`/forum/${categorySlug}`);
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!confirm('Apagar este comentário?')) return;
+    const { error } = await (supabase as any)
+      .from('forum_comments')
+      .delete()
+      .eq('id', commentId);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Comentário apagado!');
+    fetchAll();
+  }
+
   function ReactionButtons({ targetType, targetId, likeCount, dislikeCount }: {
     targetType: 'topic' | 'comment';
     targetId: string;
@@ -244,9 +325,45 @@ export default function ForumTopicPage() {
                   <span>{timeAgo(topic.created_at)}</span>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8" onClick={handleShare} title="Compartilhar">
-                <Share2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleShare} title="Compartilhar">
+                  <Share2 className="h-4 w-4" />
+                </Button>
+                {(canEdit || canDelete || canPin) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {canEdit && (
+                        <DropdownMenuItem onClick={openEditTopic}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />Editar
+                        </DropdownMenuItem>
+                      )}
+                      {canPin && (
+                        <DropdownMenuItem onClick={handleTogglePin}>
+                          {topic.is_pinned
+                            ? <><PinOff className="h-3.5 w-3.5 mr-2" />Desfixar</>
+                            : <><Pin className="h-3.5 w-3.5 mr-2" />Fixar no topo</>}
+                        </DropdownMenuItem>
+                      )}
+                      {canPin && (
+                        <DropdownMenuItem onClick={handleToggleLock}>
+                          <Lock className="h-3.5 w-3.5 mr-2" />
+                          {topic.is_locked ? 'Reabrir tópico' : 'Trancar tópico'}
+                        </DropdownMenuItem>
+                      )}
+                      {canDelete && (
+                        <DropdownMenuItem onClick={handleDeleteTopic} className="text-destructive">
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />Apagar tópico
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
 
             <div className="text-sm leading-relaxed whitespace-pre-wrap">{topic.body}</div>
@@ -273,11 +390,18 @@ export default function ForumTopicPage() {
               {comments.map(comment => (
                 <Card key={comment.id}>
                   <CardContent className="p-3 sm:p-4 space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <strong className="text-foreground">{authorMap[comment.author_id] || 'Anônimo'}</strong>
-                      <span>&middot;</span>
-                      <span>{timeAgo(comment.created_at)}</span>
-                      {comment.created_at !== comment.updated_at && <span className="italic">(editado)</span>}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <strong className="text-foreground">{authorMap[comment.author_id] || 'Anônimo'}</strong>
+                        <span>&middot;</span>
+                        <span>{timeAgo(comment.created_at)}</span>
+                        {comment.created_at !== comment.updated_at && <span className="italic">(editado)</span>}
+                      </div>
+                      {isAdmin && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteComment(comment.id)} title="Apagar comentário">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                     <div className="text-sm leading-relaxed whitespace-pre-wrap">{comment.body}</div>
                     <ReactionButtons targetType="comment" targetId={comment.id} likeCount={comment.like_count} dislikeCount={comment.dislike_count} />
@@ -318,6 +442,28 @@ export default function ForumTopicPage() {
           </div>
         )}
       </div>
+
+      {/* Edit topic dialog */}
+      <Dialog open={editingTopic} onOpenChange={setEditingTopic}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Editar Tópico</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Título</label>
+              <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} maxLength={150} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Conteúdo</label>
+              <Textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={8} />
+            </div>
+            <Button className="w-full font-display" disabled={saving} onClick={handleSaveEdit}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ForumLayout>
   );
 }
