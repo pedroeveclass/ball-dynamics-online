@@ -2564,15 +2564,20 @@ export default function MatchRoomPage() {
 
   // Find the interceptor whose receive/block actually SUCCEEDED
   // Skip those who failed (receive_failed event), and skip if goal scored
-  const interceptorAction = (() => {
+  // Must be reactive to events so animation updates when resolution events arrive
+  const interceptorAction = useMemo(() => {
     const resEvents = resolutionEventsRef.current;
-    const goalScored = resEvents.some(e => e.event_type === 'goal');
-    const gkFailed = resEvents.some(e => e.event_type === 'gk_save_failed');
+    // Also check the events state directly (more reliable than ref for reactivity)
+    const allResEvents = [...resEvents, ...events.filter(e =>
+      ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block'].includes(e.event_type)
+    )];
+    const goalScored = allResEvents.some(e => e.event_type === 'goal');
+    const gkFailed = allResEvents.some(e => e.event_type === 'gk_save_failed');
     if (goalScored || gkFailed) return null;
 
     const candidates = turnActions.filter(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
     const failedIds = new Set(
-      resEvents.filter(e => e.event_type === 'receive_failed').map(e => (e.payload as any)?.participant_id).filter(Boolean)
+      allResEvents.filter(e => e.event_type === 'receive_failed').map(e => (e.payload as any)?.participant_id).filter(Boolean)
     );
 
     // Return the first candidate that didn't fail
@@ -2580,7 +2585,7 @@ export default function MatchRoomPage() {
       if (!failedIds.has(c.participant_id)) return c;
     }
     return null;
-  })();
+  }, [turnActions, events]);
 
   // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
