@@ -2591,7 +2591,7 @@ export default function MatchRoomPage() {
        a.action_type === 'header_controlled' || a.action_type === 'header_power' ||
        a.action_type === 'move')
     );
-    const bh = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+    const bh = participantsRef.current.find(p => p.id === activeTurn?.ball_holder_participant_id);
     if (bhAction && bh && bhAction.target_x != null && bhAction.target_y != null && bh.field_x != null && bh.field_y != null) {
       const tdx = bhAction.target_x - bh.field_x;
       const tdy = bhAction.target_y - bh.field_y;
@@ -2610,7 +2610,7 @@ export default function MatchRoomPage() {
       if (!failedIds.has(c.participant_id)) return c;
     }
     return null;
-  }, [turnActions, events, activeTurn?.phase, activeTurn?.ball_holder_participant_id, participants]);
+  }, [turnActions, events, activeTurn?.phase, activeTurn?.ball_holder_participant_id]);
 
   // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
