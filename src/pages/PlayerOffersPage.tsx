@@ -161,7 +161,7 @@ export default function PlayerOffersPage() {
                 user_id: sellerMgr.user_id,
                 title: '💰 Venda de Jogador',
                 body: `${playerProfile.full_name} foi vendido por ${formatBRL(clause)}. Valor creditado nas finanças do clube.`,
-                type: 'player_sold',
+                type: 'transfer',
               });
             }
           }
@@ -174,7 +174,7 @@ export default function PlayerOffersPage() {
                 user_id: buyerMgr.user_id,
                 title: '💸 Compra de Jogador',
                 body: `${playerProfile.full_name} contratado por ${formatBRL(clause)} de multa rescisória.`,
-                type: 'player_bought',
+                type: 'transfer',
               });
             }
           }
@@ -187,7 +187,7 @@ export default function PlayerOffersPage() {
           user_id: mgr.user_id,
           title: 'Proposta aceita!',
           body: `${playerProfile.full_name} aceitou sua proposta de contrato.`,
-          type: 'contract_accepted',
+          type: 'contract',
         });
       }
 
@@ -202,7 +202,7 @@ export default function PlayerOffersPage() {
           user_id: mgr.user_id,
           title: 'Proposta recusada',
           body: `${playerProfile.full_name} recusou sua proposta de contrato.`,
-          type: 'contract_rejected',
+          type: 'contract',
         });
       }
 

@@ -117,7 +117,7 @@ export default function PlayerContractPage() {
           user_id: manager.user_id,
           title: '📋 Solicitação de saída',
           body: `${playerProfile.full_name} solicitou rescisão por comum acordo.`,
-          type: 'mutual_agreement',
+          type: 'contract',
         });
       }
 
@@ -155,7 +155,7 @@ export default function PlayerContractPage() {
           user_id: manager.user_id,
           title: '✅ Comum acordo aceito',
           body: `${playerProfile.full_name} aceitou a rescisão por comum acordo.`,
-          type: 'mutual_agreement_accepted',
+          type: 'contract',
         });
       }
 
@@ -185,7 +185,7 @@ export default function PlayerContractPage() {
           user_id: manager.user_id,
           title: '❌ Comum acordo recusado',
           body: `${playerProfile?.full_name} recusou a rescisão por comum acordo.`,
-          type: 'mutual_agreement_rejected',
+          type: 'contract',
         });
       }
 

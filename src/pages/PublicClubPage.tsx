@@ -325,7 +325,7 @@ export default function PublicClubPage() {
           user_id: playerData.user_id,
           title: 'Nova proposta de contrato!',
           body: `${myClub.name} enviou uma proposta de ${formatBRL(salary)}/semana.`,
-          type: 'contract_offer',
+          type: 'contract',
         });
       }
 

@@ -115,7 +115,7 @@ export default function ManagerMarketPage() {
           user_id: playerData.user_id,
           title: 'Nova proposta de contrato!',
           body: `${club.name} enviou uma proposta de R$${salary}/semana.`,
-          type: 'contract_offer',
+          type: 'contract',
         });
       }
 

@@ -98,7 +98,7 @@ export default function ManagerMatchCreatePage() {
           user_id: awayMgrData.user_id,
           title: '⚔️ Convite de Amistoso',
           body: `${club.name} quer jogar um amistoso contra você em ${new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`,
-          type: 'match_challenge',
+          type: 'match',
         });
       }
 

@@ -5483,6 +5483,39 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         body: `Partida encerrada aos ${matchMinute}'.`,
       });
 
+      // ── Notify all human players and managers about match result ──
+      try {
+        const { data: homeClubData } = await supabase.from('clubs').select('name, manager_profile_id').eq('id', match.home_club_id).maybeSingle();
+        const { data: awayClubData } = await supabase.from('clubs').select('name, manager_profile_id').eq('id', match.away_club_id).maybeSingle();
+        const resultText = `${homeClubData?.name || 'Casa'} ${homeScore} x ${awayScore} ${awayClubData?.name || 'Fora'}`;
+
+        // Notify human players
+        const { data: humanParts } = await supabase
+          .from('match_participants')
+          .select('player_profile_id')
+          .eq('match_id', match_id)
+          .eq('role_type', 'player')
+          .eq('controlled_by_type', 'human');
+        const humanProfileIds = (humanParts || []).map(p => p.player_profile_id).filter(Boolean);
+        if (humanProfileIds.length > 0) {
+          const { data: humanPlayers } = await supabase.from('player_profiles').select('user_id').in('id', humanProfileIds);
+          const playerNotifs = (humanPlayers || []).filter(p => p.user_id).map(p => ({
+            user_id: p.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText,
+          }));
+          if (playerNotifs.length > 0) await supabase.from('notifications').insert(playerNotifs);
+        }
+
+        // Notify managers
+        const managerNotifs: any[] = [];
+        for (const clubData of [homeClubData, awayClubData]) {
+          if (clubData?.manager_profile_id) {
+            const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', clubData.manager_profile_id).maybeSingle();
+            if (mgr?.user_id) managerNotifs.push({ user_id: mgr.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText });
+          }
+        }
+        if (managerNotifs.length > 0) await supabase.from('notifications').insert(managerNotifs);
+      } catch (e) { console.error('[ENGINE] Failed to send match result notifications:', e); }
+
       // ── Stadium ticket revenue for home team (uses occupancy model) ──
       try {
         const homeClubId = match.home_club_id;

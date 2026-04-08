@@ -163,7 +163,7 @@ export default function ManagerChallengesPage() {
         await supabase.from('notifications').insert({
           user_id: awayMgrData.user_id, title: '⚔️ Convite de Amistoso',
           body: `${club.name} quer jogar um amistoso contra você em ${new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`,
-          type: 'match_challenge',
+          type: 'match',
         });
       }
 
@@ -273,7 +273,7 @@ export default function ManagerChallengesPage() {
       await supabase.from('match_challenges').update({ status: 'accepted', match_id: match!.id }).eq('id', challenge.id);
 
       if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso 5x5.`, type: 'match_challenge_accepted' });
+        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso 5x5.`, type: 'match' });
       }
       toast.success('Amistoso 5x5 aceito!');
       loadChallenges();
@@ -392,7 +392,7 @@ export default function ManagerChallengesPage() {
       await supabase.from('match_challenges').update({ status: 'accepted', match_id: match!.id }).eq('id', challenge.id);
 
       if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso.`, type: 'match_challenge_accepted' });
+        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso.`, type: 'match' });
       }
       toast.success('Amistoso aceito!');
       loadChallenges();
@@ -405,7 +405,7 @@ export default function ManagerChallengesPage() {
     try {
       await supabase.from('match_challenges').update({ status: 'rejected' }).eq('id', c.id);
       const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', c.challenger_manager_profile_id).single();
-      if (mgr?.user_id) await supabase.from('notifications').insert({ user_id: mgr.user_id, title: '❌ Convite recusado', body: `${c.challenged_club?.name} recusou o amistoso.`, type: 'match_challenge_rejected' });
+      if (mgr?.user_id) await supabase.from('notifications').insert({ user_id: mgr.user_id, title: '❌ Convite recusado', body: `${c.challenged_club?.name} recusou o amistoso.`, type: 'match' });
       toast.success('Convite recusado.');
       loadChallenges();
     } catch (err: any) { toast.error(err.message || 'Erro'); }

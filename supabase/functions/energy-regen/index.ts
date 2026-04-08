@@ -78,13 +78,23 @@ Deno.serve(async (req) => {
 
       // Notify player if they have a user_id
       if (p.user_id) {
-        const pctRecovered = Math.round((regenAmount / p.energy_max) * 100);
-        await supabase.from('notifications').insert({
-          user_id: p.user_id,
-          title: '⚡ Energia recuperada!',
-          body: `${pctRecovered}% de energia recuperada. Aproveite para treinar!`,
-          type: 'energy_regen',
-        });
+        if (newEnergy >= p.energy_max && p.energy_current < p.energy_max) {
+          // Energy just hit 100%
+          await supabase.from('notifications').insert({
+            user_id: p.user_id,
+            title: '⚡ Energia 100%!',
+            body: 'Sua energia está cheia! Aproveite para treinar antes que fique parado.',
+            type: 'energy',
+          });
+        } else {
+          const pctRecovered = Math.round((regenAmount / p.energy_max) * 100);
+          await supabase.from('notifications').insert({
+            user_id: p.user_id,
+            title: '⚡ Energia recuperada!',
+            body: `+${pctRecovered}% de energia. Atual: ${newEnergy}/${p.energy_max}`,
+            type: 'energy',
+          });
+        }
       }
 
       updated++;

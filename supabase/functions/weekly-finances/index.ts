@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
         const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
         await supabase.from('notifications').insert({
           user_id: managerProfile.user_id,
-          type: 'weekly_finance',
+          type: 'finance',
           title: '📊 Relatório Financeiro Semanal',
           body: `Receita: ${fmt(totalRevenue)} | Despesas: ${fmt(totalExpense)} | Resultado: ${sign}${fmt(netIncome)} | Saldo: ${fmt(newBalance)}`,
         });
@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
                 user_id: player.user_id,
                 title: '💰 Salário recebido!',
                 body: `Você recebeu ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.weekly_salary)} de salário semanal.`,
-                type: 'salary_paid',
+                type: 'finance',
               });
             }
           }

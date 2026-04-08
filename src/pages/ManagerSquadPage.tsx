@@ -193,7 +193,7 @@ export default function ManagerSquadPage() {
           user_id: agreementTarget.user_id,
           title: '🤝 Proposta de Comum Acordo',
           body: `Seu clube propôs rescisão por comum acordo.`,
-          type: 'mutual_agreement_proposal',
+          type: 'contract',
         });
       }
 
@@ -252,7 +252,7 @@ export default function ManagerSquadPage() {
           user_id: player.user_id,
           title: '❌ Saída recusada',
           body: `${club.name} recusou sua solicitação de saída por comum acordo.`,
-          type: 'mutual_agreement_rejected',
+          type: 'contract',
         });
       }
 
