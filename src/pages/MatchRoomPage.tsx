@@ -1613,7 +1613,7 @@ export default function MatchRoomPage() {
         if (dp && dp.field_x != null && dp.field_y != null) {
           const distPlayerToBall = Math.sqrt((dp.field_x - looseBallPos.x) ** 2 + (dp.field_y - looseBallPos.y) ** 2);
           const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          if (distPlayerToBall <= maxRange + INTERCEPT_RADIUS) {
+          if (distPlayerToBall <= maxRange) {
             setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
             setShowActionMenu(drawingAction.fromParticipantId);
             setDrawingAction(null);

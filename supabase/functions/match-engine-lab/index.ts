@@ -2989,7 +2989,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
         forca: Number(raw?.forca ?? 40),
       };
       const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
-      if (dist > maxRange + 2) { // +2 tolerance
+      if (dist > maxRange + 0.5) { // small tolerance for floating point
         console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
         continue;
       }
