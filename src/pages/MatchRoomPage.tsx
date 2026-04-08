@@ -2563,11 +2563,10 @@ export default function MatchRoomPage() {
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
   // Find the interceptor whose receive/block actually SUCCEEDED
-  // Skip those who failed (receive_failed event), and skip if goal scored
+  // Uses next turn's ball holder to determine who won the ball contest
   // Must be reactive to events so animation updates when resolution events arrive
   const interceptorAction = useMemo(() => {
     const resEvents = resolutionEventsRef.current;
-    // Also check the events state directly (more reliable than ref for reactivity)
     const allResEvents = [...resEvents, ...events.filter(e =>
       ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block'].includes(e.event_type)
     )];
@@ -2576,16 +2575,42 @@ export default function MatchRoomPage() {
     if (goalScored || gkFailed) return null;
 
     const candidates = turnActions.filter(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
+    if (candidates.length === 0) return null;
+
     const failedIds = new Set(
       allResEvents.filter(e => e.event_type === 'receive_failed').map(e => (e.payload as any)?.participant_id).filter(Boolean)
     );
 
-    // Return the first candidate that didn't fail
+    // Sort candidates by trajectory progress (t) — whoever is closest to ball origin intercepts first
+    // This matches how the engine resolves: first interceptor on the trajectory wins
+    const bhAction = turnActions.find(a =>
+      a.participant_id === activeTurn?.ball_holder_participant_id &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' ||
+       a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' ||
+       a.action_type === 'header_low' || a.action_type === 'header_high' ||
+       a.action_type === 'header_controlled' || a.action_type === 'header_power' ||
+       a.action_type === 'move')
+    );
+    const bh = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
+    if (bhAction && bh && bhAction.target_x != null && bhAction.target_y != null && bh.field_x != null && bh.field_y != null) {
+      const tdx = bhAction.target_x - bh.field_x;
+      const tdy = bhAction.target_y - bh.field_y;
+      const tlen2 = tdx * tdx + tdy * tdy;
+      if (tlen2 > 0) {
+        candidates.sort((a, b) => {
+          const tA = clamp(((a.target_x! - bh.field_x!) * tdx + (a.target_y! - bh.field_y!) * tdy) / tlen2, 0, 1);
+          const tB = clamp(((b.target_x! - bh.field_x!) * tdx + (b.target_y! - bh.field_y!) * tdy) / tlen2, 0, 1);
+          return tA - tB; // earlier on trajectory = first
+        });
+      }
+    }
+
+    // Return the first candidate (earliest on trajectory) that didn't fail
     for (const c of candidates) {
       if (!failedIds.has(c.participant_id)) return c;
     }
     return null;
-  }, [turnActions, events]);
+  }, [turnActions, events, activeTurn?.phase, activeTurn?.ball_holder_participant_id, participants]);
 
   // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
