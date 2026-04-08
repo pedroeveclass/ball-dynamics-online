@@ -130,10 +130,16 @@ const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: str
   ],
 };
 
-function getFormationForFill(formation: string, isHome: boolean): Array<{ x: number; y: number; pos: string }> {
+function getFormationForFill(formation: string, isHome: boolean, clampToOwnHalf = true): Array<{ x: number; y: number; pos: string }> {
   const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
-  if (isHome) return base;
-  return base.map(p => ({ ...p, x: 100 - p.x }));
+  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
+  if (clampToOwnHalf) {
+    positions = positions.map(p => ({
+      ...p,
+      x: isHome ? Math.min(p.x, 48) : Math.max(p.x, 52),
+    }));
+  }
+  return positions;
 }
 
 // GK is ALWAYS determined by lineup slot or player primary_position.
