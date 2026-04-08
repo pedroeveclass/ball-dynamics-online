@@ -1501,7 +1501,8 @@ export default function MatchRoomPage() {
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
-        // Check reachability: can the player's action circle reach the ball BEFORE or AT the same time?
+        // Reachability check — use the SAME logic as the purple circle visual.
+        // If the circle is purple at the cursor position, clicking opens the intercept menu.
         let canReach = false;
         let interceptTargetX = pctX;
         let interceptTargetY = pctY;
@@ -1533,29 +1534,31 @@ export default function MatchRoomPage() {
           const bty = ballPathAction.target_y;
 
           const circleRadiusField = 9 / INNER_W * 100;
-          
-          const tCursor = _tlen2 > 0 ? clamp(((pctX - bfx) * _tdx + (pctY - bfy) * _tdy) / _tlen2, 0, 1) : 0;
-          const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
-          
-          // Proximity override: if the player is already on the trajectory, always allow
+
+          // Player on trajectory check
           const playerDistToTraj = pointToSegmentDistance(drawingParticipant.field_x, drawingParticipant.field_y!, bfx, bfy, btx, bty);
-          const actionCircleR = 9 / INNER_W * 100;
-          const isPlayerOnTrajectory = playerDistToTraj <= (actionCircleR + INTERCEPT_RADIUS + 1);
+          const isPlayerOnTrajectory = playerDistToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
 
-          // Direct click on trajectory line
-          const directHit = distToTraj <= INTERCEPT_RADIUS && (movePct <= tCursor || isPlayerOnTrajectory);
+          // Calculate player position on trajectory timeline
+          const tPlayer = _tlen2 > 0 ? clamp(((drawingParticipant.field_x - bfx) * _tdx + (drawingParticipant.field_y! - bfy) * _tdy) / _tlen2, 0, 1) : 0;
+          const ballNotPastPlayer = _t <= tPlayer + (circleRadiusField + INTERCEPT_RADIUS) / Math.sqrt(Math.max(1, _tlen2));
 
-          // Circle overlap: click must be near the trajectory OR the player's action circle
-          // visually overlaps the ball path.
-          let circleOverlap = false;
-          if (!directHit && moveDist <= maxRange) {
-            const timingCheck = tCursor >= 0.05 ? (movePct <= tCursor || isPlayerOnTrajectory) : moveDist <= 2.5;
-            if (distToTraj <= (actionCircleR + INTERCEPT_RADIUS) && timingCheck) {
-              circleOverlap = true;
-            }
+          // Cursor near trajectory
+          const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
+          const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
+
+          // Same logic as purple circle visual (see rendering code):
+          // Purple if: (cursor near traj AND timing OK) OR (player on traj AND ball not past)
+          canReach = (
+            (cursorNearTraj && (movePct <= _t || (isPlayerOnTrajectory && ballNotPastPlayer))) ||
+            (isPlayerOnTrajectory && ballNotPastPlayer)
+          );
+
+          // When purple but click is far from trajectory line, snap intercept target to closest point on trajectory
+          if (canReach && distToTraj > INTERCEPT_RADIUS) {
+            interceptTargetX = bfx + _tdx * _t;
+            interceptTargetY = bfy + _tdy * _t;
           }
-
-          canReach = directHit || circleOverlap;
         }
         
         if (!isRedZone && canReach) {
