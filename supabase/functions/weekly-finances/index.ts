@@ -18,9 +18,13 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Authorize cron-only access (optional: only enforced if CRON_SECRET is set)
+  // Authorize cron/admin access — accepts CRON_SECRET header or service_role JWT
   const cronSecret = Deno.env.get('CRON_SECRET');
-  if (cronSecret && req.headers.get('x-cron-secret') !== cronSecret) {
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
+  const hasCronSecret = cronSecret && req.headers.get('x-cron-secret') === cronSecret;
+  const hasServiceRole = serviceRoleKey && authHeader === serviceRoleKey;
+  if (!hasCronSecret && !hasServiceRole) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

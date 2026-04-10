@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { generateBaseAttributes, calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS } from '@/lib/attributes';
+// Note: generateBaseAttributes and calculateOverall still used for client-side preview
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
@@ -74,53 +75,22 @@ export default function OnboardingPlayerPage() {
     setSubmitting(true);
 
     try {
-      const overall = calculateOverall(finalAttrs, primaryPosition);
+      // Build extra_points: only keys with value > 0
+      const extra: Record<string, number> = {};
+      for (const [key, val] of Object.entries(extraPoints)) {
+        if (val > 0) extra[key] = val;
+      }
 
-      const { data: playerData, error: playerError } = await supabase
-        .from('player_profiles')
-        .insert({
-          user_id: user.id,
-          full_name: fullName.trim(),
-          age: 18,
-          dominant_foot: dominantFoot,
-          primary_position: primaryPosition,
-          secondary_position: null,
-          archetype: bodyType,
-          height,
-          overall,
-          reputation: 50,
-          money: 5000,
-          weekly_salary: 0,
-          energy_current: 100,
-          energy_max: 100,
-        })
-        .select()
-        .single();
+      const { data, error } = await supabase.rpc('create_player_profile', {
+        p_full_name: fullName.trim(),
+        p_dominant_foot: dominantFoot,
+        p_primary_position: primaryPosition,
+        p_height: height,
+        p_body_type: bodyType,
+        p_extra_points: extra,
+      });
 
-      if (playerError) throw playerError;
-
-      // Set this as the active player
-      await supabase.from('profiles').update({ active_player_profile_id: playerData.id }).eq('id', user.id);
-
-      const { error: attrError } = await supabase
-        .from('player_attributes')
-        .insert({ player_profile_id: playerData.id, ...finalAttrs });
-      if (attrError) throw attrError;
-
-      const { error: contractError } = await supabase
-        .from('contracts')
-        .insert({
-          player_profile_id: playerData.id,
-          status: 'free_agent',
-          weekly_salary: 0,
-          release_clause: 0,
-        });
-      if (contractError) throw contractError;
-
-      await supabase.from('notifications').insert([
-        { user_id: user.id, type: 'system', title: 'Bem-vindo ao Football Identity!', body: 'Seu atleta foi criado com sucesso. Explore o dashboard e prepare-se para sua carreira.' },
-        { user_id: user.id, type: 'training', title: 'Treino Disponível', body: 'Clique nos atributos na tela de Atributos para treinar e evoluir.' },
-      ]);
+      if (error) throw error;
 
       await refreshPlayerProfile();
       toast.success('Atleta criado com sucesso!');

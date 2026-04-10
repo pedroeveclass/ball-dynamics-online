@@ -25,7 +25,10 @@ export function UserAvatar({ avatarUrl, username, size = 'sm', className = '', b
     );
   }
 
-  if (avatarUrl?.startsWith('http')) {
+  if (avatarUrl && (() => {
+    try { const u = new URL(avatarUrl); return u.protocol === 'https:' || u.protocol === 'http:'; }
+    catch { return false; }
+  })()) {
     return (
       <div className={`${sizeClass} rounded-full overflow-hidden ${className}`}>
         <img src={avatarUrl} alt={username || 'Avatar'} className="h-full w-full object-cover" />

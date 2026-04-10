@@ -76,8 +76,19 @@ export default function AccountProfilePage() {
       toast.error('A imagem deve ter no máximo 2MB.');
       return;
     }
+    // Validate MIME type and extension
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const allowedExts = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Formato não suportado. Use PNG, JPG, WEBP ou GIF.');
+      return;
+    }
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!ext || !allowedExts.includes(ext)) {
+      toast.error('Extensão de arquivo inválida.');
+      return;
+    }
     setAvatarSaving(true);
-    const ext = file.name.split('.').pop();
     const path = `${user.id}/avatar.${ext}`;
     const { error: uploadError } = await supabase.storage
       .from('avatars')

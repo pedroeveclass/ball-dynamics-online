@@ -125,71 +125,31 @@ export default function PlayerAttributesPage() {
     }
 
     setTraining(attrKey);
-    const currentVal = Number((attrs as any)[attrKey]) || 0;
 
-    // Tier-based training multiplier
-    const tierMultiplier = getTrainingTierMultiplier(currentVal);
+    try {
+      const { data, error } = await supabase.rpc('train_attribute', {
+        p_player_profile_id: playerProfile.id,
+        p_attribute_key: attrKey,
+      });
 
-    const baseGrowth = growthRate;
-    const roll = Math.random();
-    let growth: number;
-    if (roll < 0.10) {
-      growth = baseGrowth + Math.random() * 0.30;
-    } else if (roll < 0.90) {
-      growth = baseGrowth + 0.30 + Math.random() * 0.49;
-    } else {
-      growth = baseGrowth + 0.79 + Math.random() * 0.20;
-    }
-    // Apply tier multiplier
-    growth = growth * tierMultiplier;
-    // Apply coach, training center, and private trainer bonuses
-    const coachBonusValue = hasClub ? getCoachBonus(coachType, attrKey) : 0;
-    const tcBonusValue = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
-    const trainerBonusValue = trainerBonus ? trainerBonus.value / 100 : 0;
-    growth = growth * (1 + coachBonusValue + tcBonusValue + trainerBonusValue);
-    growth = Math.round(growth * 100) / 100;
-    const newVal = Math.min(99, Math.round((currentVal + growth) * 100) / 100);
+      if (error) {
+        toast.error(error.message || 'Erro ao treinar.');
+        setTraining(null);
+        return;
+      }
 
-    const { error: attrError } = await supabase
-      .from('player_attributes')
-      .update({ [attrKey]: newVal })
-      .eq('player_profile_id', playerProfile.id);
+      await fetchAttrs();
+      await fetchHistory();
+      await refreshPlayerProfile();
 
-    if (attrError) {
-      toast.error('Erro ao treinar.');
+      const result = data as { attribute: string; new_value: number; growth: number };
+      const tier = getAttributeTier(result.new_value);
+      toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${result.growth.toFixed(2)}! (${tier.label})`);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao treinar.');
+    } finally {
       setTraining(null);
-      return;
     }
-
-    await supabase.from('training_history').insert({
-      player_profile_id: playerProfile.id,
-      attribute_key: attrKey,
-      old_value: currentVal,
-      new_value: newVal,
-      growth,
-    });
-
-    const newEnergy = playerProfile.energy_current - ENERGY_COST;
-    await supabase
-      .from('player_profiles')
-      .update({ energy_current: newEnergy, last_trained_at: new Date().toISOString() })
-      .eq('id', playerProfile.id);
-
-    const updatedAttrs = { ...attrs, [attrKey]: newVal } as any;
-    const attrRecord: Record<string, number> = {};
-    for (const k of [...FIELD_ATTRS, ...GK_ATTRS]) {
-      attrRecord[k] = Number(updatedAttrs[k]) || 0;
-    }
-    const newOverall = calculateOverall(attrRecord, playerProfile.primary_position);
-    await supabase.from('player_profiles').update({ overall: newOverall }).eq('id', playerProfile.id);
-
-    await fetchAttrs();
-    await fetchHistory();
-    await refreshPlayerProfile();
-
-    const tier = getAttributeTier(newVal);
-    toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${growth.toFixed(2)}! (${tier.label})`);
-    setTraining(null);
   };
 
   const renderSection = (title: string, keys: readonly string[]) => (

@@ -143,8 +143,8 @@ export default function ManagerFacilitiesPage() {
   };
 
   const handleUpgrade = async () => {
-    const { facilityId, facilityKey, currentLevel, upgradeCost } = confirmDialog;
-    if (!financeId) return;
+    const { facilityKey, upgradeCost } = confirmDialog;
+    if (!club) return;
 
     if (balance < upgradeCost) {
       toast.error('Saldo insuficiente para essa melhoria.');
@@ -154,24 +154,16 @@ export default function ManagerFacilitiesPage() {
 
     setUpgrading(true);
     try {
-      const newLevel = currentLevel + 1;
+      const { data, error } = await supabase.rpc('upgrade_facility', {
+        p_club_id: club.id,
+        p_facility_type: facilityKey,
+      });
 
-      const { error: facError } = await supabase
-        .from('club_facilities')
-        .update({ level: newLevel })
-        .eq('id', facilityId);
+      if (error) throw error;
 
-      if (facError) throw facError;
-
-      const { error: finError } = await supabase
-        .from('club_finances')
-        .update({ balance: balance - upgradeCost })
-        .eq('id', financeId);
-
-      if (finError) throw finError;
-
+      const result = data as { facility_type: string; new_level: number };
       const meta = FACILITY_META.find((m) => m.key === facilityKey);
-      toast.success(`${meta?.label} melhorado para Nível ${newLevel}!`);
+      toast.success(`${meta?.label} melhorado para Nível ${result.new_level}!`);
       await fetchData();
     } catch (err: any) {
       toast.error(`Erro ao melhorar: ${err.message}`);

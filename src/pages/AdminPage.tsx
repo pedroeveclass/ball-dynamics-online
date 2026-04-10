@@ -376,7 +376,10 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
 
   async function searchPlayer() {
     if (!playerSearch.trim()) return;
-    const { data } = await supabase.from('player_profiles').select('*').or(`full_name.ilike.%${playerSearch}%,name.ilike.%${playerSearch}%`).limit(10);
+    // Sanitize input: escape PostgREST special characters to prevent filter injection
+    const sanitized = playerSearch.replace(/[%_\\(),."']/g, '');
+    if (!sanitized.trim()) return;
+    const { data } = await supabase.from('player_profiles').select('*').or(`full_name.ilike.%${sanitized}%,name.ilike.%${sanitized}%`).limit(10);
     setPlayerResults((data || []) as any);
   }
 
