@@ -1923,17 +1923,17 @@ function computeDeviation(
       minRandomDeviation = 5.0 + (dist / 50) * 9.0;
       break;
     case 'header_controlled': {
-      // Like shoot_controlled but use cabeceio skill
-      difficultyMultiplier = 30;
+      // Same curve as shoot_controlled — only skill attribute differs (cabeceio)
+      difficultyMultiplier = 25;
       skillFactor = normalizeAttr(attrs.cabeceio ?? 40);
-      minRandomDeviation = dist < 15 ? 1.0 : dist < 30 ? 4.0 + (dist / 50) * 7.0 : 7.0 + (dist / 50) * 11.0;
+      minRandomDeviation = dist < 15 ? 0.5 : dist < 30 ? 3.0 + (dist / 50) * 6.0 : 6.0 + (dist / 50) * 10.0;
       break;
     }
     case 'header_power':
-      // Like shoot_power but use cabeceio skill
-      difficultyMultiplier = 45;
+      // Same curve as shoot_power — only skill attribute differs (cabeceio + forca_chute)
+      difficultyMultiplier = 40;
       skillFactor = (normalizeAttr(attrs.cabeceio ?? 40) + normalizeAttr(attrs.forca_chute ?? 40)) / 2;
-      minRandomDeviation = 5.0 + (dist / 50) * 9.0;
+      minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
     default:
       return { actualX: targetX, actualY: targetY, deviationDist: 0, overGoal: false };
