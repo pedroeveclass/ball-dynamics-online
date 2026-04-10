@@ -2298,6 +2298,54 @@ export default function MatchRoomPage() {
     [participantsVer, match?.away_club_id]
   );
 
+  // Find the interceptor whose receive/block actually SUCCEEDED
+  // Uses next turn's ball holder to determine who won the ball contest
+  // Must be reactive to events so animation updates when resolution events arrive
+  // NOTE: Must be declared before any early return to satisfy Rules of Hooks
+  const interceptorAction = useMemo(() => {
+    const resEvents = resolutionEventsRef.current;
+    const allResEvents = [...resEvents, ...events.filter(e =>
+      ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block'].includes(e.event_type)
+    )];
+    const goalScored = allResEvents.some(e => e.event_type === 'goal');
+    const gkFailed = allResEvents.some(e => e.event_type === 'gk_save_failed');
+    if (goalScored || gkFailed) return null;
+
+    const candidates = turnActions.filter(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
+    if (candidates.length === 0) return null;
+
+    const failedIds = new Set(
+      allResEvents.filter(e => e.event_type === 'receive_failed').map(e => (e.payload as any)?.participant_id).filter(Boolean)
+    );
+
+    const bhAction = turnActions.find(a =>
+      a.participant_id === activeTurn?.ball_holder_participant_id &&
+      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' ||
+       a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' ||
+       a.action_type === 'header_low' || a.action_type === 'header_high' ||
+       a.action_type === 'header_controlled' || a.action_type === 'header_power' ||
+       a.action_type === 'move')
+    );
+    const bh = participantsRef.current.find(p => p.id === activeTurn?.ball_holder_participant_id);
+    if (bhAction && bh && bhAction.target_x != null && bhAction.target_y != null && bh.field_x != null && bh.field_y != null) {
+      const tdx = bhAction.target_x - bh.field_x;
+      const tdy = bhAction.target_y - bh.field_y;
+      const tlen2 = tdx * tdx + tdy * tdy;
+      if (tlen2 > 0) {
+        candidates.sort((a, b) => {
+          const tA = clamp(((a.target_x! - bh.field_x!) * tdx + (a.target_y! - bh.field_y!) * tdy) / tlen2, 0, 1);
+          const tB = clamp(((b.target_x! - bh.field_x!) * tdx + (b.target_y! - bh.field_y!) * tdy) / tlen2, 0, 1);
+          return tA - tB;
+        });
+      }
+    }
+
+    for (const c of candidates) {
+      if (!failedIds.has(c.participant_id)) return c;
+    }
+    return null;
+  }, [turnActions, events, activeTurn?.phase, activeTurn?.ball_holder_participant_id]);
+
   // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
     return (
@@ -2587,55 +2635,7 @@ export default function MatchRoomPage() {
   // Ball holder position
   const ballHolder = [...homePlayers, ...awayPlayers].find(p => p.id === activeTurn?.ball_holder_participant_id);
 
-  // Find the interceptor whose receive/block actually SUCCEEDED
-  // Uses next turn's ball holder to determine who won the ball contest
-  // Must be reactive to events so animation updates when resolution events arrive
-  const interceptorAction = useMemo(() => {
-    const resEvents = resolutionEventsRef.current;
-    const allResEvents = [...resEvents, ...events.filter(e =>
-      ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block'].includes(e.event_type)
-    )];
-    const goalScored = allResEvents.some(e => e.event_type === 'goal');
-    const gkFailed = allResEvents.some(e => e.event_type === 'gk_save_failed');
-    if (goalScored || gkFailed) return null;
-
-    const candidates = turnActions.filter(a => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
-    if (candidates.length === 0) return null;
-
-    const failedIds = new Set(
-      allResEvents.filter(e => e.event_type === 'receive_failed').map(e => (e.payload as any)?.participant_id).filter(Boolean)
-    );
-
-    // Sort candidates by trajectory progress (t) — whoever is closest to ball origin intercepts first
-    // This matches how the engine resolves: first interceptor on the trajectory wins
-    const bhAction = turnActions.find(a =>
-      a.participant_id === activeTurn?.ball_holder_participant_id &&
-      (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' ||
-       a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' ||
-       a.action_type === 'header_low' || a.action_type === 'header_high' ||
-       a.action_type === 'header_controlled' || a.action_type === 'header_power' ||
-       a.action_type === 'move')
-    );
-    const bh = participantsRef.current.find(p => p.id === activeTurn?.ball_holder_participant_id);
-    if (bhAction && bh && bhAction.target_x != null && bhAction.target_y != null && bh.field_x != null && bh.field_y != null) {
-      const tdx = bhAction.target_x - bh.field_x;
-      const tdy = bhAction.target_y - bh.field_y;
-      const tlen2 = tdx * tdx + tdy * tdy;
-      if (tlen2 > 0) {
-        candidates.sort((a, b) => {
-          const tA = clamp(((a.target_x! - bh.field_x!) * tdx + (a.target_y! - bh.field_y!) * tdy) / tlen2, 0, 1);
-          const tB = clamp(((b.target_x! - bh.field_x!) * tdx + (b.target_y! - bh.field_y!) * tdy) / tlen2, 0, 1);
-          return tA - tB; // earlier on trajectory = first
-        });
-      }
-    }
-
-    // Return the first candidate (earliest on trajectory) that didn't fail
-    for (const c of candidates) {
-      if (!failedIds.has(c.participant_id)) return c;
-    }
-    return null;
-  }, [turnActions, events, activeTurn?.phase, activeTurn?.ball_holder_participant_id]);
+  // interceptorAction is declared above the early return (Rules of Hooks)
 
   // Loose ball position: persist across turns until someone regains possession
   const looseBallPos = (() => {
