@@ -1705,18 +1705,18 @@ export default function MatchRoomPage() {
             }
           }
         }
-        if (distToBall <= INTERCEPT_RADIUS * 1.2) {
-          setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
-          setShowActionMenu(drawingAction.fromParticipantId);
-          setDrawingAction(null);
-          setMouseFieldPct(null);
-          return;
-        }
-        // Circle overlap: player's movement circle from current position reaches the ball
-        const dp = participants.find(p => p.id === drawingAction.fromParticipantId);
+        // Check if player can actually reach the ball (not just if click is near ball)
+        const dp = participantsRef.current.find(p => p.id === drawingAction.fromParticipantId);
         if (dp && dp.field_x != null && dp.field_y != null) {
           const distPlayerToBall = Math.sqrt((dp.field_x - looseBallPos.x) ** 2 + (dp.field_y - looseBallPos.y) ** 2);
           const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+          if (distPlayerToBall <= maxRange && distToBall <= INTERCEPT_RADIUS * 1.2) {
+            setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: pctX, targetY: pctY });
+            setShowActionMenu(drawingAction.fromParticipantId);
+            setDrawingAction(null);
+            setMouseFieldPct(null);
+            return;
+          }
           if (distPlayerToBall <= maxRange) {
             setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
             setShowActionMenu(drawingAction.fromParticipantId);
