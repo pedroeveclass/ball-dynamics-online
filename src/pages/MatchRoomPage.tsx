@@ -3454,27 +3454,12 @@ export default function MatchRoomPage() {
                   }
 
                   if (visualType === 'shoot_power') {
-                    // Yellow→Red segments based on quality
-                    if (color === '#ef4444') {
-                      // Full red = terrible
-                      return [(
-                        <line key="power"
-                          x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                          stroke="#ef4444" strokeWidth={strokeW}
-                          strokeLinecap="round" opacity={opacity}
-                          markerEnd="url(#ah-red)"
-                          strokeDasharray={dashArray}
-                        />
-                      )];
-                    }
-                    // Check if it's a borderline case — yellow→red at end
-                    const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
-                    const attrs = playerAttrsMap[action.participant_id];
-                    const accBonus = normalizeAttr(Number(attrs?.acuracia_chute ?? 40)) * 6;
-                    const powBonus = normalizeAttr(Number(attrs?.forca_chute ?? 40)) * 4;
-                    const eDist = (Math.sqrt((action.target_x! - (fromPart.field_x ?? 50)) ** 2 + (action.target_y! - (fromPart.field_y ?? 50)) ** 2)) - accBonus - powBonus;
-                    if (eDist > 25) {
-                      // Yellow front half, red back half
+                    // Authoritative signal from engine: shot_outcome in the action payload
+                    // 'over' → yellow front half + red back half (went over the bar)
+                    // 'wide' or 'on_target' or undefined → full yellow
+                    const shotOutcome = (action.payload && typeof action.payload === 'object') ? (action.payload as any).shot_outcome : undefined;
+
+                    if (shotOutcome === 'over') {
                       const seg = [
                         { t0: 0, t1: 0.5, color: '#f59e0b' },
                         { t0: 0.5, t1: 1, color: '#ef4444' },
@@ -3490,7 +3475,8 @@ export default function MatchRoomPage() {
                         />
                       ));
                     }
-                    // Full yellow = decent
+
+                    // Default: full yellow (on-target or wide — engine already deviated target)
                     return [(
                       <line key="power"
                         x1={from.x} y1={from.y} x2={to.x} y2={to.y}

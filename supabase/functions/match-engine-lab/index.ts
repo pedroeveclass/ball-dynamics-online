@@ -1850,7 +1850,8 @@ interface DeviationResult {
   actualX: number;
   actualY: number;
   deviationDist: number;
-  overGoal: boolean; // for shoot_power when ball goes over
+  overGoal: boolean; // for shoot_power/header_power when ball goes over the goal
+  shotOutcome?: 'on_target' | 'wide' | 'over'; // visual-only flag for power shots
 }
 
 function computeDeviation(
@@ -1961,6 +1962,7 @@ function computeDeviation(
   let actualX: number;
   let actualY: number;
   let overGoal = false;
+  let shotOutcome: 'on_target' | 'wide' | 'over' | undefined;
 
   if (isShot) {
     // ── SHOTS: deviation is LATERAL ONLY (perpendicular to shot direction) ──
@@ -1974,12 +1976,24 @@ function computeDeviation(
     actualX = targetX;
     actualY = targetY + lateralDeviation;
 
-    // For shoot_power/header_power: if deviation is large, ball goes over the goal (wide)
-    if ((actionType === 'shoot_power' || actionType === 'header_power') && deviationRadius > 1.0) {
-      if (actualY >= 38 && actualY <= 62) {
-        // Ball was still on target despite deviation — push it wide
-        actualY = lateralSign > 0 ? 65 + Math.random() * 5 : 35 - Math.random() * 5;
-        overGoal = true;
+    // Determine shot outcome (only for power shots; controlled shots don't go "over")
+    const isPowerShot = actionType === 'shoot_power' || actionType === 'header_power';
+    if (isPowerShot) {
+      const landedInGoal = actualY >= 38 && actualY <= 62;
+      if (landedInGoal) {
+        shotOutcome = 'on_target';
+      } else {
+        // Ball exited the goal area — 50/50 between "wide" (lateral) and "over" (went over the bar)
+        if (Math.random() < 0.5) {
+          // Wide: keep the deviated actualY (ball sails past the post laterally)
+          shotOutcome = 'wide';
+          overGoal = true;
+        } else {
+          // Over: reset actualY to targetY (arrow looks on-target) but flag as over-the-bar
+          actualY = targetY;
+          shotOutcome = 'over';
+          overGoal = true;
+        }
       }
     }
   } else {
@@ -1991,9 +2005,9 @@ function computeDeviation(
 
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
-  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal} lateral=${isShot}`);
+  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal} shotOutcome=${shotOutcome || 'n/a'} lateral=${isShot}`);
 
-  return { actualX, actualY, deviationDist, overGoal };
+  return { actualX, actualY, deviationDist, overGoal, shotOutcome };
 }
 
 // ─── Height-based interception zones ─────────────────────────────
@@ -4623,14 +4637,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           await supabase.from('match_actions').update({
             target_x: deviation.actualX,
             target_y: deviation.actualY,
-            payload: { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal },
+            payload: { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome },
           }).eq('id', bhAction.id);
 
           if (deviation.overGoal) {
+            const isOver = deviation.shotOutcome === 'over';
             eventsToLog.push({
               match_id, event_type: 'shot_over',
-              title: '💨 Chute para fora!',
-              body: 'A bola foi por cima do gol.',
+              title: isOver ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
+              body: isOver ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo, pelo lado do gol.',
             });
           }
         } else {
@@ -6140,16 +6155,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         await supabase.from('match_actions').update({
           target_x: deviation.actualX,
           target_y: deviation.actualY,
-          payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal },
+          payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome },
         }).eq('id', bhAction.id);
 
         console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
 
         if (deviation.overGoal) {
+          const isOver = deviation.shotOutcome === 'over';
           await supabase.from('match_event_logs').insert({
             match_id, event_type: 'shot_over',
-            title: '💨 Chute para fora!',
-            body: 'A bola foi por cima do gol.',
+            title: isOver ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
+            body: isOver ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo, pelo lado do gol.',
           });
         }
       }
