@@ -3353,7 +3353,24 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     // ── Seed participants from lineups if none exist (league matches) ──
     // For league matches, participants aren't pre-created. We need to create them from
     // each club's active lineup_slots so human players get their connected_user_id set.
-    const isTestMatch = !m.home_lineup_id && !m.away_lineup_id;
+    // If lineup IDs are missing on the match, look them up from each club's active lineup.
+    let homeLineupId = m.home_lineup_id;
+    let awayLineupId = m.away_lineup_id;
+    if (!homeLineupId || !awayLineupId) {
+      const [{ data: hl }, { data: al }] = await Promise.all([
+        !homeLineupId ? supabase.from('lineups').select('id').eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle() : Promise.resolve({ data: { id: homeLineupId } }),
+        !awayLineupId ? supabase.from('lineups').select('id').eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle() : Promise.resolve({ data: { id: awayLineupId } }),
+      ]);
+      if (hl?.id) homeLineupId = hl.id;
+      if (al?.id) awayLineupId = al.id;
+      // Persist the lineup IDs on the match so subsequent ticks don't re-query
+      if (hl?.id || al?.id) {
+        await supabase.from('matches').update({
+          home_lineup_id: homeLineupId, away_lineup_id: awayLineupId,
+        }).eq('id', m.id);
+      }
+    }
+    const isTestMatch = !homeLineupId && !awayLineupId;
     if (!isTestMatch && (!existingParts || existingParts.length === 0)) {
       console.log(`[ENGINE] No existing participants for match ${m.id.slice(0,8)} — seeding from lineups`);
 
@@ -3444,8 +3461,8 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       };
 
       const [homeSeeded, awaySeeded] = await Promise.all([
-        seedFromLineup(m.home_lineup_id, m.home_club_id),
-        seedFromLineup(m.away_lineup_id, m.away_club_id),
+        seedFromLineup(homeLineupId, m.home_club_id),
+        seedFromLineup(awayLineupId, m.away_club_id),
       ]);
       await seedManagers();
 
