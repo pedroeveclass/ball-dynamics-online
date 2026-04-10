@@ -1862,6 +1862,7 @@ function computeDeviation(
   attrs: Record<string, number>,
   isGK: boolean = false,
   setPieceType?: string | null,
+  prevMoveRatio?: number | null,
 ): DeviationResult {
   const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
 
@@ -1944,7 +1945,16 @@ function computeDeviation(
   // Distance amplifier: 25+ units get progressively worse
   const distAmplifier = dist > 25 ? 1 + Math.pow((dist - 25) / 25, 1.5) : 1;
   // Final deviation (set pieces reduce deviation significantly — dead ball = more control)
-  const deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4) * setPieceDeviationScale;
+  let deviationRadius = (distFactor * skillCurve * distAmplifier + minRandomDeviation) * (0.6 + Math.random() * 0.4) * setPieceDeviationScale;
+
+  // ── Previous-turn move penalty/bonus (baseline 70% of max move) ──
+  // If the player moved in the previous turn, scale deviation: moved less = better, more = worse.
+  if (prevMoveRatio != null) {
+    const delta = prevMoveRatio - 0.70;
+    const moveMultiplier = 1 + delta * 0.30; // moveRatio=0 → 0.79x, 1 → 1.09x
+    deviationRadius *= moveMultiplier;
+    console.log(`[ENGINE] Deviation prev-move adjust: prevMoveRatio=${prevMoveRatio.toFixed(2)} multiplier=${moveMultiplier.toFixed(3)}`);
+  }
 
   const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || isHeaderShootType(actionType);
 
@@ -4570,6 +4580,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const startY = Number(ballHolder.pos_y ?? 50);
           const origTargetX = Number(bhAction.target_x);
           const origTargetY = Number(bhAction.target_y);
+
+          // Fetch previous turn's move_ratio for this ball holder (movement penalty/bonus)
+          let prevMoveRatio: number | null = null;
+          if ((match.current_turn_number ?? 1) > 1) {
+            const { data: prevTurnRows } = await supabase
+              .from('match_turns')
+              .select('id')
+              .eq('match_id', match_id)
+              .eq('turn_number', (match.current_turn_number ?? 1) - 1);
+            const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+            if (prevTurnIds.length > 0) {
+              const { data: prevMoveActions } = await supabase
+                .from('match_actions')
+                .select('payload')
+                .in('match_turn_id', prevTurnIds)
+                .eq('participant_id', ballHolder.id)
+                .eq('action_type', 'move')
+                .limit(1);
+              const p = prevMoveActions?.[0]?.payload as any;
+              if (p && typeof p.move_ratio === 'number') {
+                prevMoveRatio = p.move_ratio;
+              }
+            }
+          }
+
           const deviation = computeDeviation(
             origTargetX,
             origTargetY,
@@ -4579,6 +4614,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             bhAttrs,
             false,
             activeTurn.set_piece_type,
+            prevMoveRatio,
           );
           bhAction.target_x = deviation.actualX;
           bhAction.target_y = deviation.actualY;
@@ -4656,6 +4692,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
         resolutionMoveBatch.push({ id: a.participant_id, x: finalX, y: finalY });
+
+        // Persist move_ratio in the action payload so the next turn can apply
+        // movement-based deviation penalty/bonus on pass/shoot from this player.
+        // Only for dribble moves (action_type === 'move'), not receive/block.
+        if (a.action_type === 'move') {
+          const actualDist = Math.sqrt((finalX - startX) ** 2 + (finalY - startY) ** 2);
+          const moveRatioVal = maxRange > 0 ? Math.min(1, actualDist / maxRange) : 0;
+          const existingPayload = (a.payload && typeof a.payload === 'object') ? a.payload as Record<string, any> : {};
+          await supabase.from('match_actions').update({
+            payload: { ...existingPayload, move_ratio: moveRatioVal },
+          }).eq('id', a.id);
+        }
       }
     }
     if (resolutionMoveBatch.length > 0) {
@@ -6062,7 +6110,32 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         };
         const startX = Number(ballHolder.pos_x ?? 50);
         const startY = Number(ballHolder.pos_y ?? 50);
-        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs, false, activeTurn.set_piece_type);
+
+        // Fetch previous turn's move_ratio for this ball holder (movement penalty/bonus)
+        let prevMoveRatio: number | null = null;
+        if ((match.current_turn_number ?? 1) > 1) {
+          const { data: prevTurnRows } = await supabase
+            .from('match_turns')
+            .select('id')
+            .eq('match_id', match_id)
+            .eq('turn_number', (match.current_turn_number ?? 1) - 1);
+          const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+          if (prevTurnIds.length > 0) {
+            const { data: prevMoveActions } = await supabase
+              .from('match_actions')
+              .select('payload')
+              .in('match_turn_id', prevTurnIds)
+              .eq('participant_id', ballHolder.id)
+              .eq('action_type', 'move')
+              .limit(1);
+            const p = prevMoveActions?.[0]?.payload as any;
+            if (p && typeof p.move_ratio === 'number') {
+              prevMoveRatio = p.move_ratio;
+            }
+          }
+        }
+
+        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs, false, activeTurn.set_piece_type, prevMoveRatio);
 
         await supabase.from('match_actions').update({
           target_x: deviation.actualX,
