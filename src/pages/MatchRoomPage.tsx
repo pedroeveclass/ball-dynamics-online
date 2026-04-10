@@ -109,6 +109,8 @@ export default function MatchRoomPage() {
   const oneTouchPendingForRef = useRef<string | null>(null);
   // Track resolution event logs so the animation end-state can incorporate actual results
   const resolutionEventsRef = useRef<EventLog[]>([]);
+  // Players who failed a tackle in the previous turn — cannot tackle again this turn
+  const [tackleBlockedIds, setTackleBlockedIds] = useState<Set<string>>(new Set());
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -914,6 +916,16 @@ export default function MatchRoomPage() {
     setSubmittedActions(new Set());
     setResolutionStartPositions({});
     setFinalPositions({});
+
+    // Capture players who failed a tackle in the turn we're LEAVING — they can't tackle in the new turn
+    const prevTurnFailed = new Set<string>();
+    for (const ev of resolutionEventsRef.current) {
+      if (ev.event_type === 'tackle_failed') {
+        const p = ev.payload as any;
+        if (p?.participant_id) prevTurnFailed.add(p.participant_id);
+      }
+    }
+    setTackleBlockedIds(prevTurnFailed);
     resolutionEventsRef.current = [];
 
     if (activeTurn?.ball_holder_participant_id == null) {
@@ -1665,7 +1677,11 @@ export default function MatchRoomPage() {
           }
         }
         
-        if (!isRedZone && canReach) {
+        // Tackle cooldown: if this player failed a tackle last turn, block tackle attempts (move trajectory = tackle)
+        const isTackleAttempt = ballPathAction.action_type === 'move';
+        const blockedByTackleCooldown = isTackleAttempt && tackleBlockedIds.has(drawingAction.fromParticipantId);
+
+        if (!isRedZone && canReach && !blockedByTackleCooldown) {
           setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: interceptTargetX, targetY: interceptTargetY, trajectoryActionType: ballPathAction.action_type, trajectoryProgress: _t });
           setShowActionMenu(drawingAction.fromParticipantId);
           setDrawingAction(null);
@@ -2530,6 +2546,13 @@ export default function MatchRoomPage() {
     const trajType2 = pendingInterceptChoice?.participantId === participantId ? pendingInterceptChoice?.trajectoryActionType : null;
     const isGKFacingShot = isGK && trajType2 && isAnyShootAction(trajType2);
     const canOneTouch = receiveActions.includes('receive') && !isTackle && !isGKFacingShot;
+
+    // Tackle cooldown: if this player failed a tackle last turn, they cannot tackle again
+    // Remove the 'receive' option when the scenario is a tackle (ball holder is dribbling)
+    if (isTackle && tackleBlockedIds.has(participantId)) {
+      const idx = receiveActions.indexOf('receive');
+      if (idx >= 0) receiveActions.splice(idx, 1);
+    }
 
     // One-touch actions: in yellow zone, offer BOTH header and foot actions
     const footOneTouchActions = ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power'];
@@ -3765,6 +3788,13 @@ export default function MatchRoomPage() {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
                     canReachBall = distToBH <= (circleRadiusField + INTERCEPT_RADIUS + 2);
+                  }
+
+                  // Tackle cooldown: hide purple circle if player is blocked from tackling
+                  // (tackle scenario = ball holder is dribbling with a 'move' action)
+                  const isTackleScenario = effectiveBallTrajectoryAction?.action_type === 'move';
+                  if (isTackleScenario && tackleBlockedIds.has(drawingAction.fromParticipantId)) {
+                    canReachBall = false;
                   }
                 }
 
