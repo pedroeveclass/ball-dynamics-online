@@ -925,12 +925,28 @@ export default function MatchRoomPage() {
         }
         // If not consumed yet, keep ballInertiaDir alive for arrow/animation
       } else {
-        // Ball JUST became loose — use ref for position (avoids race condition with state)
-        const pos = finalBallPosRef.current || finalBallPos;
+        // Ball JUST became loose — find position from refs, state, or event logs
+        let pos = finalBallPosRef.current || finalBallPos;
+        if (!pos) {
+          // Fallback: scan recent events for ball position (loose_ball, ball_inertia, block, etc.)
+          for (let i = events.length - 1; i >= Math.max(0, events.length - 10); i--) {
+            const payload = events[i].payload as any;
+            if (payload?.ball_x != null && payload?.ball_y != null) { pos = { x: Number(payload.ball_x), y: Number(payload.ball_y) }; break; }
+            if (payload?.x != null && payload?.y != null) { pos = { x: Number(payload.x), y: Number(payload.y) }; break; }
+          }
+        }
+        if (!pos) {
+          // Last resort: find the last pass/shoot target from turn actions
+          const lastBallAct = turnActions.find(a =>
+            (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' ||
+             a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power') &&
+            a.target_x != null && a.target_y != null
+          );
+          if (lastBallAct) pos = { x: lastBallAct.target_x!, y: lastBallAct.target_y! };
+        }
         if (pos) {
           setCarriedLooseBallPos(pos);
           inertiaConsumedRef.current = false;
-          // Use stored direction from animation end
           if (lastBallDirRef.current) {
             setBallInertiaDir(lastBallDirRef.current);
           }
