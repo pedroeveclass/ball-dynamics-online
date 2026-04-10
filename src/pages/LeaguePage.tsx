@@ -797,12 +797,12 @@ export default function LeaguePage() {
                 )}
 
                 {/* Top Assists */}
-                {topAssisters.length > 0 && (
-                  <div className="stat-card overflow-x-auto">
-                    <div className="flex items-center gap-2 mb-3 px-1">
-                      <Users className="h-4 w-4 text-tactical" />
-                      <h3 className="font-display font-bold text-sm">Assistências</h3>
-                    </div>
+                <div className="stat-card overflow-x-auto">
+                  <div className="flex items-center gap-2 mb-3 px-1">
+                    <Users className="h-4 w-4 text-tactical" />
+                    <h3 className="font-display font-bold text-sm">Assistências</h3>
+                  </div>
+                  {topAssisters.length > 0 ? (
                     <table className="data-table w-full">
                       <thead>
                         <tr>
@@ -832,8 +832,12 @@ export default function LeaguePage() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-center text-muted-foreground py-4 text-sm">
+                      Nenhuma assistência registrada ainda.
+                    </p>
+                  )}
+                </div>
               </>
             )}
           </TabsContent>
