@@ -26,7 +26,12 @@ export default function MatchRoomPage() {
   const [homeUniforms, setHomeUniforms] = useState<ClubUniform[]>([]);
   const [awayUniforms, setAwayUniforms] = useState<ClubUniform[]>([]);
   const [stadiumStyle, setStadiumStyle] = useState<StadiumStyle>(DEFAULT_STADIUM_STYLE);
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [participants, _setParticipantsRaw] = useState<Participant[]>([]);
+  const [participantsVer, setParticipantsVer] = useState(0);
+  const setParticipants = useCallback((update: Participant[] | ((prev: Participant[]) => Participant[])) => {
+    _setParticipantsRaw(update);
+    setParticipantsVer(v => v + 1);
+  }, []);
   const [activeTurn, setActiveTurn] = useState<MatchTurn | null>(null);
   const [events, setEvents] = useState<EventLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -612,8 +617,8 @@ export default function MatchRoomPage() {
   participantsRef.current = participants;
 
   // ── Determine user role ─────────────────────────────────────
-  // Use participants.length as a stable proxy to avoid re-render loops from setParticipants(.map())
-  const participantsLen = participants.length;
+  // participantsVer is a stable counter that increments on every setParticipants call.
+  // Use it (instead of `participants` array ref) in dependency arrays to avoid React #310.
   useEffect(() => {
     if (!user || !match) return;
     const parts = participantsRef.current;
@@ -665,7 +670,7 @@ export default function MatchRoomPage() {
         setMyRole('spectator'); setMyParticipant(null); setMyClubId(null);
       }
     }
-  }, [user, participantsLen, match, club, playerProfile]);
+  }, [user, participantsVer, match, club, playerProfile]);
 
   const computeMaxMoveRange = useCallback((participantId: string, _targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
@@ -2264,20 +2269,20 @@ export default function MatchRoomPage() {
 
   // ─── Memoized player lists ─────────────────────────────────
   const homePlayersMemo = useMemo(
-    () => participants.filter(p => p.club_id === match?.home_club_id && p.role_type === 'player'),
-    [participants, match?.home_club_id]
+    () => participantsRef.current.filter(p => p.club_id === match?.home_club_id && p.role_type === 'player'),
+    [participantsVer, match?.home_club_id]
   );
   const awayPlayersMemo = useMemo(
-    () => participants.filter(p => p.club_id === match?.away_club_id && p.role_type === 'player'),
-    [participants, match?.away_club_id]
+    () => participantsRef.current.filter(p => p.club_id === match?.away_club_id && p.role_type === 'player'),
+    [participantsVer, match?.away_club_id]
   );
   const homeBenchMemo = useMemo(
-    () => participants.filter(p => p.club_id === match?.home_club_id && p.role_type === 'bench'),
-    [participants, match?.home_club_id]
+    () => participantsRef.current.filter(p => p.club_id === match?.home_club_id && p.role_type === 'bench'),
+    [participantsVer, match?.home_club_id]
   );
   const awayBenchMemo = useMemo(
-    () => participants.filter(p => p.club_id === match?.away_club_id && p.role_type === 'bench'),
-    [participants, match?.away_club_id]
+    () => participantsRef.current.filter(p => p.club_id === match?.away_club_id && p.role_type === 'bench'),
+    [participantsVer, match?.away_club_id]
   );
 
   // ─────────────────────────────────────────────────────────────
