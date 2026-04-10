@@ -2103,7 +2103,7 @@ function computeInterceptSuccess(
   ballHeightZone?: 'green' | 'yellow' | 'red',
   defenderHeight?: string,
   ballActionType?: string,
-  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string; gkMovementRatio?: number },
+  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string; gkMovementRatio?: number; defenderMoveRatio?: number },
 ): { success: boolean; chance: number; foul: boolean; card?: 'yellow' } {
   let attackerSkill: number;
   let defenderSkill: number;
@@ -2290,6 +2290,13 @@ function computeInterceptSuccess(
     }
   }
 
+  // ── Movement penalty/bonus for tackle (baseline 70% of max move) ──
+  if (context.type === 'tackle' && interceptContext?.defenderMoveRatio != null) {
+    const delta = interceptContext.defenderMoveRatio - 0.70;
+    const mod = -delta * 0.25; // moveRatio=0 → +17.5%, moveRatio=1 → -7.5%
+    successChance += mod;
+  }
+
   successChance = Math.max(0.05, Math.min(0.95, successChance));
   const roll = Math.random();
   let success = roll < successChance;
@@ -2326,8 +2333,8 @@ function computeInterceptSuccess(
 }
 
 function resolveDispute(
-  attackerCandidate: { participant: any; progress: number; interceptX: number; interceptY: number },
-  defenderCandidate: { participant: any; progress: number; interceptX: number; interceptY: number },
+  attackerCandidate: { participant: any; progress: number; interceptX: number; interceptY: number; moveRatio?: number },
+  defenderCandidate: { participant: any; progress: number; interceptX: number; interceptY: number; moveRatio?: number },
   attrByProfile: Record<string, any>,
   ballHeightZone: 'green' | 'yellow' | 'red',
   turnNumber: number,
@@ -2395,6 +2402,13 @@ function resolveDispute(
       defSkill += normalizeAttr(defA('defesa_aerea')) * 0.05;
     }
   }
+
+  // ── Movement penalty/bonus (baseline 70% of max move) ──
+  // Whoever stayed more still gets a skill bonus; whoever ran more gets a penalty.
+  const atkMoveRatio = attackerCandidate.moveRatio ?? 0;
+  const defMoveRatio = defenderCandidate.moveRatio ?? 0;
+  atkSkill += (0.70 - atkMoveRatio) * 0.20;
+  defSkill += (0.70 - defMoveRatio) * 0.20;
 
   // Base chance: 50/50, modified by skills
   let attackerChance = 0.50 + (atkSkill - defSkill) * 0.30;
@@ -2571,6 +2585,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       participantClubId: candidate.participant.club_id,
       homeClubId: bh?.club_id || possClubId,
       gkMovementRatio,
+      defenderMoveRatio: candidate.moveRatio,
     });
 
     // ── Coach bonuses ──
@@ -2657,7 +2672,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>): Array<{ participant: any; progress: number; interceptX: number; interceptY: number; moveRatio: number }> {
   if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
   if (!bh) return [];
@@ -2677,7 +2692,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
     (bhActionType === 'pass_high' || bhActionType === 'header_high') ? 0.65 :
     1.0; // pass_low / header_low / move = normal speed
 
-  const interceptors: Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> = [];
+  const interceptors: Array<{ participant: any; progress: number; interceptX: number; interceptY: number; moveRatio: number }> = [];
   for (const a of allActions) {
     if (a.participant_id === ballHolderAction.participant_id) continue;
     if ((a.action_type !== 'receive' && a.action_type !== 'block') || a.target_x == null || a.target_y == null) continue;
@@ -2722,6 +2737,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
       if (isInInterceptableZone) {
         // ── Physical reach + timing validation ──
         const interceptor = participants.find((p: any) => p.id === a.participant_id);
+        let candidateMoveRatio = 0;
         if (interceptor && turnNumber != null && attrByProfile) {
           const pRaw = interceptor.player_profile_id ? attrByProfile[interceptor.player_profile_id] : null;
           const moveAttrs = {
@@ -2740,6 +2756,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           const posX = Number(interceptor.pos_x ?? 50);
           const posY = Number(interceptor.pos_y ?? 50);
           const distToIntercept = Math.sqrt((posX - cx) ** 2 + (posY - cy) ** 2);
+          candidateMoveRatio = adjustedMaxRange > 0 ? Math.min(1, distToIntercept / adjustedMaxRange) : 0;
           // Range check: can the player physically reach the intercept point?
           if (distToIntercept > adjustedMaxRange) {
             console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor}${isInterceptorGK ? ' GK_FULL_RANGE' : ''})`);
@@ -2763,8 +2780,8 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             continue;
           }
         }
-        console.log(`[ENGINE] Intercept ACCEPTED: player ${a.participant_id.slice(0,8)} at t=${t.toFixed(2)} dist=${dist.toFixed(1)} intercept=(${cx.toFixed(1)},${cy.toFixed(1)})`);
-        interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy });
+        console.log(`[ENGINE] Intercept ACCEPTED: player ${a.participant_id.slice(0,8)} at t=${t.toFixed(2)} dist=${dist.toFixed(1)} intercept=(${cx.toFixed(1)},${cy.toFixed(1)}) moveRatio=${candidateMoveRatio.toFixed(2)}`);
+        interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy, moveRatio: candidateMoveRatio });
       } else {
         console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
       }
