@@ -426,26 +426,76 @@ export default function MatchRoomPage() {
     const isTestMatch = !matchData.home_lineup_id && !matchData.away_lineup_id;
     const isKickoffStart = (matchData.current_turn_number ?? 0) <= 1;
 
+    // ── Seed participants from lineups when match has lineup IDs but no participants ──
+    const seedFromLineupClient = async (lineupId: string | null, clubId: string, isHome: boolean) => {
+      if (!lineupId) return [] as Array<Record<string, unknown>>;
+      const { data: slots } = await supabase
+        .from('lineup_slots')
+        .select('id, player_profile_id, slot_position, sort_order, role_type')
+        .eq('lineup_id', lineupId)
+        .order('sort_order');
+      if (!slots || slots.length === 0) return [] as Array<Record<string, unknown>>;
+
+      // Load player user_ids for connected_user_id
+      const profileIds = slots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
+      const { data: profiles } = profileIds.length > 0
+        ? await supabase.from('player_profiles').select('id, user_id, full_name, primary_position, overall').in('id', profileIds)
+        : { data: [] as any[] };
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+      // Merge into caches
+      for (const p of (profiles || [])) {
+        playerProfileCacheRef.current.set(p.id, p as PlayerProfileSummary);
+      }
+      for (const s of slots) {
+        lineupSlotCacheRef.current.set(s.id, s as LineupSlotSummary);
+      }
+
+      const starterSlots = slots.filter(s => s.role_type === 'starter' || !s.role_type);
+      const benchSlots = slots.filter(s => s.role_type === 'bench');
+      const formation = isHome ? (nextHomeClub.formation || DEFAULT_FORMATION) : (nextAwayClub.formation || DEFAULT_FORMATION);
+      const positions = getFormationPositions(formation, isHome, isKickoffStart);
+
+      const toInsert: Array<Record<string, unknown>> = [];
+      starterSlots.forEach((slot, idx) => {
+        const profile = slot.player_profile_id ? profileMap.get(slot.player_profile_id) : null;
+        const coords = positions[idx] || { x: isHome ? 30 : 70, y: 50 };
+        toInsert.push({
+          match_id: matchId,
+          club_id: clubId,
+          lineup_slot_id: slot.id,
+          player_profile_id: slot.player_profile_id || null,
+          role_type: 'player',
+          is_bot: !profile?.user_id,
+          is_ready: false,
+          connected_user_id: profile?.user_id || null,
+          pos_x: coords.x,
+          pos_y: coords.y,
+        });
+      });
+      benchSlots.forEach(slot => {
+        const profile = slot.player_profile_id ? profileMap.get(slot.player_profile_id) : null;
+        toInsert.push({
+          match_id: matchId,
+          club_id: clubId,
+          lineup_slot_id: slot.id,
+          player_profile_id: slot.player_profile_id || null,
+          role_type: 'bench',
+          is_bot: !profile?.user_id,
+          is_ready: false,
+          connected_user_id: profile?.user_id || null,
+          pos_x: null,
+          pos_y: null,
+        });
+      });
+      return toInsert;
+    };
+
     const buildMissingBots = (list: Participant[], formation: string, isHome: boolean, clubId: string) => {
       if (isTestMatch || list.length >= 11) return [] as Array<Record<string, unknown>>;
       const positions = getFormationPositions(formation, isHome, isKickoffStart);
-      const sorted = [...list].sort((a, b) => {
-        const aSortOrder = a.lineup_slot_id ? lineupSlotCacheRef.current.get(a.lineup_slot_id)?.sort_order ?? null : null;
-        const bSortOrder = b.lineup_slot_id ? lineupSlotCacheRef.current.get(b.lineup_slot_id)?.sort_order ?? null : null;
-        if (aSortOrder != null && bSortOrder != null && aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
-        if (aSortOrder != null && bSortOrder == null) return -1;
-        if (aSortOrder == null && bSortOrder != null) return 1;
-        const aPosition = a.lineup_slot_id ? lineupSlotCacheRef.current.get(a.lineup_slot_id)?.slot_position : null;
-        const bPosition = b.lineup_slot_id ? lineupSlotCacheRef.current.get(b.lineup_slot_id)?.slot_position : null;
-        const aIsGK = aPosition === 'GK' || (a.player_profile_id && playerProfileCacheRef.current.get(a.player_profile_id)?.primary_position === 'GK');
-        const bIsGK = bPosition === 'GK' || (b.player_profile_id && playerProfileCacheRef.current.get(b.player_profile_id)?.primary_position === 'GK');
-        if (aIsGK && !bIsGK) return -1;
-        if (!aIsGK && bIsGK) return 1;
-        return a.id.localeCompare(b.id);
-      });
-
       const botsToInsert: Array<Record<string, unknown>> = [];
-      for (let index = sorted.length; index < 11; index++) {
+      for (let index = list.length; index < 11; index++) {
         const coords = positions[index] || { x: isHome ? 30 : 70, y: 50 };
         botsToInsert.push({
           match_id: matchId,
@@ -463,10 +513,21 @@ export default function MatchRoomPage() {
       return botsToInsert;
     };
 
-    const botsToInsert = [
-      ...buildMissingBots(homePlayers, nextHomeClub.formation || DEFAULT_FORMATION, true, matchData.home_club_id),
-      ...buildMissingBots(awayPlayers, nextAwayClub.formation || DEFAULT_FORMATION, false, matchData.away_club_id),
-    ];
+    let botsToInsert: Array<Record<string, unknown>> = [];
+
+    // If match has lineups and no participants yet → seed from lineups (not generic bots)
+    if (!isTestMatch && homePlayers.length === 0 && awayPlayers.length === 0) {
+      const [homeFromLineup, awayFromLineup] = await Promise.all([
+        seedFromLineupClient(matchData.home_lineup_id, matchData.home_club_id, true),
+        seedFromLineupClient(matchData.away_lineup_id, matchData.away_club_id, false),
+      ]);
+      botsToInsert = [...homeFromLineup, ...awayFromLineup];
+    } else {
+      botsToInsert = [
+        ...buildMissingBots(homePlayers, nextHomeClub.formation || DEFAULT_FORMATION, true, matchData.home_club_id),
+        ...buildMissingBots(awayPlayers, nextAwayClub.formation || DEFAULT_FORMATION, false, matchData.away_club_id),
+      ];
+    }
 
     if (botsToInsert.length > 0) {
       const { data: insertedBots } = await supabase.from('match_participants').insert(botsToInsert as any).select('*');
