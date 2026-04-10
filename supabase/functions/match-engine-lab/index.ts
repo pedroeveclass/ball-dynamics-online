@@ -5002,8 +5002,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 .limit(1);
               if (prevActions && prevActions.length > 0) {
                 prevBhAction = prevActions[0];
-                // Use ballEndPos as approximate start (where the ball ended up)
-                bhStartPos = ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
+                // Use the PASSER's position (not current ball pos) as origin for direction
+                const passer = (participants || []).find((p: any) => p.id === prevActions[0].participant_id);
+                bhStartPos = passer
+                  ? { x: Number(passer.pos_x ?? 50), y: Number(passer.pos_y ?? 50) }
+                  : ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
               }
             }
           }
