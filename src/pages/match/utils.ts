@@ -123,8 +123,23 @@ export function buildParticipantLayout(
   };
 
   const ensureEleven = (list: Participant[], formation: string, isHome: boolean, clubId: string): Participant[] => {
-    // Cap at 11 to prevent duplicates from race conditions
-    const capped = list.length > 11 ? list.slice(0, 11) : list;
+    // Allow up to 12 players (handles edge case where ensureGoalkeeperPerTeam added a bot GK)
+    // Drop only true duplicates — preserve GK and profiled players first
+    let capped = list;
+    if (list.length > 12) {
+      const sorted = [...list].sort((a, b) => {
+        const aIsGK = isGoalkeeper(a);
+        const bIsGK = isGoalkeeper(b);
+        if (aIsGK && !bIsGK) return -1;
+        if (!aIsGK && bIsGK) return 1;
+        const aHasProfile = !!a.player_profile_id;
+        const bHasProfile = !!b.player_profile_id;
+        if (aHasProfile && !bHasProfile) return -1;
+        if (!aHasProfile && bHasProfile) return 1;
+        return 0;
+      });
+      capped = sorted.slice(0, 12);
+    }
     const positioned = assignPositions(capped, formation, isHome);
     if (isTestMatch) return positioned;
     const positions = getFormationPositions(formation, isHome, isKickoffStart);

@@ -3168,13 +3168,30 @@ async function handleSetPiece(
   }
 
   if (oob.type === 'goal_kick') {
-    const gk = teamPlayers.find((p: any) => isGKPosition(getSlotPos(p))) || teamPlayers[0];
     const isSecondHalf = (match.current_half ?? 1) >= 2;
     // In 2nd half sides are flipped: home defends right, away defends left
     const gkX = isHomeTeam
       ? (isSecondHalf ? 94 : 6)
       : (isSecondHalf ? 6 : 94);
     const gkY = Math.max(40, Math.min(60, oob.exitY));
+
+    // Prefer explicit GK; fall back to player closest to the team's own goal
+    let gk = teamPlayers.find((p: any) => isGKPosition(getSlotPos(p)));
+    if (!gk) {
+      const ownGoalX = gkX;
+      let closest = teamPlayers[0];
+      let minDist = Infinity;
+      for (const p of teamPlayers) {
+        if (p.is_sent_off) continue;
+        const px = Number(p.pos_x ?? 50);
+        const py = Number(p.pos_y ?? 50);
+        const dist = Math.sqrt((px - ownGoalX) ** 2 + (py - 50) ** 2);
+        if (dist < minDist) { minDist = dist; closest = p; }
+      }
+      gk = closest;
+      console.log(`[ENGINE] Goal kick: no explicit GK, picked closest player ${gk.id.slice(0,8)} at dist=${minDist.toFixed(1)} from goal`);
+    }
+
     await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
 
     return {
@@ -3304,17 +3321,31 @@ async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubI
         console.log(`[ENGINE] Repositioned existing GK ${existingGK.id.slice(0,8)} to (${gkX}, ${gkY})`);
       }
     } else {
-      // No GK found — create a bot GK inside the box
+      // No explicit GK — if team already has 11+ players, promote the one closest to the goal
+      // instead of creating a new bot (prevents 12+ player roster and frontend cap issues)
       const gkX = isHome ? 5 : 95;
-      const { data: insertedGK } = await supabase.from('match_participants').insert({
-        match_id: matchId,
-        club_id: clubId,
-        role_type: 'player',
-        is_bot: true,
-        pos_x: gkX,
-        pos_y: 50,
-      }).select('id').single();
-      console.log(`[ENGINE] Created bot GK ${insertedGK?.id?.slice(0,8)} for club ${clubId.slice(0,8)} at (${gkX}, 50)`);
+      if (teamParts.length >= 11) {
+        let closest = teamParts[0];
+        let minDist = Infinity;
+        for (const p of teamParts) {
+          const px = Number(p.pos_x ?? 50);
+          const py = Number(p.pos_y ?? 50);
+          const dist = Math.sqrt((px - gkX) ** 2 + (py - 50) ** 2);
+          if (dist < minDist) { minDist = dist; closest = p; }
+        }
+        await supabase.from('match_participants').update({ pos_x: gkX, pos_y: 50 }).eq('id', closest.id);
+        console.log(`[ENGINE] No explicit GK — promoted closest player ${closest.id.slice(0,8)} to GK at (${gkX}, 50)`);
+      } else {
+        const { data: insertedGK } = await supabase.from('match_participants').insert({
+          match_id: matchId,
+          club_id: clubId,
+          role_type: 'player',
+          is_bot: true,
+          pos_x: gkX,
+          pos_y: 50,
+        }).select('id').single();
+        console.log(`[ENGINE] Created bot GK ${insertedGK?.id?.slice(0,8)} for club ${clubId.slice(0,8)} at (${gkX}, 50)`);
+      }
     }
   }
 }
