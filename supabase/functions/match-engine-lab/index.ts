@@ -1866,7 +1866,8 @@ function computeDeviation(
   const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
 
   // Set pieces have much less deviation (dead ball = more control)
-  const isSetPiece = setPieceType && setPieceType !== 'kickoff';
+  // All dead ball situations including kickoff get reduced deviation
+  const isSetPiece = !!setPieceType;
   const setPieceDeviationScale = isSetPiece ? 0.35 : 1.0;
 
   let difficultyMultiplier: number;
@@ -4512,9 +4513,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const bhAttrs = getAttrs(ballHolder);
           const startX = Number(ballHolder.pos_x ?? 50);
           const startY = Number(ballHolder.pos_y ?? 50);
+          const origTargetX = Number(bhAction.target_x);
+          const origTargetY = Number(bhAction.target_y);
           const deviation = computeDeviation(
-            Number(bhAction.target_x),
-            Number(bhAction.target_y),
+            origTargetX,
+            origTargetY,
             startX,
             startY,
             bhAction.action_type,
@@ -4524,6 +4527,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           );
           bhAction.target_x = deviation.actualX;
           bhAction.target_y = deviation.actualY;
+
+          // Persist deviation to DB so frontend animation matches engine resolution
+          await supabase.from('match_actions').update({
+            target_x: deviation.actualX,
+            target_y: deviation.actualY,
+            payload: { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal },
+          }).eq('id', bhAction.id);
 
           if (deviation.overGoal) {
             eventsToLog.push({
