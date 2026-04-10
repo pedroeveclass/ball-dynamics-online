@@ -5617,9 +5617,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         if (revenueData && revenueData.length > 0) {
           const totalTicketRevenue = (revenueData as any[]).reduce((sum: number, r: any) => sum + Number(r.sector_revenue || 0), 0);
           const totalAttendance = (revenueData as any[]).reduce((sum: number, r: any) => sum + Number(r.expected_attendance || 0), 0);
-          // League = 100%, Friendly = 30%
+          // League = 100%, Friendly (challenge accepted) = 30%, Bot friendly = 0%
           const { data: leagueMatch } = await supabase.from('league_matches').select('id').eq('match_id', match_id).maybeSingle();
-          const revenueMultiplier = leagueMatch ? 1.0 : 0.3;
+          const { data: challengeMatch } = !leagueMatch
+            ? await supabase.from('match_challenges').select('id').eq('match_id', match_id).maybeSingle()
+            : { data: null };
+          const revenueMultiplier = leagueMatch ? 1.0 : challengeMatch ? 0.3 : 0;
           const finalRevenue = Math.round(totalTicketRevenue * revenueMultiplier);
           if (finalRevenue > 0) {
             const { data: finance } = await supabase.from('club_finances').select('balance').eq('club_id', homeClubId).maybeSingle();
