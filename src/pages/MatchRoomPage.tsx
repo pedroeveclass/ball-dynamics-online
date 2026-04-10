@@ -617,11 +617,14 @@ export default function MatchRoomPage() {
   participantsRef.current = participants;
 
   // ── Determine user role ─────────────────────────────────────
-  // participantsVer is a stable counter that increments on every setParticipants call.
-  // Use it (instead of `participants` array ref) in dependency arrays to avoid React #310.
+  // Guard ref prevents the async DB claim from being sent multiple times
+  // (Realtime events can bump participantsVer many times before .then() resolves)
+  const roleClaimSentRef = useRef(false);
+  const lastRoleRef = useRef<{ role: string; participantId: string | null; clubId: string | null }>({ role: '', participantId: null, clubId: null });
   useEffect(() => {
     if (!user || !match) return;
     const parts = participantsRef.current;
+    if (parts.length === 0) return; // Wait until participants are loaded
 
     // 1. Check by connected_user_id (primary)
     let playerPart = parts.find(p => p.connected_user_id === user.id && p.role_type === 'player');
@@ -630,12 +633,13 @@ export default function MatchRoomPage() {
     if (!playerPart && playerProfile?.id) {
       playerPart = parts.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'player');
       // Claim this participant: update connected_user_id in DB so future checks work
-      if (playerPart && !playerPart.connected_user_id) {
+      // Guard: only send the claim ONCE to prevent cascading re-renders
+      if (playerPart && !playerPart.connected_user_id && !roleClaimSentRef.current) {
+        roleClaimSentRef.current = true;
         supabase.from('match_participants')
           .update({ connected_user_id: user.id, is_bot: false })
           .eq('id', playerPart.id)
           .then(() => {
-            // Update local state too
             setParticipants(prev => prev.map(p =>
               p.id === playerPart!.id ? { ...p, connected_user_id: user.id, is_bot: false } : p
             ));
@@ -648,27 +652,36 @@ export default function MatchRoomPage() {
     const isManagerOfAway = club?.id === match.away_club_id;
     const isManagerOfMatch = isManagerOfHome || isManagerOfAway;
 
+    // Only update role state if it actually changed (avoids redundant renders)
+    let nextRole: 'player' | 'manager' | 'spectator' = 'spectator';
+    let nextParticipant: Participant | null = null;
+    let nextClubId: string | null = null;
+
     if (playerPart) {
-      setMyRole('player');
-      setMyParticipant(playerPart);
-      setSelectedParticipantId(playerPart.id);
-      setMyClubId(playerPart.club_id);
+      nextRole = 'player';
+      nextParticipant = playerPart;
+      nextClubId = playerPart.club_id;
     } else if (managerPart || isManagerOfMatch) {
-      setMyRole('manager');
-      setMyParticipant(managerPart || null);
-      setMyClubId(managerPart?.club_id || (isManagerOfHome ? match.home_club_id : match.away_club_id));
+      nextRole = 'manager';
+      nextParticipant = managerPart || null;
+      nextClubId = managerPart?.club_id || (isManagerOfHome ? match.home_club_id : match.away_club_id);
     } else {
-      // Check if user is a bench player
       const benchPart = playerProfile?.id
         ? parts.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'bench')
         : null;
       if (benchPart) {
-        setMyRole('spectator');
-        setMyParticipant(benchPart);
-        setMyClubId(benchPart.club_id);
-      } else {
-        setMyRole('spectator'); setMyParticipant(null); setMyClubId(null);
+        nextParticipant = benchPart;
+        nextClubId = benchPart.club_id;
       }
+    }
+
+    const prev = lastRoleRef.current;
+    if (prev.role !== nextRole || prev.participantId !== nextParticipant?.id || prev.clubId !== nextClubId) {
+      lastRoleRef.current = { role: nextRole, participantId: nextParticipant?.id || null, clubId: nextClubId };
+      setMyRole(nextRole);
+      setMyParticipant(nextParticipant);
+      setMyClubId(nextClubId);
+      if (nextRole === 'player' && nextParticipant) setSelectedParticipantId(nextParticipant.id);
     }
   }, [user, participantsVer, match, club, playerProfile]);
 
