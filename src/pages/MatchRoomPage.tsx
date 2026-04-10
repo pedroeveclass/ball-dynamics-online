@@ -1861,8 +1861,34 @@ export default function MatchRoomPage() {
     if (!activeTurn || activeTurn.phase !== 'resolution') return;
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
-    const startDelay = setTimeout(() => {
-      if (animatedResolutionIdRef.current === activeTurn.id) return;
+    // ── Wait for engine to finish resolving BEFORE starting animation ──
+    // The animation must reflect what actually happened, not what was submitted.
+    // We poll for resolution events (blocked, intercepted, saved, tackle, goal, etc.)
+    // or resolved_at on the current turn. Falls back to 2s timeout if nothing arrives.
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    const pollStartTime = Date.now();
+    const MAX_WAIT_MS = 2500;
+    const MIN_WAIT_MS = 250;
+
+    const hasResolutionSignal = () => {
+      const resEvents = resolutionEventsRef.current;
+      // Any resolution event means engine has started emitting results
+      if (resEvents.length > 0) return true;
+      // Or the next turn arrived (activeTurn would have changed by now, but check ref)
+      return false;
+    };
+
+    const tryStart = () => {
+      if (animatedResolutionIdRef.current === activeTurn.id) {
+        if (pollInterval) clearInterval(pollInterval);
+        return;
+      }
+      const elapsed = Date.now() - pollStartTime;
+      const ready = hasResolutionSignal() && elapsed >= MIN_WAIT_MS;
+      const timedOut = elapsed >= MAX_WAIT_MS;
+      if (!ready && !timedOut) return;
+
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 
       const currentParticipants = participantsRef.current;
       const snapshot = Object.fromEntries(
@@ -2261,10 +2287,14 @@ export default function MatchRoomPage() {
       };
 
       animFrameRef.current = requestAnimationFrame(animate);
-    }, 200);
+    };
+
+    // Try immediately (events may already be there from sub), then poll every 80ms
+    tryStart();
+    pollInterval = setInterval(tryStart, 80);
 
     return () => {
-      clearTimeout(startDelay);
+      if (pollInterval) clearInterval(pollInterval);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
   }, [activeTurn?.phase, activeTurn?.id]);
