@@ -629,9 +629,14 @@ export default function LeaguePage() {
                                 </Link>
                               )}
                               {hasResult && lm.match_id && (
-                                <Link to={`/match/${lm.match_id}`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-0.5">
-                                  Ver Resultado
-                                </Link>
+                                <div className="flex gap-2 mt-0.5">
+                                  <Link to={`/match/${lm.match_id}`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                                    Ver Resultado
+                                  </Link>
+                                  <Link to={`/match/${lm.match_id}/replay`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                                    Ver Replay
+                                  </Link>
+                                </div>
                               )}
                             </>
                           ) : lm.match_id ? (
