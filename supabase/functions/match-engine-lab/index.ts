@@ -4643,6 +4643,29 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             if (possClubId === match.home_club_id) homeScore++;
             else awayScore++;
 
+            // ── Determine assister: previous turn's ball holder if same team and passed ──
+            let assisterId: string | null = null;
+            let assisterName: string | null = null;
+            if (match.current_turn_number > 1) {
+              const { data: prevTurn } = await supabase
+                .from('match_turns')
+                .select('ball_holder_participant_id')
+                .eq('match_id', match_id)
+                .eq('turn_number', match.current_turn_number - 1)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              const prevBhId = prevTurn?.ball_holder_participant_id;
+              if (prevBhId && prevBhId !== ballHolder.id) {
+                const prevBh = (participants || []).find((p: any) => p.id === prevBhId);
+                // Assist only if previous holder was on the same team
+                if (prevBh && prevBh.club_id === ballHolder.club_id) {
+                  assisterId = prevBhId;
+                  assisterName = prevBh._player_name || null;
+                }
+              }
+            }
+
             eventsToLog.push({
               match_id, event_type: 'goal',
               title: `⚽ GOL! ${homeScore} – ${awayScore}`,
@@ -4651,8 +4674,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 scorer_participant_id: ballHolder.id,
                 scorer_club_id: possClubId,
                 scorer_name: ballHolder._player_name || null,
-                assister_participant_id: null,
-                assister_name: null,
+                assister_participant_id: assisterId,
+                assister_name: assisterName,
                 goal_type: 'shot',
               },
             });
@@ -5120,6 +5143,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const leftGoalDefender = isSecondHalfGoal ? match.away_club_id : match.home_club_id;
           const isBallGoalOwnGoal = (inAwayGoal && possClubId === rightGoalDefender)
             || (inHomeGoal && possClubId === leftGoalDefender);
+          // Determine assister for ball goals (same logic as shot goals)
+          let ballGoalAssisterId: string | null = null;
+          let ballGoalAssisterName: string | null = null;
+          if (!isBallGoalOwnGoal && ballHolder && match.current_turn_number > 1) {
+            const { data: prevT } = await supabase.from('match_turns').select('ball_holder_participant_id').eq('match_id', match_id).eq('turn_number', match.current_turn_number - 1).order('created_at', { ascending: false }).limit(1).maybeSingle();
+            const prevId = prevT?.ball_holder_participant_id;
+            if (prevId && prevId !== ballHolder.id) {
+              const prevP = (participants || []).find((p: any) => p.id === prevId);
+              if (prevP && prevP.club_id === ballHolder.club_id) {
+                ballGoalAssisterId = prevId;
+                ballGoalAssisterName = prevP._player_name || null;
+              }
+            }
+          }
           eventsToLog.push({
             match_id, event_type: 'goal',
             title: isBallGoalOwnGoal ? `⚽ GOL CONTRA! ${homeScore} – ${awayScore}` : `⚽ GOL! ${homeScore} – ${awayScore}`,
@@ -5128,8 +5165,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               scorer_participant_id: ballHolder?.id || null,
               scorer_club_id: isBallGoalOwnGoal ? (possClubId === match.home_club_id ? match.away_club_id : match.home_club_id) : possClubId,
               scorer_name: ballHolder?._player_name || null,
-              assister_participant_id: null,
-              assister_name: null,
+              assister_participant_id: ballGoalAssisterId,
+              assister_name: ballGoalAssisterName,
               goal_type: isBallGoalOwnGoal ? 'own_goal' : ballGoalType,
             },
           });
@@ -5154,14 +5191,28 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const rightScorer2 = isSecondHalfGoal2 ? 'away' : 'home';
           if (inAwayGoal) { if (rightScorer2 === 'home') homeScore++; else awayScore++; }
           else { if (rightScorer2 === 'home') awayScore++; else homeScore++; }
+          // Dribble goals: the assister is whoever passed to the dribbler
+          let dribAssisterId: string | null = null;
+          let dribAssisterName: string | null = null;
+          if (match.current_turn_number > 1) {
+            const { data: prevT2 } = await supabase.from('match_turns').select('ball_holder_participant_id').eq('match_id', match_id).eq('turn_number', match.current_turn_number - 1).order('created_at', { ascending: false }).limit(1).maybeSingle();
+            const prevId2 = prevT2?.ball_holder_participant_id;
+            if (prevId2 && prevId2 !== ballHolder.id) {
+              const prevP2 = (participants || []).find((p: any) => p.id === prevId2);
+              if (prevP2 && prevP2.club_id === ballHolder.club_id) {
+                dribAssisterId = prevId2;
+                dribAssisterName = prevP2._player_name || null;
+              }
+            }
+          }
           eventsToLog.push({
             match_id, event_type: 'goal', title: `⚽ GOL! ${homeScore} – ${awayScore}`, body: `Turno ${match.current_turn_number} - Gol de condução!`,
             payload: {
               scorer_participant_id: ballHolder.id,
               scorer_club_id: possClubId,
               scorer_name: ballHolder._player_name || null,
-              assister_participant_id: null,
-              assister_name: null,
+              assister_participant_id: dribAssisterId,
+              assister_name: dribAssisterName,
               goal_type: 'dribble',
             },
           });

@@ -606,16 +606,24 @@ export default function MatchRoomPage() {
     [persistedSubmittedIds, submittedActions]
   );
 
+  // Ref to participants — keeps current snapshot accessible in callbacks/effects without
+  // creating dependency-array re-render cascades (prevents React #310).
+  const participantsRef = useRef(participants);
+  participantsRef.current = participants;
+
   // ── Determine user role ─────────────────────────────────────
+  // Use participants.length as a stable proxy to avoid re-render loops from setParticipants(.map())
+  const participantsLen = participants.length;
   useEffect(() => {
     if (!user || !match) return;
+    const parts = participantsRef.current;
 
     // 1. Check by connected_user_id (primary)
-    let playerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'player');
+    let playerPart = parts.find(p => p.connected_user_id === user.id && p.role_type === 'player');
 
     // 2. Fallback: check by player_profile_id matching current active player profile
     if (!playerPart && playerProfile?.id) {
-      playerPart = participants.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'player');
+      playerPart = parts.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'player');
       // Claim this participant: update connected_user_id in DB so future checks work
       if (playerPart && !playerPart.connected_user_id) {
         supabase.from('match_participants')
@@ -630,7 +638,7 @@ export default function MatchRoomPage() {
       }
     }
 
-    const managerPart = participants.find(p => p.connected_user_id === user.id && p.role_type === 'manager');
+    const managerPart = parts.find(p => p.connected_user_id === user.id && p.role_type === 'manager');
     const isManagerOfHome = club?.id === match.home_club_id;
     const isManagerOfAway = club?.id === match.away_club_id;
     const isManagerOfMatch = isManagerOfHome || isManagerOfAway;
@@ -647,7 +655,7 @@ export default function MatchRoomPage() {
     } else {
       // Check if user is a bench player
       const benchPart = playerProfile?.id
-        ? participants.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'bench')
+        ? parts.find(p => p.player_profile_id === playerProfile.id && p.role_type === 'bench')
         : null;
       if (benchPart) {
         setMyRole('spectator');
@@ -657,7 +665,7 @@ export default function MatchRoomPage() {
         setMyRole('spectator'); setMyParticipant(null); setMyClubId(null);
       }
     }
-  }, [user, participants, match, club, playerProfile]);
+  }, [user, participantsLen, match, club, playerProfile]);
 
   const computeMaxMoveRange = useCallback((participantId: string, _targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
@@ -711,7 +719,7 @@ export default function MatchRoomPage() {
   // GK gets full range on shots (can always try to save).
   const applyBallSpeedFactor = useCallback((baseRange: number, participantId: string, trajectoryActionType: string | null | undefined): number => {
     if (!trajectoryActionType) return baseRange;
-    const player = participants.find(p => p.id === participantId);
+    const player = participantsRef.current.find(p => p.id === participantId);
     const isGK = player?.field_pos === 'GK' || (player as any)?.slot_position === 'GK';
     const isShot = trajectoryActionType === 'shoot_controlled' || trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_controlled' || trajectoryActionType === 'header_power';
     if (isGK && isShot) return baseRange;
@@ -722,7 +730,7 @@ export default function MatchRoomPage() {
       (trajectoryActionType === 'pass_high' || trajectoryActionType === 'header_high') ? 0.65 :
       1.0;
     return baseRange * factor;
-  }, [participants]);
+  }, []);
 
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
@@ -975,9 +983,10 @@ export default function MatchRoomPage() {
       );
       if (bhHasAction) return;
 
-      const bh = participants.find(p => p.id === activeTurn.ball_holder_participant_id);
-      const hCount = participants.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
-      const aCount = participants.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+      const parts = participantsRef.current;
+      const bh = parts.find(p => p.id === activeTurn.ball_holder_participant_id);
+      const hCount = parts.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+      const aCount = parts.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
       const isTest = hCount <= 4 && aCount <= 4;
       const canControlBH = bh && (
         (myRole === 'player' && myParticipant?.id === bh.id) ||
@@ -988,7 +997,7 @@ export default function MatchRoomPage() {
         setSelectedParticipantId(bh.id);
       }
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, participants, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
@@ -1748,8 +1757,6 @@ export default function MatchRoomPage() {
   }, [turnActions, submittedActions]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
-  const participantsRef = useRef(participants);
-  participantsRef.current = participants;
 
   const getEffectiveActionTarget = useCallback((
     action: MatchAction,
