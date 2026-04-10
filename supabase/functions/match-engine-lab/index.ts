@@ -2408,7 +2408,7 @@ function resolveDispute(
   return { winner, chance: attackerChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number, setPieceType?: string | null): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number, setPieceType?: string | null, tackleBlockedIds?: Set<string>): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -2447,7 +2447,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
   const bhAttrs = getFullAttrs(bh);
   const bhActionType = _attacker.action_type || action;
-  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId);
+  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId, tackleBlockedIds);
 
   // ── DISPUTE DETECTION ──
   // If multiple interceptors from DIFFERENT teams target the same area (within 3 units),
@@ -2657,7 +2657,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>): Array<{ participant: any; progress: number; interceptX: number; interceptY: number }> {
   if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
   if (!bh) return [];
@@ -2683,6 +2683,13 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
     if ((a.action_type !== 'receive' && a.action_type !== 'block') || a.target_x == null || a.target_y == null) continue;
     const actionParticipant = participants.find((p: any) => p.id === a.participant_id);
     if (actionParticipant?.is_sent_off) continue;
+
+    // Tackle cooldown: players who failed a tackle last turn cannot tackle this turn
+    // Tackle context = ball holder is moving (dribbling) and opponent is contesting
+    if (tackleBlockedIds && tackleBlockedIds.has(a.participant_id) && bhActionType === 'move' && actionParticipant && actionParticipant.club_id !== possClubId) {
+      console.log(`[ENGINE] Tackle blocked by cooldown: player ${a.participant_id.slice(0,8)} failed tackle last turn`);
+      continue;
+    }
 
     // Free kick exclusion zone: defending players within 10 units of ball origin cannot intercept
     if (setPieceType && setPieceType !== 'kickoff' && actionParticipant && actionParticipant.club_id !== possClubId) {
@@ -4613,8 +4620,27 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         .find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
+      // Load players with tackle cooldown (failed tackle in the previous turn)
+      const tackleBlockedIds = new Set<string>();
+      if ((match.current_turn_number ?? 1) > 1) {
+        const { data: failedTackleEvents } = await supabase
+          .from('match_event_logs')
+          .select('payload')
+          .eq('match_id', match_id)
+          .eq('event_type', 'tackle_failed');
+        for (const ev of (failedTackleEvents || [])) {
+          const p = ev.payload as any;
+          if (p?.participant_id && p?.turn_number === (match.current_turn_number - 1)) {
+            tackleBlockedIds.add(p.participant_id);
+          }
+        }
+        if (tackleBlockedIds.size > 0) {
+          console.log(`[ENGINE] Tackle cooldown active for ${tackleBlockedIds.size} players`);
+        }
+      }
+
       if (ballHolderAction) {
-        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type);
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds);
 
         // Log GK save attempt if there was one
         if (result.gkSaveAttempt) {
@@ -4859,27 +4885,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             title: result.description,
             body: 'O desarme falhou e o jogador seguiu com a bola.',
           });
-          // Log the failed contest too
+          // Log the failed contest too (with participant_id so next turn can block tackles)
           if (result.failedContestLog) {
             eventsToLog.push({
               match_id, event_type: 'tackle_failed',
               title: result.failedContestLog,
-              body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade.',
+              body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade e não poderá dar tackle no próximo turno.',
+              payload: {
+                participant_id: result.failedContestParticipantId,
+                turn_number: match.current_turn_number,
+              },
             });
           }
-          // Apply movement penalty to failed tackler: reduce their effective movement by 25%
+          // Apply movement penalty to failed tackler: reduce their effective movement by 50%
           if (result.failedContestParticipantId) {
             const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
             if (failedPart) {
               const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
               if (failMoveAct) {
-                // Reduce their movement by 25% — move them only 75% of the way
+                // Reduce their movement by 50% — move them only 50% of the way
                 const startX = Number(failedPart.pos_x ?? 50);
                 const startY = Number(failedPart.pos_y ?? 50);
-                const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.75;
-                const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.75;
+                const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.5;
+                const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.5;
                 deferredPositionUpdates.push({ id: failedPart.id, pos_x: penaltyX, pos_y: penaltyY });
-                console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 25%`);
+                console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 50%`);
               }
             }
           }
