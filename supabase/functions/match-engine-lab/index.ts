@@ -187,12 +187,14 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     : { data: [] };
   const slotMap = new Map<string, string>((slots || []).map((s: any) => [s.id, s.slot_position]));
 
-  // Also load player profiles for primary_position fallback
+  // Also load player profiles for primary_position fallback + name
   const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
   let profilePosMap = new Map<string, string>();
+  let profileNameMap = new Map<string, string>();
   if (profileIds.length > 0) {
-    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position').in('id', profileIds);
+    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position, full_name').in('id', profileIds);
     profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+    profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.full_name]));
   }
 
   const gkIdByClub = getGoalkeeperIdsByClub(participants, slotMap, profilePosMap);
@@ -228,6 +230,10 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
         }
       }
       p._slot_position = bestPos;
+    }
+    // Attach player name if available
+    if (p.player_profile_id && profileNameMap.has(p.player_profile_id)) {
+      p._player_name = profileNameMap.get(p.player_profile_id);
     }
     return p;
   });
@@ -4644,7 +4650,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: {
                 scorer_participant_id: ballHolder.id,
                 scorer_club_id: possClubId,
+                scorer_name: ballHolder._player_name || null,
                 assister_participant_id: null,
+                assister_name: null,
                 goal_type: 'shot',
               },
             });
@@ -5119,7 +5127,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             payload: {
               scorer_participant_id: ballHolder?.id || null,
               scorer_club_id: isBallGoalOwnGoal ? (possClubId === match.home_club_id ? match.away_club_id : match.home_club_id) : possClubId,
+              scorer_name: ballHolder?._player_name || null,
               assister_participant_id: null,
+              assister_name: null,
               goal_type: isBallGoalOwnGoal ? 'own_goal' : ballGoalType,
             },
           });
@@ -5149,7 +5159,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             payload: {
               scorer_participant_id: ballHolder.id,
               scorer_club_id: possClubId,
+              scorer_name: ballHolder._player_name || null,
               assister_participant_id: null,
+              assister_name: null,
               goal_type: 'dribble',
             },
           });
@@ -5556,16 +5568,120 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         console.error(`[ENGINE] Failed to process ticket revenue:`, e);
       }
 
-      // Trigger standings update for league matches
+      // ── Update league standings inline (avoids inter-function fetch issues) ──
       try {
-        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/league-scheduler`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-          },
-          body: JSON.stringify({ action: 'update_standings', match_id }),
-        });
+        const { data: leagueMatch } = await supabase
+          .from('league_matches')
+          .select('id, round_id')
+          .eq('match_id', match_id)
+          .maybeSingle();
+
+        if (leagueMatch) {
+          const { data: round } = await supabase
+            .from('league_rounds')
+            .select('season_id')
+            .eq('id', leagueMatch.round_id)
+            .maybeSingle();
+
+          if (round) {
+            const hScore = homeScore;
+            const aScore = awayScore;
+            const hWon = hScore > aScore;
+            const aWon = aScore > hScore;
+            const isDraw = hScore === aScore;
+
+            // Update home team standings
+            const { data: homeSt } = await supabase
+              .from('league_standings')
+              .select('*')
+              .eq('season_id', round.season_id)
+              .eq('club_id', match.home_club_id)
+              .maybeSingle();
+
+            if (homeSt) {
+              await supabase.from('league_standings').update({
+                played: homeSt.played + 1,
+                won: homeSt.won + (hWon ? 1 : 0),
+                drawn: homeSt.drawn + (isDraw ? 1 : 0),
+                lost: homeSt.lost + (aWon ? 1 : 0),
+                goals_for: homeSt.goals_for + hScore,
+                goals_against: homeSt.goals_against + aScore,
+                points: homeSt.points + (hWon ? 3 : isDraw ? 1 : 0),
+                updated_at: new Date().toISOString(),
+              }).eq('id', homeSt.id);
+            } else {
+              // Standing missing — create it
+              await supabase.from('league_standings').insert({
+                season_id: round.season_id,
+                club_id: match.home_club_id,
+                played: 1, won: hWon ? 1 : 0, drawn: isDraw ? 1 : 0, lost: aWon ? 1 : 0,
+                goals_for: hScore, goals_against: aScore, points: hWon ? 3 : isDraw ? 1 : 0,
+              });
+            }
+
+            // Update away team standings
+            const { data: awaySt } = await supabase
+              .from('league_standings')
+              .select('*')
+              .eq('season_id', round.season_id)
+              .eq('club_id', match.away_club_id)
+              .maybeSingle();
+
+            if (awaySt) {
+              await supabase.from('league_standings').update({
+                played: awaySt.played + 1,
+                won: awaySt.won + (aWon ? 1 : 0),
+                drawn: awaySt.drawn + (isDraw ? 1 : 0),
+                lost: awaySt.lost + (hWon ? 1 : 0),
+                goals_for: awaySt.goals_for + aScore,
+                goals_against: awaySt.goals_against + hScore,
+                points: awaySt.points + (aWon ? 3 : isDraw ? 1 : 0),
+                updated_at: new Date().toISOString(),
+              }).eq('id', awaySt.id);
+            } else {
+              await supabase.from('league_standings').insert({
+                season_id: round.season_id,
+                club_id: match.away_club_id,
+                played: 1, won: aWon ? 1 : 0, drawn: isDraw ? 1 : 0, lost: hWon ? 1 : 0,
+                goals_for: aScore, goals_against: hScore, points: aWon ? 3 : isDraw ? 1 : 0,
+              });
+            }
+
+            // Check if all matches in this round are finished → mark round finished
+            const { data: roundMatches } = await supabase
+              .from('league_matches')
+              .select('match_id')
+              .eq('round_id', leagueMatch.round_id);
+
+            const rmIds = (roundMatches || []).map((rm: any) => rm.match_id).filter(Boolean);
+            const { data: allM } = rmIds.length > 0
+              ? await supabase.from('matches').select('status').in('id', rmIds)
+              : { data: [] };
+
+            const allFinished = (allM || []).every((m: any) => m.status === 'finished');
+            if (allFinished) {
+              await supabase.from('league_rounds').update({ status: 'finished' }).eq('id', leagueMatch.round_id);
+
+              // Check if ALL rounds in season are finished → mark season finished
+              const { data: seasonRounds } = await supabase
+                .from('league_rounds')
+                .select('status')
+                .eq('season_id', round.season_id);
+
+              const allRoundsFinished = (seasonRounds || []).every((r: any) => r.status === 'finished');
+              if (allRoundsFinished) {
+                await supabase.from('league_seasons').update({
+                  status: 'finished',
+                  finished_at: new Date().toISOString(),
+                  next_season_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                }).eq('id', round.season_id);
+                console.log(`[ENGINE] Season ${round.season_id} finished!`);
+              }
+            }
+
+            console.log(`[ENGINE] Standings updated: match=${match_id} score=${hScore}-${aScore}`);
+          }
+        }
       } catch (e) {
         console.error(`[ENGINE] Failed to update standings for match ${match_id}:`, e);
       }
@@ -5877,16 +5993,35 @@ Deno.serve(async (req) => {
         body: 'Partida encerrada manualmente.',
       });
 
-      // Trigger standings update for league matches
+      // ── Update league standings inline ──
       try {
-        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/league-scheduler`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-          },
-          body: JSON.stringify({ action: 'update_standings', match_id }),
-        });
+        const { data: leagueMatch } = await supabase
+          .from('league_matches').select('id, round_id').eq('match_id', match_id).maybeSingle();
+        if (leagueMatch) {
+          const { data: round } = await supabase.from('league_rounds').select('season_id').eq('id', leagueMatch.round_id).maybeSingle();
+          if (round) {
+            const hS = match.home_score ?? 0, aS = match.away_score ?? 0;
+            const hW = hS > aS, aW = aS > hS, dr = hS === aS;
+            for (const [clubId, gf, ga, won, lost] of [
+              [match.home_club_id, hS, aS, hW, aW],
+              [match.away_club_id, aS, hS, aW, hW],
+            ] as [string, number, number, boolean, boolean][]) {
+              const { data: st } = await supabase.from('league_standings').select('*').eq('season_id', round.season_id).eq('club_id', clubId).maybeSingle();
+              if (st) {
+                await supabase.from('league_standings').update({
+                  played: st.played + 1, won: st.won + (won ? 1 : 0), drawn: st.drawn + (dr ? 1 : 0), lost: st.lost + (lost ? 1 : 0),
+                  goals_for: st.goals_for + gf, goals_against: st.goals_against + ga, points: st.points + (won ? 3 : dr ? 1 : 0), updated_at: new Date().toISOString(),
+                }).eq('id', st.id);
+              } else {
+                await supabase.from('league_standings').insert({
+                  season_id: round.season_id, club_id: clubId, played: 1, won: won ? 1 : 0, drawn: dr ? 1 : 0, lost: lost ? 1 : 0,
+                  goals_for: gf, goals_against: ga, points: won ? 3 : dr ? 1 : 0,
+                });
+              }
+            }
+            console.log(`[ENGINE] Standings updated (manual finish): match=${match_id} score=${hS}-${aS}`);
+          }
+        }
       } catch (e) {
         console.error(`[ENGINE] Failed to update standings for match ${match_id}:`, e);
       }

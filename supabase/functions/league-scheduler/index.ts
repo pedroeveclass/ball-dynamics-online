@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
         .from('matches')
         .select('id, home_club_id, away_club_id, home_score, away_score, status')
         .eq('id', body.match_id)
-        .single();
+        .maybeSingle();
 
       if (!match || match.status !== 'finished') {
         return new Response(JSON.stringify({ error: 'Match not found or not finished' }), {
@@ -133,7 +133,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Find which league match this belongs to
       const { data: leagueMatch } = await supabase
         .from('league_matches')
         .select('id, round_id')
@@ -146,12 +145,11 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Get season_id from round
       const { data: round } = await supabase
         .from('league_rounds')
         .select('season_id')
         .eq('id', leagueMatch.round_id)
-        .single();
+        .maybeSingle();
 
       if (!round) {
         return new Response(JSON.stringify({ error: 'Round not found' }), {
@@ -166,46 +164,37 @@ Deno.serve(async (req) => {
       const awayWon = awayScore > homeScore;
       const draw = homeScore === awayScore;
 
-      // Update home team standings
-      const { data: homeStanding } = await supabase
-        .from('league_standings')
-        .select('*')
-        .eq('season_id', round.season_id)
-        .eq('club_id', match.home_club_id)
-        .single();
+      // Update both teams' standings (with upsert for safety)
+      for (const [clubId, gf, ga, won, lost] of [
+        [match.home_club_id, homeScore, awayScore, homeWon, awayWon],
+        [match.away_club_id, awayScore, homeScore, awayWon, homeWon],
+      ] as [string, number, number, boolean, boolean][]) {
+        const { data: standing } = await supabase
+          .from('league_standings')
+          .select('*')
+          .eq('season_id', round.season_id)
+          .eq('club_id', clubId)
+          .maybeSingle();
 
-      if (homeStanding) {
-        await supabase.from('league_standings').update({
-          played: homeStanding.played + 1,
-          won: homeStanding.won + (homeWon ? 1 : 0),
-          drawn: homeStanding.drawn + (draw ? 1 : 0),
-          lost: homeStanding.lost + (awayWon ? 1 : 0),
-          goals_for: homeStanding.goals_for + homeScore,
-          goals_against: homeStanding.goals_against + awayScore,
-          points: homeStanding.points + (homeWon ? 3 : draw ? 1 : 0),
-          updated_at: new Date().toISOString(),
-        }).eq('id', homeStanding.id);
-      }
-
-      // Update away team standings
-      const { data: awayStanding } = await supabase
-        .from('league_standings')
-        .select('*')
-        .eq('season_id', round.season_id)
-        .eq('club_id', match.away_club_id)
-        .single();
-
-      if (awayStanding) {
-        await supabase.from('league_standings').update({
-          played: awayStanding.played + 1,
-          won: awayStanding.won + (awayWon ? 1 : 0),
-          drawn: awayStanding.drawn + (draw ? 1 : 0),
-          lost: awayStanding.lost + (homeWon ? 1 : 0),
-          goals_for: awayStanding.goals_for + awayScore,
-          goals_against: awayStanding.goals_against + homeScore,
-          points: awayStanding.points + (awayWon ? 3 : draw ? 1 : 0),
-          updated_at: new Date().toISOString(),
-        }).eq('id', awayStanding.id);
+        if (standing) {
+          await supabase.from('league_standings').update({
+            played: standing.played + 1,
+            won: standing.won + (won ? 1 : 0),
+            drawn: standing.drawn + (draw ? 1 : 0),
+            lost: standing.lost + (lost ? 1 : 0),
+            goals_for: standing.goals_for + gf,
+            goals_against: standing.goals_against + ga,
+            points: standing.points + (won ? 3 : draw ? 1 : 0),
+            updated_at: new Date().toISOString(),
+          }).eq('id', standing.id);
+        } else {
+          await supabase.from('league_standings').insert({
+            season_id: round.season_id, club_id: clubId,
+            played: 1, won: won ? 1 : 0, drawn: draw ? 1 : 0, lost: lost ? 1 : 0,
+            goals_for: gf, goals_against: ga, points: won ? 3 : draw ? 1 : 0,
+          });
+          console.log(`[SCHEDULER] Created missing standing for club ${clubId}`);
+        }
       }
 
       // Check if all matches in this round are finished
@@ -223,7 +212,6 @@ Deno.serve(async (req) => {
       if (allFinished) {
         await supabase.from('league_rounds').update({ status: 'finished' }).eq('id', leagueMatch.round_id);
 
-        // Check if all rounds in season are finished
         const { data: seasonRounds } = await supabase
           .from('league_rounds')
           .select('status')
@@ -234,7 +222,7 @@ Deno.serve(async (req) => {
           await supabase.from('league_seasons').update({
             status: 'finished',
             finished_at: new Date().toISOString(),
-            next_season_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 2 weeks rest
+            next_season_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           }).eq('id', round.season_id);
           console.log(`[SCHEDULER] Season ${round.season_id} finished!`);
         }
@@ -245,6 +233,125 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ status: 'standings_updated' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // ─── Recalculate all standings from scratch for a season ───
+    if (action === 'recalculate_standings') {
+      // Find the active or most recent season
+      const { data: season } = await supabase
+        .from('league_seasons')
+        .select('id')
+        .in('status', ['active', 'scheduled'])
+        .order('season_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!season) {
+        return new Response(JSON.stringify({ error: 'No active season found' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const seasonId = body.season_id || season.id;
+
+      // Reset all standings for this season to zero
+      await supabase.from('league_standings').update({
+        played: 0, won: 0, drawn: 0, lost: 0,
+        goals_for: 0, goals_against: 0, points: 0,
+        updated_at: new Date().toISOString(),
+      }).eq('season_id', seasonId);
+
+      // Get all rounds for this season
+      const { data: rounds } = await supabase
+        .from('league_rounds')
+        .select('id')
+        .eq('season_id', seasonId);
+
+      if (!rounds || rounds.length === 0) {
+        return new Response(JSON.stringify({ status: 'no_rounds' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const roundIds = rounds.map(r => r.id);
+
+      // Get all league matches
+      const { data: leagueMatches } = await supabase
+        .from('league_matches')
+        .select('match_id, home_club_id, away_club_id')
+        .in('round_id', roundIds)
+        .not('match_id', 'is', null);
+
+      const matchIds = (leagueMatches || []).map(lm => lm.match_id).filter(Boolean);
+
+      // Get all finished matches
+      const { data: finishedMatches } = matchIds.length > 0
+        ? await supabase.from('matches').select('id, home_club_id, away_club_id, home_score, away_score').eq('status', 'finished').in('id', matchIds)
+        : { data: [] };
+
+      let matchesProcessed = 0;
+
+      for (const match of (finishedMatches || [])) {
+        const hS = match.home_score ?? 0;
+        const aS = match.away_score ?? 0;
+        const hW = hS > aS, aW = aS > hS, dr = hS === aS;
+
+        for (const [clubId, gf, ga, won, lost] of [
+          [match.home_club_id, hS, aS, hW, aW],
+          [match.away_club_id, aS, hS, aW, hW],
+        ] as [string, number, number, boolean, boolean][]) {
+          const { data: st } = await supabase
+            .from('league_standings')
+            .select('*')
+            .eq('season_id', seasonId)
+            .eq('club_id', clubId)
+            .maybeSingle();
+
+          if (st) {
+            await supabase.from('league_standings').update({
+              played: st.played + 1,
+              won: st.won + (won ? 1 : 0),
+              drawn: st.drawn + (dr ? 1 : 0),
+              lost: st.lost + (lost ? 1 : 0),
+              goals_for: st.goals_for + gf,
+              goals_against: st.goals_against + ga,
+              points: st.points + (won ? 3 : dr ? 1 : 0),
+              updated_at: new Date().toISOString(),
+            }).eq('id', st.id);
+          } else {
+            await supabase.from('league_standings').insert({
+              season_id: seasonId, club_id: clubId,
+              played: 1, won: won ? 1 : 0, drawn: dr ? 1 : 0, lost: lost ? 1 : 0,
+              goals_for: gf, goals_against: ga, points: won ? 3 : dr ? 1 : 0,
+            });
+          }
+        }
+        matchesProcessed++;
+      }
+
+      // Also update round statuses
+      for (const round of rounds) {
+        const { data: roundLMs } = await supabase
+          .from('league_matches')
+          .select('match_id')
+          .eq('round_id', round.id);
+        const rmIds = (roundLMs || []).map(rm => rm.match_id).filter(Boolean);
+        if (rmIds.length === 0) continue;
+        const { data: allM } = await supabase.from('matches').select('status').in('id', rmIds);
+        const allDone = (allM || []).every(m => m.status === 'finished');
+        if (allDone) {
+          await supabase.from('league_rounds').update({ status: 'finished' }).eq('id', round.id);
+        }
+      }
+
+      console.log(`[SCHEDULER] Recalculated standings: ${matchesProcessed} matches processed for season ${seasonId}`);
+
+      return new Response(JSON.stringify({
+        status: 'recalculated',
+        season_id: seasonId,
+        matches_processed: matchesProcessed,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ─── Apply schedule votes ───

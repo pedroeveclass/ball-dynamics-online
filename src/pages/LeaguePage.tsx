@@ -268,10 +268,12 @@ export default function LeaguePage() {
         return;
       }
 
-      // Aggregate scorers and assisters
+      // Aggregate scorers and assisters, collecting names from payload
       const scorerMap: Record<string, number> = {};
       const assisterMap: Record<string, number> = {};
       const participantIds = new Set<string>();
+      const payloadNames: Record<string, string> = {}; // pid → name from payload
+      const participantClubIds: Record<string, string> = {}; // pid → club_id from payload
 
       for (const ev of goalEvents) {
         const payload = ev.payload as any;
@@ -279,10 +281,13 @@ export default function LeaguePage() {
         if (payload.scorer_participant_id) {
           scorerMap[payload.scorer_participant_id] = (scorerMap[payload.scorer_participant_id] || 0) + 1;
           participantIds.add(payload.scorer_participant_id);
+          if (payload.scorer_name) payloadNames[payload.scorer_participant_id] = payload.scorer_name;
+          if (payload.scorer_club_id) participantClubIds[payload.scorer_participant_id] = payload.scorer_club_id;
         }
         if (payload.assister_participant_id) {
           assisterMap[payload.assister_participant_id] = (assisterMap[payload.assister_participant_id] || 0) + 1;
           participantIds.add(payload.assister_participant_id);
+          if (payload.assister_name) payloadNames[payload.assister_participant_id] = payload.assister_name;
         }
       }
 
@@ -292,24 +297,34 @@ export default function LeaguePage() {
         return;
       }
 
-      // Fetch participant details (player name, club)
+      // Fetch participant details (player name via player_profile_id, club)
       const { data: participantsData } = await supabase
         .from('match_participants')
-        .select('id, club_id, player_profiles(display_name), clubs(name, short_name, primary_color, secondary_color)')
+        .select('id, club_id, player_profile_id, player_profiles(full_name), clubs(name, short_name, primary_color, secondary_color)')
         .in('id', Array.from(participantIds));
 
-      // Build lookup
+      // Also fetch club info for participants without club join (e.g. via scorer_club_id)
+      const allClubIds = new Set<string>();
+      for (const p of (participantsData || [])) {
+        if (p.club_id) allClubIds.add(p.club_id);
+      }
+      for (const cid of Object.values(participantClubIds)) {
+        allClubIds.add(cid);
+      }
+      const { data: clubsData } = allClubIds.size > 0
+        ? await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', Array.from(allClubIds))
+        : { data: [] };
+      const clubLookup: Record<string, any> = {};
+      for (const c of (clubsData || [])) clubLookup[c.id] = c;
+
+      // Build lookup: prefer payload name → then player_profiles.full_name → then 'Jogador'
       const participantLookup: Record<string, { player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string }> = {};
-      // Deduplicate: same player may appear in multiple matches; use the first found
-      const seenProfiles = new Set<string>();
       for (const p of (participantsData || [])) {
         const profile = p.player_profiles as any;
-        const clubData = p.clubs as any;
-        const key = `${profile?.display_name}_${clubData?.name}`;
-        if (seenProfiles.has(key)) continue;
-        seenProfiles.add(key);
+        const clubData = (p.clubs as any) || clubLookup[p.club_id] || clubLookup[participantClubIds[p.id]];
+        const name = payloadNames[p.id] || profile?.full_name || null;
         participantLookup[p.id] = {
-          player_name: profile?.display_name || 'Desconhecido',
+          player_name: name || 'Jogador',
           club_name: clubData?.name || '',
           club_short_name: clubData?.short_name || '',
           club_primary_color: clubData?.primary_color || '#333',
@@ -317,16 +332,31 @@ export default function LeaguePage() {
         };
       }
 
-      // Build sorted lists
+      // For participants not in DB (edge case), use payload info
+      for (const pid of participantIds) {
+        if (!participantLookup[pid]) {
+          const clubId = participantClubIds[pid];
+          const clubData = clubId ? clubLookup[clubId] : null;
+          participantLookup[pid] = {
+            player_name: payloadNames[pid] || 'Jogador',
+            club_name: clubData?.name || '',
+            club_short_name: clubData?.short_name || '',
+            club_primary_color: clubData?.primary_color || '#333',
+            club_secondary_color: clubData?.secondary_color || '#fff',
+          };
+        }
+      }
+
+      // Build sorted lists — top 5
       const scorers = Object.entries(scorerMap)
-        .map(([pid, goals]) => ({ participant_id: pid, goals, ...(participantLookup[pid] || { player_name: 'Desconhecido', club_name: '', club_short_name: '', club_primary_color: '#333', club_secondary_color: '#fff' }) }))
+        .map(([pid, goals]) => ({ participant_id: pid, goals, ...participantLookup[pid] }))
         .sort((a, b) => b.goals - a.goals)
-        .slice(0, 10);
+        .slice(0, 5);
 
       const assisters = Object.entries(assisterMap)
-        .map(([pid, assists]) => ({ participant_id: pid, assists, ...(participantLookup[pid] || { player_name: 'Desconhecido', club_name: '', club_short_name: '', club_primary_color: '#333', club_secondary_color: '#fff' }) }))
+        .map(([pid, assists]) => ({ participant_id: pid, assists, ...participantLookup[pid] }))
         .sort((a, b) => b.assists - a.assists)
-        .slice(0, 10);
+        .slice(0, 5);
 
       setTopScorers(scorers);
       setTopAssisters(assisters);
