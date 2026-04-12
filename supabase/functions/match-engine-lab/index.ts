@@ -711,10 +711,7 @@ function getFormationAnchor(
 }
 
 // ─── Field Y-scale: equalizes physical distance across axes ──
-// The field is 100×100 in game coords but rendered ~860×540 pixels.
-// Without this scale, 10 units of X covers more real-world meters than 10 units of Y.
-// FIELD_Y_MOVEMENT_SCALE = INNER_H / INNER_W ≈ 540/860 ≈ 0.628
-const FIELD_Y_MOVEMENT_SCALE = 540 / 860;
+const FIELD_Y_MOVEMENT_SCALE = 540 / 860; // INNER_H / INNER_W ≈ 0.628
 
 function getMovementDistance(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVEMENT_SCALE) * (dy * FIELD_Y_MOVEMENT_SCALE));
@@ -822,13 +819,13 @@ function computeTacticalTarget(
   targetX = Math.max(2, Math.min(98, targetX));
   targetY = Math.max(2, Math.min(98, targetY));
 
-  // Clamp to physical movement range
+  // Clamp to physical movement range (using Y-scaled distance for consistency with engine)
   if (maxMoveRange && maxMoveRange > 0) {
     const botX = Number(bot.pos_x ?? 50);
     const botY = Number(bot.pos_y ?? 50);
     const dx = targetX - botX;
     const dy = targetY - botY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = getMovementDistance(dx, dy);
     if (dist > maxMoveRange) {
       const scale = maxMoveRange / dist;
       targetX = botX + dx * scale;
@@ -1828,7 +1825,7 @@ async function generateBotActions(
         const by = Number(bot.pos_y ?? 50);
         const dx = action.target_x - bx;
         const dy = action.target_y - by;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const dist = getMovementDistance(dx, dy);
         if (dist > maxRange) {
           const scale = maxRange / dist;
           action.target_x = bx + dx * scale;
@@ -3061,7 +3058,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
 
     const startX = participant.pos_x ?? 50;
     const startY = participant.pos_y ?? 50;
-    const dist = Math.sqrt((action.target_x - startX) ** 2 + (action.target_y - startY) ** 2);
+    const dist = getMovementDistance(action.target_x - startX, action.target_y - startY);
 
     // ── Check if player can physically reach the ball ──
     if (attrByProfile && turnNumber != null) {
@@ -4662,12 +4659,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           );
           bhAction.target_x = deviation.actualX;
           bhAction.target_y = deviation.actualY;
+          // Update in-memory payload so later checks (isOverGoal, goal detection) read correct flags
+          bhAction.payload = { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome };
 
           // Persist deviation to DB so frontend animation matches engine resolution
           await supabase.from('match_actions').update({
             target_x: deviation.actualX,
             target_y: deviation.actualY,
-            payload: { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome },
+            payload: bhAction.payload,
           }).eq('id', bhAction.id);
 
           if (deviation.overGoal) {

@@ -16,7 +16,6 @@ import { PitchSVG, DEFAULT_STADIUM_STYLE } from '@/components/PitchSVG';
 import type { StadiumStyle } from '@/components/PitchSVG';
 
 // Y-scale correction: equalizes physical distance across field axes
-// Without this, 10 units in X (8.6px) covers more real-world distance than 10 units in Y (5.4px)
 const FIELD_Y_MOVE_SCALE = INNER_H / INNER_W; // ≈ 0.628
 function getFieldMoveDist(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVE_SCALE) * (dy * FIELD_Y_MOVE_SCALE));
