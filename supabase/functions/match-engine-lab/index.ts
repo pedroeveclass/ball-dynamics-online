@@ -710,6 +710,36 @@ function getFormationAnchor(
   return { x: 100 - slot.x, y: slot.y, slotIndex: clampedSi };
 }
 
+// ─── Field Y-scale: equalizes physical distance across axes ──
+// The field is 100×100 in game coords but rendered ~860×540 pixels.
+// Without this scale, 10 units of X covers more real-world meters than 10 units of Y.
+// FIELD_Y_MOVEMENT_SCALE = INNER_H / INNER_W ≈ 540/860 ≈ 0.628
+const FIELD_Y_MOVEMENT_SCALE = 540 / 860;
+
+function getMovementDistance(dx: number, dy: number): number {
+  return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVEMENT_SCALE) * (dy * FIELD_Y_MOVEMENT_SCALE));
+}
+
+// ─── Directional inertia: bonus/penalty based on direction change ──
+// Same direction = 1.2x, opposite = 0.5x, linear interpolation
+function getDirectionalMultiplier(
+  prevMoveDir: { x: number; y: number } | null,
+  targetDir: { x: number; y: number } | null,
+): number {
+  if (!prevMoveDir || !targetDir) return 1.0;
+  const prevX = prevMoveDir.x;
+  const prevY = prevMoveDir.y * FIELD_Y_MOVEMENT_SCALE;
+  const curX = targetDir.x;
+  const curY = targetDir.y * FIELD_Y_MOVEMENT_SCALE;
+  const prevLen = Math.sqrt(prevX * prevX + prevY * prevY);
+  const curLen = Math.sqrt(curX * curX + curY * curY);
+  if (prevLen < 0.1 || curLen < 0.1) return 1.0;
+  const dot = (prevX * curX + prevY * curY) / (prevLen * curLen);
+  const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
+  const normalizedAngle = angleDiff / Math.PI; // 0 = same dir, 1 = opposite
+  return 1.2 - 0.7 * normalizedAngle; // 1.2x → 0.5x
+}
+
 // ─── Compute max movement range based on attributes ──────────
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
@@ -2779,7 +2809,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           const adjustedMaxRange = useFullRange ? maxRange : maxRange * ballSpeedFactor;
           const posX = Number(interceptor.pos_x ?? 50);
           const posY = Number(interceptor.pos_y ?? 50);
-          const distToIntercept = Math.sqrt((posX - cx) ** 2 + (posY - cy) ** 2);
+          const distToIntercept = getMovementDistance(posX - cx, posY - cy);
           candidateMoveRatio = adjustedMaxRange > 0 ? Math.min(1, distToIntercept / adjustedMaxRange) : 0;
           // Range check: can the player physically reach the intercept point?
           if (distToIntercept > adjustedMaxRange) {
@@ -4659,7 +4689,29 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const bhHasBallAction = ballHolder && allActions.some(a =>
       a.participant_id === ballHolder.id && isBallActionType(a.action_type));
 
-    console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction}`);
+    // ── Load previous turn's move directions for directional inertia ──
+    const prevMoveDirMap = new Map<string, { x: number; y: number }>();
+    if ((match.current_turn_number ?? 1) > 1) {
+      const { data: prevTurnRows } = await supabase
+        .from('match_turns').select('id').eq('match_id', match_id)
+        .eq('turn_number', (match.current_turn_number ?? 1) - 1);
+      const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+      if (prevTurnIds.length > 0) {
+        const { data: prevMoveActions } = await supabase
+          .from('match_actions')
+          .select('participant_id, payload')
+          .in('match_turn_id', prevTurnIds)
+          .eq('action_type', 'move');
+        for (const pm of (prevMoveActions || [])) {
+          const p = pm.payload as any;
+          if (p && typeof p.move_dx === 'number' && typeof p.move_dy === 'number') {
+            prevMoveDirMap.set(pm.participant_id, { x: p.move_dx, y: p.move_dy });
+          }
+        }
+      }
+    }
+
+    console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction} inertia=${prevMoveDirMap.size} players`);
     const resolutionMoveBatch: Array<{id: string, x: number, y: number}> = [];
     for (const a of allActions) {
       console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
@@ -4697,26 +4749,36 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
         const dx = finalX - startX;
         const dy = finalY - startY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Use Y-scaled distance for physical consistency (1 unit X ≈ 1 unit Y in real meters)
+        const dist = getMovementDistance(dx, dy);
+
+        // Apply directional inertia: bonus for continuing same direction, penalty for reversing
+        const prevMoveDir = prevMoveDirMap.get(a.participant_id) || null;
+        // For current direction, use raw dx/dy (not Y-scaled — getDirectionalMultiplier scales internally)
+        const dirMultiplier = (a.action_type === 'move' || a.action_type === 'receive')
+          ? getDirectionalMultiplier(prevMoveDir, dist > 0.1 ? { x: dx, y: dy } : null)
+          : 1.0;
+        maxRange *= dirMultiplier;
+
         if (dist > maxRange) {
           const scale = maxRange / dist;
           finalX = startX + dx * scale;
           finalY = startY + dy * scale;
         }
 
-        console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
+        console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} dirMult=${dirMultiplier.toFixed(2)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
         resolutionMoveBatch.push({ id: a.participant_id, x: finalX, y: finalY });
 
-        // Persist move_ratio in the action payload so the next turn can apply
-        // movement-based deviation penalty/bonus on pass/shoot from this player.
-        // Only for dribble moves (action_type === 'move'), not receive/block.
+        // Persist move_ratio AND move direction in the action payload.
+        // move_ratio: used for deviation penalty on next turn's pass/shoot.
+        // prev_move_dx/dy: used for directional inertia on next turn's move.
         if (a.action_type === 'move') {
-          const actualDist = Math.sqrt((finalX - startX) ** 2 + (finalY - startY) ** 2);
+          const actualDist = getMovementDistance(finalX - startX, finalY - startY);
           const moveRatioVal = maxRange > 0 ? Math.min(1, actualDist / maxRange) : 0;
           const existingPayload = (a.payload && typeof a.payload === 'object') ? a.payload as Record<string, any> : {};
           await supabase.from('match_actions').update({
-            payload: { ...existingPayload, move_ratio: moveRatioVal },
+            payload: { ...existingPayload, move_ratio: moveRatioVal, move_dx: finalX - startX, move_dy: finalY - startY },
           }).eq('id', a.id);
         }
       }

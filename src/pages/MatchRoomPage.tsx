@@ -15,6 +15,13 @@ import { MatchActionMenu } from './match/MatchActionMenu';
 import { PitchSVG, DEFAULT_STADIUM_STYLE } from '@/components/PitchSVG';
 import type { StadiumStyle } from '@/components/PitchSVG';
 
+// Y-scale correction: equalizes physical distance across field axes
+// Without this, 10 units in X (8.6px) covers more real-world distance than 10 units in Y (5.4px)
+const FIELD_Y_MOVE_SCALE = INNER_H / INNER_W; // ≈ 0.628
+function getFieldMoveDist(dx: number, dy: number): number {
+  return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVE_SCALE) * (dy * FIELD_Y_MOVE_SCALE));
+}
+
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -748,7 +755,7 @@ export default function MatchRoomPage() {
     }
   }, [user, participantsVer, match, club, playerProfile]);
 
-  const computeMaxMoveRange = useCallback((participantId: string, _targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
+  const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
     const vel = Number(attrs?.velocidade ?? 40);
@@ -790,6 +797,25 @@ export default function MatchRoomPage() {
         (originType === 'pass_high' || originType === 'header_high') ? 0.65 :
         1.0;
       range *= otSpeedFactor * 0.5;
+    }
+
+    // ── Directional inertia: bonus for same direction, penalty for reversing ──
+    if (targetDirection) {
+      const prevDir = prevDirectionsRef.current[participantId];
+      if (prevDir) {
+        const FIELD_Y_SCALE = INNER_H / INNER_W;
+        const prevX = prevDir.x, prevY = prevDir.y * FIELD_Y_SCALE;
+        const curX = targetDirection.x, curY = targetDirection.y * FIELD_Y_SCALE;
+        const prevLen = Math.sqrt(prevX * prevX + prevY * prevY);
+        const curLen = Math.sqrt(curX * curX + curY * curY);
+        if (prevLen > 0.1 && curLen > 0.1) {
+          const dot = (prevX * curX + prevY * curY) / (prevLen * curLen);
+          const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
+          const normalizedAngle = angleDiff / Math.PI;
+          const dirMult = 1.2 - 0.7 * normalizedAngle; // 1.2x→0.5x
+          range *= dirMult;
+        }
+      }
     }
 
     return range;
@@ -1625,7 +1651,7 @@ export default function MatchRoomPage() {
         if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
           const mdx = pctX - drawingParticipant.field_x;
           const mdy = pctY - drawingParticipant.field_y;
-          const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+          const moveDist = getFieldMoveDist(mdx, mdy);
           let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
 
           // Apply ball speed factor for outfield players (GK uses full range on shots)
@@ -1933,7 +1959,7 @@ export default function MatchRoomPage() {
         // Scale player arrival by move distance (short moves arrive early)
         const targetX = moveAction.target_x;
         const targetY = moveAction.target_y;
-        const moveDist = Math.sqrt((targetX - startPos.x) ** 2 + (targetY - startPos.y) ** 2);
+        const moveDist = getFieldMoveDist(targetX - startPos.x, targetY - startPos.y);
         const MAX_RANGE_APPROX = 12;
         const arrivalFraction = Math.max(0.15, Math.min(1, moveDist / MAX_RANGE_APPROX));
         const scaledRaw = Math.min(1, raw / arrivalFraction);
@@ -2366,7 +2392,7 @@ export default function MatchRoomPage() {
     const targetY = effectiveTarget?.y ?? moveAction.target_y;
 
     // Calculate move distance as fraction of max range (~12% of field)
-    const moveDist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
+    const moveDist = getFieldMoveDist(targetX - startX, targetY - startY);
     const MAX_RANGE_APPROX = 12; // approximate max move range in field %
     const moveFraction = Math.min(1, moveDist / MAX_RANGE_APPROX);
 
@@ -3399,7 +3425,7 @@ export default function MatchRoomPage() {
 
                 // Hide bot receive/block arrows that are clearly impossible
                 if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
-                  const moveDist = Math.sqrt((fromPart.field_x - action.target_x!) ** 2 + (fromPart.field_y - action.target_y!) ** 2);
+                  const moveDist = getFieldMoveDist(fromPart.field_x - action.target_x!, fromPart.field_y - action.target_y!);
                   if (moveDist > 15) return null; // >15% of field = clearly impossible
                   // Hide bot desarme when target is too far from ball holder (not a real tackle)
                   if (ballHolder && fromPart.club_id !== ballHolder.club_id && action.target_x != null) {
@@ -3741,7 +3767,7 @@ export default function MatchRoomPage() {
                     (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
-                  const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+                  const moveDist = getFieldMoveDist(mdx, mdy);
                   let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
 
                   // Apply ball speed factor (GK uses full range on shots)
@@ -3838,7 +3864,7 @@ export default function MatchRoomPage() {
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
-                  const moveDist = Math.sqrt(mdx * mdx + mdy * mdy);
+                  const moveDist = getFieldMoveDist(mdx, mdy);
                   let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
 
                   // Apply ball speed factor to match engine behavior
