@@ -57,6 +57,54 @@ function getEnergyPenalty(energyPct: number): number {
   return 0.75;
 }
 
+// ─── Persist final match_energy to player_profiles (LEAGUE only) ───
+// Called when a match ends. Friendly / 5v5 / bot test matches keep the
+// profile's energy_current untouched; only league matches carry the
+// in-match fatigue back into the player's persistent energy.
+async function persistLeagueMatchEnergy(supabase: any, matchId: string, cachedParticipants: any[]): Promise<void> {
+  try {
+    const { data: leagueMatch } = await supabase.from('league_matches').select('id').eq('match_id', matchId).maybeSingle();
+    if (!leagueMatch) {
+      console.log(`[ENGINE] Match ${matchId.slice(0,8)} is not a league match — skipping energy persistence`);
+      return;
+    }
+
+    // Prefer cached participants (they already reflect the latest match_energy);
+    // fallback to a DB read when the cache is empty.
+    let parts: any[] = (cachedParticipants || []).filter((p: any) =>
+      p.role_type === 'player' && p.player_profile_id
+    );
+    if (parts.length === 0) {
+      const { data: dbParts } = await supabase
+        .from('match_participants')
+        .select('player_profile_id, match_energy')
+        .eq('match_id', matchId)
+        .eq('role_type', 'player')
+        .not('player_profile_id', 'is', null);
+      parts = dbParts || [];
+    }
+    if (parts.length === 0) return;
+
+    const profileIds = [...new Set(parts.map((p: any) => p.player_profile_id))];
+    const { data: profiles } = await supabase
+      .from('player_profiles')
+      .select('id, energy_max')
+      .in('id', profileIds);
+    const maxById = new Map<string, number>((profiles || []).map((p: any) => [p.id, Number(p.energy_max ?? 100)]));
+
+    const ops = parts.map((p: any) => {
+      const max = maxById.get(p.player_profile_id) ?? 100;
+      const pct = Math.max(0, Math.min(100, Number(p.match_energy ?? 100)));
+      const newCurrent = Math.round((pct / 100) * max);
+      return supabase.from('player_profiles').update({ energy_current: newCurrent }).eq('id', p.player_profile_id);
+    });
+    await Promise.all(ops);
+    console.log(`[ENGINE] Persisted league match energy for ${ops.length} players (match=${matchId.slice(0,8)})`);
+  } catch (e) {
+    console.error(`[ENGINE] Failed to persist league match energy for ${matchId}:`, e);
+  }
+}
+
 // ─── Match minute calculation (real-time clock) ─────────────
 function computeMatchMinute(match: any): number {
   if (!match.half_started_at) return 0;
@@ -5844,6 +5892,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         body: `Partida encerrada aos ${matchMinute}'.`,
       });
 
+      // ── Persist final energy to player_profiles (LEAGUE matches only) ──
+      // Friendlies / 5v5 / test matches only drain match_energy during the game
+      // and leave the profile energy untouched.
+      await persistLeagueMatchEnergy(supabase, match_id, participants || []);
+
       // ── Notify all human players and managers about match result ──
       try {
         const { data: homeClubData } = await supabase.from('clubs').select('name, manager_profile_id').eq('id', match.home_club_id).maybeSingle();
@@ -6364,6 +6417,9 @@ Deno.serve(async (req) => {
         title: `🏁 Apito final! ${match.home_score} – ${match.away_score}`,
         body: 'Partida encerrada manualmente.',
       });
+
+      // ── Persist final energy to player_profiles (LEAGUE matches only) ──
+      await persistLeagueMatchEnergy(supabase, match_id, []);
 
       // ── Update league standings inline ──
       try {
