@@ -81,9 +81,15 @@ export default function PlayerMatchesPage() {
 
   const now = Date.now();
   const oneHour = 60 * 60 * 1000;
-  const liveOrSoon = matches.filter(m => m.match.status === 'live' || (m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now <= oneHour));
-  const upcoming = matches.filter(m => m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now > oneHour);
-  const past = matches.filter(m => m.match.status === 'finished');
+  const liveOrSoon = matches
+    .filter(m => m.match.status === 'live' || (m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now <= oneHour))
+    .sort((a, b) => new Date(a.match.scheduled_at).getTime() - new Date(b.match.scheduled_at).getTime());
+  const upcoming = matches
+    .filter(m => m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now > oneHour)
+    .sort((a, b) => new Date(a.match.scheduled_at).getTime() - new Date(b.match.scheduled_at).getTime()); // nearest first
+  const past = matches
+    .filter(m => m.match.status === 'finished')
+    .sort((a, b) => new Date(b.match.scheduled_at).getTime() - new Date(a.match.scheduled_at).getTime()); // most recent first
 
   const handleCreate5v5 = async () => {
     if (!user || !playerProfile) { toast.error('Perfil de jogador não encontrado'); return; }
