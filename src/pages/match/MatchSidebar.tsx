@@ -32,7 +32,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
     <div className="flex flex-col gap-2">
       {isHalftime && (
         <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 text-center">
-          <span className="text-[10px] font-display font-bold text-warning">&#x23F8; INTERVALO</span>
+          <span className="text-xs font-display font-bold text-warning">&#x23F8; INTERVALO</span>
         </div>
       )}
 
@@ -46,7 +46,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
           return (
             <div key={phase.key} className="flex-1 relative">
               <div
-                className={`h-7 rounded-md flex items-center justify-center gap-1 text-[9px] font-display font-bold transition-all relative overflow-hidden ${
+                className={`h-8 rounded-md flex items-center justify-center gap-1 text-[11px] font-display font-bold transition-all relative overflow-hidden ${
                   isSkipped ? 'bg-muted/20 text-muted-foreground/40' :
                   isActive ? 'bg-warning/60 border border-warning text-white' :
                   isPast ? 'bg-pitch/25 text-pitch' :
@@ -70,13 +70,13 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
         {possessionClub && (
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
-            <span className="text-[10px] font-display font-semibold text-white/80">
+            <span className="text-xs font-display font-semibold text-white/80">
               {isLooseBall ? 'BOLA SOLTA' : possessionClub.short_name}
             </span>
           </div>
         )}
         <div className="flex items-center gap-2 ml-auto">
-          <span className="text-[9px] font-display text-white/40">T{turnNumber || '\u2014'}</span>
+          <span className="text-[11px] font-display text-white/60">T{turnNumber || '\u2014'}</span>
           {currentPhase && timeLeft > 0 && (
             <span ref={timerDisplayRef} className={`font-display font-bold text-sm tabular-nums ${timeLeft <= 2 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
               {timeLeft}s
@@ -117,8 +117,8 @@ function AccordionSection({ title, badge, color, open, onToggle, children, class
       >
         {color && <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />}
         {open ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-        <span className="font-display text-[11px] font-bold text-white flex-1 truncate">{title}</span>
-        {badge && <span className="text-[9px] text-white/50 font-display">{badge}</span>}
+        <span className="font-display text-sm font-bold text-white flex-1 truncate">{title}</span>
+        {badge && <span className="text-[11px] text-white/60 font-display">{badge}</span>}
       </button>
       {open && <div className="px-3 pb-2">{children}</div>}
     </div>
@@ -135,20 +135,20 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
       {players.map(p => (
         <button key={p.id}
           onClick={() => onSelect(p.id)}
-          className={`w-full flex items-center gap-1.5 text-[9px] px-1.5 py-0.5 rounded transition-colors text-left ${
+          className={`w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-colors text-left ${
             selectedId === p.id ? 'bg-tactical/20 text-tactical' : myId === p.id ? 'bg-pitch/15 text-pitch' : 'hover:bg-[hsl(220,15%,18%)] text-white/80'
           }`}
         >
           {p.is_bot
-            ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
-            : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
+            ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
+            : <User className="h-3 w-3 text-pitch shrink-0" />}
           <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
-          <span className="font-display w-6 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
+          <span className="font-display w-7 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
           <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
-          {ballHolderId === p.id && <span className="text-[8px]">{'\u26BD'}</span>}
-          {submittedIds.has(p.id) && <span className="text-[8px] text-pitch">{'\u2713'}</span>}
-          {(p as any).yellow_cards >= 1 && <span className="text-[8px]">{'\uD83D\uDFE8'}</span>}
-          {(p as any).is_sent_off && <span className="text-[8px]">{'\uD83D\uDFE5'}</span>}
+          {ballHolderId === p.id && <span className="text-[10px]">{'\u26BD'}</span>}
+          {submittedIds.has(p.id) && <span className="text-[10px] text-pitch">{'\u2713'}</span>}
+          {(p as any).yellow_cards >= 1 && <span className="text-[10px]">{'\uD83D\uDFE8'}</span>}
+          {(p as any).is_sent_off && <span className="text-[10px]">{'\uD83D\uDFE5'}</span>}
         </button>
       ))}
     </div>
@@ -168,18 +168,18 @@ function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubs
 
   return (
     <div className="mt-1.5 pt-1.5 border-t border-[hsl(220,10%,22%)]">
-      <span className="text-[9px] font-display font-bold text-white/40 uppercase tracking-wider">Banco</span>
+      <span className="text-[11px] font-display font-bold text-white/60 uppercase tracking-wider">Banco</span>
       <div className="space-y-0.5 mt-0.5">
         {players.map(p => {
           const isPendingIn = pendingSubstitutions?.some(s => s.inId === p.id);
           const wasSubbedOut = substitutedOutIds?.has(p.id);
           return (
             <div key={p.id} className="relative">
-              <div className={`w-full flex items-center gap-1.5 text-[9px] px-1.5 py-0.5 rounded ${wasSubbedOut ? 'text-white/25 line-through' : isPendingIn ? 'text-amber-400' : 'text-white/60'}`}>
+              <div className={`w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded ${wasSubbedOut ? 'text-white/25 line-through' : isPendingIn ? 'text-amber-400' : 'text-white/70'}`}>
                 {p.is_bot
-                  ? <Bot className="h-2.5 w-2.5 text-amber-400 shrink-0" />
-                  : <User className="h-2.5 w-2.5 text-pitch shrink-0" />}
-                <span className="font-display w-6 text-white/40 shrink-0">{positionToPT((p.field_pos || p.slot_position || '').replace(/^BENCH_?/i, '')) || 'RES'}</span>
+                  ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
+                  : <User className="h-3 w-3 text-pitch shrink-0" />}
+                <span className="font-display w-7 text-white/50 shrink-0">{positionToPT((p.field_pos || p.slot_position || '').replace(/^BENCH_?/i, '')) || 'RES'}</span>
                 <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
                 {isPendingIn && (
                   <span className="text-[7px] font-display text-amber-400 bg-amber-400/10 px-1 rounded">Aguardando...</span>
@@ -383,10 +383,10 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
       >
         <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1 rounded-md p-2">
           {events.length === 0 && (
-            <p className="text-[10px] text-white/40 px-1">Aguardando eventos...</p>
+            <p className="text-xs text-white/50 px-1">Aguardando eventos...</p>
           )}
           {events.slice(-30).map(e => (
-            <div key={e.id} className={`text-[10px] border-l-2 pl-1.5 leading-tight py-0.5 ${
+            <div key={e.id} className={`text-xs border-l-2 pl-2 leading-snug py-0.5 ${
               e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
               e.event_type === 'kickoff' ? 'border-tactical text-tactical/90' :
               e.event_type === 'possession_change' ? 'border-warning/60 text-warning/80' :
@@ -403,7 +403,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
               'border-white/20 text-white/70'
             }`}>
               <p className="font-display font-semibold">{e.title}</p>
-              {e.body && <p className="opacity-70 text-[9px]">{e.body}</p>}
+              {e.body && <p className="opacity-80 text-[11px]">{e.body}</p>}
             </div>
           ))}
           <div ref={eventsEndRef} />
@@ -419,12 +419,12 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
       >
         <div className="space-y-0.5 max-h-[200px] overflow-y-auto pr-1">
           {chatMessages.length === 0 && (
-            <p className="text-[9px] text-white/20 text-center py-2">Sem mensagens</p>
+            <p className="text-xs text-white/30 text-center py-2">Sem mensagens</p>
           )}
           {chatMessages.map(m => (
-            <div key={m.id} className="text-[9px] leading-tight py-0.5">
-              <span className={`font-bold ${m.user_id === userId ? 'text-pitch' : 'text-white/70'}`}>{m.username}: </span>
-              <span className="text-white/60">{m.message}</span>
+            <div key={m.id} className="text-xs leading-snug py-0.5">
+              <span className={`font-bold ${m.user_id === userId ? 'text-pitch' : 'text-white/80'}`}>{m.username}: </span>
+              <span className="text-white/70">{m.message}</span>
             </div>
           ))}
           <div ref={chatEndRef} />
@@ -438,12 +438,12 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
               onKeyDown={e => { if (e.key === 'Enter') handleSendChat(); }}
               placeholder="Mensagem..."
               maxLength={120}
-              className="flex-1 bg-[hsl(220,15%,18%)] text-white/80 text-[10px] rounded px-2 py-1 outline-none placeholder:text-white/20 focus:ring-1 focus:ring-tactical/50"
+              className="flex-1 bg-[hsl(220,15%,18%)] text-white/90 text-xs rounded px-2 py-1 outline-none placeholder:text-white/30 focus:ring-1 focus:ring-tactical/50"
             />
             <button
               onClick={handleSendChat}
               disabled={sendingChat || !chatInput.trim()}
-              className="text-[9px] font-display bg-tactical/20 text-tactical px-2 py-1 rounded hover:bg-tactical/30 disabled:opacity-30 transition-colors"
+              className="text-xs font-display bg-tactical/20 text-tactical px-2 py-1 rounded hover:bg-tactical/30 disabled:opacity-30 transition-colors"
             >
               Enviar
             </button>

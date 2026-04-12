@@ -1128,27 +1128,87 @@ export default function MatchRoomPage() {
       return;
     }
 
-    // ── Phase 2/3: auto-open menu for HUMAN PLAYER only (manager controls multiple players manually) ──
-    if (myRole === 'player' && myParticipant?.id) {
+    // ── Phase 2/3: auto-open menu (always) ──
+    // Player: opens for their own participant when their team is acting.
+    // Manager: opens for the currently selected participant (defaulting to the
+    // ball holder carried over from phase 1) when that player's team is acting.
+    {
       const isAttackingPhase = activeTurn.phase === 'attacking_support';
       const isDefendingPhase = activeTurn.phase === 'defending_response';
       if (!isAttackingPhase && !isDefendingPhase) return;
 
-      // Only auto-open if this phase belongs to the player's team
       const possClubId = activeTurn.possession_club_id;
-      const isMyTeamAttacking = myClubId === possClubId;
-      const shouldActInThisPhase = (isAttackingPhase && isMyTeamAttacking) || (isDefendingPhase && !isMyTeamAttacking);
-      if (!shouldActInThisPhase) return;
+      const phaseIsAttacking = isAttackingPhase;
 
-      // Don't reopen if already submitted
-      if (submittedActions.has(myParticipant.id)) return;
-      const alreadyHasAction = turnActions.some(a => a.participant_id === myParticipant.id);
+      let targetPid: string | null = null;
+      if (myRole === 'player' && myParticipant?.id) {
+        const isMyTeamAttacking = myClubId === possClubId;
+        const shouldActInThisPhase = (phaseIsAttacking && isMyTeamAttacking) || (!phaseIsAttacking && !isMyTeamAttacking);
+        if (shouldActInThisPhase) targetPid = myParticipant.id;
+      } else if (myRole === 'manager') {
+        const parts = participantsRef.current;
+        const hCount = parts.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+        const aCount = parts.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+        const isTest = hCount <= 4 && aCount <= 4;
+
+        // Fall back to ball holder if nothing is selected yet
+        const candidateId = selectedParticipantId || activeTurn.ball_holder_participant_id || null;
+        const candidate = candidateId ? parts.find(p => p.id === candidateId) : null;
+        if (candidate && candidate.role_type === 'player') {
+          const candidateIsAttacking = candidate.club_id === possClubId;
+          const managerControlsCandidate = isTest || candidate.club_id === myClubId;
+          const candidateShouldAct = (phaseIsAttacking && candidateIsAttacking) || (!phaseIsAttacking && !candidateIsAttacking);
+          if (managerControlsCandidate && candidateShouldAct) targetPid = candidate.id;
+        }
+      }
+
+      if (!targetPid) return;
+      if (submittedActions.has(targetPid)) return;
+      const alreadyHasAction = turnActions.some(a => a.participant_id === targetPid && a.action_type !== 'receive');
       if (alreadyHasAction) return;
 
-      setShowActionMenu(myParticipant.id);
-      setSelectedParticipantId(myParticipant.id);
+      setShowActionMenu(targetPid);
+      setSelectedParticipantId(targetPid);
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions, activeTurn?.possession_club_id]);
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions, activeTurn?.possession_club_id, selectedParticipantId, match?.home_club_id, match?.away_club_id]);
+
+  // ── Z hotkey opens action menu for the selected (controllable) player ─────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'z' && e.key !== 'Z') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      if (match?.status !== 'live' || !activeTurn) return;
+      if (isPhaseProcessing || isPositioningTurn) return;
+
+      const parts = participantsRef.current;
+      const hCount = parts.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
+      const aCount = parts.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
+      const isTest = hCount <= 4 && aCount <= 4;
+
+      const candidateId = selectedParticipantId
+        || (myRole === 'player' ? myParticipant?.id : null)
+        || activeTurn.ball_holder_participant_id
+        || null;
+      const candidate = candidateId ? parts.find(p => p.id === candidateId) : null;
+      if (!candidate || candidate.role_type !== 'player') return;
+
+      const canControl = (myRole === 'player' && myParticipant?.id === candidate.id)
+        || (myRole === 'manager' && (isTest || candidate.club_id === myClubId));
+      if (!canControl) return;
+
+      if (submittedActions.has(candidate.id)) return;
+      const alreadyHas = turnActions.some(a => a.participant_id === candidate.id && a.action_type !== 'receive');
+      if (alreadyHas) return;
+
+      e.preventDefault();
+      setSelectedParticipantId(candidate.id);
+      setShowActionMenu(candidate.id);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeTurn?.id, activeTurn?.phase, activeTurn?.ball_holder_participant_id, match?.status, match?.home_club_id, match?.away_club_id, myRole, myParticipant?.id, myClubId, selectedParticipantId, submittedActions, turnActions, isPhaseProcessing, isPositioningTurn]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
@@ -3489,6 +3549,16 @@ export default function MatchRoomPage() {
                   const dx = to.x - from.x;
                   const dy = to.y - from.y;
 
+                  // Positioning move: show destination dot only (no arrow line)
+                  if (isPositioningTurn && action.action_type === 'move') {
+                    return [(
+                      <g key="pos-dot">
+                        <circle cx={to.x} cy={to.y} r={2.2} fill="#22c55e" opacity={0.95} />
+                        <circle cx={to.x} cy={to.y} r={3.2} fill="none" stroke="#22c55e" strokeWidth={0.6} opacity={0.6} />
+                      </g>
+                    )];
+                  }
+
                   // Map header types to their visual equivalents
                   const visualType = action.action_type === 'header_low' ? 'pass_low'
                     : action.action_type === 'header_high' ? 'pass_high'
@@ -3686,6 +3756,15 @@ export default function MatchRoomPage() {
                 const opacity = 0.85;
 
                 if (isMove) {
+                  // Positioning phases: show only a destination dot (no arrow line)
+                  if (isPositioningTurn) {
+                    return (
+                      <g>
+                        <circle cx={to.x} cy={to.y} r={2.2} fill="#22c55e" opacity={0.95} />
+                        <circle cx={to.x} cy={to.y} r={3.2} fill="none" stroke="#22c55e" strokeWidth={0.6} opacity={0.6} />
+                      </g>
+                    );
+                  }
                   return (
                     <line
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
