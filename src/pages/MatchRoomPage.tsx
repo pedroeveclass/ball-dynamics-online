@@ -2018,10 +2018,8 @@ export default function MatchRoomPage() {
         const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)) || bhAllActions[0];
         if (!ballAction) return defaultBallPos;
 
-        const ballEaseK = (isAnyShootAction(ballAction.action_type) && ballAction.action_type !== 'shoot_controlled' && ballAction.action_type !== 'header_controlled') ? 5 : (ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'header_controlled') ? 3 : (ballAction.action_type === 'pass_high' || ballAction.action_type === 'header_high') ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
-        const expDecay = 1 - Math.exp(-ballEaseK * raw);
-        const normFactor = 1 - Math.exp(-ballEaseK);
-        const t = expDecay / normFactor;
+        // Linear interpolation (ported from Solo Lab — constant ball speed, arc provides naturalism)
+        const t = raw;
 
         // Use the interceptorAction ref (computed from engine events) as the authoritative
         // winner. Falls back to scanning receive actions if the ref is empty.
@@ -2073,7 +2071,7 @@ export default function MatchRoomPage() {
         return defaultBallPos;
       };
 
-      // Helper: compute ball arc lift
+      // Helper: compute ball arc lift (ported from Solo Lab — arc scales with distance)
       const computeBallArcLift = (raw: number, actionsSnap: MatchAction[]) => {
         const bhId = activeTurn?.ball_holder_participant_id ?? null;
         const bhPart = bhId ? participantsRef.current.find(p => p.id === bhId) : null;
@@ -2084,26 +2082,40 @@ export default function MatchRoomPage() {
         const ballAction = bhAllActions.find(a => isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type));
         if (!ballAction) return 0;
         const actionType = ballAction.action_type;
+        // Arc height scales with pass distance for more naturalism
+        const sp = snapshot[bhPart.id] ?? { x: bhPart.field_x ?? 50, y: bhPart.field_y ?? 50 };
+        const bDist = ballAction.target_x != null && ballAction.target_y != null
+          ? Math.sqrt((ballAction.target_x - sp.x) ** 2 + (ballAction.target_y - sp.y) ** 2)
+          : 20;
+        const distScale = Math.max(0.5, Math.min(2, bDist / 30)); // normalize around 30 units
         let arcHeight = 0;
-        if (actionType === 'pass_high' || actionType === 'header_high') arcHeight = 30;
-        else if (actionType === 'pass_launch') arcHeight = 45;
-        else if (actionType === 'shoot_controlled') arcHeight = 14;
-        else if (actionType === 'shoot_power') arcHeight = 9;
+        if (actionType === 'pass_high' || actionType === 'header_high') arcHeight = 25 * distScale;
+        else if (actionType === 'pass_launch') arcHeight = 38 * distScale;
+        else if (actionType === 'shoot_controlled' || actionType === 'header_controlled') arcHeight = 12 * distScale;
+        else if (actionType === 'shoot_power' || actionType === 'header_power') arcHeight = 7 * distScale;
         else return 0;
         return Math.sin(raw * Math.PI) * arcHeight;
       };
 
-      // Animation duration varies by ball action speed
+      // Animation duration scales with distance + action type (ported from Solo Lab)
       const actionsForDuration = turnActionsRef.current;
       const bhAction = actionsForDuration.find(a => a.participant_id === (activeTurn?.ball_holder_participant_id ?? '') && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
       const bhActionType = bhAction?.action_type || 'move';
-      const speedFactor =
-        (bhActionType === 'shoot_power' || bhActionType === 'header_power') ? 0.6 :
-        (bhActionType === 'shoot_controlled' || bhActionType === 'header_controlled') ? 0.7 :
-        bhActionType === 'pass_launch' ? 0.8 :
-        (bhActionType === 'pass_high' || bhActionType === 'header_high') ? 0.9 :
-        1.0;
-      const duration = Math.round(1800 * speedFactor);
+      const bhPartForDur = activeTurn?.ball_holder_participant_id ? participantsRef.current.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+      const bhStartForDur = bhPartForDur ? (snapshot[bhPartForDur.id] ?? { x: bhPartForDur.field_x ?? 50, y: bhPartForDur.field_y ?? 50 }) : { x: 50, y: 50 };
+      const ballDist = bhAction?.target_x != null && bhAction?.target_y != null
+        ? Math.sqrt((bhAction.target_x - bhStartForDur.x) ** 2 + (bhAction.target_y - bhStartForDur.y) ** 2)
+        : 30; // fallback
+      let duration: number;
+      switch (bhActionType) {
+        case 'pass_low': case 'header_low': duration = Math.round(420 + ballDist * 16); break;
+        case 'pass_high': case 'header_high': duration = Math.round(620 + ballDist * 18); break;
+        case 'pass_launch': duration = Math.round(760 + ballDist * 19); break;
+        case 'shoot_controlled': case 'header_controlled': duration = Math.round(380 + ballDist * 11); break;
+        case 'shoot_power': case 'header_power': duration = Math.round(260 + ballDist * 7); break;
+        default: duration = Math.round(500 + ballDist * 14); break;
+      }
+      duration = Math.max(400, Math.min(duration, 2500)); // clamp 400ms-2500ms
       let startTime: number | null = null;
 
       const animate = (now: number) => {
@@ -2902,12 +2914,8 @@ export default function MatchRoomPage() {
       }
     }
 
-    // Physics-based ball easing: exponential decay (fast launch, decelerating)
-    const ballEaseK = (ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_power') ? 5 : ballAction.action_type === 'shoot_controlled' ? 3 : ballAction.action_type === 'pass_high' ? 2.5 : ballAction.action_type === 'pass_launch' ? 3.5 : 3;
-    const rawT = animProgressRef.current;
-    const expDecay = 1 - Math.exp(-ballEaseK * rawT);
-    const normFactor = 1 - Math.exp(-ballEaseK);
-    const t = expDecay / normFactor; // normalized to [0, 1]
+    // Linear interpolation (ported from Solo Lab — constant speed, arc provides naturalism)
+    const t = animProgressRef.current;
 
     if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
       const effectiveTarget = getEffectiveActionTarget(ballAction, startPos, turnActions);
@@ -3000,7 +3008,7 @@ export default function MatchRoomPage() {
 
   const ballDisplayPos = getAnimatedBallPos();
 
-  // ── Ball arc lift (visual only) for high passes, launches, and shots ──
+  // ── Ball arc lift (visual only) — arc scales with distance (ported from Solo Lab) ──
   const ballArcLift = (() => {
     if (!animating || activeTurn?.phase !== 'resolution' || !ballHolder) return 0;
     const bhAllActions = turnActions
@@ -3010,11 +3018,16 @@ export default function MatchRoomPage() {
     if (!ballAction) return 0;
 
     const actionType = ballAction.action_type;
+    const sp = resolutionStartPositions[ballHolder.id] ?? { x: ballHolder.field_x ?? 50, y: ballHolder.field_y ?? 50 };
+    const bDist = ballAction.target_x != null && ballAction.target_y != null
+      ? Math.sqrt((ballAction.target_x - sp.x) ** 2 + (ballAction.target_y - sp.y) ** 2)
+      : 20;
+    const distScale = Math.max(0.5, Math.min(2, bDist / 30));
     let arcHeight = 0;
-    if (actionType === 'pass_high' || actionType === 'header_high') arcHeight = 30;
-    else if (actionType === 'pass_launch') arcHeight = 45;
-    else if (actionType === 'shoot_controlled') arcHeight = 14;
-    else if (actionType === 'shoot_power') arcHeight = 9;
+    if (actionType === 'pass_high' || actionType === 'header_high') arcHeight = 25 * distScale;
+    else if (actionType === 'pass_launch') arcHeight = 38 * distScale;
+    else if (actionType === 'shoot_controlled' || actionType === 'header_controlled') arcHeight = 12 * distScale;
+    else if (actionType === 'shoot_power' || actionType === 'header_power') arcHeight = 7 * distScale;
     else return 0;
 
     return Math.sin(animProgressRef.current * Math.PI) * arcHeight;
