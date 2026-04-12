@@ -5,10 +5,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw, FlaskConical, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 interface MatchEntry {
   match_id: string;
@@ -31,8 +32,10 @@ const STATUS_INFO: Record<string, { label: string; className: string }> = {
 
 export default function PlayerMatchesPage() {
   const { user, playerProfile } = useAuth();
+  const navigate = useNavigate();
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating5v5, setCreating5v5] = useState(false);
 
   const loadMatches = useCallback(async () => {
     if (!user) return;
@@ -82,14 +85,118 @@ export default function PlayerMatchesPage() {
   const upcoming = matches.filter(m => m.match.status === 'scheduled' && new Date(m.match.scheduled_at).getTime() - now > oneHour);
   const past = matches.filter(m => m.match.status === 'finished');
 
+  const handleCreate5v5 = async () => {
+    if (!user || !playerProfile) { toast.error('Perfil de jogador não encontrado'); return; }
+    setCreating5v5(true);
+    try {
+      const clubId = playerProfile.club_id;
+      if (!clubId) { toast.error('Você precisa estar em um clube para jogar'); return; }
+
+      // Pick a random bot-managed club as opponent
+      const { data: botClubs } = await supabase
+        .from('clubs')
+        .select('id')
+        .eq('is_bot_managed', true)
+        .neq('id', clubId)
+        .limit(20);
+      if (!botClubs || botClubs.length === 0) { toast.error('Nenhum time adversário disponível'); return; }
+      const opponentId = botClubs[Math.floor(Math.random() * botClubs.length)].id;
+
+      // Create the match (5v5 test — no lineup IDs, engine treats as test match)
+      const { data: match, error: matchError } = await supabase.from('matches').insert({
+        home_club_id: clubId,
+        away_club_id: opponentId,
+        home_lineup_id: null,
+        away_lineup_id: null,
+        status: 'scheduled',
+        scheduled_at: new Date(Date.now() + 5000).toISOString(),
+      }).select('id').single();
+      if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
+
+      // Create 5 home participants: the human player + 4 bots
+      const homeParticipants: any[] = [];
+
+      // The human player as participant
+      homeParticipants.push({
+        match_id: match.id,
+        player_profile_id: playerProfile.id,
+        club_id: clubId,
+        role_type: 'player',
+        is_bot: false,
+        is_ready: false,
+        connected_user_id: user.id,
+        pos_x: 5, pos_y: 50, // GK position or first position
+      });
+
+      // 4 bot teammates
+      const botPositions = [
+        { x: 25, y: 25 }, { x: 25, y: 75 },
+        { x: 40, y: 35 }, { x: 40, y: 65 },
+      ];
+      for (const pos of botPositions) {
+        homeParticipants.push({
+          match_id: match.id,
+          club_id: clubId,
+          role_type: 'player',
+          is_bot: true,
+          is_ready: false,
+          connected_user_id: null,
+          pos_x: pos.x, pos_y: pos.y,
+        });
+      }
+
+      // 5 away bots
+      const awayPositions = [
+        { x: 95, y: 50 },
+        { x: 75, y: 25 }, { x: 75, y: 75 },
+        { x: 60, y: 35 }, { x: 60, y: 65 },
+      ];
+      for (const pos of awayPositions) {
+        homeParticipants.push({
+          match_id: match.id,
+          club_id: opponentId,
+          role_type: 'player',
+          is_bot: true,
+          is_ready: false,
+          connected_user_id: null,
+          pos_x: pos.x, pos_y: pos.y,
+        });
+      }
+
+      await supabase.from('match_participants').insert(homeParticipants);
+
+      await supabase.from('match_event_logs').insert({
+        match_id: match.id, event_type: 'system',
+        title: '⚽ Teste 5v5',
+        body: `Partida teste 5 contra 5 — você controla seu jogador!`,
+      });
+
+      toast.success('Teste 5v5 criado!');
+      navigate(`/match/${match.id}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao criar teste 5v5');
+    } finally {
+      setCreating5v5(false);
+    }
+  };
+
   if (loading) return <AppLayout><div className="space-y-3">{[1,2,3].map(i => <div key={i} className="stat-card h-20 animate-pulse bg-muted" />)}</div></AppLayout>;
 
   return (
     <AppLayout>
       <div className="space-y-6">
-        <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          <Swords className="h-6 w-6 text-tactical" /> Minhas Partidas
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-display text-2xl font-bold flex items-center gap-2">
+            <Swords className="h-6 w-6 text-tactical" /> Minhas Partidas
+          </h1>
+          {playerProfile?.club_id && (
+            <Button size="sm" variant="outline" onClick={handleCreate5v5} disabled={creating5v5}
+              className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
+              {creating5v5 ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />}
+              {creating5v5 ? 'Criando...' : 'Teste 5v5'}
+            </Button>
+          )}
+        </div>
 
         {matches.length === 0 && (
           <div className="stat-card text-center py-12">
