@@ -203,7 +203,7 @@ export default function MatchRoomPage() {
 
   const appendEventLog = useCallback((event: EventLog) => {
     // Track resolution-relevant events so animation can incorporate actual results
-    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block'];
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball'];
     if (resolutionEventTypes.includes(event.event_type)) {
       resolutionEventsRef.current = [...resolutionEventsRef.current, event];
     }
@@ -2050,13 +2050,11 @@ export default function MatchRoomPage() {
         const isBallShoot = isShootAction(ballAction.action_type) || isAnyShootAction(ballAction.action_type);
         if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
           if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-            const dx = ballAction.target_x - ballStartX;
-            const dy = ballAction.target_y - ballStartY;
-            const len2 = dx * dx + dy * dy;
-            let interceptT = 1;
-            if (len2 > 0) interceptT = clamp(((interceptAction.target_x - ballStartX) * dx + (interceptAction.target_y - ballStartY) * dy) / len2, 0, 1);
-            const effectiveT = Math.min(t, interceptT);
-            return { x: ballStartX + dx * effectiveT, y: ballStartY + dy * effectiveT };
+            // Ball travels from start toward the interceptor's position (not along the original pass line).
+            // This ensures the ball visually reaches the receiver, even if they're slightly off the trajectory.
+            const endX = interceptAction.target_x;
+            const endY = interceptAction.target_y;
+            return { x: ballStartX + (endX - ballStartX) * t, y: ballStartY + (endY - ballStartY) * t };
           }
           if (isBallShoot) {
             const isHome = bhPart.club_id === matchRef.current?.home_club_id;
