@@ -272,22 +272,22 @@ export default function OnboardingPlayerPage() {
               const total = finalAttrs[key] || base;
               return (
                 <div key={key} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-28 truncate">{ATTR_LABELS[key] || key}</span>
-                  <div className="flex-1">
-                    <AttributeBar label="" value={total} />
+                  <span className="text-xs text-muted-foreground w-full sm:w-40 shrink-0">{ATTR_LABELS[key] || key}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-display text-sm font-bold w-8 text-right">{Math.round(total)}</span>
+                    {extra > 0 && <span className="text-xs text-pitch w-6">+{extra}</span>}
+                    {extra <= 0 && <span className="w-6" />}
+                    <button
+                      onClick={() => removePoint(key)}
+                      disabled={extra <= 0}
+                      className="h-7 w-7 rounded bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive disabled:opacity-30 text-sm font-bold"
+                    >−</button>
+                    <button
+                      onClick={() => addPoint(key)}
+                      disabled={remainingPoints <= 0 || total >= MAX_ATTR}
+                      className="h-7 w-7 rounded bg-muted text-muted-foreground hover:bg-pitch/20 hover:text-pitch disabled:opacity-30 text-sm font-bold"
+                    >+</button>
                   </div>
-                  <span className="font-display text-sm font-bold w-8 text-right">{total.toFixed(2)}</span>
-                  {extra > 0 && <span className="text-xs text-pitch">+{extra}</span>}
-                  <button
-                    onClick={() => removePoint(key)}
-                    disabled={extra <= 0}
-                    className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-destructive/20 hover:text-destructive disabled:opacity-30 text-xs font-bold"
-                  >−</button>
-                  <button
-                    onClick={() => addPoint(key)}
-                    disabled={remainingPoints <= 0 || total >= MAX_ATTR}
-                    className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-pitch/20 hover:text-pitch disabled:opacity-30 text-xs font-bold"
-                  >+</button>
                 </div>
               );
             };
