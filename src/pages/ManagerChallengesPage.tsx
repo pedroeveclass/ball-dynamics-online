@@ -707,7 +707,7 @@ export default function ManagerChallengesPage() {
 
       {/* Create Challenge Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2"><Swords className="h-5 w-5 text-tactical" /> Convidar para Amistoso</DialogTitle>
             <DialogDescription>Escolha o adversário, data e envie o convite.</DialogDescription>
@@ -794,7 +794,7 @@ export default function ManagerChallengesPage() {
 
       {/* Accept 3x3 Challenge Dialog */}
       <Dialog open={!!accept3v3Challenge} onOpenChange={open => { if (!open) setAccept3v3Challenge(null); }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2"><Swords className="h-5 w-5 text-tactical" /> Aceitar Amistoso 5x5</DialogTitle>
             <DialogDescription>Escolha seus 3 jogadores para o amistoso 5x5.</DialogDescription>

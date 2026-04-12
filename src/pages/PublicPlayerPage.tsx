@@ -8,8 +8,6 @@ import { PositionBadge } from '@/components/PositionBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ATTR_LABELS } from '@/lib/attributes';
-import { positionToPT } from '@/lib/positions';
 import {
   User, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Goal, Loader2, ArrowLeft, UserPlus, Copy,
@@ -243,19 +241,6 @@ export default function PublicPlayerPage() {
               <AttrGroup title="Finalização" icon={<Crosshair className="h-4 w-4" />} rows={SHOOTING} attrs={attrs} />
               <AttrGroup title="Defesa" icon={<ShieldAlert className="h-4 w-4" />} rows={DEFENDING} attrs={attrs} />
             </div>
-
-            {/* Full attribute list */}
-            <details className="mt-3">
-              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Ver todos os atributos</summary>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                {Object.keys(attrs).filter(k => !['id', 'player_profile_id', 'created_at', 'updated_at'].includes(k)).map(k => (
-                  <div key={k} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{ATTR_LABELS[k] || k}</span>
-                    <span className="font-display font-bold">{Math.round(Number(attrs[k] ?? 0))}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
           </div>
         )}
       </div>
