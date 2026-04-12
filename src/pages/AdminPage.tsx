@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 // ─── Types ───
 interface Club { id: string; name: string; short_name: string; primary_color: string; secondary_color: string; city: string; league_id: string | null; is_bot_managed: boolean; manager_profile_id: string; }
@@ -60,11 +62,12 @@ export default function AdminPage() {
       <h1 className="text-3xl font-bold font-display mb-6">Painel Admin</h1>
 
       <Tabs defaultValue="liga" className="space-y-4">
-        <TabsList className="grid grid-cols-4 w-full max-w-xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
           <TabsTrigger value="liga">Liga</TabsTrigger>
           <TabsTrigger value="times">Times</TabsTrigger>
           <TabsTrigger value="financas">Financas</TabsTrigger>
           <TabsTrigger value="partidas">Partidas</TabsTrigger>
+          <TabsTrigger value="jogadores">Jogadores</TabsTrigger>
         </TabsList>
 
         {/* ═══ LIGA TAB ═══ */}
@@ -85,6 +88,11 @@ export default function AdminPage() {
         {/* ═══ PARTIDAS TAB ═══ */}
         <TabsContent value="partidas">
           <PartidasTab matches={matches} clubs={clubs} onReload={loadAll} />
+        </TabsContent>
+
+        {/* ═══ JOGADORES TAB ═══ */}
+        <TabsContent value="jogadores">
+          <JogadoresTab clubs={clubs} />
         </TabsContent>
       </Tabs>
     </div>
@@ -499,6 +507,187 @@ function PartidasTab({ matches, clubs, onReload }: { matches: MatchRow[]; clubs:
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// JOGADORES TAB
+// ═══════════════════════════════════════════════════
+interface HumanPlayer {
+  id: string;
+  user_id: string;
+  full_name: string;
+  primary_position: string;
+  overall: number;
+  club_id: string | null;
+  club_name: string | null;
+  email: string | null;
+}
+
+function JogadoresTab({ clubs }: { clubs: Club[] }) {
+  const [humanPlayers, setHumanPlayers] = useState<HumanPlayer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [assignDialog, setAssignDialog] = useState<HumanPlayer | null>(null);
+  const [selectedClubId, setSelectedClubId] = useState<string>('');
+
+  useEffect(() => { loadHumanPlayers(); }, []);
+
+  async function loadHumanPlayers() {
+    setLoading(true);
+    const { data: players } = await supabase
+      .from('player_profiles')
+      .select('id, user_id, full_name, primary_position, overall, club_id')
+      .not('user_id', 'is', null)
+      .order('full_name');
+
+    if (!players || players.length === 0) { setHumanPlayers([]); setLoading(false); return; }
+
+    const userIds = players.map(p => p.user_id).filter(Boolean);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, email, username')
+      .in('id', userIds);
+    const emailMap = new Map((profiles || []).map((p: any) => [p.id, p.email || p.username || null]));
+    const clubMap = new Map(clubs.map(c => [c.id, c.name]));
+
+    setHumanPlayers(players.map((p: any) => ({
+      id: p.id,
+      user_id: p.user_id,
+      full_name: p.full_name || 'Sem nome',
+      primary_position: p.primary_position || '?',
+      overall: p.overall ?? 0,
+      club_id: p.club_id,
+      club_name: p.club_id ? (clubMap.get(p.club_id) || p.club_id?.slice(0, 8)) : null,
+      email: emailMap.get(p.user_id) || null,
+    })));
+    setLoading(false);
+  }
+
+  async function handleLoginAs(player: HumanPlayer) {
+    try {
+      await navigator.clipboard.writeText(player.user_id);
+      toast.success(`User ID copiado: ${player.user_id}`, { description: 'Use no Supabase Dashboard > Authentication para gerar magic link.' });
+    } catch {
+      toast.info(`User ID: ${player.user_id}`);
+    }
+  }
+
+  async function handleAssignClub() {
+    if (!assignDialog || !selectedClubId) return;
+    const { error } = await supabase
+      .from('player_profiles')
+      .update({ club_id: selectedClubId })
+      .eq('id', assignDialog.id);
+    if (error) { toast.error('Erro ao atribuir clube: ' + error.message); return; }
+
+    const { data: existing } = await supabase
+      .from('contracts')
+      .select('id')
+      .eq('player_profile_id', assignDialog.id)
+      .eq('club_id', selectedClubId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!existing) {
+      await supabase.from('contracts').insert({
+        player_profile_id: assignDialog.id,
+        club_id: selectedClubId,
+        weekly_salary: 500,
+        release_clause: 5000,
+        start_date: new Date().toISOString(),
+        end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'active',
+      });
+    }
+
+    toast.success(`${assignDialog.full_name} atribuído ao ${clubs.find(c => c.id === selectedClubId)?.name}`);
+    setAssignDialog(null);
+    setSelectedClubId('');
+    loadHumanPlayers();
+  }
+
+  async function handleRemoveFromClub(player: HumanPlayer) {
+    if (!player.club_id) return;
+    await supabase.from('player_profiles').update({ club_id: null }).eq('id', player.id);
+    await supabase.from('contracts').update({ status: 'terminated', end_date: new Date().toISOString() }).eq('player_profile_id', player.id).eq('status', 'active');
+    toast.success(`${player.full_name} removido do clube`);
+    loadHumanPlayers();
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Jogadores Humanos ({humanPlayers.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center text-muted-foreground py-8">Carregando...</div>
+          ) : humanPlayers.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">Nenhum jogador humano encontrado.</div>
+          ) : (
+            <div className="space-y-2">
+              {humanPlayers.map(p => (
+                <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-display font-bold text-sm">{p.full_name}</span>
+                      <Badge variant="outline" className="text-[10px]">{p.primary_position}</Badge>
+                      <span className="text-xs text-muted-foreground">OVR {Math.round(p.overall)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                      {p.email && <span>{p.email}</span>}
+                      {p.club_name ? (
+                        <Badge className="text-[10px]" variant="secondary">{p.club_name}</Badge>
+                      ) : (
+                        <Badge className="text-[10px]" variant="destructive">Sem clube</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleLoginAs(p)}>
+                      Copiar ID
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAssignDialog(p); setSelectedClubId(p.club_id || ''); }}>
+                      Atribuir Clube
+                    </Button>
+                    {p.club_id && (
+                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleRemoveFromClub(p)}>
+                        Remover
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!assignDialog} onOpenChange={open => { if (!open) setAssignDialog(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Atribuir Clube — {assignDialog?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label>Selecione o clube</Label>
+            <Select value={selectedClubId} onValueChange={setSelectedClubId}>
+              <SelectTrigger><SelectValue placeholder="Escolha um clube..." /></SelectTrigger>
+              <SelectContent>
+                {clubs.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} {c.is_bot_managed ? '(Bot)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialog(null)}>Cancelar</Button>
+            <Button onClick={handleAssignClub} disabled={!selectedClubId}>Confirmar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
