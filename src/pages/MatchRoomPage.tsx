@@ -1997,7 +1997,11 @@ export default function MatchRoomPage() {
         const normFactor = 1 - Math.exp(-ballEaseK);
         const t = expDecay / normFactor;
 
-        const interceptAction = actionsSnap.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) || null;
+        // Use the interceptorAction ref (computed from engine events) as the authoritative
+        // winner. Falls back to scanning receive actions if the ref is empty.
+        const interceptAction = interceptorActionRef.current
+          ?? actionsSnap.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null)
+          ?? null;
 
         if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
           const effectiveTarget = getEffectiveActionTarget(ballAction, startPos, actionsSnap);
@@ -2432,6 +2436,10 @@ export default function MatchRoomPage() {
     }
     return null;
   }, [turnActions, events, activeTurn?.phase, activeTurn?.ball_holder_participant_id]);
+
+  // Ref mirror so the animation loop can access the latest interceptor without re-running the effect
+  const interceptorActionRef = useRef(interceptorAction);
+  interceptorActionRef.current = interceptorAction;
 
   // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
