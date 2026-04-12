@@ -3271,15 +3271,14 @@ export default function MatchRoomPage() {
                 const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
                 if (!isKickoff) return null;
                 const centerSvg = toSVG(50, 50);
-                const CENTER_CIRCLE_RADIUS_PCT = 10; // matches engine constraint
-                const circleRadiusSvgX = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_W;
-                const circleRadiusSvgY = (CENTER_CIRCLE_RADIUS_PCT / 100) * INNER_H;
+                // Match the pitch's center circle exactly: <circle r={INNER_H * 0.15}> in PitchSVG
+                const circleRadiusSvg = INNER_H * 0.15;
                 const possClubId = activeTurn?.possession_club_id;
                 const drawingPlayer = drawingAction ? participants.find(p => p.id === drawingAction.fromParticipantId) : null;
                 const isDrawingDefender = drawingPlayer && drawingPlayer.club_id !== possClubId;
                 return (
                   <>
-                    <ellipse cx={centerSvg.x} cy={centerSvg.y} rx={circleRadiusSvgX} ry={circleRadiusSvgY}
+                    <circle cx={centerSvg.x} cy={centerSvg.y} r={circleRadiusSvg}
                       fill={isDrawingDefender ? "rgba(239,68,68,0.10)" : "none"}
                       stroke="rgba(239,68,68,0.4)" strokeWidth="1.5" strokeDasharray="6,4" />
                     {drawingAction && drawingPlayer && (() => {
