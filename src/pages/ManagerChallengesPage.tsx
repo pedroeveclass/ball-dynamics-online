@@ -174,10 +174,12 @@ export default function ManagerChallengesPage() {
     finally { setSending(false); }
   };
 
-  const FRIENDLY_3V3_COORDS: Array<{ x: number; y: number; pos: 'GK' | 'CB' | 'ST' }> = [
+  const FRIENDLY_5V5_COORDS: Array<{ x: number; y: number; pos: 'GK' | 'CB' | 'CM' | 'ST' }> = [
     { x: 5, y: 50, pos: 'GK' },
-    { x: 25, y: 50, pos: 'CB' },
-    { x: 45, y: 50, pos: 'ST' },
+    { x: 25, y: 30, pos: 'CB' },
+    { x: 25, y: 70, pos: 'CB' },
+    { x: 40, y: 35, pos: 'CM' },
+    { x: 40, y: 65, pos: 'ST' },
   ];
 
   const getFriendlySlotRole = (slotPosition?: string | null): 'GK' | 'CB' | 'ST' | null => {
@@ -248,14 +250,13 @@ export default function ManagerChallengesPage() {
       const { data: players } = await supabase.from('player_profiles').select('id, user_id').in('id', allPlayerIds);
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
 
-      const roles: Array<'GK' | 'CB' | 'ST'> = ['GK', 'CB', 'ST'];
       const homeParticipants = challengerPlayerIds.map((pid, i) => {
-        const coords = FRIENDLY_3V3_COORDS[i];
+        const coords = FRIENDLY_5V5_COORDS[i];
         const userId = playerUserMap.get(pid) || null;
         return { match_id: match!.id, player_profile_id: pid, club_id: challenge.challenger_club_id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId, pos_x: coords.x, pos_y: coords.y };
       });
       const awayParticipants = accepterPlayerIds.map((pid, i) => {
-        const coords = FRIENDLY_3V3_COORDS[i];
+        const coords = FRIENDLY_5V5_COORDS[i];
         const userId = playerUserMap.get(pid) || null;
         return { match_id: match!.id, player_profile_id: pid, club_id: challenge.challenged_club_id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId, pos_x: 100 - coords.x, pos_y: coords.y };
       });

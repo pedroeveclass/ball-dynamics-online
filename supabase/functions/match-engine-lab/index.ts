@@ -3466,9 +3466,13 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     // For league matches, participants aren't pre-created. We need to create them from
     // each club's active lineup_slots so human players get their connected_user_id set.
     // If lineup IDs are missing on the match, look them up from each club's active lineup.
+    // IMPORTANT: Skip lookup when participants are already pre-created (5v5 tests,
+    // friendly challenges, etc.) — backfilling lineups would flip isTestMatch=false
+    // and cause fillBots to pad to 11.
     let homeLineupId = m.home_lineup_id;
     let awayLineupId = m.away_lineup_id;
-    if (!homeLineupId || !awayLineupId) {
+    const partsAlreadyExist = (existingParts || []).length > 0;
+    if ((!homeLineupId || !awayLineupId) && !partsAlreadyExist) {
       const [{ data: hl }, { data: al }] = await Promise.all([
         !homeLineupId ? supabase.from('lineups').select('id').eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle() : Promise.resolve({ data: { id: homeLineupId } }),
         !awayLineupId ? supabase.from('lineups').select('id').eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle() : Promise.resolve({ data: { id: awayLineupId } }),
