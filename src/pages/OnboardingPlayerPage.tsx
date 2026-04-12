@@ -42,17 +42,22 @@ export default function OnboardingPlayerPage() {
   const spentPoints = Object.values(extraPoints).reduce((a, b) => a + b, 0);
   const remainingPoints = TOTAL_DISTRIBUTE - spentPoints;
 
+  const MAX_ATTR = 70;
+
   const finalAttrs = useMemo(() => {
     if (!baseAttrs) return null;
     const result = { ...baseAttrs };
     for (const [key, val] of Object.entries(extraPoints)) {
-      result[key] = Math.min(75, (result[key] || 30) + val);
+      result[key] = Math.min(MAX_ATTR, (result[key] || 30) + val);
     }
     return result;
   }, [baseAttrs, extraPoints]);
 
   const addPoint = (key: string) => {
     if (remainingPoints <= 0) return;
+    // Don't allow adding if attribute is already at max
+    const currentVal = (baseAttrs?.[key] || 30) + (extraPoints[key] || 0);
+    if (currentVal >= MAX_ATTR) return;
     setExtraPoints(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
   };
 
@@ -280,7 +285,7 @@ export default function OnboardingPlayerPage() {
                   >−</button>
                   <button
                     onClick={() => addPoint(key)}
-                    disabled={remainingPoints <= 0}
+                    disabled={remainingPoints <= 0 || total >= MAX_ATTR}
                     className="h-6 w-6 rounded bg-muted text-muted-foreground hover:bg-pitch/20 hover:text-pitch disabled:opacity-30 text-xs font-bold"
                   >+</button>
                 </div>
