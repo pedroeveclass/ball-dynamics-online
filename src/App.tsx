@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, Component, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -58,6 +58,33 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Auto-reload on chunk load failure (stale deploy cache) ──
+class ChunkErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error) {
+    if (error.message?.includes('dynamically imported module') || error.message?.includes('Failed to fetch')) {
+      // Stale chunk — force full reload once
+      const key = 'chunk_reload_' + window.location.pathname;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        window.location.reload();
+      }
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+          <p className="text-muted-foreground">Atualizando versão...</p>
+          <button onClick={() => window.location.reload()} className="text-sm text-pitch underline">Recarregar</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -65,6 +92,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <ChunkErrorBoundary>
           <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
           <Routes>
             <Route path="/" element={<LandingPage />} />
@@ -106,6 +134,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
+          </ChunkErrorBoundary>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
