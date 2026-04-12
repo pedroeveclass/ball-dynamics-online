@@ -1664,10 +1664,10 @@ export default function MatchRoomPage() {
           const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
 
           // Same logic as purple circle visual (see rendering code):
-          // Purple if: (cursor near traj AND timing OK) OR (player on traj AND ball not past)
+          // Purple if: (player on trajectory) OR (cursor near traj AND player reaches in time)
           canReach = (
-            (cursorNearTraj && (movePct <= _t || (isPlayerOnTrajectory && ballNotPastPlayer))) ||
-            (isPlayerOnTrajectory && ballNotPastPlayer)
+            isPlayerOnTrajectory ||
+            (cursorNearTraj && (movePct <= _t || (isPlayerOnTrajectory && ballNotPastPlayer)))
           );
 
           // When purple but click is far from trajectory line, snap intercept target to closest point on trajectory
@@ -3763,12 +3763,13 @@ export default function MatchRoomPage() {
                     const ballNotPastPlayer = tCursor <= tPlayer + (circleRadiusField + INTERCEPT_RADIUS) / Math.sqrt(trajLen2);
 
                     // Core reachability:
-                    // 1. Cursor near trajectory AND player arrives before ball (timing)
-                    // 2. OR player on trajectory AND ball hasn't passed them yet
+                    // 1. Player is on the trajectory — purple regardless of cursor position
+                    //    (player can intercept by staying in place, timing is automatic)
+                    // 2. OR cursor is near trajectory AND player can reach in time
                     const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
                     canReachBall = !isRedZone && (
-                      (cursorNearTraj && (movePct <= tCursor || (isPlayerOnTrajectory && ballNotPastPlayer))) ||
-                      (isPlayerOnTrajectory && ballNotPastPlayer)
+                      isPlayerOnTrajectory ||
+                      (cursorNearTraj && (movePct <= tCursor || (isPlayerOnTrajectory && ballNotPastPlayer)))
                     );
                   } else {
                     // Stationary ball holder — if within reach, can tackle
