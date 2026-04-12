@@ -1085,12 +1085,12 @@ export default function MatchRoomPage() {
   // IMPORTANT: If there's already a one_touch_executed action for this turn, DON'T auto-open
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
-    
+
     // Positioning turn: no auto-open action menu, players click manually
     if (isPositioningTurn) return;
-    
+
+    // ── Phase 1: ball holder ──
     if (activeTurn.phase === 'ball_holder' && activeTurn.ball_holder_participant_id) {
-      // Check if a one-touch action was already injected for this ball holder
       const hasOneTouchAction = turnActions.some(a =>
         a.participant_id === activeTurn.ball_holder_participant_id &&
         a.payload && typeof a.payload === 'object' &&
@@ -1098,14 +1098,11 @@ export default function MatchRoomPage() {
       );
       if (hasOneTouchAction) return;
 
-      // Don't open if one-touch pending for this ball holder (set when user submitted one-touch last turn)
       if (oneTouchPendingForRef.current === activeTurn.ball_holder_participant_id) {
         oneTouchPendingForRef.current = null;
-        // Also block with a delayed recheck in case realtime hasn't delivered the action yet
         return;
       }
 
-      // Don't reopen if ball holder already submitted
       const bhAlreadySubmitted = submittedActions.has(activeTurn.ball_holder_participant_id);
       if (bhAlreadySubmitted) return;
 
@@ -1128,8 +1125,30 @@ export default function MatchRoomPage() {
         setShowActionMenu(bh.id);
         setSelectedParticipantId(bh.id);
       }
+      return;
     }
-  }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions]);
+
+    // ── Phase 2/3: auto-open menu for HUMAN PLAYER only (manager controls multiple players manually) ──
+    if (myRole === 'player' && myParticipant?.id) {
+      const isAttackingPhase = activeTurn.phase === 'attacking_support';
+      const isDefendingPhase = activeTurn.phase === 'defending_response';
+      if (!isAttackingPhase && !isDefendingPhase) return;
+
+      // Only auto-open if this phase belongs to the player's team
+      const possClubId = activeTurn.possession_club_id;
+      const isMyTeamAttacking = myClubId === possClubId;
+      const shouldActInThisPhase = (isAttackingPhase && isMyTeamAttacking) || (isDefendingPhase && !isMyTeamAttacking);
+      if (!shouldActInThisPhase) return;
+
+      // Don't reopen if already submitted
+      if (submittedActions.has(myParticipant.id)) return;
+      const alreadyHasAction = turnActions.some(a => a.participant_id === myParticipant.id);
+      if (alreadyHasAction) return;
+
+      setShowActionMenu(myParticipant.id);
+      setSelectedParticipantId(myParticipant.id);
+    }
+  }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions, activeTurn?.possession_club_id]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {

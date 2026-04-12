@@ -47,10 +47,10 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
             <div key={phase.key} className="flex-1 relative">
               <div
                 className={`h-7 rounded-md flex items-center justify-center gap-1 text-[9px] font-display font-bold transition-all relative overflow-hidden ${
-                  isSkipped ? 'bg-muted/20 text-muted-foreground/30' :
-                  isActive ? 'bg-warning/30 border border-warning/60 text-warning' :
+                  isSkipped ? 'bg-muted/20 text-muted-foreground/40' :
+                  isActive ? 'bg-warning/60 border border-warning text-white' :
                   isPast ? 'bg-pitch/25 text-pitch' :
-                  'bg-[hsl(220,15%,20%)] text-foreground/50'
+                  'bg-[hsl(220,15%,20%)] text-foreground/80'
                 }`}
               >
                 <span className="relative z-10">

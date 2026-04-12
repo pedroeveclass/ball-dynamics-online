@@ -18,7 +18,7 @@ import {
 import {
   User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Goal, Loader2, AlertTriangle, TrendingUp, Calendar,
-  Repeat, Plus, UserCircle,
+  Repeat, Plus, UserCircle, Copy,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { positionToPT } from '@/lib/positions';
@@ -401,7 +401,25 @@ export default function PlayerProfilePage() {
 
             {/* Name + positions */}
             <div className="flex-1 min-w-0">
-              <h1 className="font-display text-2xl font-bold truncate">{p.full_name}</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="font-display text-2xl font-bold truncate">{p.full_name}</h1>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={async () => {
+                    const url = `${window.location.origin}/player/${p.id}`;
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      toast.success('Link do seu perfil copiado!', { description: 'Compartilhe com um técnico para receber propostas.' });
+                    } catch {
+                      toast.info(url);
+                    }
+                  }}
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Copiar link
+                </Button>
+              </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <PositionBadge position={p.primary_position} />
                 {p.secondary_position && <PositionBadge position={p.secondary_position} />}

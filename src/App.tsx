@@ -36,6 +36,7 @@ const MatchRoomPage = lazy(() => import("./pages/MatchRoomPage"));
 const SoloPhysicsLabPage = lazy(() => import("./pages/SoloPhysicsLabPage"));
 const LeaguePage = lazy(() => import("./pages/LeaguePage"));
 const PublicClubPage = lazy(() => import("./pages/PublicClubPage"));
+const PublicPlayerPage = lazy(() => import("./pages/PublicPlayerPage"));
 const LeagueScheduleVotePage = lazy(() => import("./pages/LeagueScheduleVotePage"));
 const ManagerFacilitiesPage = lazy(() => import("./pages/ManagerFacilitiesPage"));
 const AccountProfilePage = lazy(() => import("./pages/AccountProfilePage"));
@@ -120,6 +121,7 @@ const App = () => (
             <Route path="/match-lab/solo" element={<ProtectedRoute><SoloPhysicsLabPage /></ProtectedRoute>} />
             <Route path="/league" element={<LeaguePage />} />
             <Route path="/club/:clubId" element={<PublicClubPage />} />
+            <Route path="/player/:playerId" element={<PublicPlayerPage />} />
             <Route path="/league/vote" element={<ManagerRoute><LeagueScheduleVotePage /></ManagerRoute>} />
             <Route path="/manager/facilities" element={<ManagerRoute><ManagerFacilitiesPage /></ManagerRoute>} />
             <Route path="/manager/coach" element={<ManagerRoute><ManagerCoachPage /></ManagerRoute>} />
