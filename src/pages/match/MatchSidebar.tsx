@@ -48,22 +48,11 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
               <div
                 className={`h-7 rounded-md flex items-center justify-center gap-1 text-[9px] font-display font-bold transition-all relative overflow-hidden ${
                   isSkipped ? 'bg-muted/20 text-muted-foreground/30' :
-                  isActive ? 'border border-foreground/40 text-foreground' :
+                  isActive ? 'bg-warning/30 border border-warning/60 text-warning' :
                   isPast ? 'bg-pitch/25 text-pitch' :
                   'bg-[hsl(220,15%,20%)] text-foreground/50'
                 }`}
-                style={isActive ? { backgroundColor: 'hsl(220,15%,22%)' } : undefined}
               >
-                {/* Active progress fill */}
-                {isActive && (
-                  <div
-                    className="absolute inset-0 rounded-md transition-all duration-100"
-                    style={{
-                      width: `${progress * 100}%`,
-                      background: 'linear-gradient(90deg, hsl(160,84%,39%,0.3), hsl(160,84%,39%,0.15))',
-                    }}
-                  />
-                )}
                 <span className="relative z-10">
                   {isSkipped ? '\u2014' : isPast ? '\u2713' : phase.icon}
                 </span>
