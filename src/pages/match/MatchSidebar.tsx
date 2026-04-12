@@ -50,7 +50,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
                   isSkipped ? 'bg-muted/20 text-muted-foreground/40' :
                   isActive ? 'bg-warning/60 border border-warning text-white' :
                   isPast ? 'bg-pitch/25 text-pitch' :
-                  'bg-[hsl(220,15%,20%)] text-foreground/80'
+                  'bg-[hsl(220,15%,20%)] text-white'
                 }`}
               >
                 <span className="relative z-10">
