@@ -4936,13 +4936,26 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
           }
         } else if (result.looseBallPos) {
-          // Shot/pass blocked — ball deflects to random position
+          // Shot/pass blocked — ball deflects to a position near the blocker
           nextBallHolderParticipantId = null;
           ballEndPos = { x: result.looseBallPos.x, y: result.looseBallPos.y };
+          // Record the deflect direction (blocker pos → deflect pos) so next turn's
+          // inertia continues in that direction, not in the original shot direction.
+          const blocker = result.gkSaveAttempt?.gkParticipantId
+            ? (participants || []).find((p: any) => p.id === result.gkSaveAttempt!.gkParticipantId)
+            : null;
+          const deflectFromX = blocker ? Number(blocker.pos_x ?? 50) : result.looseBallPos.x;
+          const deflectFromY = blocker ? Number(blocker.pos_y ?? 50) : result.looseBallPos.y;
           eventsToLog.push({
             match_id, event_type: result.event || 'blocked',
             title: result.description,
             body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
+            payload: {
+              deflect_from_x: deflectFromX,
+              deflect_from_y: deflectFromY,
+              deflect_to_x: result.looseBallPos.x,
+              deflect_to_y: result.looseBallPos.y,
+            },
           });
         } else if (result.newBallHolderId) {
           nextBallHolderParticipantId = result.newBallHolderId;
@@ -5206,9 +5219,28 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         let prevBhAction = allActions.find(a => isBallActionType(a.action_type));
         let bhStartPos = ballHolder ? { x: Number(ballHolder.pos_x ?? 50), y: Number(ballHolder.pos_y ?? 50) } : null;
 
-        if (!prevBhAction) {
+        // Check if the previous turn had a block/save event (GK espalmou or outfield blocked)
+        // If so, the inertia should follow the DEFLECT direction, not the original shot direction.
+        let deflectOverride: { fromX: number; fromY: number; toX: number; toY: number } | null = null;
+        const prevTurnNumber = match.current_turn_number - 1;
+        if (prevTurnNumber >= 1) {
+          const { data: prevDeflectEvent } = await supabase
+            .from('match_event_logs')
+            .select('payload')
+            .eq('match_id', match_id)
+            .in('event_type', ['blocked', 'saved', 'block'])
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (prevDeflectEvent && prevDeflectEvent.length > 0) {
+            const p = prevDeflectEvent[0].payload as any;
+            if (p && typeof p.deflect_from_x === 'number' && typeof p.deflect_to_x === 'number') {
+              deflectOverride = { fromX: p.deflect_from_x, fromY: p.deflect_from_y, toX: p.deflect_to_x, toY: p.deflect_to_y };
+            }
+          }
+        }
+
+        if (!prevBhAction && !deflectOverride) {
           // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
-          const prevTurnNumber = match.current_turn_number - 1;
           if (prevTurnNumber >= 1) {
             const { data: prevTurnRows } = await supabase
               .from('match_turns')
@@ -5241,18 +5273,25 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
         // Decay factor: 1st loose turn = 15%, 2nd+ = 8% (ball slowing down)
         const inertiaFactor = wasAlreadyLoose ? 0.08 : 0.15;
-        if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
-          const dirX = Number(prevBhAction.target_x) - bhStartPos.x;
-          const dirY = Number(prevBhAction.target_y) - bhStartPos.y;
-          const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
-          if (dirLen > 0.1) {
-            // Apply inertia: continue in the same direction from current ball position
-            const normDirX = dirX / dirLen;
-            const normDirY = dirY / dirLen;
-            const inertiaDistance = dirLen * inertiaFactor;
-            inertiaBallX = inertiaBallX + normDirX * inertiaDistance;
-            inertiaBallY = inertiaBallY + normDirY * inertiaDistance;
-          }
+
+        // Compute direction: deflect (block/save) takes priority over original shot direction
+        let dirX = 0, dirY = 0;
+        if (deflectOverride) {
+          dirX = deflectOverride.toX - deflectOverride.fromX;
+          dirY = deflectOverride.toY - deflectOverride.fromY;
+        } else if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
+          dirX = Number(prevBhAction.target_x) - bhStartPos.x;
+          dirY = Number(prevBhAction.target_y) - bhStartPos.y;
+        }
+
+        const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+        if (dirLen > 0.1) {
+          const normDirX = dirX / dirLen;
+          const normDirY = dirY / dirLen;
+          const inertiaDistance = dirLen * inertiaFactor;
+          inertiaBallX = inertiaBallX + normDirX * inertiaDistance;
+          inertiaBallY = inertiaBallY + normDirY * inertiaDistance;
+          if (deflectOverride) console.log(`[ENGINE] Inertia from DEFLECT: ${dirLen.toFixed(1)} * ${inertiaFactor} = ${inertiaDistance.toFixed(1)} in direction (${normDirX.toFixed(2)},${normDirY.toFixed(2)})`);
         }
         ballEndPos = { x: inertiaBallX, y: inertiaBallY };
         eventsToLog.push({
