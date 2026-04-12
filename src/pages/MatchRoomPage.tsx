@@ -2009,13 +2009,18 @@ export default function MatchRoomPage() {
           const endY = effectiveTarget?.y ?? ballAction.target_y;
           const dx = endX - startPos.x;
           const dy = endY - startPos.y;
+          // Ball offset is in the direction of dribble (in front of player), not a fixed corner
+          const dribLen = Math.sqrt(dx * dx + dy * dy);
+          const OFFSET = 1.5;
+          const offX = dribLen > 0.1 ? (dx / dribLen) * OFFSET : 1.2;
+          const offY = dribLen > 0.1 ? (dy / dribLen) * OFFSET : -1.2;
           if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
             const len2 = dx * dx + dy * dy;
             const interceptT = len2 > 0 ? clamp(((interceptAction.target_x - startPos.x) * dx + (interceptAction.target_y - startPos.y) * dy) / len2, 0, 1) : 1;
             const effectiveT = Math.min(t, interceptT);
-            return { x: startPos.x + dx * effectiveT + 1.2, y: startPos.y + dy * effectiveT - 1.2 };
+            return { x: startPos.x + dx * effectiveT + offX, y: startPos.y + dy * effectiveT + offY };
           }
-          return holderPos ? { x: holderPos.x + 1.2, y: holderPos.y - 1.2 } : defaultBallPos;
+          return holderPos ? { x: holderPos.x + offX, y: holderPos.y + offY } : defaultBallPos;
         }
 
         const isBallPass = isPassAction(ballAction.action_type) || (isHeaderAction(ballAction.action_type) && !isAnyShootAction(ballAction.action_type));
@@ -2210,7 +2215,21 @@ export default function MatchRoomPage() {
                   if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                     fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
                   } else {
-                    fbp = effectiveTarget ?? { x: ballAction.target_x, y: ballAction.target_y };
+                    // Ball ends up IN FRONT of the player (dribble direction), not on top
+                    const endPos = effectiveTarget ?? { x: ballAction.target_x, y: ballAction.target_y };
+                    const startPosRef = sp ?? { x: ballAction.target_x, y: ballAction.target_y };
+                    const dribDx = endPos.x - startPosRef.x;
+                    const dribDy = endPos.y - startPosRef.y;
+                    const dribLen = Math.sqrt(dribDx * dribDx + dribDy * dribDy);
+                    const OFFSET = 1.5;
+                    if (dribLen > 0.1) {
+                      fbp = {
+                        x: endPos.x + (dribDx / dribLen) * OFFSET,
+                        y: endPos.y + (dribDy / dribLen) * OFFSET,
+                      };
+                    } else {
+                      fbp = { x: endPos.x + 1.2, y: endPos.y - 1.2 };
+                    }
                   }
                   lastBallDirRef.current = null; // No inertia for dribble
                 }
