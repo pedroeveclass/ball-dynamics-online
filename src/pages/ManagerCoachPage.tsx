@@ -60,17 +60,33 @@ export default function ManagerCoachPage() {
   const [training, setTraining] = useState(false);
   const [selectedFormation, setSelectedFormation] = useState('4-4-2');
 
+  // ISO-week (Monday 00:00 → Sunday 23:59:59) in São Paulo time.
+  const spWeekKey = (d: Date) => {
+    const spString = d.toLocaleString('en-CA', { timeZone: 'America/Sao_Paulo', hour12: false });
+    const [datePart, timePart] = spString.split(', ');
+    const [y, m, day] = datePart.split('-').map(Number);
+    const [h, mi, s] = (timePart || '0:0:0').split(':').map(Number);
+    const spDate = new Date(Date.UTC(y, m - 1, day, h, mi, s));
+    const dow = (spDate.getUTCDay() + 6) % 7; // Monday = 0
+    const monday = new Date(Date.UTC(spDate.getUTCFullYear(), spDate.getUTCMonth(), spDate.getUTCDate() - dow));
+    return monday.getTime();
+  };
+
+  const currentWeek = spWeekKey(new Date());
   const canTrainThisWeek = !skills.some(s =>
-    s.last_trained_at && new Date(s.last_trained_at).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
+    s.last_trained_at && spWeekKey(new Date(s.last_trained_at)) === currentWeek
   );
 
   const nextTrainDate = (() => {
-    const lastTrained = skills
-      .filter(s => s.last_trained_at)
-      .map(s => new Date(s.last_trained_at!).getTime())
-      .sort((a, b) => b - a)[0];
-    if (!lastTrained) return null;
-    return new Date(lastTrained + 7 * 24 * 60 * 60 * 1000);
+    if (canTrainThisWeek) return null;
+    // Next Monday 00:00 São Paulo — built from today's date in SP, then jump days forward.
+    const nowSp = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const dow = (nowSp.getDay() + 6) % 7; // Mon=0 … Sun=6
+    const daysUntilNextMonday = 7 - dow;
+    const nextMondaySp = new Date(nowSp);
+    nextMondaySp.setDate(nowSp.getDate() + daysUntilNextMonday);
+    nextMondaySp.setHours(0, 0, 0, 0);
+    return nextMondaySp;
   })();
 
   useEffect(() => {
@@ -118,14 +134,14 @@ export default function ManagerCoachPage() {
         <div>
           <h1 className="font-display text-3xl font-bold">Treinamento do Técnico</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Treine uma habilidade por semana para melhorar o desempenho do time.
+            Treine uma habilidade por semana. O treino libera toda segunda-feira às 00:00.
           </p>
         </div>
 
         {!canTrainThisWeek && nextTrainDate && (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
             <p className="text-sm text-amber-400 font-display font-semibold">
-              Treino semanal já realizado. Próximo disponível: {nextTrainDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              Treino semanal já realizado. Próximo disponível: segunda-feira {nextTrainDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às 00:00
             </p>
           </div>
         )}
