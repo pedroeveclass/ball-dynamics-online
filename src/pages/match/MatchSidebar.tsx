@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight, Check, CheckCheck } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
 import type { ClubInfo, Participant, MatchTurn, EventLog } from './types';
 
@@ -126,31 +126,62 @@ function AccordionSection({ title, badge, color, open, onToggle, children, class
 }
 
 // ─── TeamList ─────────────────────────────────────────────────
-function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submittedIds }: {
+function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submittedIds, isHalftime, canMarkReady, onToggleReady }: {
   players: Participant[]; ballHolderId: string | null; myId: string | null;
   selectedId: string | null; onSelect: (id: string) => void; submittedIds: Set<string>;
+  isHalftime?: boolean;
+  canMarkReady?: (p: Participant) => boolean;
+  onToggleReady?: (participantId: string, nextReady: boolean) => void;
 }) {
   return (
     <div className="space-y-0.5">
-      {players.map(p => (
-        <button key={p.id}
-          onClick={() => onSelect(p.id)}
-          className={`w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-colors text-left ${
-            selectedId === p.id ? 'bg-tactical/20 text-tactical' : myId === p.id ? 'bg-pitch/15 text-pitch' : 'hover:bg-[hsl(220,15%,18%)] text-white/80'
-          }`}
-        >
-          {p.is_bot
-            ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
-            : <User className="h-3 w-3 text-pitch shrink-0" />}
-          <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
-          <span className="font-display w-7 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
-          <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
-          {ballHolderId === p.id && <span className="text-[10px]">{'\u26BD'}</span>}
-          {submittedIds.has(p.id) && <span className="text-[10px] text-pitch">{'\u2713'}</span>}
-          {(p as any).yellow_cards >= 1 && <span className="text-[10px]">{'\uD83D\uDFE8'}</span>}
-          {(p as any).is_sent_off && <span className="text-[10px]">{'\uD83D\uDFE5'}</span>}
-        </button>
-      ))}
+      {players.map(p => {
+        const canReady = !!(isHalftime && canMarkReady?.(p) && onToggleReady);
+        const isReady = !!p.is_ready;
+        return (
+          <div key={p.id} className="flex items-center gap-1">
+            <button
+              onClick={() => onSelect(p.id)}
+              className={`flex-1 flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-colors text-left ${
+                selectedId === p.id ? 'bg-tactical/20 text-tactical' : myId === p.id ? 'bg-pitch/15 text-pitch' : 'hover:bg-[hsl(220,15%,18%)] text-white/80'
+              }`}
+            >
+              {p.is_bot
+                ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
+                : <User className="h-3 w-3 text-pitch shrink-0" />}
+              <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
+              <span className="font-display w-7 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
+              <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
+              {ballHolderId === p.id && <span className="text-[10px]">{'\u26BD'}</span>}
+              {submittedIds.has(p.id) && <span className="text-[10px] text-pitch">{'\u2713'}</span>}
+              {(p as any).yellow_cards >= 1 && <span className="text-[10px]">{'\uD83D\uDFE8'}</span>}
+              {(p as any).is_sent_off && <span className="text-[10px]">{'\uD83D\uDFE5'}</span>}
+            </button>
+            {isHalftime && (
+              canReady ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleReady!(p.id, !isReady); }}
+                  title={isReady ? 'Pronto' : 'Marcar como pronto'}
+                  className={`shrink-0 h-6 w-6 flex items-center justify-center rounded transition-colors ${
+                    isReady ? 'bg-pitch/80 text-white' : 'bg-[hsl(220,15%,20%)] text-white/50 hover:bg-pitch/30 hover:text-pitch'
+                  }`}
+                >
+                  <Check className="h-3 w-3" />
+                </button>
+              ) : (
+                <span
+                  title={isReady ? 'Pronto' : 'Aguardando'}
+                  className={`shrink-0 h-6 w-6 flex items-center justify-center rounded ${
+                    isReady ? 'bg-pitch/50 text-white' : 'bg-[hsl(220,15%,20%)] text-white/25'
+                  }`}
+                >
+                  <Check className="h-3 w-3" />
+                </span>
+              )
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -258,6 +289,9 @@ export interface MatchSidebarProps {
   matchId: string;
   userId: string | null;
   username: string | null;
+  onToggleReady?: (participantId: string, nextReady: boolean) => void;
+  onMarkTeamReady?: (clubId: string) => void;
+  canMarkReady?: (p: Participant) => boolean;
 }
 
 export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) {
@@ -272,6 +306,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
     onToggleHome, onToggleAway, onToggleLog, onToggleChat,
     events, eventsEndRef,
     matchId, userId, username,
+    onToggleReady, onMarkTeamReady, canMarkReady,
   } = props;
 
   // ── Chat state ──
@@ -332,6 +367,14 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
         open={homeAccOpen}
         onToggle={onToggleHome}
       >
+        {isHalftime && isManager && myClubId === homeClub?.id && onMarkTeamReady && (
+          <button
+            onClick={() => onMarkTeamReady(homeClub!.id)}
+            className="w-full mb-2 flex items-center justify-center gap-1.5 text-xs font-display font-bold bg-pitch/20 hover:bg-pitch/30 text-pitch px-2 py-1 rounded transition-colors"
+          >
+            <CheckCheck className="h-3.5 w-3.5" /> Marcar todos prontos
+          </button>
+        )}
         <TeamList
           players={homePlayers}
           ballHolderId={ballHolderId}
@@ -339,6 +382,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           selectedId={selectedId}
           onSelect={onSelectPlayer}
           submittedIds={submittedIds}
+          isHalftime={isHalftime}
+          canMarkReady={canMarkReady}
+          onToggleReady={onToggleReady}
         />
         <BenchList
           players={homeBench}
@@ -357,6 +403,14 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
         open={awayAccOpen}
         onToggle={onToggleAway}
       >
+        {isHalftime && isManager && myClubId === awayClub?.id && onMarkTeamReady && (
+          <button
+            onClick={() => onMarkTeamReady(awayClub!.id)}
+            className="w-full mb-2 flex items-center justify-center gap-1.5 text-xs font-display font-bold bg-pitch/20 hover:bg-pitch/30 text-pitch px-2 py-1 rounded transition-colors"
+          >
+            <CheckCheck className="h-3.5 w-3.5" /> Marcar todos prontos
+          </button>
+        )}
         <TeamList
           players={awayPlayers}
           ballHolderId={ballHolderId}
@@ -364,6 +418,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           selectedId={selectedId}
           onSelect={onSelectPlayer}
           submittedIds={submittedIds}
+          isHalftime={isHalftime}
+          canMarkReady={canMarkReady}
+          onToggleReady={onToggleReady}
         />
         <BenchList
           players={awayBench}

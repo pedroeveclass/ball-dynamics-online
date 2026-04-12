@@ -2044,7 +2044,7 @@ function computeDeviation(
 
 // ─── Height-based interception zones ─────────────────────────────
 function getInterceptableRanges(actionType: string, interceptActionType?: string): Array<[number, number]> {
-  // Block actions - only allowed in yellow zones (elevated ball)
+  // Block actions - only allowed in yellow zones (elevated ball) + first 5% of every pass (block-only start)
   if (interceptActionType === 'block') {
     switch (actionType) {
       // All shots: GK can block (espalmar) at any point in trajectory
@@ -2058,25 +2058,26 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
         return [[0, 0.2], [0.8, 1]]; // yellow zones of high pass
       case 'pass_launch':
         return [[0, 0.35], [0.65, 1]]; // yellow zones of launch
-      // Ground balls (non-shot): NO block allowed
+      // Ground balls: block allowed only in the first 5% (pass start)
       case 'pass_low':
       case 'header_low':
+        return [[0, 0.05]];
       case 'move':
       default:
         return [];
     }
   }
-  // Receive/dominate - allowed in green zones + descending yellow, NOT red or ascending yellow
-  // Ascending yellow (ball going up) = only block; descending yellow (coming down) = receive OK
+  // Receive/dominate - no receive during the first block-only window (every pass starts
+  // with a short yellow where only blocks are legal) then green zones + descending yellow.
   switch (actionType) {
     case 'pass_low':
     case 'header_low':
-      return [[0, 1]]; // fully green, fully interceptable
+      return [[0.05, 1]]; // first 5% = block-only; after that fully receivable
     case 'pass_high':
     case 'header_high':
-      return [[0, 0.12], [0.8, 1]]; // green start + descending yellow+green (skip ascending yellow 0.12-0.2)
+      return [[0.8, 1]]; // start is yellow (block-only); receive only in descending yellow+green
     case 'pass_launch':
-      return [[0, 0.08], [0.65, 1]]; // green start + descending yellow+green (skip ascending yellow 0.08-0.35)
+      return [[0.65, 1]]; // start is yellow (block-only); receive only in descending yellow+green
     // All shots: GK can receive (agarrar) at any point in trajectory
     case 'shoot_controlled':
     case 'header_controlled':
@@ -5716,6 +5717,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         set_piece_type: 'kickoff',
       });
 
+      // Reset ready flags so players can re-check ready for the 2nd half start
+      await supabase.from('match_participants').update({ is_ready: false }).eq('match_id', match_id).eq('role_type', 'player');
+
       // Reset all players to formation positions (field inverted for second half)
       {
         let homeFormation = '4-4-2';
@@ -6414,6 +6418,90 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: result.error }), { status: result.httpStatus || 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       return new Response(JSON.stringify({ ...result, server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ─── HALFTIME READY CHECK ───
+    // Toggles is_ready for a participant (or batch for the requesting manager's team).
+    // When ALL active starters of BOTH teams are ready during halftime, shortens the
+    // halftime break to 5 seconds from now so the second half kicks off early.
+    if (action === 'toggle_ready' && match_id) {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '', {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      if (!user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const { participant_id, ready, mark_team_club_id } = body as { participant_id?: string; ready?: boolean; mark_team_club_id?: string };
+
+      // Resolve manager club memberships for this user (once)
+      const { data: managerProfile } = await supabase.from('manager_profiles').select('id').eq('user_id', user.id).maybeSingle();
+      const managedClubIds: string[] = [];
+      if (managerProfile?.id) {
+        const { data: mgrClubs } = await supabase.from('clubs').select('id').eq('manager_profile_id', managerProfile.id);
+        for (const c of (mgrClubs || [])) managedClubIds.push(c.id);
+      }
+
+      if (mark_team_club_id) {
+        // Manager batch-marks all their starters ready
+        if (!managedClubIds.includes(mark_team_club_id)) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const { data: teamStarters } = await supabase.from('match_participants')
+          .select('id').eq('match_id', match_id).eq('role_type', 'player').eq('club_id', mark_team_club_id);
+        const ids = (teamStarters || []).map((p: any) => p.id);
+        if (ids.length > 0) {
+          await supabase.from('match_participants').update({ is_ready: ready !== false }).in('id', ids);
+        }
+      } else if (participant_id) {
+        const { data: part } = await supabase.from('match_participants')
+          .select('id, club_id, connected_user_id, role_type, match_id').eq('id', participant_id).maybeSingle();
+        if (!part || part.match_id !== match_id) {
+          return new Response(JSON.stringify({ error: 'Participant not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const allowed = part.connected_user_id === user.id || managedClubIds.includes(part.club_id);
+        if (!allowed) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        await supabase.from('match_participants').update({ is_ready: ready !== false }).eq('id', participant_id);
+      } else {
+        return new Response(JSON.stringify({ error: 'Missing participant_id or mark_team_club_id' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // If halftime is in progress and ALL active starters from both teams are ready, shorten the break
+      const { data: match } = await supabase.from('matches')
+        .select('id, current_half, half_started_at, home_club_id, away_club_id').eq('id', match_id).maybeSingle();
+      let shortened = false;
+      if (match?.current_half === 2 && match.half_started_at && new Date(match.half_started_at).getTime() > Date.now()) {
+        const { data: starters } = await supabase.from('match_participants')
+          .select('id, club_id, is_ready, is_sent_off').eq('match_id', match_id).eq('role_type', 'player');
+        const active = (starters || []).filter((s: any) => !s.is_sent_off);
+        const homeAll = active.filter((s: any) => s.club_id === match.home_club_id);
+        const awayAll = active.filter((s: any) => s.club_id === match.away_club_id);
+        const homeReady = homeAll.length > 0 && homeAll.every((s: any) => s.is_ready);
+        const awayReady = awayAll.length > 0 && awayAll.every((s: any) => s.is_ready);
+        if (homeReady && awayReady) {
+          const newEnd = new Date(Date.now() + 5000).toISOString();
+          const curEnd = new Date(match.half_started_at).getTime();
+          if (curEnd > Date.now() + 5500) {
+            await supabase.from('matches').update({ half_started_at: newEnd }).eq('id', match_id);
+            await supabase.from('match_turns').update({ ends_at: newEnd }).eq('match_id', match_id).eq('status', 'active');
+            shortened = true;
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'system',
+              title: '⚡ Todos prontos!',
+              body: 'Segundo tempo começa em 5 segundos.',
+            });
+          }
+        }
+      }
+
+      return jsonResponse({ ok: true, shortened, server_now: Date.now() });
     }
 
     // ─── SUBMIT HUMAN ACTION ───

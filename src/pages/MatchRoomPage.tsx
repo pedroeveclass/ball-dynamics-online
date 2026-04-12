@@ -1500,6 +1500,26 @@ export default function MatchRoomPage() {
     toast.success('Substituição agendada! Será aplicada na próxima parada de jogo.');
   }, []);
 
+  const handleToggleReady = useCallback(async (participantId: string, nextReady: boolean) => {
+    if (!matchId) return;
+    const { response, result } = await invokeMatchEngine({ action: 'toggle_ready', match_id: matchId, participant_id: participantId, ready: nextReady });
+    if (!response.ok) {
+      toast.error((result as any)?.error || 'Erro ao marcar pronto');
+    } else if ((result as any)?.shortened) {
+      toast.success('Todos prontos! Segundo tempo em 5s.');
+    }
+  }, [invokeMatchEngine, matchId]);
+
+  const handleMarkTeamReady = useCallback(async (clubId: string) => {
+    if (!matchId) return;
+    const { response, result } = await invokeMatchEngine({ action: 'toggle_ready', match_id: matchId, mark_team_club_id: clubId, ready: true });
+    if (!response.ok) {
+      toast.error((result as any)?.error || 'Erro ao marcar time');
+    } else if ((result as any)?.shortened) {
+      toast.success('Todos prontos! Segundo tempo em 5s.');
+    }
+  }, [invokeMatchEngine, matchId]);
+
   // Ref to avoid stale closure in applyPendingSubstitutions
   const pendingSubsRef = useRef(pendingSubstitutions);
   pendingSubsRef.current = pendingSubstitutions;
@@ -3639,11 +3659,32 @@ export default function MatchRoomPage() {
                     )];
                   }
 
-                  // pass_low, shoot_controlled, move, receive — single solid line
+                  // pass_low: first 5% yellow (block-only, no receive), rest green
+                  if (visualType === 'pass_low') {
+                    return [
+                      <line key="pl-start"
+                        x1={from.x} y1={from.y}
+                        x2={from.x + dx * 0.05} y2={from.y + dy * 0.05}
+                        stroke="#f59e0b" strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        strokeDasharray={dashArray}
+                      />,
+                      <line key="pl-main"
+                        x1={from.x + dx * 0.05} y1={from.y + dy * 0.05}
+                        x2={to.x} y2={to.y}
+                        stroke="#22c55e" strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        markerEnd={`url(#${markerId})`}
+                        strokeDasharray={dashArray}
+                      />,
+                    ];
+                  }
+
+                  // shoot_controlled, move, receive — single solid line
                   return [(
                     <line key="single"
                       x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke={visualType === 'pass_low' || visualType === 'shoot_controlled' ? '#22c55e' : color}
+                      stroke={visualType === 'shoot_controlled' ? '#22c55e' : color}
                       strokeWidth={strokeW}
                       strokeLinecap="round" opacity={opacity}
                       markerEnd={`url(#${markerId})`}
@@ -3820,13 +3861,24 @@ export default function MatchRoomPage() {
                   ))}</>);
                 }
                 if (previewType === 'pass_low') {
+                  const dx = to.x - from.x;
+                  const dy = to.y - from.y;
                   return (
-                    <line
-                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke="#22c55e" strokeWidth={strokeW}
-                      strokeLinecap="round" opacity={opacity}
-                      markerEnd="url(#ah-green)"
-                    />
+                    <g>
+                      <line
+                        x1={from.x} y1={from.y}
+                        x2={from.x + dx * 0.05} y2={from.y + dy * 0.05}
+                        stroke="#f59e0b" strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                      />
+                      <line
+                        x1={from.x + dx * 0.05} y1={from.y + dy * 0.05}
+                        x2={to.x} y2={to.y}
+                        stroke="#22c55e" strokeWidth={strokeW}
+                        strokeLinecap="round" opacity={opacity}
+                        markerEnd="url(#ah-green)"
+                      />
+                    </g>
                   );
                 }
                 // Shots: preview only green/yellow (no red — surprise)
@@ -4346,6 +4398,13 @@ export default function MatchRoomPage() {
           matchId={matchId!}
           userId={user?.id ?? null}
           username={profile?.username ?? null}
+          onToggleReady={handleToggleReady}
+          onMarkTeamReady={handleMarkTeamReady}
+          canMarkReady={(p) => {
+            if (!user) return false;
+            if (p.connected_user_id === user.id) return true;
+            return isManager && p.club_id === myClubId;
+          }}
         />
       </div>
     </div>

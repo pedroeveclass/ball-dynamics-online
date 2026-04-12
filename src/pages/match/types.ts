@@ -28,6 +28,7 @@ export interface Participant {
   field_x?: number; field_y?: number; field_pos?: string;
   jersey_number?: number;
   match_energy?: number;
+  is_ready?: boolean;
 }
 
 export interface MatchTurn {
