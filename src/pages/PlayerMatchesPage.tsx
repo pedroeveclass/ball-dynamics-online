@@ -90,21 +90,20 @@ export default function PlayerMatchesPage() {
     setCreating5v5(true);
     try {
       const clubId = playerProfile.club_id;
-      if (!clubId) { toast.error('Você precisa estar em um clube para jogar'); return; }
-
-      // Pick a random bot-managed club as opponent
+      // Pick a random bot-managed club as home (if player has no club) and as opponent
       const { data: botClubs } = await supabase
         .from('clubs')
         .select('id')
         .eq('is_bot_managed', true)
-        .neq('id', clubId)
         .limit(20);
-      if (!botClubs || botClubs.length === 0) { toast.error('Nenhum time adversário disponível'); return; }
-      const opponentId = botClubs[Math.floor(Math.random() * botClubs.length)].id;
+      if (!botClubs || botClubs.length < 2) { toast.error('Times insuficientes disponíveis'); return; }
+      const available = clubId ? botClubs.filter(c => c.id !== clubId) : botClubs;
+      const homeClubId = clubId || available.splice(Math.floor(Math.random() * available.length), 1)[0].id;
+      const opponentId = available[Math.floor(Math.random() * available.length)].id;
 
       // Create the match (5v5 test — no lineup IDs, engine treats as test match)
       const { data: match, error: matchError } = await supabase.from('matches').insert({
-        home_club_id: clubId,
+        home_club_id: homeClubId,
         away_club_id: opponentId,
         home_lineup_id: null,
         away_lineup_id: null,
@@ -120,7 +119,7 @@ export default function PlayerMatchesPage() {
       homeParticipants.push({
         match_id: match.id,
         player_profile_id: playerProfile.id,
-        club_id: clubId,
+        club_id: homeClubId,
         role_type: 'player',
         is_bot: false,
         is_ready: false,
@@ -136,7 +135,7 @@ export default function PlayerMatchesPage() {
       for (const pos of botPositions) {
         homeParticipants.push({
           match_id: match.id,
-          club_id: clubId,
+          club_id: homeClubId,
           role_type: 'player',
           is_bot: true,
           is_ready: false,
@@ -189,13 +188,11 @@ export default function PlayerMatchesPage() {
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
             <Swords className="h-6 w-6 text-tactical" /> Minhas Partidas
           </h1>
-          {playerProfile?.club_id && (
-            <Button size="sm" variant="outline" onClick={handleCreate5v5} disabled={creating5v5}
-              className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
-              {creating5v5 ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />}
-              {creating5v5 ? 'Criando...' : 'Teste 5v5'}
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={handleCreate5v5} disabled={creating5v5}
+            className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
+            {creating5v5 ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />}
+            {creating5v5 ? 'Criando...' : 'Teste 5v5'}
+          </Button>
         </div>
 
         {matches.length === 0 && (
