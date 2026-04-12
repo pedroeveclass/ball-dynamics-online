@@ -3389,10 +3389,10 @@ async function ensureGoalkeeperPerTeam(supabase: any, matchId: string, homeClubI
         console.log(`[ENGINE] Repositioned existing GK ${existingGK.id.slice(0,8)} to (${gkX}, ${gkY})`);
       }
     } else {
-      // No explicit GK — if team already has 11+ players, promote the one closest to the goal
-      // instead of creating a new bot (prevents 12+ player roster and frontend cap issues)
+      // No explicit GK — promote the player closest to the goal as GK
+      // (never create extra bots — preserves 5v5 and other custom roster sizes)
       const gkX = isHome ? 5 : 95;
-      if (teamParts.length >= 11) {
+      if (teamParts.length > 0) {
         let closest = teamParts[0];
         let minDist = Infinity;
         for (const p of teamParts) {
@@ -3649,10 +3649,18 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         }
       };
 
-      await Promise.all([
-        fillBots(m.home_club_id, homeParts.length, homeFormation, true),
-        fillBots(m.away_club_id, awayParts.length, awayFormation, false),
-      ]);
+      // For test matches (no lineup IDs) where participants already exist (e.g., 5v5 player test),
+      // don't fill to 11 — respect the pre-created roster size.
+      const isTestMatch = !m.home_lineup_id && !m.away_lineup_id;
+      const hasPreCreatedParticipants = (homeParts.length > 0 || awayParts.length > 0);
+      if (!(isTestMatch && hasPreCreatedParticipants)) {
+        await Promise.all([
+          fillBots(m.home_club_id, homeParts.length, homeFormation, true),
+          fillBots(m.away_club_id, awayParts.length, awayFormation, false),
+        ]);
+      } else {
+        console.log(`[ENGINE] Test match with ${homeParts.length}v${awayParts.length} pre-created — skipping fillBots`);
+      }
 
       // ── Position ALL existing players to formation positions (match by slot position) ──
       const positionExistingPlayers = async (parts: any[], formation: string, isHome: boolean) => {
