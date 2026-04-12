@@ -1895,9 +1895,14 @@ function computeDeviation(
   const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
 
   // Set pieces have much less deviation (dead ball = more control)
-  // All dead ball situations including kickoff get reduced deviation
+  // EXCEPTION: kickoff shots keep full deviation — a shot from midfield
+  // should still be wildly inaccurate even though the ball is static.
   const isSetPiece = !!setPieceType;
-  const setPieceDeviationScale = isSetPiece ? 0.35 : 1.0;
+  const isKickoffShot = setPieceType === 'kickoff' && (
+    actionType === 'shoot_controlled' || actionType === 'shoot_power' ||
+    actionType === 'header_controlled' || actionType === 'header_power'
+  );
+  const setPieceDeviationScale = (isSetPiece && !isKickoffShot) ? 0.35 : 1.0;
 
   let difficultyMultiplier: number;
   let skillFactor: number;
