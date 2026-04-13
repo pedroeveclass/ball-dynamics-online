@@ -144,12 +144,25 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Authorize cron/admin access — accepts CRON_SECRET header or service_role JWT
+  // Authorize cron/admin access — accepts CRON_SECRET header or service_role JWT.
+  // Decode the bearer and accept any role=service_role so a rotated service
+  // key doesn't silently break the cron hardcoded JWT.
   const cronSecret = Deno.env.get('CRON_SECRET');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
   const hasCronSecret = cronSecret && req.headers.get('x-cron-secret') === cronSecret;
-  const hasServiceRole = serviceRoleKey && authHeader === serviceRoleKey;
+
+  let hasServiceRole = !!(serviceRoleKey && authHeader === serviceRoleKey);
+  if (!hasServiceRole && authHeader) {
+    try {
+      const parts = authHeader.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload?.role === 'service_role') hasServiceRole = true;
+      }
+    } catch { /* malformed token */ }
+  }
+
   if (!hasCronSecret && !hasServiceRole) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 403,
