@@ -106,6 +106,59 @@ export function getBallZoneAtProgress(actionType: string, progress: number): 'gr
   }
 }
 
+// Ball speed factor per action type — how fast the ball moves, which shrinks the
+// defender's effective range (fast balls leave less time to reach the intercept point).
+// Client and engine MUST use the same numbers so "canReach" decisions agree.
+export function getBallSpeedFactor(actionType: string): number {
+  switch (actionType) {
+    case 'shoot_power':
+    case 'header_power':
+      return 0.25;
+    case 'shoot_controlled':
+    case 'header_controlled':
+      return 0.35;
+    case 'pass_launch':
+      return 0.5;
+    case 'pass_high':
+    case 'header_high':
+      return 0.65;
+    case 'pass_low':
+    case 'header_low':
+    case 'move':
+    default:
+      return 1.0;
+  }
+}
+
+// ─── Trajectory reachability (source of truth for both client and engine) ──────
+// A defender can interact with the ball at a point P on the trajectory only if
+//   d(defender → P) ≤ t(P) × range × ballSpeedFactor(actionType)
+// where:
+//   - t(P) is the 0-1 progress of P along the trajectory
+//   - range is the defender's max move distance in one turn (from physical attrs)
+//   - ballSpeedFactor shrinks the window for faster ball types
+// At t=0 the ball hasn't left the passer, so only a defender literally on top of the
+// passer can block. At t=1 the defender can use the full range. This is what "the
+// preview of the ball" communicates visually — if the defender's move circle can touch
+// where the ball will be at that moment, they can interact.
+export function canReachTrajectoryPoint(
+  defenderPos: { x: number; y: number },
+  trajStart: { x: number; y: number },
+  trajTarget: { x: number; y: number },
+  t: number,
+  range: number,
+  actionType: string,
+  tolerance: number = 0.5,
+): boolean {
+  if (t < 0 || t > 1 || range <= 0) return false;
+  const px = trajStart.x + (trajTarget.x - trajStart.x) * t;
+  const py = trajStart.y + (trajTarget.y - trajStart.y) * t;
+  const d = Math.hypot(defenderPos.x - px, defenderPos.y - py);
+  const effectiveRange = range * getBallSpeedFactor(actionType);
+  // `tolerance` absorbs floating-point / render-grid rounding (default 0.5 field %).
+  return d <= t * effectiveRange + tolerance;
+}
+
 // Safe date formatter
 export function formatScheduledDate(dateStr: string): string {
   try {

@@ -16,6 +16,7 @@ function resolveEventParticipantName(
   const NAME_KEYS = [
     'scorer_name', 'assister_name', 'player_name', 'fouler_name',
     'tackler_name', 'blocker_name', 'shooter_name', 'passer_name',
+    'dribbler_name',
   ];
   for (const key of NAME_KEYS) {
     const val = payload[key];
@@ -25,6 +26,8 @@ function resolveEventParticipantName(
     'participant_id', 'scorer_participant_id', 'fouler_participant_id',
     'tackler_participant_id', 'tackled_participant_id', 'blocker_participant_id',
     'shooter_participant_id', 'passer_participant_id', 'receiver_participant_id',
+    'dribbler_participant_id', 'tackled_by_participant_id',
+    'player_participant_id', 'new_ball_holder_participant_id', 'gk_participant_id',
   ];
   for (const key of ID_KEYS) {
     const id = payload[key];
@@ -495,7 +498,29 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
             for (const p of awayPlayers) if (p.player_name) nameById.set(p.id, p.player_name);
             for (const p of homeBench) if (p.player_name) nameById.set(p.id, p.player_name);
             for (const p of awayBench) if (p.player_name) nameById.set(p.id, p.player_name);
-            return events.slice(-30).map(e => {
+
+            // Suppress receive_failed events whose participant ended up receiving the ball
+            // (engine logs every attempt; if the same player eventually succeeded or is now
+            // the ball holder, we hide the failure entry to avoid confusing the log).
+            const succeededReceivers = new Set<string>();
+            for (const e of events) {
+              if (e.event_type === 'receive_success') {
+                const pid = (e.payload as any)?.participant_id;
+                if (pid) succeededReceivers.add(pid);
+              }
+              if (e.event_type === 'pass_complete' || e.event_type === 'possession_change') {
+                const pid = (e.payload as any)?.new_ball_holder_participant_id
+                  ?? (e.payload as any)?.receiver_participant_id;
+                if (pid) succeededReceivers.add(pid);
+              }
+            }
+            const filteredEvents = events.filter(e => {
+              if (e.event_type !== 'receive_failed') return true;
+              const pid = (e.payload as any)?.participant_id;
+              return !(pid && succeededReceivers.has(pid));
+            });
+
+            return filteredEvents.slice(-30).map(e => {
               const minute = eventMinute(e, match);
               const playerName = resolveEventParticipantName(e, nameById);
               const turnNum = (e.payload as any)?.turn_number;

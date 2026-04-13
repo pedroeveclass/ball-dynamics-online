@@ -57,6 +57,50 @@ function getEnergyPenalty(energyPct: number): number {
   return 0.75;
 }
 
+// ─── Ball speed factor & trajectory reachability ────────────────────────
+// IMPORTANT: keep this identical to src/pages/match/constants.ts canReachTrajectoryPoint.
+// The client uses the same formula to decide when to show the purple "can intercept" circle,
+// and the engine uses it to validate incoming receive/block actions. If they drift, the
+// player will see purple circles that the engine rejects (or vice versa).
+function getBallSpeedFactor(actionType: string): number {
+  switch (actionType) {
+    case 'shoot_power':
+    case 'header_power':
+      return 0.25;
+    case 'shoot_controlled':
+    case 'header_controlled':
+      return 0.35;
+    case 'pass_launch':
+      return 0.5;
+    case 'pass_high':
+    case 'header_high':
+      return 0.65;
+    case 'pass_low':
+    case 'header_low':
+    case 'move':
+    default:
+      return 1.0;
+  }
+}
+
+// d(defender → P) ≤ t(P) × range × ballSpeedFactor(actionType)
+// At t=0 only a defender on top of the passer can block (d≤0). At t=1 the defender
+// can use their full range. Intermediate t scales linearly.
+function canReachTrajectoryPoint(
+  defX: number, defY: number,
+  startX: number, startY: number,
+  targetX: number, targetY: number,
+  t: number, range: number, actionType: string,
+  tolerance: number = 0.5,
+): boolean {
+  if (t < 0 || t > 1 || range <= 0) return false;
+  const px = startX + (targetX - startX) * t;
+  const py = startY + (targetY - startY) * t;
+  const d = Math.hypot(defX - px, defY - py);
+  const effectiveRange = range * getBallSpeedFactor(actionType);
+  return d <= t * effectiveRange + tolerance;
+}
+
 // ─── Persist final match_energy to player_profiles (LEAGUE only) ───
 // Called when a match ends. Friendly / 5v5 / bot test matches keep the
 // profile's energy_current untouched; only league matches carry the
@@ -1693,9 +1737,10 @@ async function generateBotActions(
           const distToTraj = Math.sqrt((posX - closestX) ** 2 + (posY - closestY) ** 2);
           const adjustedRange = maxMoveRange * bhBallSpeedFactor;
 
-          // Timing check: match engine's formula — timingRange = adjustedRange * max(0.15, t)
-          const trajTimingRange = adjustedRange * Math.max(0.15, t);
-          const canReachTraj = distToTraj <= trajTimingRange && (t >= 0.05 || distToTraj <= 2.5);
+          // Strict timing: defender may only intercept at progress t if d ≤ t × adjustedRange.
+          // Mirrors the client's canReachTrajectoryPoint and the resolveBallContest check.
+          const trajTimingRange = adjustedRange * t;
+          const canReachTraj = distToTraj <= trajTimingRange + 0.5;
 
           // Validate interceptable zone (ball height) before generating receive/block
           const botInterceptAction = isBhShooting ? 'block' : 'receive';
@@ -1728,9 +1773,9 @@ async function generateBotActions(
             const tackleX = ballPos.x + mtdx * mt;
             const tackleY = ballPos.y + mtdy * mt;
             const distToTackle = Math.sqrt((posX - tackleX) ** 2 + (posY - tackleY) ** 2);
-            // Match engine timing validation: timingRange = adjustedMaxRange * max(0.15, t)
-            const tackleTimingRange = maxMoveRange * Math.max(0.15, mt);
-            const canTackle = distToTackle <= tackleTimingRange && (mt >= 0.05 || distToTackle <= 2.5);
+            // Strict timing: same formula as the main intercept resolver and the client.
+            const tackleTimingRange = maxMoveRange * mt;
+            const canTackle = distToTackle <= tackleTimingRange + 0.5;
             if (canTackle) {
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -1798,8 +1843,8 @@ async function generateBotActions(
           const distToTraj = Math.sqrt((posX - closestX) ** 2 + (posY - closestY) ** 2);
           const adjustedRange = maxMoveRange * bhBallSpeedFactor;
 
-          const trajTimingRange = adjustedRange * Math.max(0.15, mt);
-          const canReachTraj = distToTraj <= trajTimingRange && (mt >= 0.05 || distToTraj <= 2.5);
+          const trajTimingRange = adjustedRange * mt;
+          const canReachTraj = distToTraj <= trajTimingRange + 0.5;
 
           // Validate interceptable zone (ball height)
           const midInterceptAction = isBhShooting ? 'block' : 'receive';
@@ -1830,8 +1875,8 @@ async function generateBotActions(
             const tackleX = ballPos.x + dtdx * dt;
             const tackleY = ballPos.y + dtdy * dt;
             const distToTackle = Math.sqrt((posX - tackleX) ** 2 + (posY - tackleY) ** 2);
-            const tackleTimingRange = maxMoveRange * Math.max(0.15, dt);
-            const canTackle = distToTackle <= tackleTimingRange && (dt >= 0.05 || distToTackle <= 2.5);
+            const tackleTimingRange = maxMoveRange * dt;
+            const canTackle = distToTackle <= tackleTimingRange + 0.5;
             if (canTackle) {
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2245,7 +2290,9 @@ function computeDeviation(
 
 // ─── Height-based interception zones ─────────────────────────────
 function getInterceptableRanges(actionType: string, interceptActionType?: string): Array<[number, number]> {
-  // Block actions - only allowed in yellow zones (elevated ball) + first 10% of every pass (block-only start)
+  // Block actions - only the INITIAL rising yellow zone of each pass type.
+  // The descending yellow near the target is a receive zone, not block — once the ball
+  // is slowing down to land, outfield players can dominate normally.
   if (interceptActionType === 'block') {
     switch (actionType) {
       // All shots: GK can block (espalmar) at any point in trajectory
@@ -2256,9 +2303,9 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
         return [[0, 1]];
       case 'pass_high':
       case 'header_high':
-        return [[0, 0.2], [0.8, 1]]; // yellow zones of high pass
+        return [[0, 0.2]]; // initial yellow only — descending side is receive
       case 'pass_launch':
-        return [[0, 0.35], [0.65, 1]]; // yellow zones of launch
+        return [[0, 0.35]]; // initial yellow only — descending side is receive
       // Ground balls: block allowed only in the first 10% (pass start)
       case 'pass_low':
       case 'header_low':
@@ -3020,19 +3067,14 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor}${isInterceptorGK ? ' GK_FULL_RANGE' : ''})`);
             continue;
           }
-          // ── Early intercept hard cap: at the very start of the trajectory,
-          // only players already pressing the ball holder can intercept ──
-          if (t < 0.05 && distToIntercept > 2.5) {
-            console.log(`[ENGINE] Intercept rejected (early, too far): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > 2.5 at t=${t.toFixed(2)}`);
-            continue;
-          }
-          // Timing check: the ball arrives at progress t (0=start, 1=end).
-          // For move (tackle): defender and attacker run at similar speed — scale linearly.
-          // For ball actions: ball is faster — need more restrictive timing at early progress.
-          const isTackle = bhActionType === 'move';
-          const timingRange = isTackle
-            ? adjustedMaxRange * Math.max(0.15, t) // tackle: generous — both running
-            : adjustedMaxRange * Math.max(0.15, t); // pass/shoot: also scales linearly with progress
+          // Strict timing formula (same as the client's purple-circle check): the defender
+          // can only interact with the ball at progress t if they can physically cover
+          // `t × range × ballSpeedFactor` units within one turn. At t=0 only a defender
+          // literally on top of the passer blocks; at t=1 they get the full range. Linear.
+          // REPLACES the old Math.max(0.15, t) (gave 15% range at t=0) and the 2.5u early
+          // hard cap (allowed teleport-like intercepts near the passer).
+          const TIMING_TOLERANCE = 0.5; // field % — absorbs grid-rounding / floating-point noise
+          const timingRange = adjustedMaxRange * t + TIMING_TOLERANCE;
           if (distToIntercept > timingRange) {
             console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
             continue;
@@ -5309,6 +5351,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             match_id, event_type: 'dribble',
             title: result.description,
             body: 'O desarme falhou e o jogador seguiu com a bola.',
+            payload: {
+              dribbler_participant_id: ballHolder.id,
+              tackled_by_participant_id: result.failedContestParticipantId ?? null,
+            },
           });
           // Log the failed contest too (with participant_id so next turn can block tackles)
           if (result.failedContestLog) {

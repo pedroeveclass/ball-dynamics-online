@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState } from './match/types';
-import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress } from './match/constants';
+import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
@@ -163,6 +163,18 @@ export default function MatchRoomPage() {
   const [awayAccOpen, setAwayAccOpen] = useState(false);
   const [logAccOpen, setLogAccOpen] = useState(false);
   const [chatAccOpen, setChatAccOpen] = useState(true);
+
+  // Force a re-render every second during halftime so derived props that compare
+  // `match.half_started_at` against `Date.now()` (e.g., `isHalftime`, banner, countdown)
+  // switch off exactly when the countdown hits zero rather than getting stuck.
+  const [, setHalftimeTick] = useState(0);
+  useEffect(() => {
+    if (match?.current_half !== 2 || !match?.half_started_at) return;
+    const untilMs = new Date(match.half_started_at).getTime() - Date.now();
+    if (untilMs <= 0) return;
+    const id = setInterval(() => setHalftimeTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [match?.current_half, match?.half_started_at]);
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1080,6 +1092,9 @@ export default function MatchRoomPage() {
     if (last.event_type === 'goal') sounds.goal();
     else if (last.event_type === 'foul' || last.event_type === 'penalty') sounds.foul();
     else if (last.event_type === 'kickoff') sounds.whistle();
+    else if (last.event_type === 'final_whistle' || last.event_type === 'second_half') sounds.whistleLong();
+    else if (last.event_type === 'corner' || last.event_type === 'throw_in' || last.event_type === 'free_kick') sounds.setPiece();
+    else if (last.event_type === 'yellow_card' || last.event_type === 'red_card') sounds.foul();
 
     // Only trigger visual during/near resolution
     const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
@@ -1785,7 +1800,11 @@ export default function MatchRoomPage() {
       
       // Check interception / domination of ball trajectory
       // When the action circle is purple (canReachBall), clicking anywhere in the circle should trigger intercept
+      // Guard: the ball holder themselves cannot "intercept" their own pass/shot. They may
+      // move freely during attacking_support (e.g., running to receive a return pass).
+      const isBallHolderSelf = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
       if (
+        !isBallHolderSelf &&
         drawingParticipant &&
         ballPathAction &&
         ballHolderNow?.field_x != null &&
@@ -1804,63 +1823,53 @@ export default function MatchRoomPage() {
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
-        // Reachability check — use the SAME logic as the purple circle visual.
-        // If the circle is purple at the cursor position, clicking opens the intercept menu.
+        // Reachability check — unified formula `d ≤ t × range × ballSpeedFactor`.
+        // Exactly matches the engine's resolveBallContest and the purple-circle render
+        // so "what you see is what the server accepts".
         let canReach = false;
         let interceptTargetX = pctX;
         let interceptTargetY = pctY;
         if (drawingParticipant.field_x != null && drawingParticipant.field_y != null) {
-          const mdx = pctX - drawingParticipant.field_x;
-          const mdy = pctY - drawingParticipant.field_y;
-          const moveDist = getFieldMoveDist(mdx, mdy);
-          let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
-
-          // Apply ball speed factor for outfield players (GK uses full range on shots)
-          const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
-          const clickActionType = ballPathAction.action_type;
-          const clickIsShot = clickActionType === 'shoot_controlled' || clickActionType === 'shoot_power' || clickActionType === 'header_controlled' || clickActionType === 'header_power';
-          if (!(clickIsGK && clickIsShot)) {
-            const clickBallSpeedFactor =
-              (clickActionType === 'shoot_power' || clickActionType === 'header_power') ? 0.25 :
-              (clickActionType === 'shoot_controlled' || clickActionType === 'header_controlled') ? 0.35 :
-              clickActionType === 'pass_launch' ? 0.5 :
-              (clickActionType === 'pass_high' || clickActionType === 'header_high') ? 0.65 :
-              1.0;
-            maxRange *= clickBallSpeedFactor;
-          }
-
-          const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
-
           const bfx = _bhOriginX;
           const bfy = _bhOriginY;
           const btx = ballPathAction.target_x;
           const bty = ballPathAction.target_y;
-
           const circleRadiusField = 9 / INNER_W * 100;
 
-          // Player on trajectory check
-          const playerDistToTraj = pointToSegmentDistance(drawingParticipant.field_x, drawingParticipant.field_y!, bfx, bfy, btx, bty);
-          const isPlayerOnTrajectory = playerDistToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
+          // Candidate intercept point = projection of cursor onto the trajectory at progress _t
+          const projX = bfx + _tdx * _t;
+          const projY = bfy + _tdy * _t;
 
-          // Calculate player position on trajectory timeline
-          const tPlayer = _tlen2 > 0 ? clamp(((drawingParticipant.field_x - bfx) * _tdx + (drawingParticipant.field_y! - bfy) * _tdy) / _tlen2, 0, 1) : 0;
-          const ballNotPastPlayer = _t <= tPlayer + (circleRadiusField + INTERCEPT_RADIUS) / Math.sqrt(Math.max(1, _tlen2));
+          // Range before ballSpeedFactor — the helper applies it per action type internally.
+          // GK handling: for shots, the goalkeeper uses FULL range (no ballSpeed shrink).
+          const mdx = projX - drawingParticipant.field_x;
+          const mdy = projY - drawingParticipant.field_y;
+          const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId, { x: mdx, y: mdy });
+          const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
+          const clickActionType = ballPathAction.action_type;
+          const clickIsShot = clickActionType === 'shoot_controlled' || clickActionType === 'shoot_power' || clickActionType === 'header_controlled' || clickActionType === 'header_power';
+          // For GK-on-shot: pass action type 'move' (ballSpeedFactor=1) so range isn't shrunk.
+          const effectiveActionType = (clickIsGK && clickIsShot) ? 'move' : clickActionType;
 
-          // Cursor near trajectory
+          const reachesTrajPoint = canReachTrajectoryPoint(
+            { x: drawingParticipant.field_x, y: drawingParticipant.field_y },
+            { x: bfx, y: bfy },
+            { x: btx, y: bty },
+            _t,
+            baseRange,
+            effectiveActionType,
+          );
+
+          // Cursor must be near the trajectory line itself (otherwise they clicked way off).
           const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
           const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
 
-          // Same logic as purple circle visual (see rendering code):
-          // Purple if: (player on trajectory) OR (cursor near traj AND player reaches in time)
-          canReach = (
-            isPlayerOnTrajectory ||
-            (cursorNearTraj && (movePct <= _t || (isPlayerOnTrajectory && ballNotPastPlayer)))
-          );
+          canReach = reachesTrajPoint && cursorNearTraj;
 
-          // When purple but click is far from trajectory line, snap intercept target to closest point on trajectory
+          // When accepted but the click itself was slightly off the line, snap to the line.
           if (canReach && distToTraj > INTERCEPT_RADIUS) {
-            interceptTargetX = bfx + _tdx * _t;
-            interceptTargetY = bfy + _tdy * _t;
+            interceptTargetX = projX;
+            interceptTargetY = projY;
           }
         }
         
@@ -2204,7 +2213,11 @@ export default function MatchRoomPage() {
           const OFFSET = 1.5;
           const offX = dribLen > 0.1 ? (dx / dribLen) * OFFSET : 1.2;
           const offY = dribLen > 0.1 ? (dy / dribLen) * OFFSET : -1.2;
-          if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+          // Dribble-success override: engine's `dribble` event means the dribbler kept the
+          // ball. Ignore any intercept candidate so the ball stays with the dribbler instead
+          // of visually sticking to the defender.
+          const dribbleSucceeded = resolutionEventsRef.current.some(e => e.event_type === 'dribble');
+          if (!dribbleSucceeded && interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
             const len2 = dx * dx + dy * dy;
             const interceptT = len2 > 0 ? clamp(((interceptAction.target_x - startPos.x) * dx + (interceptAction.target_y - startPos.y) * dy) / len2, 0, 1) : 1;
             const effectiveT = Math.min(t, interceptT);
@@ -2389,8 +2402,27 @@ export default function MatchRoomPage() {
                 const sp = snapshot[bhId];
                 
                 if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
-                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                  if (interceptAction && interceptAction.participant_id) {
+                    // Snap the ball to the receiver's ACTUAL final position (with a small
+                    // offset back toward the passer), not the raw trajectory intercept point.
+                    // Fixes the "ball stayed far from the player at end of Motion" glitch when
+                    // the receiver moved slightly beyond the computed intercept coord.
+                    const receiverFinal = finals[interceptAction.participant_id]
+                      ?? (interceptAction.target_x != null && interceptAction.target_y != null
+                        ? { x: interceptAction.target_x, y: interceptAction.target_y }
+                        : null);
+                    if (receiverFinal && sp) {
+                      const dx = receiverFinal.x - sp.x;
+                      const dy = receiverFinal.y - sp.y;
+                      const len = Math.sqrt(dx * dx + dy * dy);
+                      if (len > 0.5) {
+                        fbp = { x: receiverFinal.x - (dx / len) * 0.8, y: receiverFinal.y - (dy / len) * 0.8 };
+                      } else {
+                        fbp = { x: receiverFinal.x, y: receiverFinal.y };
+                      }
+                    } else if (interceptAction.target_x != null && interceptAction.target_y != null) {
+                      fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
+                    }
                   } else {
                     fbp = { x: ballAction.target_x, y: ballAction.target_y };
                   }
@@ -2414,7 +2446,10 @@ export default function MatchRoomPage() {
                   }
                 } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
                   const effectiveTarget = getEffectiveActionTarget(ballAction, snapshot[bhId], latestActions);
-                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  // If engine confirmed the dribble, don't snap the final ball to an
+                  // intercept target (the defender lost the duel — ball stays with dribbler).
+                  const dribbleSucceeded = resolutionEventsRef.current.some(e => e.event_type === 'dribble');
+                  if (!dribbleSucceeded && interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                     fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
                   } else {
                     // Ball ends up IN FRONT of the player (dribble direction), not on top
@@ -3095,7 +3130,11 @@ export default function MatchRoomPage() {
       const dx = endX - startPos.x;
       const dy = endY - startPos.y;
 
-      if (effectiveInterceptor && effectiveInterceptor.target_x != null && effectiveInterceptor.target_y != null) {
+      // Dribble-success override: if the resolution events confirm the dribble worked
+      // (engine emits `dribble`), ignore any intercept candidate from a defender's
+      // receive attempt — the ball must stay with the dribbler visually.
+      const dribbleSucceeded = resolutionEventsRef.current.some(e => e.event_type === 'dribble');
+      if (!dribbleSucceeded && effectiveInterceptor && effectiveInterceptor.target_x != null && effectiveInterceptor.target_y != null) {
         const len2 = dx * dx + dy * dy;
         const interceptT = len2 > 0
           ? clamp(
@@ -3415,6 +3454,19 @@ export default function MatchRoomPage() {
         {/* ── Field area (dominant) ── */}
         <div className="flex-1 flex items-center justify-center p-1 sm:p-2 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)' }}>
           <div className="relative w-full h-full flex items-center justify-center" style={{ maxWidth: 1200 }}>
+            {/* Positioning-phase border pulse: subtle periodic glow around the pitch to
+                signal it's time for the user to pick a position. Only visible when the
+                user has agency this phase (player or manager of this match). */}
+            {isPositioningTurn && (isPlayer || isManager) && (
+              <div
+                className="pointer-events-none absolute inset-0 rounded-lg"
+                style={{
+                  boxShadow: '0 0 0 3px rgba(245,158,11,0.55) inset, 0 0 32px 4px rgba(245,158,11,0.25)',
+                  animation: 'bdo-positioning-pulse 1.2s ease-in-out infinite',
+                  zIndex: 25,
+                }}
+              />
+            )}
             <PitchSVG
               style={stadiumStyle}
               svgRef={svgRef}
@@ -4014,38 +4066,15 @@ export default function MatchRoomPage() {
                     effectiveHolder.field_x != null && effectiveHolder.field_y != null &&
                     effectiveBallTrajectoryAction.target_x != null && effectiveBallTrajectoryAction.target_y != null &&
                     (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
-                  const mdx = mouseFieldPct.x - drawingFrom.field_x!;
-                  const mdy = mouseFieldPct.y - drawingFrom.field_y!;
-                  const moveDist = getFieldMoveDist(mdx, mdy);
-                  let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
-
-                  // Apply ball speed factor (GK uses full range on shots)
-                  const actionType = effectiveBallTrajectoryAction.action_type;
-                  const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
-                  const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
-                  if (!(drawingIsGK && isShot)) {
-                    const ballSpeedFactor =
-                      (actionType === 'shoot_power' || actionType === 'header_power') ? 0.25 :
-                      (actionType === 'shoot_controlled' || actionType === 'header_controlled') ? 0.35 :
-                      actionType === 'pass_launch' ? 0.5 :
-                      (actionType === 'pass_high' || actionType === 'header_high') ? 0.65 :
-                      1.0;
-                    maxRange *= ballSpeedFactor;
-                  }
-
-                  const movePct = maxRange > 0 ? Math.min(1, moveDist / maxRange) : 0;
-
                   const bfx = effectiveHolder.field_x!;
                   const bfy = effectiveHolder.field_y!;
                   const btx = effectiveBallTrajectoryAction.target_x!;
                   const bty = effectiveBallTrajectoryAction.target_y!;
-
                   const circleRadiusField = 9 / INNER_W * 100;
-                  
                   const trajDx = btx - bfx;
                   const trajDy = bty - bfy;
                   const trajLen2 = trajDx * trajDx + trajDy * trajDy;
-                  
+
                   if (trajLen2 > 0) {
                     const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
                     const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
@@ -4055,24 +4084,26 @@ export default function MatchRoomPage() {
                     const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
                                       (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
 
-                    // Proximity override: if the player's circle overlaps the ball trajectory
-                    const playerDistToTraj = drawingFrom.field_x != null ? pointToSegmentDistance(drawingFrom.field_x, drawingFrom.field_y!, bfx, bfy, btx, bty) : Infinity;
-                    const isPlayerOnTrajectory = playerDistToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
+                    // Range toward the projected point (projection of cursor onto trajectory).
+                    const projX = bfx + trajDx * tCursor;
+                    const projY = bfy + trajDy * tCursor;
+                    const dirX = projX - drawingFrom.field_x!;
+                    const dirY = projY - drawingFrom.field_y!;
+                    const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId, { x: dirX, y: dirY });
+                    const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
+                    const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
+                    const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
 
-                    // Calculate where the player sits on the trajectory (0=start, 1=end)
-                    const tPlayer = trajLen2 > 0 ? clamp(((drawingFrom.field_x! - bfx) * trajDx + (drawingFrom.field_y! - bfy) * trajDy) / trajLen2, 0, 1) : 0;
-                    // Ball hasn't passed the player yet (cursor is before or at player + circle tolerance)
-                    const ballNotPastPlayer = tCursor <= tPlayer + (circleRadiusField + INTERCEPT_RADIUS) / Math.sqrt(trajLen2);
-
-                    // Core reachability:
-                    // 1. Player is on the trajectory — purple regardless of cursor position
-                    //    (player can intercept by staying in place, timing is automatic)
-                    // 2. OR cursor is near trajectory AND player can reach in time
-                    const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
-                    canReachBall = !isRedZone && (
-                      isPlayerOnTrajectory ||
-                      (cursorNearTraj && (movePct <= tCursor || (isPlayerOnTrajectory && ballNotPastPlayer)))
+                    const reachesTrajPoint = canReachTrajectoryPoint(
+                      { x: drawingFrom.field_x!, y: drawingFrom.field_y! },
+                      { x: bfx, y: bfy },
+                      { x: btx, y: bty },
+                      tCursor,
+                      baseRange,
+                      effectiveActionType,
                     );
+                    const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
+                    canReachBall = !isRedZone && reachesTrajPoint && cursorNearTraj;
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
@@ -4190,6 +4221,19 @@ export default function MatchRoomPage() {
                     <title>
                       {`${p.jersey_number ? `#${p.jersey_number} ` : ''}${p.player_name ?? 'Jogador'}${p.field_pos ? ` (${p.field_pos})` : ''}`}
                     </title>
+                    {/* Positioning-phase cue on YOUR own avatar: pulsing amber ring + small
+                        outward wave — makes it impossible to miss that it's your turn to act. */}
+                    {isPositioningTurn && isControllable && !hasSubmitted && (
+                      <>
+                        <circle cx={x} cy={y} r={R + 4} fill="none" stroke="#f59e0b" strokeWidth="2" opacity={0.85} filter="url(#pulse-glow)">
+                          <animate attributeName="opacity" values="0.9;0.35;0.9" dur="1s" repeatCount="indefinite" />
+                        </circle>
+                        <circle cx={x} cy={y} r={R + 4} fill="none" stroke="#fbbf24" strokeWidth="1.5" opacity={0.6}>
+                          <animate attributeName="r" from={String(R + 4)} to={String(R + 14)} dur="1.2s" repeatCount="indefinite" />
+                          <animate attributeName="opacity" from="0.7" to="0" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+                      </>
+                    )}
                     {/* Possession change pulse */}
                     {isPulsingNewCarrier && (
                       <>
@@ -4380,11 +4424,13 @@ export default function MatchRoomPage() {
               );
             })()}
 
-            {/* Energy bar: shown for player (own energy) or manager (selected player) */}
+            {/* Energy bar: shown for player (own energy) or manager (selected player).
+                Look up fresh from `participants` instead of using the cached `myParticipant`
+                state (that one only updates when the ID changes — energy updates via realtime
+                land in `participants`). */}
             {(() => {
-              // Player sees own energy; manager sees selected player energy
               const energyParticipant = isPlayer && myParticipant
-                ? myParticipant
+                ? (participants.find(p => p.id === myParticipant.id) ?? myParticipant)
                 : (isManager && selectedParticipantId)
                   ? participants.find(p => p.id === selectedParticipantId && p.club_id === myClubId)
                   : null;
