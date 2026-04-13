@@ -4971,6 +4971,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       a.participant_id === ballHolder.id && isBallActionType(a.action_type));
 
     // ── Load previous turn's move directions for directional inertia ──
+    // Read from move/receive/block since any of those can move the player and therefore
+    // produce inertia for the next turn. Matches the client's stored direction.
     const prevMoveDirMap = new Map<string, { x: number; y: number }>();
     if ((match.current_turn_number ?? 1) > 1) {
       const { data: prevTurnRows } = await supabase
@@ -4980,13 +4982,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (prevTurnIds.length > 0) {
         const { data: prevMoveActions } = await supabase
           .from('match_actions')
-          .select('participant_id, payload')
+          .select('participant_id, action_type, payload')
           .in('match_turn_id', prevTurnIds)
-          .eq('action_type', 'move');
+          .in('action_type', ['move', 'receive', 'block']);
         for (const pm of (prevMoveActions || [])) {
           const p = pm.payload as any;
           if (p && typeof p.move_dx === 'number' && typeof p.move_dy === 'number') {
-            prevMoveDirMap.set(pm.participant_id, { x: p.move_dx, y: p.move_dy });
+            // Prefer 'move' over receive/block if both exist for the same player.
+            const existing = prevMoveDirMap.get(pm.participant_id);
+            if (!existing || pm.action_type === 'move') {
+              prevMoveDirMap.set(pm.participant_id, { x: p.move_dx, y: p.move_dy });
+            }
           }
         }
       }
@@ -5053,8 +5059,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
         // Persist move_ratio AND move direction in the action payload.
         // move_ratio: used for deviation penalty on next turn's pass/shoot.
-        // prev_move_dx/dy: used for directional inertia on next turn's move.
-        if (a.action_type === 'move') {
+        // move_dx/move_dy: used for directional inertia on next turn's move.
+        // We store for move AND receive/block so a player who ran to intercept also
+        // carries inertia into the next turn (matches client-side storage).
+        if (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') {
           const actualDist = getMovementDistance(finalX - startX, finalY - startY);
           const moveRatioVal = maxRange > 0 ? Math.min(1, actualDist / maxRange) : 0;
           const existingPayload = (a.payload && typeof a.payload === 'object') ? a.payload as Record<string, any> : {};

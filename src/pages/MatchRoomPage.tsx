@@ -846,6 +846,7 @@ export default function MatchRoomPage() {
     }
 
     // ── Directional inertia: bonus for same direction, penalty for reversing ──
+    // Same direction as last turn = 1.2× range. Reversing = 0.5× range. Linear between.
     if (targetDirection) {
       const prevDir = prevDirectionsRef.current[participantId];
       if (prevDir) {
@@ -860,6 +861,13 @@ export default function MatchRoomPage() {
           const normalizedAngle = angleDiff / Math.PI;
           const dirMult = 1.2 - 0.7 * normalizedAngle; // 1.2x→0.5x
           range *= dirMult;
+          // Debug: surface what the inertia is doing so we can catch any inversion.
+          if (typeof window !== 'undefined' && (window as any).__bdo_inertia_log) {
+            console.log('[INERTIA]', participantId.slice(0, 8),
+              'prev', { x: prevDir.x.toFixed(1), y: prevDir.y.toFixed(1) },
+              'cur', { x: targetDirection.x.toFixed(1), y: targetDirection.y.toFixed(1) },
+              'dot', dot.toFixed(2), 'mult', dirMult.toFixed(2));
+          }
         }
       }
     }
@@ -2370,29 +2378,34 @@ export default function MatchRoomPage() {
           
           setFinalPositions(finals);
 
-          // Store movement directions for inertia system
-          // IMPORTANT: if a player did NOT move this turn, RESET their inertia
+          // Store movement directions for inertia system.
+          // Source of truth: `finals[p.id]` (computed above as the authoritative end
+          // position for this turn) minus `snapshot[p.id]` (turn start). Using `finals`
+          // avoids divergence from the engine: if the engine clamped differently from the
+          // client, we still store the direction of the *actual* move that happened.
+          // IMPORTANT: if a player did NOT move this turn, reset their inertia.
           const newDirections: Record<string, { x: number; y: number }> = { ...prevDirectionsRef.current };
           for (const p of participantsRef.current) {
-            const moveAct = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
-            if (moveAct && moveAct.target_x != null && moveAct.target_y != null) {
-              const sp = snapshot[p.id];
-              if (sp) {
-                const effectiveTarget = getEffectiveActionTarget(moveAct, sp, latestActions);
-                const ddx = (effectiveTarget?.x ?? sp.x) - sp.x;
-                const ddy = (effectiveTarget?.y ?? sp.y) - sp.y;
-                if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
-                  newDirections[p.id] = { x: ddx, y: ddy };
-                } else {
-                  delete newDirections[p.id]; // Stayed still — reset inertia
-                }
-              }
-            } else {
-              // Player didn't move at all — reset inertia completely
+            const sp = snapshot[p.id];
+            const endPos = finals[p.id];
+            if (!sp || !endPos) {
               delete newDirections[p.id];
+              continue;
+            }
+            const ddx = endPos.x - sp.x;
+            const ddy = endPos.y - sp.y;
+            if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
+              newDirections[p.id] = { x: ddx, y: ddy };
+            } else {
+              delete newDirections[p.id]; // Stayed still — reset inertia
             }
           }
           prevDirectionsRef.current = newDirections;
+          if (typeof window !== 'undefined' && (window as any).__bdo_inertia_log) {
+            console.log('[INERTIA STORE] turn', activeTurn?.turn_number, Object.entries(newDirections).map(
+              ([id, d]) => `${id.slice(0, 8)}=(${d.x.toFixed(1)},${d.y.toFixed(1)})`
+            ).join(' | '));
+          }
           
            // Compute final ball position (bhId already declared above)
            const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
