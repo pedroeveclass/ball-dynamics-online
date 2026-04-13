@@ -4025,6 +4025,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   try {
 
+  // ── Self-heal: resolve any duplicate active turns for this match ───────
+  // The claim above picked ONE active turn; if a prior race left a second
+  // one behind, resolve it so both frontend and engine converge on a single
+  // active turn per match.
+  try {
+    await supabase.rpc('resolve_stale_active_turns', { p_match_id: match_id });
+  } catch (_e) { /* RPC may not exist yet in older deploys; ignore */ }
+
   // ── Tick-level cache: hydrate from engine_cache if available ──
   const tickCache: TickCache = {};
   if (match.engine_cache && typeof match.engine_cache === 'object') {
