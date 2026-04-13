@@ -21,6 +21,31 @@ function getFieldMoveDist(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVE_SCALE) * (dy * FIELD_Y_MOVE_SCALE));
 }
 
+// Single source of truth for resolving loose ball position from history.
+// Used by both the turn-transition useEffect and the render IIFE so both
+// paths agree on which position to surface when no canonical state exists.
+const HISTORY_EVENT_SCAN_LIMIT = 10;
+function resolveLooseBallFromHistory(
+  events: EventLog[],
+  turnActions: MatchAction[],
+): { x: number; y: number } | null {
+  for (let i = events.length - 1; i >= Math.max(0, events.length - HISTORY_EVENT_SCAN_LIMIT); i--) {
+    const payload = events[i]?.payload as any;
+    if (payload?.ball_x != null && payload?.ball_y != null) {
+      return { x: Number(payload.ball_x), y: Number(payload.ball_y) };
+    }
+    if (payload?.x != null && payload?.y != null) {
+      return { x: Number(payload.x), y: Number(payload.y) };
+    }
+  }
+  const lastBallAction = turnActions.find(a =>
+    (isAnyPassAction(a.action_type) || isAnyShootAction(a.action_type) || a.action_type === 'move') &&
+    a.target_x != null && a.target_y != null
+  );
+  if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
+  return null;
+}
+
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -111,6 +136,10 @@ export default function MatchRoomPage() {
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
+  // Tracks the turn_number that last seeded ballInertiaDir from lastBallDirRef. Prevents
+  // the "0x or 2x" bug where the turn-transition effect could re-run and apply inertia twice
+  // (or skip it) due to race conditions with realtime events or React effect re-execution.
+  const inertiaAppliedForTurnRef = useRef<number | null>(null);
   const prevTurnWasPositioningRef = useRef<boolean>(false);
   const oneTouchPendingForRef = useRef<string | null>(null);
   // Track resolution event logs so the animation end-state can incorporate actual results
@@ -140,6 +169,12 @@ export default function MatchRoomPage() {
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
   const animatedResolutionIdRef = useRef<string | null>(null);
+  // Holds a pending "apply next turn" callback when it arrives during an active resolution
+  // animation. Flushed either when the animation ends (useEffect on `animating`) or after a
+  // safety timeout so the match never stalls.
+  const pendingTurnApplyRef = useRef<(() => void) | null>(null);
+  const pendingTurnSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MAX_TURN_APPLY_WAIT_MS = 1800;
   const playerGroupRefsMap = useRef<Map<string, SVGGElement>>(new Map());
   const ballGroupRef = useRef<SVGGElement>(null);
   const lastMouseMoveTimeRef = useRef(0);
@@ -419,14 +454,14 @@ export default function MatchRoomPage() {
 
     const [playersRes, slotsRes] = await Promise.all([
       playerIds.length > 0
-        ? supabase.from('player_profiles').select('id, full_name, primary_position, overall').in('id', playerIds)
+        ? supabase.from('player_profiles').select('id, full_name, primary_position, overall, jersey_number').in('id', playerIds)
         : Promise.resolve({ data: [] as PlayerProfileSummary[] }),
       slotIds.length > 0
         ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds)
         : Promise.resolve({ data: [] as LineupSlotSummary[] }),
     ]);
 
-    playerProfileCacheRef.current = new Map((playersRes.data || []).map(player => [player.id, player as PlayerProfileSummary]));
+    playerProfileCacheRef.current = new Map((playersRes.data || []).map(player => [player.id, player as PlayerProfileSummary] as const));
     lineupSlotCacheRef.current = new Map((slotsRes.data || []).map(slot => [slot.id, slot as LineupSlotSummary]));
 
     const homePlayers = nextParticipantRows.filter(participant => participant.club_id === matchData.home_club_id && participant.role_type === 'player');
@@ -953,6 +988,10 @@ export default function MatchRoomPage() {
     setTackleBlockedIds(prevTurnFailed);
     resolutionEventsRef.current = [];
 
+    const currentTurnNumberForInertia = activeTurn?.turn_number ?? null;
+    const alreadySeededForThisTurn = currentTurnNumberForInertia != null
+      && inertiaAppliedForTurnRef.current === currentTurnNumberForInertia;
+
     if (activeTurn?.ball_holder_participant_id == null) {
       if (carriedLooseBallPos) {
         // Ball was ALREADY loose — check if inertia was consumed
@@ -962,30 +1001,18 @@ export default function MatchRoomPage() {
         }
         // If not consumed yet, keep ballInertiaDir alive for arrow/animation
       } else {
-        // Ball JUST became loose — find position from refs, state, or event logs
-        let pos = finalBallPosRef.current || finalBallPos;
-        if (!pos) {
-          // Fallback: scan recent events for ball position (loose_ball, ball_inertia, block, etc.)
-          for (let i = events.length - 1; i >= Math.max(0, events.length - 10); i--) {
-            const payload = events[i].payload as any;
-            if (payload?.ball_x != null && payload?.ball_y != null) { pos = { x: Number(payload.ball_x), y: Number(payload.ball_y) }; break; }
-            if (payload?.x != null && payload?.y != null) { pos = { x: Number(payload.x), y: Number(payload.y) }; break; }
-          }
-        }
-        if (!pos) {
-          // Last resort: find the last pass/shoot target from turn actions
-          const lastBallAct = turnActions.find(a =>
-            (a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' ||
-             a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power') &&
-            a.target_x != null && a.target_y != null
-          );
-          if (lastBallAct) pos = { x: lastBallAct.target_x!, y: lastBallAct.target_y! };
-        }
+        // Ball JUST became loose — canonical priority: final ball ref > final ball state > history resolver
+        const pos = finalBallPosRef.current
+          ?? finalBallPos
+          ?? resolveLooseBallFromHistory(events, turnActions);
         if (pos) {
           setCarriedLooseBallPos(pos);
           inertiaConsumedRef.current = false;
-          if (lastBallDirRef.current) {
+          // Seed inertia exactly once per turn_number — avoids the 0x/2x race where
+          // this effect re-runs and either re-applies a stale direction or skips it.
+          if (!alreadySeededForThisTurn && lastBallDirRef.current) {
             setBallInertiaDir(lastBallDirRef.current);
+            inertiaAppliedForTurnRef.current = currentTurnNumberForInertia;
           }
         }
       }
@@ -994,6 +1021,7 @@ export default function MatchRoomPage() {
       setBallInertiaDir(null);
       lastBallDirRef.current = null;
       inertiaConsumedRef.current = false;
+      inertiaAppliedForTurnRef.current = null;
     }
 
     setFinalBallPos(null);
@@ -1077,8 +1105,34 @@ export default function MatchRoomPage() {
     else if (last.event_type === 'saved') effectType = 'tackle_success';
     
     setContestEffect({ type: effectType, x: effectX, y: effectY, label: last.title });
-    setTimeout(() => setContestEffect(null), 2500);
+    // Lifetime of contestEffect is now tied to the resolution animation finishing
+    // (see useEffect watching `animating`). A safety timeout clears the effect if animation
+    // never ends for any reason — 3500ms is comfortably above max duration (2500ms).
+    const safety = setTimeout(() => setContestEffect(null), 3500);
+    return () => clearTimeout(safety);
   }, [events.length]);
+
+  // Clear the contest effect shortly after the resolution animation actually ends,
+  // so the visual pulse stays in sync with the motion rather than a hardcoded timeout.
+  useEffect(() => {
+    if (animating) return;
+    if (!contestEffect) return;
+    const t = setTimeout(() => setContestEffect(null), 400);
+    return () => clearTimeout(t);
+  }, [animating, contestEffect]);
+
+  // Flush a queued next-turn apply as soon as the resolution animation ends.
+  useEffect(() => {
+    if (animating) return;
+    const pending = pendingTurnApplyRef.current;
+    if (!pending) return;
+    pendingTurnApplyRef.current = null;
+    if (pendingTurnSafetyTimerRef.current) {
+      clearTimeout(pendingTurnSafetyTimerRef.current);
+      pendingTurnSafetyTimerRef.current = null;
+    }
+    pending();
+  }, [animating]);
 
   // Auto-show action menu for ball holder in phase 1
   // For loose ball (no ball_holder), skip phase 1 — handled by engine
@@ -1280,12 +1334,19 @@ export default function MatchRoomPage() {
             };
 
             if (animatedResolutionIdRef.current && animFrameRef.current) {
-              // Animation still running — wait for it to finish (max 2s safety)
-              const waitForAnim = () => {
-                if (!animFrameRef.current) { applyNewTurn(); return; }
-                setTimeout(waitForAnim, 200);
-              };
-              setTimeout(waitForAnim, 200);
+              // Resolution animation still running — queue the new turn. The useEffect on
+              // `animating` flushes it the moment the animation ends; the safety timer below
+              // guarantees we never stall if something goes wrong with the animation loop.
+              pendingTurnApplyRef.current = applyNewTurn;
+              if (pendingTurnSafetyTimerRef.current) clearTimeout(pendingTurnSafetyTimerRef.current);
+              pendingTurnSafetyTimerRef.current = setTimeout(() => {
+                pendingTurnSafetyTimerRef.current = null;
+                const pending = pendingTurnApplyRef.current;
+                if (pending) {
+                  pendingTurnApplyRef.current = null;
+                  pending();
+                }
+              }, MAX_TURN_APPLY_WAIT_MS);
             } else {
               applyNewTurn();
             }
@@ -1364,8 +1425,10 @@ export default function MatchRoomPage() {
     if (match?.status !== 'live' || !activeTurn || phaseTimeLeft > 0) return;
 
     let cancelled = false;
-    const STALE_THRESHOLD_MS = 500; // fire quickly after phase expires
-    const RETRY_INTERVAL = 2000;
+    // Cron runs server-side every 1s, so wait ~1.2s before nudging to avoid redundant
+    // client-triggered processing while cron is healthy. Retry every 2.5s after that.
+    const STALE_THRESHOLD_MS = 1200;
+    const RETRY_INTERVAL = 2500;
 
     const triggerProcessing = async () => {
       if (cancelled || phaseProcessorInFlightRef.current) return;
@@ -2039,6 +2102,9 @@ export default function MatchRoomPage() {
 
       setResolutionStartPositions(snapshot);
       animatedResolutionIdRef.current = activeTurn.id;
+      // Lock the interceptor for the full duration of this resolution so late events
+      // cannot change the ball's trajectory mid-flight (prevents visual teleport).
+      animationInterceptorSnapshotRef.current = interceptorActionRef.current;
       setAnimating(true);
       setAnimProgress(0);
       animProgressRef.current = 0;
@@ -2119,9 +2185,11 @@ export default function MatchRoomPage() {
         // Linear interpolation (ported from Solo Lab — constant ball speed, arc provides naturalism)
         const t = raw;
 
-        // Use the interceptorAction ref (computed from engine events) as the authoritative
-        // winner. Falls back to scanning receive actions if the ref is empty.
-        const interceptAction = interceptorActionRef.current
+        // Use the interceptor snapshot captured at animation start (locked for full flight
+        // so late-arriving events can't teleport the ball). Falls back to the live ref, then
+        // scans receive actions. See animationInterceptorSnapshotRef declaration.
+        const interceptAction = animationInterceptorSnapshotRef.current
+          ?? interceptorActionRef.current
           ?? actionsSnap.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null)
           ?? null;
 
@@ -2442,7 +2510,9 @@ export default function MatchRoomPage() {
               inertiaConsumedRef.current = true;
               lastBallDirRef.current = null;
             }
-          
+
+          // Release the interceptor snapshot — next render uses the live memo again.
+          animationInterceptorSnapshotRef.current = null;
           setAnimating(false);
 
           // Fetch authoritative positions from DB (prevents client desync)
@@ -2593,6 +2663,19 @@ export default function MatchRoomPage() {
   // Ref mirror so the animation loop can access the latest interceptor without re-running the effect
   const interceptorActionRef = useRef(interceptorAction);
   interceptorActionRef.current = interceptorAction;
+
+  // Snapshot of the interceptor captured when the resolution animation begins.
+  // Stays frozen through the animation so late-arriving events cannot teleport the ball mid-flight.
+  // Cleared when animation ends (and refreshed at next animation start).
+  const animationInterceptorSnapshotRef = useRef<MatchAction | null>(null);
+  // Resolves which interceptor to use. During animation: the locked snapshot.
+  // Outside animation: the live memoised value (needed for post-animation static render).
+  const getLockedInterceptor = (): MatchAction | null => {
+    if (animating && animationInterceptorSnapshotRef.current !== null) {
+      return animationInterceptorSnapshotRef.current;
+    }
+    return interceptorAction;
+  };
 
   // ─────────────────────────────────────────────────────────────
   if (loading || !match) {
@@ -2892,29 +2975,21 @@ export default function MatchRoomPage() {
 
   // interceptorAction is declared above the early return (Rules of Hooks)
 
-  // Loose ball position: persist across turns until someone regains possession
+  // Loose ball position: persist across turns until someone regains possession.
+  // Canonical priority: finalBallPos (current turn end) > carriedLooseBallPos (across turns)
+  // > shared history resolver (race safety during turn transition).
   const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
     if (carriedLooseBallPos) return carriedLooseBallPos;
-    // Check event logs for ball position (ball_inertia, block, etc.)
-    for (let i = events.length - 1; i >= Math.max(0, events.length - 5); i--) {
-      const evt = events[i];
-      const payload = evt.payload as any;
-      if (payload?.x != null && payload?.y != null) return { x: Number(payload.x), y: Number(payload.y) };
-      if (payload?.ball_x != null && payload?.ball_y != null) return { x: Number(payload.ball_x), y: Number(payload.ball_y) };
-    }
-    const lastBallAction = turnActions.find(a =>
-      (isAnyPassAction(a.action_type) || isAnyShootAction(a.action_type) || a.action_type === 'move') &&
-      a.target_x != null && a.target_y != null
-    );
-    if (lastBallAction) return { x: lastBallAction.target_x!, y: lastBallAction.target_y! };
-    return null;
+    return resolveLooseBallFromHistory(events, turnActions);
   })();
 
 
 
   const getAnimatedBallPos = (): { x: number; y: number } | null => {
+    // During animation use the locked snapshot so mid-flight events don't teleport the ball.
+    const effectiveInterceptor = getLockedInterceptor();
     // Use locked final ball position if available (post-animation)
     if (finalBallPos && !animating) {
       return finalBallPos;
@@ -3020,11 +3095,11 @@ export default function MatchRoomPage() {
       const dx = endX - startPos.x;
       const dy = endY - startPos.y;
 
-      if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
+      if (effectiveInterceptor && effectiveInterceptor.target_x != null && effectiveInterceptor.target_y != null) {
         const len2 = dx * dx + dy * dy;
         const interceptT = len2 > 0
           ? clamp(
-              ((interceptorAction.target_x - startPos.x) * dx + (interceptorAction.target_y - startPos.y) * dy) / len2,
+              ((effectiveInterceptor.target_x - startPos.x) * dx + (effectiveInterceptor.target_y - startPos.y) * dy) / len2,
               0,
               1
             )
@@ -3060,7 +3135,7 @@ export default function MatchRoomPage() {
     const isBallShoot = ballAction.action_type === 'shoot' || ballAction.action_type === 'shoot_controlled' || ballAction.action_type === 'shoot_power';
 
     if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
-      if (interceptorAction && interceptorAction.target_x != null && interceptorAction.target_y != null) {
+      if (effectiveInterceptor && effectiveInterceptor.target_x != null && effectiveInterceptor.target_y != null) {
         // Ball follows trajectory from ball start to target, capped at intercept point
         const dx = ballAction.target_x - ballStartX;
         const dy = ballAction.target_y - ballStartY;
@@ -3068,7 +3143,7 @@ export default function MatchRoomPage() {
         let interceptT = 1;
         if (len2 > 0) {
           interceptT = clamp(
-            ((interceptorAction.target_x - ballStartX) * dx + (interceptorAction.target_y - ballStartY) * dy) / len2,
+            ((effectiveInterceptor.target_x - ballStartX) * dx + (effectiveInterceptor.target_y - ballStartY) * dy) / len2,
             0, 1
           );
         }
@@ -3554,9 +3629,24 @@ export default function MatchRoomPage() {
                 const isBHAction = action.participant_id === activeTurn?.ball_holder_participant_id && (isPassAction(action.action_type) || isShootAction(action.action_type) || isHeaderAction(action.action_type));
                 const baseFromX = lockedOrigin?.x ?? fromPart.field_x;
                 const baseFromY = lockedOrigin?.y ?? fromPart.field_y;
-                // Pass/shoot arrows start from ball position
-                const fromX = isBHAction ? (baseFromX + 1.2) : baseFromX;
-                const fromY = isBHAction ? (baseFromY - 1.2) : baseFromY;
+                // Pass/shoot arrows start from the BALL position, offset from the player
+                // in the direction of the target (matches the live ball render and the
+                // resolution animation's ball start, so the arrow and the ball line up).
+                let fromX = baseFromX;
+                let fromY = baseFromY;
+                if (isBHAction) {
+                  const BALL_DIST_FROM_PLAYER = 0.8;
+                  const dxBall = action.target_x - baseFromX;
+                  const dyBall = action.target_y - baseFromY;
+                  const lenBall = Math.sqrt(dxBall * dxBall + dyBall * dyBall);
+                  if (lenBall > 0.5) {
+                    fromX = baseFromX + (dxBall / lenBall) * BALL_DIST_FROM_PLAYER;
+                    fromY = baseFromY + (dyBall / lenBall) * BALL_DIST_FROM_PLAYER;
+                  } else {
+                    fromX = baseFromX + BALL_DIST_FROM_PLAYER;
+                    fromY = baseFromY;
+                  }
+                }
                 const from = toSVG(fromX, fromY);
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
@@ -3659,18 +3749,18 @@ export default function MatchRoomPage() {
                     )];
                   }
 
-                  // pass_low: first 5% yellow (block-only, no receive), rest green
+                  // pass_low: first 10% yellow (block-only, no receive), rest green
                   if (visualType === 'pass_low') {
                     return [
                       <line key="pl-start"
                         x1={from.x} y1={from.y}
-                        x2={from.x + dx * 0.05} y2={from.y + dy * 0.05}
+                        x2={from.x + dx * 0.1} y2={from.y + dy * 0.1}
                         stroke="#f59e0b" strokeWidth={strokeW}
                         strokeLinecap="round" opacity={opacity}
                         strokeDasharray={dashArray}
                       />,
                       <line key="pl-main"
-                        x1={from.x + dx * 0.05} y1={from.y + dy * 0.05}
+                        x1={from.x + dx * 0.1} y1={from.y + dy * 0.1}
                         x2={to.x} y2={to.y}
                         stroke="#22c55e" strokeWidth={strokeW}
                         strokeLinecap="round" opacity={opacity}
@@ -4068,6 +4158,8 @@ export default function MatchRoomPage() {
               {/* Players */}
               {[...homePlayers, ...awayPlayers].map((p, idx) => {
                 if (p.field_x == null || p.field_y == null) return null;
+                // Sent-off players are removed from the pitch visually (team plays with 10).
+                if (p.is_sent_off) return null;
                 const animPos = getAnimatedPos(p);
                 const basePos = toSVG(p.field_x ?? 50, p.field_y ?? 50);
                 const svgAnimPos = toSVG(animPos.x, animPos.y);
@@ -4094,6 +4186,10 @@ export default function MatchRoomPage() {
                     onClick={(e) => { if (!drawingAction) e.stopPropagation(); handlePlayerClick(p.id); }}
                     style={{ cursor: isControllable ? 'pointer' : 'default' }}
                   >
+                    {/* Native tooltip on hover: jersey + name + position */}
+                    <title>
+                      {`${p.jersey_number ? `#${p.jersey_number} ` : ''}${p.player_name ?? 'Jogador'}${p.field_pos ? ` (${p.field_pos})` : ''}`}
+                    </title>
                     {/* Possession change pulse */}
                     {isPulsingNewCarrier && (
                       <>
@@ -4395,6 +4491,7 @@ export default function MatchRoomPage() {
           onToggleChat={() => setChatAccOpen(!chatAccOpen)}
           events={events}
           eventsEndRef={eventsEndRef}
+          match={match}
           matchId={matchId!}
           userId={user?.id ?? null}
           username={profile?.username ?? null}

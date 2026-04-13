@@ -2,7 +2,53 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight, Check, CheckCheck } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
-import type { ClubInfo, Participant, MatchTurn, EventLog } from './types';
+import type { ClubInfo, Participant, MatchTurn, EventLog, MatchData } from './types';
+import { HALF_DURATION_MS_CLIENT } from './constants';
+
+// Resolves the participant name to attribute to an event. Tries the obvious
+// *_name keys first, then any *_participant_id key via the supplied lookup.
+function resolveEventParticipantName(
+  event: EventLog,
+  nameById: Map<string, string>,
+): string | null {
+  const payload = event.payload as Record<string, any> | null | undefined;
+  if (!payload) return null;
+  const NAME_KEYS = [
+    'scorer_name', 'assister_name', 'player_name', 'fouler_name',
+    'tackler_name', 'blocker_name', 'shooter_name', 'passer_name',
+  ];
+  for (const key of NAME_KEYS) {
+    const val = payload[key];
+    if (typeof val === 'string' && val.trim()) return val;
+  }
+  const ID_KEYS = [
+    'participant_id', 'scorer_participant_id', 'fouler_participant_id',
+    'tackler_participant_id', 'tackled_participant_id', 'blocker_participant_id',
+    'shooter_participant_id', 'passer_participant_id', 'receiver_participant_id',
+  ];
+  for (const key of ID_KEYS) {
+    const id = payload[key];
+    if (typeof id === 'string') {
+      const name = nameById.get(id);
+      if (name) return name;
+    }
+  }
+  return null;
+}
+
+// Approximate match minute at which an event happened (relies on the current
+// half timing — fine for in-progress live events, less accurate for events
+// from an earlier half that we loaded after-the-fact).
+function eventMinute(event: EventLog, match: MatchData | null): number | null {
+  if (!match?.half_started_at) return null;
+  const halfStart = new Date(match.half_started_at).getTime();
+  const eventTs = new Date(event.created_at).getTime();
+  const elapsed = eventTs - halfStart;
+  if (!Number.isFinite(elapsed) || elapsed < 0) return null;
+  const halfMinutes = Math.min(45, Math.floor((elapsed / HALF_DURATION_MS_CLIENT) * 45));
+  const half = match.current_half || 1;
+  return half === 1 ? halfMinutes : 45 + halfMinutes;
+}
 
 // ─── TurnWheel (horizontal segmented bar) ─────────────────────
 function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDuration, isLooseBall, isHalftime: isHalftimeProp, timerDisplayRef, timerBarRef }: {
@@ -286,6 +332,7 @@ export interface MatchSidebarProps {
   onToggleHome: () => void; onToggleAway: () => void; onToggleLog: () => void; onToggleChat: () => void;
   events: EventLog[];
   eventsEndRef: React.RefObject<HTMLDivElement | null>;
+  match: MatchData | null;
   matchId: string;
   userId: string | null;
   username: string | null;
@@ -305,7 +352,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
     homeAccOpen, awayAccOpen, logAccOpen, chatAccOpen,
     onToggleHome, onToggleAway, onToggleLog, onToggleChat,
     events, eventsEndRef,
-    matchId, userId, username,
+    match, matchId, userId, username,
     onToggleReady, onMarkTeamReady, canMarkReady,
   } = props;
 
@@ -442,27 +489,49 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           {events.length === 0 && (
             <p className="text-xs text-white/50 px-1">Aguardando eventos...</p>
           )}
-          {events.slice(-30).map(e => (
-            <div key={e.id} className={`text-xs border-l-2 pl-2 leading-snug py-0.5 ${
-              e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
-              e.event_type === 'kickoff' ? 'border-tactical text-tactical/90' :
-              e.event_type === 'possession_change' ? 'border-warning/60 text-warning/80' :
-              e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
-              e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
-              e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
-              e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
-              e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
-              e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
-              e.event_type === 'yellow_card' ? 'border-yellow-400 text-yellow-300 font-bold' :
-              e.event_type === 'red_card' ? 'border-red-500 text-red-400 font-bold' :
-              e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
-              e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
-              'border-white/20 text-white/70'
-            }`}>
-              <p className="font-display font-semibold">{e.title}</p>
-              {e.body && <p className="opacity-80 text-[11px]">{e.body}</p>}
-            </div>
-          ))}
+          {(() => {
+            const nameById = new Map<string, string>();
+            for (const p of homePlayers) if (p.player_name) nameById.set(p.id, p.player_name);
+            for (const p of awayPlayers) if (p.player_name) nameById.set(p.id, p.player_name);
+            for (const p of homeBench) if (p.player_name) nameById.set(p.id, p.player_name);
+            for (const p of awayBench) if (p.player_name) nameById.set(p.id, p.player_name);
+            return events.slice(-30).map(e => {
+              const minute = eventMinute(e, match);
+              const playerName = resolveEventParticipantName(e, nameById);
+              const turnNum = (e.payload as any)?.turn_number;
+              const prefixParts: string[] = [];
+              if (minute != null) prefixParts.push(`${minute}\u2032`);
+              else if (typeof turnNum === 'number') prefixParts.push(`T${turnNum}`);
+              const prefix = prefixParts.length > 0 ? `${prefixParts.join(' ')} \u2022 ` : '';
+              return (
+                <div key={e.id} className={`text-xs border-l-2 pl-2 leading-snug py-0.5 ${
+                  e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
+                  e.event_type === 'kickoff' ? 'border-tactical text-tactical/90' :
+                  e.event_type === 'possession_change' ? 'border-warning/60 text-warning/80' :
+                  e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
+                  e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
+                  e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
+                  e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
+                  e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
+                  e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
+                  e.event_type === 'yellow_card' ? 'border-yellow-400 text-yellow-300 font-bold' :
+                  e.event_type === 'red_card' ? 'border-red-500 text-red-400 font-bold' :
+                  e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
+                  e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
+                  'border-white/20 text-white/70'
+                }`}>
+                  <p className="font-display font-semibold">
+                    {prefix && <span className="opacity-70 font-normal">{prefix}</span>}
+                    {e.title}
+                  </p>
+                  {playerName && (
+                    <p className="opacity-90 text-[11px] font-semibold">{playerName}</p>
+                  )}
+                  {e.body && <p className="opacity-80 text-[11px]">{e.body}</p>}
+                </div>
+              );
+            });
+          })()}
           <div ref={eventsEndRef} />
         </div>
       </AccordionSection>

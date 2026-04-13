@@ -29,6 +29,8 @@ export interface Participant {
   jersey_number?: number;
   match_energy?: number;
   is_ready?: boolean;
+  yellow_cards?: number;
+  is_sent_off?: boolean;
 }
 
 export interface MatchTurn {
@@ -81,6 +83,7 @@ export interface PlayerProfileSummary {
   full_name: string | null;
   primary_position: string | null;
   overall: number | null;
+  jersey_number?: number | null;
 }
 
 export interface LineupSlotSummary {

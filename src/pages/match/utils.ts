@@ -117,7 +117,9 @@ export function buildParticipantLayout(
           || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined)
           || positions[index]?.pos
           || '?',
-        jersey_number: index + 1,
+        jersey_number: (participant.player_profile_id
+          ? playerMap.get(participant.player_profile_id)?.jersey_number ?? null
+          : null) ?? index + 1,
       };
     });
   };

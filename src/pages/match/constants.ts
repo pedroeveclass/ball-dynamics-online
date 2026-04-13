@@ -23,7 +23,9 @@ export const RESOLUTION_PHASE_DURATION = 2; // must match engine RESOLUTION_PHAS
 export const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 export const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
 export const LIVE_EVENT_LIMIT = 60;
-export const TURN_ACTION_RECONCILE_DELAY_MS = 300;
+// Short debounce on turn-actions reconciliation. Lower = faster rollback when an
+// optimistic action is rejected by the server (no visible "phantom" action lingering).
+export const TURN_ACTION_RECONCILE_DELAY_MS = 100;
 export const CLIENT_MATCH_PROCESSOR_RETRY_MS = 500;
 export const ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK =
   import.meta.env.VITE_ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK !== 'false';
@@ -71,7 +73,12 @@ export const isAnyPassAction = (t: string) => isPassAction(t) || t === 'header_l
 // Ball height zone at a given trajectory progress
 export function getBallZoneAtProgress(actionType: string, progress: number): 'green' | 'yellow' | 'red' {
   switch (actionType) {
-    case 'pass_low': case 'header_low': case 'move':
+    case 'pass_low': case 'header_low':
+      // First 10% is block-only (yellow) — no dominate allowed; then fully receivable.
+      if (progress < 0.1) return 'yellow';
+      return 'green';
+
+    case 'move':
     case 'shoot_controlled': case 'header_controlled':
       return 'green';
 
