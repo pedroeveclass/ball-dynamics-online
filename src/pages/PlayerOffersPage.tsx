@@ -162,6 +162,7 @@ export default function PlayerOffersPage() {
                 title: '💰 Venda de Jogador',
                 body: `${playerProfile.full_name} foi vendido por ${formatBRL(clause)}. Valor creditado nas finanças do clube.`,
                 type: 'transfer',
+                link: '/manager/finance',
               });
             }
           }
@@ -175,6 +176,7 @@ export default function PlayerOffersPage() {
                 title: '💸 Compra de Jogador',
                 body: `${playerProfile.full_name} contratado por ${formatBRL(clause)} de multa rescisória.`,
                 type: 'transfer',
+                link: '/manager/squad',
               });
             }
           }
@@ -188,6 +190,7 @@ export default function PlayerOffersPage() {
           title: 'Proposta aceita!',
           body: `${playerProfile.full_name} aceitou sua proposta de contrato.`,
           type: 'contract',
+          link: '/manager/squad',
         });
       }
 
@@ -203,6 +206,7 @@ export default function PlayerOffersPage() {
           title: 'Proposta recusada',
           body: `${playerProfile.full_name} recusou sua proposta de contrato.`,
           type: 'contract',
+          link: '/manager/market',
         });
       }
 

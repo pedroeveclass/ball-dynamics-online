@@ -16,6 +16,7 @@ import {
 import { Users, MoreVertical, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
+import { sortPlayersByPosition } from '@/lib/positions';
 
 interface SquadPlayer {
   id: string;
@@ -33,6 +34,7 @@ interface SquadPlayer {
   user_id: string | null;
   has_pending_agreement: boolean;
   pending_agreement_from: 'club' | 'player' | null;
+  jersey_number: number | null;
 }
 
 export default function ManagerSquadPage() {
@@ -69,7 +71,7 @@ export default function ManagerSquadPage() {
 
     const { data: playerData } = await supabase
       .from('player_profiles')
-      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max, user_id')
+      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max, user_id, jersey_number')
       .in('id', playerIds)
       .order('overall', { ascending: false });
 
@@ -85,7 +87,7 @@ export default function ManagerSquadPage() {
     const pendingPlayerAgreements = new Set((pendingAgreements || []).filter(a => a.requested_by === 'player').map(a => a.contract_id));
     const pendingContractIds = new Set([...pendingClubAgreements, ...pendingPlayerAgreements]);
 
-    setPlayers((playerData || []).map(p => {
+    setPlayers(sortPlayersByPosition((playerData || []).map(p => {
       const contract = contractMap.get(p.id);
       return {
         ...p,
@@ -95,8 +97,9 @@ export default function ManagerSquadPage() {
         user_id: p.user_id ?? null,
         has_pending_agreement: pendingContractIds.has(contract?.id ?? ''),
         pending_agreement_from: pendingPlayerAgreements.has(contract?.id ?? '') ? 'player' : pendingClubAgreements.has(contract?.id ?? '') ? 'club' : null,
+        jersey_number: p.jersey_number ?? null,
       };
-    }));
+    })));
     setLoading(false);
   };
 
@@ -194,6 +197,7 @@ export default function ManagerSquadPage() {
           title: '🤝 Proposta de Comum Acordo',
           body: `Seu clube propôs rescisão por comum acordo.`,
           type: 'contract',
+          link: '/player/contract',
         });
       }
 
@@ -238,6 +242,33 @@ export default function ManagerSquadPage() {
     }
   };
 
+  // Update the permanent jersey number chosen by the manager for this player.
+  // Value 0-99 or null to clear. Optimistic UI; reverts and toasts on error.
+  const updateJerseyNumber = async (playerId: string, rawValue: string) => {
+    const trimmed = rawValue.trim();
+    let nextNumber: number | null;
+    if (trimmed === '') {
+      nextNumber = null;
+    } else {
+      const parsed = parseInt(trimmed, 10);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 99) {
+        toast.error('Número inválido — precisa estar entre 0 e 99.');
+        return;
+      }
+      nextNumber = parsed;
+    }
+    const previous = players.find(p => p.id === playerId)?.jersey_number ?? null;
+    if (previous === nextNumber) return;
+    setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, jersey_number: nextNumber } : p));
+    const { error } = await supabase.from('player_profiles')
+      .update({ jersey_number: nextNumber })
+      .eq('id', playerId);
+    if (error) {
+      toast.error('Não foi possível salvar o número da camisa.');
+      setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, jersey_number: previous } : p));
+    }
+  };
+
   const handleRejectPlayerExit = async (player: SquadPlayer) => {
     if (!club) return;
     try {
@@ -253,6 +284,7 @@ export default function ManagerSquadPage() {
           title: '❌ Saída recusada',
           body: `${club.name} recusou sua solicitação de saída por comum acordo.`,
           type: 'contract',
+          link: '/player/contract',
         });
       }
 
@@ -290,6 +322,7 @@ export default function ManagerSquadPage() {
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-2 pr-3">OVR</th>
+                  <th className="py-2 pr-3 w-16">Nº</th>
                   <th className="py-2 pr-3">Nome</th>
                   <th className="py-2 pr-3">Posição</th>
                   <th className="py-2 pr-3">Tipo</th>
@@ -310,6 +343,24 @@ export default function ManagerSquadPage() {
                       onClick={() => setSelectedPlayerId(p.id)}
                     >
                       <span className="font-display text-lg font-extrabold text-tactical">{p.overall}</span>
+                    </td>
+                    <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        defaultValue={p.jersey_number ?? ''}
+                        placeholder="—"
+                        className="w-12 px-1.5 py-1 text-center font-display font-bold bg-muted/40 border border-border/60 rounded text-sm focus:outline-none focus:ring-1 focus:ring-tactical"
+                        onBlur={(e) => updateJerseyNumber(p.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') {
+                            (e.target as HTMLInputElement).value = p.jersey_number != null ? String(p.jersey_number) : '';
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                      />
                     </td>
                     <td
                       className="py-3 pr-3 font-display font-bold cursor-pointer"

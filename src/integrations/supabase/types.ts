@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -10,10 +11,25 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          key: string
+          value: string
+        }
+        Insert: {
+          key: string
+          value: string
+        }
+        Update: {
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       club_facilities: {
         Row: {
           club_id: string
@@ -427,6 +443,179 @@ export type Database = {
             columns: ["player_profile_id"]
             isOneToOne: false
             referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forum_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      forum_comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          dislike_count: number
+          id: string
+          like_count: number
+          topic_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          dislike_count?: number
+          id?: string
+          like_count?: number
+          topic_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          dislike_count?: number
+          id?: string
+          like_count?: number
+          topic_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forum_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "forum_comments_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "forum_topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forum_reactions: {
+        Row: {
+          created_at: string
+          id: string
+          reaction: string
+          target_id: string
+          target_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reaction: string
+          target_id: string
+          target_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reaction?: string
+          target_id?: string
+          target_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forum_reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      forum_topics: {
+        Row: {
+          author_id: string
+          body: string
+          category_id: string
+          comment_count: number
+          created_at: string
+          dislike_count: number
+          id: string
+          is_locked: boolean
+          is_pinned: boolean
+          last_activity_at: string
+          like_count: number
+          pin_order: number
+          title: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          category_id: string
+          comment_count?: number
+          created_at?: string
+          dislike_count?: number
+          id?: string
+          is_locked?: boolean
+          is_pinned?: boolean
+          last_activity_at?: string
+          like_count?: number
+          pin_order?: number
+          title: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          category_id?: string
+          comment_count?: number
+          created_at?: string
+          dislike_count?: number
+          id?: string
+          is_locked?: boolean
+          is_pinned?: boolean
+          last_activity_at?: string
+          like_count?: number
+          pin_order?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forum_topics_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "forum_topics_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "forum_categories"
             referencedColumns: ["id"]
           },
         ]
@@ -1481,6 +1670,7 @@ export type Database = {
           body: string
           created_at: string
           id: string
+          link: string | null
           read: boolean
           title: string
           type: string
@@ -1490,6 +1680,7 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
+          link?: string | null
           read?: boolean
           title: string
           type?: string
@@ -1499,6 +1690,7 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
+          link?: string | null
           read?: boolean
           title?: string
           type?: string
@@ -1643,6 +1835,48 @@ export type Database = {
           },
         ]
       }
+      player_discipline: {
+        Row: {
+          id: string
+          player_profile_id: string
+          red_cards_accumulated: number
+          season_id: string
+          updated_at: string
+          yellow_cards_accumulated: number
+        }
+        Insert: {
+          id?: string
+          player_profile_id: string
+          red_cards_accumulated?: number
+          season_id: string
+          updated_at?: string
+          yellow_cards_accumulated?: number
+        }
+        Update: {
+          id?: string
+          player_profile_id?: string
+          red_cards_accumulated?: number
+          season_id?: string
+          updated_at?: string
+          yellow_cards_accumulated?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_discipline_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_discipline_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_profiles: {
         Row: {
           age: number
@@ -1655,6 +1889,7 @@ export type Database = {
           full_name: string
           height: string
           id: string
+          jersey_number: number | null
           last_match_at: string | null
           last_trained_at: string | null
           money: number
@@ -1677,6 +1912,7 @@ export type Database = {
           full_name: string
           height?: string
           id?: string
+          jersey_number?: number | null
           last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
@@ -1699,6 +1935,7 @@ export type Database = {
           full_name?: string
           height?: string
           id?: string
+          jersey_number?: number | null
           last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
@@ -1711,6 +1948,68 @@ export type Database = {
           weekly_salary?: number
         }
         Relationships: []
+      }
+      player_suspensions: {
+        Row: {
+          club_id: string
+          created_at: string
+          id: string
+          matches_remaining: number
+          player_profile_id: string
+          season_id: string | null
+          source_match_id: string | null
+          source_reason: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          id?: string
+          matches_remaining?: number
+          player_profile_id: string
+          season_id?: string | null
+          source_match_id?: string | null
+          source_reason: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          id?: string
+          matches_remaining?: number
+          player_profile_id?: string
+          season_id?: string | null
+          source_match_id?: string | null
+          source_reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_suspensions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_suspensions_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_suspensions_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_suspensions_source_match_id_fkey"
+            columns: ["source_match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       player_transfers: {
         Row: {
@@ -1794,6 +2093,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           id: string
+          is_admin: boolean
           role_selected: string
           updated_at: string
           username: string
@@ -1803,6 +2103,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           id: string
+          is_admin?: boolean
           role_selected?: string
           updated_at?: string
           username: string
@@ -1812,6 +2113,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           id?: string
+          is_admin?: boolean
           role_selected?: string
           updated_at?: string
           username?: string
@@ -2135,6 +2437,10 @@ export type Database = {
         }[]
       }
       can_fire_just_cause: { Args: { p_player_id: string }; Returns: boolean }
+      cancel_store_subscription: {
+        Args: { p_purchase_id: string }
+        Returns: Json
+      }
       cancel_transfer: { Args: { p_transfer_id: string }; Returns: boolean }
       check_bankruptcies: { Args: never; Returns: number }
       claim_match_turn_for_processing: {
@@ -2168,11 +2474,23 @@ export type Database = {
         }
       }
       cleanup_old_snapshots: { Args: never; Returns: undefined }
+      create_player_profile: {
+        Args: {
+          p_body_type: string
+          p_dominant_foot: string
+          p_extra_points: Json
+          p_full_name: string
+          p_height: string
+          p_primary_position: string
+        }
+        Returns: string
+      }
       current_user_active_club_id_uuid: { Args: never; Returns: string }
       current_user_managed_club_id: { Args: never; Returns: string }
       current_user_manager_profile_id: { Args: never; Returns: string }
       current_user_player_profile_id: { Args: never; Returns: string }
       current_user_player_profile_ids: { Args: never; Returns: string[] }
+      equip_store_item: { Args: { p_purchase_id: string }; Returns: Json }
       fire_player: {
         Args: { p_club_id: string; p_fine_amount?: number; p_player_id: string }
         Returns: undefined
@@ -2237,7 +2555,14 @@ export type Database = {
         Returns: boolean
       }
       process_transfer_window: { Args: never; Returns: number }
-      release_club_to_bot: { Args: { p_club_id: string }; Returns: undefined }
+      purchase_store_item: {
+        Args: {
+          p_buyer_type?: string
+          p_player_profile_id: string
+          p_store_item_id: string
+        }
+        Returns: Json
+      }
       release_match_turn_processing: {
         Args: { p_processing_token: string; p_turn_id: string }
         Returns: undefined
@@ -2253,6 +2578,18 @@ export type Database = {
           p_weekly_salary: number
         }
         Returns: string
+      }
+      resolve_stale_active_turns: {
+        Args: { p_match_id: string }
+        Returns: number
+      }
+      toggle_forum_reaction: {
+        Args: { p_reaction: string; p_target_id: string; p_target_type: string }
+        Returns: Json
+      }
+      train_attribute: {
+        Args: { p_attribute_key: string; p_player_profile_id: string }
+        Returns: Json
       }
       train_coach_skill: {
         Args: { p_club_id: string; p_formation?: string; p_skill_type: string }
@@ -2273,10 +2610,16 @@ export type Database = {
         Args: { delay_seconds?: number }
         Returns: undefined
       }
+      unequip_store_item: { Args: { p_purchase_id: string }; Returns: Json }
       update_player_last_match: {
         Args: { p_match_id: string }
         Returns: undefined
       }
+      upgrade_facility: {
+        Args: { p_club_id: string; p_facility_type: string }
+        Returns: Json
+      }
+      use_energetico: { Args: { p_purchase_id: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never

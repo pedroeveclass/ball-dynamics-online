@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { positionToPT } from '@/lib/positions';
+import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
 import {
   Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus,
@@ -194,10 +194,10 @@ export default function PublicClubPage() {
         .in('id', playerIds)
         .order('overall', { ascending: false });
 
-      setSquad((playerData || []).map((p: any) => {
+      setSquad(sortPlayersByPosition((playerData || []).map((p: any) => {
         const contract = contractMap.get(p.id);
         return { ...p, contract_id: contract?.id, weekly_salary: contract?.weekly_salary ?? 0, release_clause: contract?.release_clause ?? 0 };
-      }));
+      })));
     } else {
       setSquad([]);
     }
@@ -326,6 +326,7 @@ export default function PublicClubPage() {
           title: 'Nova proposta de contrato!',
           body: `${myClub.name} enviou uma proposta de ${formatBRL(salary)}/semana.`,
           type: 'contract',
+          link: '/player/offers',
         });
       }
 

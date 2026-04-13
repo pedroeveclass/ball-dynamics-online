@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PositionBadge } from '@/components/PositionBadge';
 import { Save, UserPlus, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { sortPlayersByPosition } from '@/lib/positions';
 
 interface SquadPlayer {
   id: string;
@@ -226,6 +227,11 @@ export default function ManagerLineupPage() {
   const [throwInLeftId, setThrowInLeftId] = useState<string | null>(null);
   const [savingRoles, setSavingRoles] = useState(false);
 
+  // Active suspensions: player_profile_ids with matches_remaining > 0 in the current season.
+  // These players cannot be added to the starting XI or the bench.
+  const [suspendedPlayerIds, setSuspendedPlayerIds] = useState<Set<string>>(new Set());
+  const [suspensionReasonByPlayer, setSuspensionReasonByPlayer] = useState<Record<string, 'yellow_accumulation' | 'red_card'>>({});
+
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
   useEffect(() => {
@@ -255,7 +261,7 @@ export default function ManagerLineupPage() {
       players = data || [];
     }
 
-    setSquad(players || []);
+    setSquad(sortPlayersByPosition(players));
 
     // Load latest active lineup
     const { data: lineup } = await supabase
@@ -295,6 +301,38 @@ export default function ManagerLineupPage() {
         setAssignments(starters);
         setBenchPlayers(bench);
       }
+    }
+
+    // Load active suspensions for this club in the active season.
+    // A player is suspended if ANY of their suspension rows has matches_remaining > 0.
+    const { data: activeSeason } = await supabase
+      .from('league_seasons')
+      .select('id')
+      .eq('status', 'active')
+      .order('season_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (activeSeason?.id) {
+      const { data: suspensions } = await supabase
+        .from('player_suspensions')
+        .select('player_profile_id, source_reason, matches_remaining')
+        .eq('club_id', club.id)
+        .eq('season_id', activeSeason.id)
+        .gt('matches_remaining', 0);
+      const suspendedSet = new Set<string>();
+      const reasonMap: Record<string, 'yellow_accumulation' | 'red_card'> = {};
+      for (const row of (suspensions || [])) {
+        const pid = (row as any).player_profile_id as string;
+        suspendedSet.add(pid);
+        // Red card takes precedence over yellow accumulation if both exist.
+        const reason = (row as any).source_reason as 'yellow_accumulation' | 'red_card';
+        if (reason === 'red_card' || !reasonMap[pid]) reasonMap[pid] = reason;
+      }
+      setSuspendedPlayerIds(suspendedSet);
+      setSuspensionReasonByPlayer(reasonMap);
+    } else {
+      setSuspendedPlayerIds(new Set());
+      setSuspensionReasonByPlayer({});
     }
 
     // Load uniforms
@@ -376,6 +414,16 @@ export default function ManagerLineupPage() {
 
   const assignToSlot = (playerId: string) => {
     if (!pickSlot) return;
+
+    // Block suspended players from being added to the lineup.
+    if (suspendedPlayerIds.has(playerId)) {
+      const reason = suspensionReasonByPlayer[playerId];
+      const label = reason === 'red_card'
+        ? 'Suspenso por cartão vermelho'
+        : 'Suspenso por acúmulo de 3 amarelos';
+      toast.error(`${label} — jogador não pode ser escalado nesta rodada.`);
+      return;
+    }
 
     if (pickType === 'bench') {
       if (benchPlayers.length >= MAX_BENCH) {
@@ -994,24 +1042,34 @@ export default function ManagerLineupPage() {
                       );
                     })}
                     {/* Available players (can add) */}
-                    {availablePlayers.map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => assignToSlot(p.id)}
-                        disabled={benchPlayers.length >= MAX_BENCH}
-                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors disabled:opacity-40"
-                      >
-                        <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
-                        <div className="flex-1">
-                          <p className="font-display font-bold text-sm">{p.full_name}</p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <PositionBadge position={p.primary_position} />
-                            {p.secondary_position && <PositionBadge position={p.secondary_position} />}
-                            <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                    {availablePlayers.map(p => {
+                      const isSuspended = suspendedPlayerIds.has(p.id);
+                      const reason = suspensionReasonByPlayer[p.id];
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => assignToSlot(p.id)}
+                          disabled={benchPlayers.length >= MAX_BENCH || isSuspended}
+                          className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors disabled:opacity-40"
+                          title={isSuspended ? (reason === 'red_card' ? 'Suspenso — cartão vermelho' : 'Suspenso — 3 amarelos acumulados') : undefined}
+                        >
+                          <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
+                          <div className="flex-1">
+                            <p className="font-display font-bold text-sm">{p.full_name}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <PositionBadge position={p.primary_position} />
+                              {p.secondary_position && <PositionBadge position={p.secondary_position} />}
+                              <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                              {isSuspended && (
+                                <span className="text-[10px] font-bold text-red-500">
+                                  {reason === 'red_card' ? '\uD83D\uDFE5 SUSPENSO' : '\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8 SUSPENSO'}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </>
                 )}
               </>
@@ -1020,23 +1078,34 @@ export default function ManagerLineupPage() {
                 {availablePlayers.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador disponível</p>
                 ) : (
-                  availablePlayers.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => assignToSlot(p.id)}
-                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors"
-                    >
-                      <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
-                      <div className="flex-1">
-                        <p className="font-display font-bold text-sm">{p.full_name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <PositionBadge position={p.primary_position} />
-                          {p.secondary_position && <PositionBadge position={p.secondary_position} />}
-                          <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                  availablePlayers.map(p => {
+                    const isSuspended = suspendedPlayerIds.has(p.id);
+                    const reason = suspensionReasonByPlayer[p.id];
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => assignToSlot(p.id)}
+                        disabled={isSuspended}
+                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors disabled:opacity-40"
+                        title={isSuspended ? (reason === 'red_card' ? 'Suspenso — cartão vermelho' : 'Suspenso — 3 amarelos acumulados') : undefined}
+                      >
+                        <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
+                        <div className="flex-1">
+                          <p className="font-display font-bold text-sm">{p.full_name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <PositionBadge position={p.primary_position} />
+                            {p.secondary_position && <PositionBadge position={p.secondary_position} />}
+                            <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                            {isSuspended && (
+                              <span className="text-[10px] font-bold text-red-500">
+                                {reason === 'red_card' ? '\uD83D\uDFE5 SUSPENSO' : '\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8 SUSPENSO'}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))
+                      </button>
+                    );
+                  })
                 )}
               </>
             )}

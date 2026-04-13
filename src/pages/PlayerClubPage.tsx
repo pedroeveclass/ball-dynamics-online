@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { ATTR_LABELS, COACH_TYPE_LABELS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS } from '@/lib/attributes';
-import { positionToPT } from '@/lib/positions';
+import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
@@ -318,7 +318,7 @@ export default function PlayerClubPage() {
           .select('id, full_name, primary_position, overall, archetype')
           .in('id', playerIds)
           .order('overall', { ascending: false });
-        setTeammates(data || []);
+        setTeammates(sortPlayersByPosition(data || []));
       }
 
       // Lineup slots

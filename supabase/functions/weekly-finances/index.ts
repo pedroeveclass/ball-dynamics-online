@@ -116,6 +116,7 @@ Deno.serve(async (req) => {
           type: 'finance',
           title: '📊 Relatório Financeiro Semanal',
           body: `Receita: ${fmt(totalRevenue)} | Despesas: ${fmt(totalExpense)} | Resultado: ${sign}${fmt(netIncome)} | Saldo: ${fmt(newBalance)}`,
+          link: '/manager/finance',
         });
       }
 
@@ -146,6 +147,7 @@ Deno.serve(async (req) => {
                 title: '💰 Salário recebido!',
                 body: `Você recebeu ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.weekly_salary)} de salário semanal.`,
                 type: 'finance',
+                link: '/player',
               });
             }
           }

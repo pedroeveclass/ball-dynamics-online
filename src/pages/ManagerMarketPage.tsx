@@ -116,6 +116,7 @@ export default function ManagerMarketPage() {
           title: 'Nova proposta de contrato!',
           body: `${club.name} enviou uma proposta de R$${salary}/semana.`,
           type: 'contract',
+          link: '/player/offers',
         });
       }
 

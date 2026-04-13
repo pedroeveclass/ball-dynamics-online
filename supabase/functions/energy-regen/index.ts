@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
             title: '⚡ Energia 100%!',
             body: 'Sua energia está cheia! Aproveite para treinar antes que fique parado.',
             type: 'energy',
+            link: '/player/attributes',
           });
         } else {
           const pctRecovered = Math.round((regenAmount / p.energy_max) * 100);
@@ -97,6 +98,7 @@ Deno.serve(async (req) => {
             title: '⚡ Energia recuperada!',
             body: `+${pctRecovered}% de energia. Atual: ${newEnergy}/${p.energy_max}`,
             type: 'energy',
+            link: '/player',
           });
         }
       }

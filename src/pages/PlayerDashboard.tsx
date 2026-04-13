@@ -6,7 +6,8 @@ import { PositionBadge } from '@/components/PositionBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Zap, DollarSign, Star, Bell, Swords, CalendarClock, Play } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { getNotificationLink } from '@/lib/notificationLinks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Tables } from '@/integrations/supabase/types';
@@ -31,6 +32,7 @@ interface NextMatch {
 
 export default function PlayerDashboard() {
   const { user, playerProfile } = useAuth();
+  const navigate = useNavigate();
   const [contract, setContract] = useState<Tables<'contracts'> | null>(null);
   const [notifications, setNotifications] = useState<Tables<'notifications'>[]>([]);
   const [attributes, setAttributes] = useState<Tables<'player_attributes'> | null>(null);
@@ -235,13 +237,21 @@ export default function PlayerDashboard() {
             </div>
             <div className="space-y-2">
               {notifications.map(n => (
-                <div key={n.id} className="flex items-start gap-2 text-sm">
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={async () => {
+                    await supabase.from('notifications').update({ read: true }).eq('id', n.id);
+                    navigate(getNotificationLink(n));
+                  }}
+                  className="w-full flex items-start gap-2 text-sm text-left hover:bg-muted/40 rounded-md px-1 py-1 -mx-1 transition-colors"
+                >
                   <span className="h-2 w-2 rounded-full bg-tactical mt-1.5 shrink-0" />
                   <div>
                     <p className="font-medium text-foreground">{n.title}</p>
                     <p className="text-xs text-muted-foreground">{n.body}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

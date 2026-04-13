@@ -105,6 +105,159 @@ async function persistLeagueMatchEnergy(supabase: any, matchId: string, cachedPa
   }
 }
 
+// ─── Consume 1 "match served" from active suspensions for both clubs of a league match ───
+// Called when a league match transitions to 'live'. A suspended player misses this match
+// (lineup block prevents scheduling them), so we decrement matches_remaining. When it
+// reaches 0 the player becomes eligible again for the next match.
+async function consumeSuspensionsForMatchStart(supabase: any, matchId: string, homeClubId: string, awayClubId: string): Promise<void> {
+  try {
+    const { data: leagueMatch } = await supabase
+      .from('league_matches')
+      .select('id, round_id')
+      .eq('match_id', matchId)
+      .maybeSingle();
+    if (!leagueMatch) return; // Friendly / test match — no suspension consumption.
+
+    const { data: round } = await supabase
+      .from('league_rounds')
+      .select('season_id')
+      .eq('id', leagueMatch.round_id)
+      .maybeSingle();
+    const seasonId = round?.season_id;
+    if (!seasonId) return;
+
+    const { data: active } = await supabase
+      .from('player_suspensions')
+      .select('id, matches_remaining')
+      .eq('season_id', seasonId)
+      .in('club_id', [homeClubId, awayClubId])
+      .gt('matches_remaining', 0);
+
+    if (!active || active.length === 0) return;
+
+    const ops = active.map((row: any) =>
+      supabase.from('player_suspensions')
+        .update({ matches_remaining: Math.max(0, Number(row.matches_remaining) - 1) })
+        .eq('id', row.id)
+    );
+    await Promise.all(ops);
+    console.log(`[ENGINE] Consumed ${active.length} suspension(s) for match=${matchId.slice(0,8)}`);
+  } catch (e) {
+    console.error(`[ENGINE] Failed to consume suspensions for ${matchId}:`, e);
+  }
+}
+
+// ─── Persist match cards to discipline / suspensions (LEAGUE only) ───
+// Called when a match ends. Accumulates yellows in the season and creates a
+// 1-match suspension when a player reaches a multiple of 3 yellows OR was
+// sent off (red card = direct 1-match ban).
+async function persistLeagueMatchDiscipline(supabase: any, matchId: string, cachedParticipants: any[]): Promise<void> {
+  try {
+    const { data: leagueMatch } = await supabase
+      .from('league_matches')
+      .select('id, round_id')
+      .eq('match_id', matchId)
+      .maybeSingle();
+    if (!leagueMatch) return;
+
+    const { data: round } = await supabase
+      .from('league_rounds')
+      .select('season_id')
+      .eq('id', leagueMatch.round_id)
+      .maybeSingle();
+    const seasonId = round?.season_id;
+    if (!seasonId) return;
+
+    // Prefer cached participants (fresh values) — fallback to DB read.
+    let parts: any[] = (cachedParticipants || []).filter((p: any) =>
+      p.role_type === 'player' && p.player_profile_id
+      && ((p.yellow_cards ?? 0) > 0 || p.is_sent_off)
+    );
+    if (parts.length === 0) {
+      const { data: dbParts } = await supabase
+        .from('match_participants')
+        .select('id, club_id, player_profile_id, yellow_cards, is_sent_off')
+        .eq('match_id', matchId)
+        .eq('role_type', 'player')
+        .not('player_profile_id', 'is', null);
+      parts = (dbParts || []).filter((p: any) => (p.yellow_cards ?? 0) > 0 || p.is_sent_off);
+    }
+    if (parts.length === 0) return;
+
+    const profileIds = [...new Set(parts.map((p: any) => p.player_profile_id))];
+    const { data: existingDiscipline } = await supabase
+      .from('player_discipline')
+      .select('player_profile_id, yellow_cards_accumulated, red_cards_accumulated')
+      .eq('season_id', seasonId)
+      .in('player_profile_id', profileIds);
+    const priorByProfile = new Map<string, { yellow: number; red: number }>(
+      (existingDiscipline || []).map((row: any) => [
+        row.player_profile_id,
+        { yellow: Number(row.yellow_cards_accumulated ?? 0), red: Number(row.red_cards_accumulated ?? 0) },
+      ])
+    );
+
+    const disciplineUpserts: any[] = [];
+    const suspensionInserts: any[] = [];
+
+    for (const p of parts) {
+      const prior = priorByProfile.get(p.player_profile_id) ?? { yellow: 0, red: 0 };
+      const matchYellows = Math.max(0, Number(p.yellow_cards ?? 0));
+      const sentOff = !!p.is_sent_off;
+      // Second yellow → red is stored as yellows=2 + is_sent_off=true in match_participants.
+      // For season accumulation we count both yellows and the resulting red separately.
+      const newYellowTotal = prior.yellow + matchYellows;
+      const newRedTotal = prior.red + (sentOff ? 1 : 0);
+
+      disciplineUpserts.push({
+        player_profile_id: p.player_profile_id,
+        season_id: seasonId,
+        yellow_cards_accumulated: newYellowTotal,
+        red_cards_accumulated: newRedTotal,
+        updated_at: new Date().toISOString(),
+      });
+
+      // Crossed a new multiple of 3 this match → 1-match yellow-accumulation suspension.
+      const priorThirds = Math.floor(prior.yellow / 3);
+      const newThirds = Math.floor(newYellowTotal / 3);
+      if (newThirds > priorThirds) {
+        suspensionInserts.push({
+          player_profile_id: p.player_profile_id,
+          club_id: p.club_id,
+          season_id: seasonId,
+          source_match_id: matchId,
+          source_reason: 'yellow_accumulation',
+          matches_remaining: 1,
+        });
+      }
+
+      // Red card → direct 1-match suspension.
+      if (sentOff) {
+        suspensionInserts.push({
+          player_profile_id: p.player_profile_id,
+          club_id: p.club_id,
+          season_id: seasonId,
+          source_match_id: matchId,
+          source_reason: 'red_card',
+          matches_remaining: 1,
+        });
+      }
+    }
+
+    if (disciplineUpserts.length > 0) {
+      await supabase
+        .from('player_discipline')
+        .upsert(disciplineUpserts, { onConflict: 'player_profile_id,season_id' });
+    }
+    if (suspensionInserts.length > 0) {
+      await supabase.from('player_suspensions').insert(suspensionInserts);
+    }
+    console.log(`[ENGINE] Persisted discipline for match=${matchId.slice(0,8)} (${disciplineUpserts.length} players, ${suspensionInserts.length} suspensions)`);
+  } catch (e) {
+    console.error(`[ENGINE] Failed to persist league match discipline for ${matchId}:`, e);
+  }
+}
+
 // ─── Match minute calculation (real-time clock) ─────────────
 function computeMatchMinute(match: any): number {
   if (!match.half_started_at) return 0;
@@ -2092,7 +2245,7 @@ function computeDeviation(
 
 // ─── Height-based interception zones ─────────────────────────────
 function getInterceptableRanges(actionType: string, interceptActionType?: string): Array<[number, number]> {
-  // Block actions - only allowed in yellow zones (elevated ball) + first 5% of every pass (block-only start)
+  // Block actions - only allowed in yellow zones (elevated ball) + first 10% of every pass (block-only start)
   if (interceptActionType === 'block') {
     switch (actionType) {
       // All shots: GK can block (espalmar) at any point in trajectory
@@ -2106,10 +2259,10 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
         return [[0, 0.2], [0.8, 1]]; // yellow zones of high pass
       case 'pass_launch':
         return [[0, 0.35], [0.65, 1]]; // yellow zones of launch
-      // Ground balls: block allowed only in the first 5% (pass start)
+      // Ground balls: block allowed only in the first 10% (pass start)
       case 'pass_low':
       case 'header_low':
-        return [[0, 0.05]];
+        return [[0, 0.1]];
       case 'move':
       default:
         return [];
@@ -2120,7 +2273,7 @@ function getInterceptableRanges(actionType: string, interceptActionType?: string
   switch (actionType) {
     case 'pass_low':
     case 'header_low':
-      return [[0.05, 1]]; // first 5% = block-only; after that fully receivable
+      return [[0.1, 1]]; // first 10% = block-only; after that fully receivable
     case 'pass_high':
     case 'header_high':
       return [[0.8, 1]]; // start is yellow (block-only); receive only in descending yellow+green
@@ -3505,6 +3658,12 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       continue;
     }
 
+    // Consume 1 match from each active suspension for both clubs.
+    // Must happen before lineup seeding so that a player whose suspension ran out
+    // exactly on this match still sits it out (he's already missing from the lineup
+    // because the manager's save was blocked).
+    await consumeSuspensionsForMatchStart(supabase, m.id, m.home_club_id, m.away_club_id);
+
     let { data: existingParts } = await supabase
       .from('match_participants')
       .select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y')
@@ -3521,15 +3680,22 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     let homeLineupId = m.home_lineup_id;
     let awayLineupId = m.away_lineup_id;
     const partsAlreadyExist = (existingParts || []).length > 0;
-    if ((!homeLineupId || !awayLineupId) && !partsAlreadyExist) {
+    // ALWAYS re-fetch the currently active lineup at match start. Manager edits
+    // create a new `lineups` row and deactivate the previous one — the stale
+    // home_lineup_id/away_lineup_id stored on the match would otherwise seed
+    // participants from the old lineup (causing "match started with bots while
+    // 8 humans were escalated"). We skip re-seeding only when participants are
+    // already present (5v5 tests / friendly challenges pre-create participants).
+    if (!partsAlreadyExist) {
       const [{ data: hl }, { data: al }] = await Promise.all([
-        !homeLineupId ? supabase.from('lineups').select('id').eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle() : Promise.resolve({ data: { id: homeLineupId } }),
-        !awayLineupId ? supabase.from('lineups').select('id').eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle() : Promise.resolve({ data: { id: awayLineupId } }),
+        supabase.from('lineups').select('id').eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle(),
+        supabase.from('lineups').select('id').eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle(),
       ]);
       if (hl?.id) homeLineupId = hl.id;
       if (al?.id) awayLineupId = al.id;
-      // Persist the lineup IDs on the match so subsequent ticks don't re-query
-      if (hl?.id || al?.id) {
+      // Persist the (possibly refreshed) lineup IDs on the match so the rest of
+      // the match engine uses the same authoritative source.
+      if (homeLineupId !== m.home_lineup_id || awayLineupId !== m.away_lineup_id) {
         await supabase.from('matches').update({
           home_lineup_id: homeLineupId, away_lineup_id: awayLineupId,
         }).eq('id', m.id);
@@ -5905,6 +6071,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       // and leave the profile energy untouched.
       await persistLeagueMatchEnergy(supabase, match_id, participants || []);
 
+      // ── Persist cards into player_discipline + create suspensions (LEAGUE only) ──
+      await persistLeagueMatchDiscipline(supabase, match_id, participants || []);
+
       // ── Notify all human players and managers about match result ──
       try {
         const { data: homeClubData } = await supabase.from('clubs').select('name, manager_profile_id').eq('id', match.home_club_id).maybeSingle();
@@ -5921,18 +6090,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const humanProfileIds = (humanParts || []).map(p => p.player_profile_id).filter(Boolean);
         if (humanProfileIds.length > 0) {
           const { data: humanPlayers } = await supabase.from('player_profiles').select('user_id').in('id', humanProfileIds);
+          const matchLink = `/match/${match_id}/replay`;
           const playerNotifs = (humanPlayers || []).filter(p => p.user_id).map(p => ({
-            user_id: p.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText,
+            user_id: p.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText, link: matchLink,
           }));
           if (playerNotifs.length > 0) await supabase.from('notifications').insert(playerNotifs);
         }
 
         // Notify managers
+        const matchLink = `/match/${match_id}/replay`;
         const managerNotifs: any[] = [];
         for (const clubData of [homeClubData, awayClubData]) {
           if (clubData?.manager_profile_id) {
             const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', clubData.manager_profile_id).maybeSingle();
-            if (mgr?.user_id) managerNotifs.push({ user_id: mgr.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText });
+            if (mgr?.user_id) managerNotifs.push({ user_id: mgr.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText, link: matchLink });
           }
         }
         if (managerNotifs.length > 0) await supabase.from('notifications').insert(managerNotifs);
@@ -6428,6 +6599,9 @@ Deno.serve(async (req) => {
 
       // ── Persist final energy to player_profiles (LEAGUE matches only) ──
       await persistLeagueMatchEnergy(supabase, match_id, []);
+
+      // ── Persist cards into player_discipline + create suspensions (LEAGUE only) ──
+      await persistLeagueMatchDiscipline(supabase, match_id, []);
 
       // ── Update league standings inline ──
       try {

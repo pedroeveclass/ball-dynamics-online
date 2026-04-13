@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Bell, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getNotificationLink } from '@/lib/notificationLinks';
 
 interface Notification {
   id: string;
@@ -12,10 +14,12 @@ interface Notification {
   type: string;
   read: boolean;
   created_at: string;
+  link?: string | null;
 }
 
 export default function NotificationsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -79,7 +83,10 @@ export default function NotificationsPage() {
                 className={`stat-card flex items-start gap-3 cursor-pointer transition-colors ${
                   !n.read ? 'border-tactical/30 bg-tactical/5' : ''
                 }`}
-                onClick={() => !n.read && markAsRead(n.id)}
+                onClick={() => {
+                  if (!n.read) markAsRead(n.id);
+                  navigate(getNotificationLink(n));
+                }}
               >
                 <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${!n.read ? 'bg-tactical' : 'bg-transparent'}`} />
                 <div className="flex-1 min-w-0">

@@ -118,6 +118,7 @@ export default function PlayerContractPage() {
           title: '📋 Solicitação de saída',
           body: `${playerProfile.full_name} solicitou rescisão por comum acordo.`,
           type: 'contract',
+          link: '/manager/squad',
         });
       }
 
@@ -156,6 +157,7 @@ export default function PlayerContractPage() {
           title: '✅ Comum acordo aceito',
           body: `${playerProfile.full_name} aceitou a rescisão por comum acordo.`,
           type: 'contract',
+          link: '/manager/squad',
         });
       }
 
@@ -186,6 +188,7 @@ export default function PlayerContractPage() {
           title: '❌ Comum acordo recusado',
           body: `${playerProfile?.full_name} recusou a rescisão por comum acordo.`,
           type: 'contract',
+          link: '/manager/squad',
         });
       }
 

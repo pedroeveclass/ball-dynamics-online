@@ -99,6 +99,7 @@ export default function ManagerMatchCreatePage() {
           title: '⚔️ Convite de Amistoso',
           body: `${club.name} quer jogar um amistoso contra você em ${new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`,
           type: 'match',
+          link: '/manager/challenges',
         });
       }
 

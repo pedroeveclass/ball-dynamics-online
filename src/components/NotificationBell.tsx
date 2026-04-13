@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { getNotificationLink } from '@/lib/notificationLinks';
 
 interface Notification {
   id: string;
@@ -11,10 +12,12 @@ interface Notification {
   type: string;
   read: boolean;
   created_at: string;
+  link?: string | null;
 }
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -112,7 +115,11 @@ export function NotificationBell() {
               notifications.map(n => (
                 <button
                   key={n.id}
-                  onClick={() => { if (!n.read) markAsRead(n.id); }}
+                  onClick={() => {
+                    if (!n.read) markAsRead(n.id);
+                    setOpen(false);
+                    navigate(getNotificationLink(n));
+                  }}
                   className={`w-full text-left px-3 py-2.5 border-b border-border/50 hover:bg-muted/50 transition-colors ${!n.read ? 'bg-tactical/5' : ''}`}
                 >
                   <div className="flex items-start gap-2">
