@@ -8,12 +8,27 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
-  // Authorize cron/admin access — accepts CRON_SECRET header or service_role JWT
+  // Authorize cron/admin access — accepts CRON_SECRET header or service_role JWT.
+  // NOTE: We used to compare the bearer token against the literal
+  // SUPABASE_SERVICE_ROLE_KEY env var, but that broke after service-key
+  // rotation (the hardcoded JWT in pg_cron stopped matching). Now we also
+  // accept any JWT whose payload has role=service_role.
   const cronSecret = Deno.env.get('CRON_SECRET');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
   const hasCronSecret = cronSecret && req.headers.get('x-cron-secret') === cronSecret;
-  const hasServiceRole = serviceRoleKey && authHeader === serviceRoleKey;
+
+  let hasServiceRole = !!(serviceRoleKey && authHeader === serviceRoleKey);
+  if (!hasServiceRole && authHeader) {
+    try {
+      const parts = authHeader.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload?.role === 'service_role') hasServiceRole = true;
+      }
+    } catch { /* malformed token — leave hasServiceRole=false */ }
+  }
+
   if (!hasCronSecret && !hasServiceRole) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 403,
