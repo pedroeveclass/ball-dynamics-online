@@ -1241,7 +1241,10 @@ export default function MatchRoomPage() {
     }
   }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions, activeTurn?.possession_club_id, selectedParticipantId, match?.home_club_id, match?.away_club_id]);
 
-  // ── Z hotkey opens action menu for the selected (controllable) player ─────────
+  // ── Z hotkey: cancel current action + reopen menu for a fresh choice ─────────
+  // If the player never picks a new action from the menu, the submitted
+  // "no action" (move to current position) sticks — same behaviour as clicking
+  // "Nenhuma ação" manually.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'z' && e.key !== 'Z') return;
@@ -1267,17 +1270,22 @@ export default function MatchRoomPage() {
         || (myRole === 'manager' && (isTest || candidate.club_id === myClubId));
       if (!canControl) return;
 
-      if (submittedActions.has(candidate.id)) return;
-      const alreadyHas = turnActions.some(a => a.participant_id === candidate.id && a.action_type !== 'receive');
-      if (alreadyHas) return;
-
       e.preventDefault();
       setSelectedParticipantId(candidate.id);
+      setDrawingAction(null);
+      setPendingInterceptChoice(null);
+
+      // Reset to "no action" (move to current position). Engine dedupes within
+      // a category, so a real action picked afterwards replaces this one.
+      const cx = candidate.field_x ?? candidate.pos_x ?? 50;
+      const cy = candidate.field_y ?? candidate.pos_y ?? 50;
+      void submitAction('move', candidate.id, cx, cy);
+
       setShowActionMenu(candidate.id);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeTurn?.id, activeTurn?.phase, activeTurn?.ball_holder_participant_id, match?.status, match?.home_club_id, match?.away_club_id, myRole, myParticipant?.id, myClubId, selectedParticipantId, submittedActions, turnActions, isPhaseProcessing, isPositioningTurn]);
+  }, [activeTurn?.id, activeTurn?.phase, activeTurn?.ball_holder_participant_id, match?.status, match?.home_club_id, match?.away_club_id, myRole, myParticipant?.id, myClubId, selectedParticipantId, isPhaseProcessing, isPositioningTurn]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
