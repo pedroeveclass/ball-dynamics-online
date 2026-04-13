@@ -20,7 +20,7 @@ import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
-  Shirt,
+  Shirt, Footprints, Crosshair, ShieldAlert,
 } from 'lucide-react';
 import { formatBRL, formatDate } from '@/lib/formatting';
 
@@ -191,6 +191,31 @@ function AttributeSection({
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Teammate summary view: category averages only, no per-attribute breakdown ──
+const SUMMARY_PHYSICAL = ['velocidade', 'aceleracao', 'agilidade', 'forca', 'stamina', 'resistencia'] as const;
+const SUMMARY_TECHNICAL = ['controle_bola', 'drible', 'passe_baixo', 'passe_alto', 'um_toque', 'curva'] as const;
+const SUMMARY_MENTAL = ['visao_jogo', 'tomada_decisao', 'antecipacao', 'posicionamento_ofensivo', 'posicionamento_defensivo'] as const;
+const SUMMARY_SHOOTING = ['acuracia_chute', 'forca_chute'] as const;
+const SUMMARY_DEFENDING = ['desarme', 'marcacao', 'cabeceio'] as const;
+const SUMMARY_GK = ['reflexo', 'posicionamento_gol', 'pegada', 'saida_gol', 'comando_area'] as const;
+
+function AttrSummaryRow({ title, icon, keys, attrs }: { title: string; icon: React.ReactNode; keys: readonly string[]; attrs: Tables<'player_attributes'> }) {
+  const avg = keys.length > 0
+    ? Math.round(keys.reduce((sum, k) => sum + Number(attrs[k as keyof Tables<'player_attributes'>] ?? 0), 0) / keys.length)
+    : 0;
+  const color = avg >= 70 ? 'text-pitch' : avg >= 50 ? 'text-yellow-500' : 'text-destructive';
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 w-32 shrink-0">
+        {icon}
+        <span className="text-sm text-muted-foreground">{title}</span>
+      </div>
+      <Progress value={avg} className="flex-1 h-2.5" />
+      <span className={`w-8 text-right font-display font-bold text-sm ${color}`}>{avg}</span>
     </div>
   );
 }
@@ -873,24 +898,18 @@ export default function PlayerClubPage() {
               </div>
 
               {selectedPlayerAttrs ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {isGK ? (
-                    <>
-                      <AttributeSection title="Goleiro" keys={gkKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Fisico" keys={physicalKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Tecnico" keys={technicalKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Mental" keys={mentalKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Chute" keys={shootingKeys} attrs={selectedPlayerAttrs} />
-                    </>
-                  ) : (
-                    <>
-                      <AttributeSection title="Fisico" keys={physicalKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Tecnico" keys={technicalKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Mental" keys={mentalKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Chute" keys={shootingKeys} attrs={selectedPlayerAttrs} />
-                      <AttributeSection title="Goleiro" keys={gkKeys} attrs={selectedPlayerAttrs} />
-                    </>
-                  )}
+                <div className="stat-card space-y-3">
+                  <h3 className="font-display text-sm font-bold">Resumo de Atributos</h3>
+                  <div className="space-y-2.5">
+                    <AttrSummaryRow title="Físico" icon={<Dumbbell className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_PHYSICAL} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title="Técnico" icon={<Footprints className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_TECHNICAL} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title="Mental" icon={<Brain className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_MENTAL} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title="Finalização" icon={<Crosshair className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_SHOOTING} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title="Defesa" icon={<ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_DEFENDING} attrs={selectedPlayerAttrs} />
+                    {isGK && (
+                      <AttrSummaryRow title="Goleiro" icon={<Shield className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_GK} attrs={selectedPlayerAttrs} />
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
