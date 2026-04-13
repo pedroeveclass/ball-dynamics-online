@@ -2740,10 +2740,15 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   disputeInfo?: { winner: 'attacker' | 'defender'; zone: string };
   gkSaveAttempt?: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean };
   failedReceiveAttempts?: Array<{ participantId: string; chance: string }>;
+  failedBlockAttempts?: Array<{ participantId: string; clubId: string; chance: string }>;
+  blocker_participant_id?: string;
+  blocker_club_id?: string;
+  block_chance?: string;
 } {
   let _disputeInfo: { winner: 'attacker' | 'defender'; zone: string } | undefined;
   let gkSaveAttempt: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean } | undefined;
   const failedReceiveAttempts: Array<{ participantId: string; chance: string }> = [];
+  const failedBlockAttempts: Array<{ participantId: string; clubId: string; chance: string }> = [];
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
     const result: Record<string, number> = {};
@@ -2939,7 +2944,16 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
         const looseBallX = Math.max(1, Math.min(99, blockX + Math.cos(deflectAngle) * deflectDist));
         const looseBallY = Math.max(1, Math.min(99, blockY + Math.sin(deflectAngle) * deflectDist));
         const blockDesc = isGKBlockCtx ? `🧤 Goleiro espalmou! (${chancePct})` : `🛡️ Bloqueio! (${chancePct})`;
-        return { success: false, event: 'block', description: blockDesc, possession_change: false, goal: false, newBallHolderId: undefined, looseBallPos: { x: looseBallX, y: looseBallY }, ...(isGKBlockCtx ? { gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } } : {}) };
+        return {
+          success: false, event: 'block', description: blockDesc,
+          possession_change: false, goal: false, newBallHolderId: undefined,
+          looseBallPos: { x: looseBallX, y: looseBallY },
+          // Expose blocker identity + chance so the Match Flow can show who blocked.
+          blocker_participant_id: candidate.participant.id,
+          blocker_club_id: candidate.participant.club_id,
+          block_chance: chancePct,
+          ...(isGKBlockCtx ? { gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } } : {}),
+        };
       }
       if (context.type === 'gk_save') {
         return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } };
@@ -2958,6 +2972,9 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       console.log(`[ENGINE] 💨 Bloqueio falhou! (${chancePct}) Bola continua.`);
       if (context.defenderRole === 'goalkeeper') {
         gkSaveAttempt = { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: false };
+      } else {
+        // Non-GK field players that tried to block and failed — log for Match Flow.
+        failedBlockAttempts.push({ participantId: candidate.participant.id, clubId: candidate.participant.club_id, chance: chancePct });
       }
     }
     else if (context.type === 'gk_save') {
@@ -2971,9 +2988,10 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   }
 
   const frAttempts = failedReceiveAttempts.length > 0 ? failedReceiveAttempts : undefined;
-  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt, failedReceiveAttempts: frAttempts };
-  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false, failedReceiveAttempts: frAttempts };
-  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false, failedReceiveAttempts: frAttempts };
+  const fbAttempts = failedBlockAttempts.length > 0 ? failedBlockAttempts : undefined;
+  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts };
+  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts };
+  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts };
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
@@ -5136,6 +5154,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
+        // Log failed block attempts (non-GK field blockers who tried and didn't deflect)
+        if (result.failedBlockAttempts) {
+          for (const fba of result.failedBlockAttempts) {
+            const bp = (participants || []).find((p: any) => p.id === fba.participantId);
+            eventsToLog.push({
+              match_id, event_type: 'block_failed',
+              title: `💨 Bloqueio falhou! (${fba.chance})`,
+              body: `Jogador tentou bloquear com ${fba.chance} de chance, mas a bola passou.`,
+              payload: {
+                blocker_participant_id: fba.participantId,
+                blocker_club_id: fba.clubId,
+                blocker_name: (bp as any)?._player_name ?? null,
+                block_chance: fba.chance,
+              },
+            });
+          }
+        }
+
         // Log successful receive (intercepted = someone dominated the ball)
         if (result.event === 'intercepted' && result.newBallHolderId) {
           const chancePctMatch = result.description.match(/\((\d+%)\)/);
@@ -5223,11 +5259,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             : null;
           const deflectFromX = blocker ? Number(blocker.pos_x ?? 50) : result.looseBallPos.x;
           const deflectFromY = blocker ? Number(blocker.pos_y ?? 50) : result.looseBallPos.y;
+          const blockerForEvent = result.blocker_participant_id
+            ? (participants || []).find((p: any) => p.id === result.blocker_participant_id)
+            : blocker;
           eventsToLog.push({
             match_id, event_type: result.event || 'blocked',
             title: result.description,
             body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
             payload: {
+              blocker_participant_id: result.blocker_participant_id ?? (result.gkSaveAttempt?.gkParticipantId ?? null),
+              blocker_club_id: result.blocker_club_id ?? (result.gkSaveAttempt?.gkClubId ?? null),
+              blocker_name: (blockerForEvent as any)?._player_name ?? null,
+              block_chance: result.block_chance ?? (result.gkSaveAttempt?.chance ?? null),
               deflect_from_x: deflectFromX,
               deflect_from_y: deflectFromY,
               deflect_to_x: result.looseBallPos.x,
@@ -6812,6 +6855,16 @@ Deno.serve(async (req) => {
       }
 
       const { participant_id, action_type, target_participant_id, target_x, target_y, payload: actionPayload } = body;
+
+      // Reject all action submissions during halftime — only the ready-check is allowed.
+      // Without this, a move submitted during halftime gets processed when the turn ticks
+      // and effectively "unfreezes" the match before everyone is ready.
+      const { data: matchRowForHalftime } = await supabase
+        .from('matches').select('current_half, half_started_at').eq('id', match_id).maybeSingle();
+      if (matchRowForHalftime?.current_half === 2 && matchRowForHalftime?.half_started_at
+          && new Date(matchRowForHalftime.half_started_at).getTime() > Date.now()) {
+        return new Response(JSON.stringify({ error: 'Halftime in progress — actions locked', recoverable: true }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
 
       let activeTurn: any = null;
       for (let attempt = 0; attempt < 3; attempt++) {

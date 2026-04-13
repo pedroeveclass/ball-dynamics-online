@@ -536,7 +536,8 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
                   e.event_type === 'final_whistle' ? 'border-destructive text-destructive font-bold' :
                   e.event_type === 'tackle' ? 'border-red-400 text-red-300' :
                   e.event_type === 'dribble' ? 'border-green-400 text-green-300' :
-                  e.event_type === 'blocked' ? 'border-orange-400 text-orange-300' :
+                  e.event_type === 'blocked' || e.event_type === 'block' ? 'border-orange-400 text-orange-300' :
+                  e.event_type === 'block_failed' ? 'border-orange-500/50 text-orange-300/80' :
                   e.event_type === 'saved' ? 'border-blue-400 text-blue-300' :
                   e.event_type === 'foul' || e.event_type === 'penalty' ? 'border-yellow-400 text-yellow-300' :
                   e.event_type === 'yellow_card' ? 'border-yellow-400 text-yellow-300 font-bold' :

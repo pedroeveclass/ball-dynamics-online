@@ -250,7 +250,7 @@ export default function MatchRoomPage() {
 
   const appendEventLog = useCallback((event: EventLog) => {
     // Track resolution-relevant events so animation can incorporate actual results
-    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball'];
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball'];
     if (resolutionEventTypes.includes(event.event_type)) {
       resolutionEventsRef.current = [...resolutionEventsRef.current, event];
     }
@@ -1070,7 +1070,13 @@ export default function MatchRoomPage() {
   }, [activeTurn?.id, activeTurn?.phase]);
 
   // Positioning turn detection
-  const isPositioningTurn = activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense';
+  // Halftime = half 2 has been scheduled but its start is still in the future.
+  // During halftime no action submissions, no draw/drag, no positioning prompts.
+  const isHalftimeNow = match?.current_half === 2
+    && !!match?.half_started_at
+    && new Date(match.half_started_at).getTime() > Date.now();
+  // A positioning turn is "active for the user" only when we're not mid-halftime.
+  const isPositioningTurn = !isHalftimeNow && (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense');
   const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
   const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
   // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
@@ -1516,6 +1522,12 @@ export default function MatchRoomPage() {
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
     if (!matchId || !pid) return;
+    // Halftime lockout — during the break only the ready-check is allowed. Any move/pass/shoot
+    // would "unfreeze" the game (the server keeps ticking), so reject on the client.
+    if (match?.current_half === 2 && match?.half_started_at && new Date(match.half_started_at).getTime() > Date.now()) {
+      toast.info('Intervalo em andamento. Aguarde o fim ou clique em "Pronto" para pular.');
+      return;
+    }
     setSubmittingAction(true);
     try {
       const { response, result } = await invokeMatchEngine({
