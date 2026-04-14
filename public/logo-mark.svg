@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 290" width="260" height="290" role="img" aria-label="Football Identity crest mark">
+  <title>Football Identity</title>
+  <defs>
+    <path id="fid-m-shield" d="M 34 24 L 226 24 L 226 130 Q 226 195 208 220 Q 180 262 130 286 Q 80 262 52 220 Q 34 195 34 130 Z"/>
+    <linearGradient id="fid-m-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#fde68a"/>
+      <stop offset="45%"  stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#92400e"/>
+    </linearGradient>
+    <linearGradient id="fid-m-pitch" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#15803d"/>
+      <stop offset="55%"  stop-color="#0a5730"/>
+      <stop offset="100%" stop-color="#052e16"/>
+    </linearGradient>
+    <linearGradient id="fid-m-sheen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="50%"  stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.18"/>
+    </linearGradient>
+    <clipPath id="fid-m-clip"><use href="#fid-m-shield"/></clipPath>
+    <symbol id="fid-m-star" viewBox="-10 -10 20 20" overflow="visible">
+      <polygon points="0,-9 2.6,-3 9,-3 3.9,1.4 5.8,8 0,4 -5.8,8 -3.9,1.4 -9,-3 -2.6,-3" fill="currentColor"/>
+    </symbol>
+  </defs>
+
+  <use href="#fid-m-shield" fill="url(#fid-m-gold)"/>
+  <g transform="translate(130 155) scale(0.93) translate(-130 -155)">
+    <use href="#fid-m-shield" fill="url(#fid-m-pitch)"/>
+    <use href="#fid-m-shield" fill="url(#fid-m-sheen)"/>
+  </g>
+
+  <g clip-path="url(#fid-m-clip)">
+    <rect x="40" y="46" width="180" height="40" fill="url(#fid-m-gold)"/>
+    <rect x="40" y="44" width="180" height="2.5" fill="#052e16"/>
+    <rect x="40" y="86" width="180" height="2.5" fill="#052e16"/>
+    <g color="#052e16">
+      <use href="#fid-m-star" x="72"  y="58" width="16" height="16"/>
+      <use href="#fid-m-star" x="119" y="55" width="22" height="22"/>
+      <use href="#fid-m-star" x="172" y="58" width="16" height="16"/>
+    </g>
+  </g>
+
+  <text x="130" y="200" font-family="'Impact','Arial Black','Helvetica Neue',sans-serif"
+        font-size="112" font-weight="900" text-anchor="middle" letter-spacing="-6"
+        fill="#f5edc9" stroke="#92400e" stroke-width="2.2" paint-order="stroke">FI</text>
+
+  <g transform="translate(130 243)">
+    <circle r="19" fill="#f5edc9" stroke="#052e16" stroke-width="2.5"/>
+    <polygon points="0,-7.5 7.2,-2.4 4.4,6.2 -4.4,6.2 -7.2,-2.4" fill="#052e16"/>
+    <g stroke="#052e16" stroke-width="1.8" stroke-linecap="round" fill="none">
+      <line x1="0"    y1="-7.5" x2="0"   y2="-17"/>
+      <line x1="7.2"  y1="-2.4" x2="14"  y2="-7.5"/>
+      <line x1="4.4"  y1="6.2"  x2="11"  y2="12.5"/>
+      <line x1="-4.4" y1="6.2"  x2="-11" y2="12.5"/>
+      <line x1="-7.2" y1="-2.4" x2="-14" y2="-7.5"/>
+    </g>
+  </g>
+</svg>
