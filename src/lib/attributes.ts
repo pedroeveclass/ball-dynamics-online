@@ -124,11 +124,13 @@ export function generateBaseAttributes(position: string, bodyType: string, age: 
 
   const attrs: Record<string, number> = {};
 
+  // Deterministic base — no ±1 jitter so the onboarding preview matches what
+  // the server will actually persist (the RPC has the same fixed base).
   for (const key of FIELD_ATTRS) {
-    attrs[key] = base + Math.floor(Math.random() * 3) - 1;
+    attrs[key] = base;
   }
   for (const key of GK_ATTRS) {
-    attrs[key] = gkBase + Math.floor(Math.random() * 3) - 1;
+    attrs[key] = gkBase;
   }
 
   // Apply position profile

@@ -3,6 +3,8 @@
 -- PostgreSQL combines SELECT policies with OR, so this adds a second read path
 -- without changing the first.
 
+DROP POLICY IF EXISTS "Teammates can view attributes" ON public.player_attributes;
+
 CREATE POLICY "Teammates can view attributes"
   ON public.player_attributes
   FOR SELECT
