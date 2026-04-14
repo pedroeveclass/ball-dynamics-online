@@ -16,7 +16,9 @@ function resolveEventParticipantName(
   const NAME_KEYS = [
     'scorer_name', 'assister_name', 'player_name', 'fouler_name',
     'tackler_name', 'blocker_name', 'shooter_name', 'passer_name',
-    'dribbler_name',
+    'dribbler_name', 'receiver_name', 'caught_name', 'attacker_name',
+    'defender_name', 'taker_name', 'in_player_name', 'new_ball_holder_name',
+    'tackled_name',
   ];
   for (const key of NAME_KEYS) {
     const val = payload[key];
@@ -28,6 +30,8 @@ function resolveEventParticipantName(
     'shooter_participant_id', 'passer_participant_id', 'receiver_participant_id',
     'dribbler_participant_id', 'tackled_by_participant_id',
     'player_participant_id', 'new_ball_holder_participant_id', 'gk_participant_id',
+    'caught_participant_id', 'attacker_participant_id', 'defender_participant_id',
+    'taker_participant_id', 'in_participant_id',
   ];
   for (const key of ID_KEYS) {
     const id = payload[key];
@@ -544,6 +548,11 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
                   e.event_type === 'red_card' ? 'border-red-500 text-red-400 font-bold' :
                   e.event_type === 'offside' ? 'border-purple-400 text-purple-300' :
                   e.event_type === 'one_touch' ? 'border-cyan-400 text-cyan-300' :
+                  e.event_type === 'substitution' ? 'border-sky-400 text-sky-300 font-semibold' :
+                  e.event_type === 'dispute' ? 'border-violet-400 text-violet-300' :
+                  e.event_type === 'shot_over' || e.event_type === 'shot_missed' ? 'border-slate-400 text-slate-300' :
+                  e.event_type === 'penalty_kick' ? 'border-red-400 text-red-300 font-bold' :
+                  e.event_type === 'pass_complete' ? 'border-green-400/60 text-green-300/80' :
                   'border-white/20 text-white/70'
                 }`}>
                   <p className="font-display font-semibold">

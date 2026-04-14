@@ -2849,6 +2849,16 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
                 event_type: 'dispute',
                 title: finalWinner === 'attacker' ? '⚔️ Disputa: Ataque venceu!' : '🛡️ Disputa: Defesa venceu!',
                 body: `Disputa ${disputeZone === 'yellow' ? 'aérea' : 'no chão'}${atkIsHeader || defIsHeader ? ' (cabeceio)' : ''}.`,
+                payload: {
+                  attacker_participant_id: attackerCand.participant.id,
+                  attacker_name: (attackerCand.participant as any)?._player_name ?? null,
+                  defender_participant_id: defenderCand.participant.id,
+                  defender_name: (defenderCand.participant as any)?._player_name ?? null,
+                  winner: finalWinner,
+                  zone: disputeZone,
+                  attacker_is_header: !!atkIsHeader,
+                  defender_is_header: !!defIsHeader,
+                },
               });
             }
             console.log(`[ENGINE] Dispute resolved: ${finalWinner === 'attacker' ? 'ATK' : 'DEF'} goes first (header bonus: atk=${atkIsHeader} def=${defIsHeader})`);
@@ -4975,6 +4985,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               match_id, event_type: 'shot_over',
               title: isOver ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
               body: isOver ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo, pelo lado do gol.',
+              payload: {
+                shooter_participant_id: ballHolder.id,
+                shooter_name: (ballHolder as any)?._player_name ?? null,
+                shot_outcome: deviation.shotOutcome,
+              },
             });
           }
         } else {
@@ -5244,6 +5259,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               body: isOverGoal ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo.',
               payload: {
                 shooter_participant_id: ballHolder.id,
+                shooter_name: (ballHolder as any)?._player_name ?? null,
               },
             });
             console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
@@ -5284,16 +5300,32 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           // Skip duplicate event for GK save (already logged above as gk_save)
           if (!result.gkSaveAttempt?.saved) {
             const resolvedEventType = result.possession_change ? 'possession_change' : (result.event === 'tackle' ? 'tackle' : 'pass_complete');
+            const newHolder = result.newBallHolderId
+              ? (participants || []).find((p: any) => p.id === result.newBallHolderId)
+              : null;
             const resolvedPayload: Record<string, any> = {};
             if (resolvedEventType === 'tackle') {
               resolvedPayload.tackler_participant_id = result.newBallHolderId;
+              resolvedPayload.tackler_name = (newHolder as any)?._player_name ?? null;
               resolvedPayload.tackled_participant_id = ballHolder.id;
+              resolvedPayload.tackled_name = (ballHolder as any)?._player_name ?? null;
+            } else if (resolvedEventType === 'possession_change') {
+              resolvedPayload.new_ball_holder_participant_id = result.newBallHolderId;
+              resolvedPayload.new_ball_holder_name = (newHolder as any)?._player_name ?? null;
+              resolvedPayload.previous_ball_holder_participant_id = ballHolder.id;
+              resolvedPayload.previous_ball_holder_name = (ballHolder as any)?._player_name ?? null;
+            } else {
+              // pass_complete
+              resolvedPayload.passer_participant_id = ballHolder.id;
+              resolvedPayload.passer_name = (ballHolder as any)?._player_name ?? null;
+              resolvedPayload.receiver_participant_id = result.newBallHolderId;
+              resolvedPayload.receiver_name = (newHolder as any)?._player_name ?? null;
             }
             eventsToLog.push({
               match_id, event_type: resolvedEventType,
               title: result.possession_change ? `🔄 Troca de posse` : result.description,
               body: result.description,
-              ...(Object.keys(resolvedPayload).length > 0 ? { payload: resolvedPayload } : {}),
+              payload: resolvedPayload,
             });
           }
         } else if (result.foul && result.foulPosition) {
@@ -5355,8 +5387,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
           if (result.failedContestLog) {
+            const foulerPart = result.failedContestParticipantId
+              ? (participants || []).find((p: any) => p.id === result.failedContestParticipantId)
+              : null;
             eventsToLog.push({
-              match_id, event_type: 'foul_detail', title: result.failedContestLog, body: 'O defensor cometeu falta.',
+              match_id, event_type: 'foul_detail',
+              title: result.failedContestLog,
+              body: 'O defensor cometeu falta.',
+              payload: {
+                fouler_participant_id: result.failedContestParticipantId ?? null,
+                fouler_name: (foulerPart as any)?._player_name ?? null,
+              },
             });
           }
           // ── Yellow / Red card processing ──
@@ -5504,7 +5545,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             nextSetPieceType = 'free_kick';
             ballEndPos = { x: offsideX, y: offsideY };
             eventsToLog.push({
-              match_id, event_type: 'offside', title: '🚩 Impedimento!', body: 'Jogador em posição irregular. Tiro livre indireto.',
+              match_id, event_type: 'offside',
+              title: '🚩 Impedimento!',
+              body: 'Jogador em posição irregular. Tiro livre indireto.',
+              payload: {
+                caught_participant_id: receiver.id,
+                caught_name: (receiver as any)?._player_name ?? null,
+                passer_participant_id: ballHolder.id,
+                passer_name: (ballHolder as any)?._player_name ?? null,
+              },
             });
           }
         }
@@ -6505,7 +6554,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const oneTouchEnd = new Date(Date.now() + 2000).toISOString();
             await supabase.from('match_turns').update({ ends_at: oneTouchEnd }).eq('id', insertedTurn.id);
             console.log(`[ENGINE] One-touch auto-action: ${otPayload.next_action_type} (phase shortened to 2s)`);
-            await supabase.from('match_event_logs').insert({ match_id, event_type: 'one_touch', title: '⚡ Toque de primeira!', body: `Jogada de primeira: ${otPayload.next_action_type}` });
+            const otPlayer = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
+            await supabase.from('match_event_logs').insert({
+              match_id, event_type: 'one_touch',
+              title: '⚡ Toque de primeira!',
+              body: `Jogada de primeira: ${otPayload.next_action_type}`,
+              payload: {
+                participant_id: nextBallHolderParticipantId,
+                player_name: (otPlayer as any)?._player_name ?? null,
+                next_action_type: otPayload.next_action_type,
+              },
+            });
           }
         }
       }
@@ -6523,10 +6582,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           body: 'Time com a bola posiciona seus jogadores primeiro.',
         });
       } else if (isPenalty) {
+        const takerPart = nextBallHolderParticipantId
+          ? (participants || []).find((p: any) => p.id === nextBallHolderParticipantId)
+          : null;
         await supabase.from('match_event_logs').insert({
           match_id, event_type: 'penalty_kick',
           title: '🎯 Cobrança de pênalti',
           body: 'O jogador que sofreu a falta cobra o pênalti.',
+          payload: {
+            taker_participant_id: nextBallHolderParticipantId ?? null,
+            taker_name: (takerPart as any)?._player_name ?? null,
+          },
         });
       }
     }
@@ -6616,6 +6682,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             match_id, event_type: 'shot_over',
             title: isOver ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
             body: isOver ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo, pelo lado do gol.',
+            payload: {
+              shooter_participant_id: ballHolder.id,
+              shooter_name: (ballHolder as any)?._player_name ?? null,
+              shot_outcome: deviation.shotOutcome,
+            },
           });
         }
       }

@@ -250,7 +250,7 @@ export default function MatchRoomPage() {
 
   const appendEventLog = useCallback((event: EventLog) => {
     // Track resolution-relevant events so animation can incorporate actual results
-    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball'];
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball', 'dispute', 'shot_over', 'shot_missed', 'offside'];
     if (resolutionEventTypes.includes(event.event_type)) {
       resolutionEventsRef.current = [...resolutionEventsRef.current, event];
     }
@@ -1672,6 +1672,13 @@ export default function MatchRoomPage() {
         event_type: 'substitution',
         title: '🔄 Substituição',
         body: `${inPlayer.player_name || 'Jogador'} entra no lugar de ${outPlayer.player_name || 'Jogador'}`,
+        payload: {
+          out_participant_id: outId,
+          out_player_name: outPlayer.player_name ?? null,
+          in_participant_id: inId,
+          in_player_name: inPlayer.player_name ?? null,
+          club_id: outPlayer.club_id,
+        },
       });
 
       toast.success(`Substituição: ${inPlayer.player_name?.split(' ')[0] || 'Jogador'} entrou!`);
