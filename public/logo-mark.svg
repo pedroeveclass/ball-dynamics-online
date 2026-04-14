@@ -41,7 +41,7 @@
   </g>
 
   <text x="130" y="200" font-family="'Impact','Arial Black','Helvetica Neue',sans-serif"
-        font-size="112" font-weight="900" text-anchor="middle" letter-spacing="-6"
+        font-size="112" font-weight="900" text-anchor="middle" letter-spacing="6"
         fill="#f5edc9" stroke="#92400e" stroke-width="2.2" paint-order="stroke">FI</text>
 
   <g transform="translate(130 243)">
