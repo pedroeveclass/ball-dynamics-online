@@ -18,7 +18,7 @@ import {
 import {
   User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Goal, Loader2, AlertTriangle, TrendingUp, Calendar,
-  Repeat, Plus, UserCircle, Copy,
+  Repeat, Plus, UserCircle, Copy, Trash2,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { positionToPT } from '@/lib/positions';
@@ -157,6 +157,11 @@ export default function PlayerProfilePage() {
   const [primaryPosOpen, setPrimaryPosOpen] = useState(false);
   const [selectedPrimaryPos, setSelectedPrimaryPos] = useState<string>('');
   const [changingPrimaryPos, setChangingPrimaryPos] = useState(false);
+
+  // Reset player state
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resettingPlayer, setResettingPlayer] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
 
   const p = playerProfile;
 
@@ -392,6 +397,41 @@ export default function PlayerProfilePage() {
       toast.error('Erro ao alterar posição principal.');
     }
     setChangingPrimaryPos(false);
+  }
+
+  // ── Reset (delete) player handler ──
+  function handleResetClick() {
+    if (!p) return;
+    if (p.club_id) {
+      toast.error('Você só pode resetar um jogador que está sem time. Saia do clube atual primeiro.');
+      return;
+    }
+    setResetConfirmText('');
+    setResetOpen(true);
+  }
+
+  async function handleResetPlayer() {
+    if (!p) return;
+    if (p.club_id) {
+      toast.error('Você só pode resetar um jogador sem time.');
+      return;
+    }
+    setResettingPlayer(true);
+    try {
+      const { error } = await (supabase as any).rpc('delete_player_profile', {
+        p_player_id: p.id,
+      });
+      if (error) throw error;
+
+      toast.success('Jogador apagado. Crie seu novo jogador!');
+      setResetOpen(false);
+      setResetConfirmText('');
+      await refreshPlayerProfile();
+      navigate('/onboarding/player', { replace: true });
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao resetar jogador.');
+    }
+    setResettingPlayer(false);
   }
 
   if (!p) {
@@ -694,6 +734,30 @@ export default function PlayerProfilePage() {
             <Plus className="h-4 w-4" /> Criar Novo Jogador - {formatBRL(NEW_PLAYER_COST)}
           </Button>
         </div>
+
+        {/* ── Resetar Jogador ── */}
+        <div className="stat-card space-y-3 border-destructive/30">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-destructive" /> Resetar Jogador
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Apaga este jogador permanentemente e volta para o onboarding para criar um novo.
+            Só é permitido para jogadores sem time.
+          </p>
+          {p.club_id ? (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Você está em um clube. Saia do clube atual antes de resetar.
+            </p>
+          ) : null}
+          <Button
+            variant="destructive"
+            className="w-full gap-2"
+            onClick={handleResetClick}
+          >
+            <Trash2 className="h-4 w-4" /> Resetar Jogador
+          </Button>
+        </div>
       </div>
 
       {/* ── New Player Confirmation Dialog ── */}
@@ -842,6 +906,59 @@ export default function PlayerProfilePage() {
           </Dialog>
         );
       })()}
+
+      {/* ── Reset Player Confirmation Dialog ── */}
+      <Dialog open={resetOpen} onOpenChange={(open) => { if (!resettingPlayer) { setResetOpen(open); if (!open) setResetConfirmText(''); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" /> Resetar Jogador
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação é <strong>permanente</strong>. Todo o progresso de <strong>{p.full_name}</strong> será apagado
+              (atributos, histórico de treino, estatísticas, saldo). Depois você será enviado ao onboarding para criar um novo jogador.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-xs space-y-1">
+              <p className="font-semibold text-destructive">O que será apagado:</p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                <li>Jogador <strong>{p.full_name}</strong> (OVR {p.overall})</li>
+                <li>Todos os atributos e evolução de treino</li>
+                <li>Estatísticas de carreira</li>
+                <li>Saldo atual ({formatBRL(p.money)})</li>
+              </ul>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">
+                Digite <strong className="text-destructive">RESETAR</strong> para confirmar:
+              </label>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                disabled={resettingPlayer}
+                className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-destructive"
+                placeholder="RESETAR"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setResetOpen(false)} disabled={resettingPlayer}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleResetPlayer}
+              disabled={resettingPlayer || resetConfirmText !== 'RESETAR'}
+              className="gap-2"
+            >
+              {resettingPlayer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {resettingPlayer ? 'Apagando...' : 'Apagar Jogador'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
