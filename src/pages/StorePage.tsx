@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import {
   Store, ShoppingBag, Footprints, Zap, Shield, GraduationCap,
   Heart, Gift, CreditCard, Check, ShoppingCart, Package, XCircle, BatteryCharging,
+  AlertTriangle, RefreshCw, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
 
@@ -95,6 +96,18 @@ export default function StorePage() {
   const [giftPlayerId, setGiftPlayerId] = useState<string>('');
   const [teamPlayers, setTeamPlayers] = useState<Array<{ id: string; name: string }>>([]);
 
+  // Swap confirmation dialog (trainer / physio conflict at purchase time)
+  const [swapConflict, setSwapConflict] = useState<null | {
+    item: StoreItem;
+    buyerType: 'player' | 'club';
+    targetPlayerId?: string;
+    currentName: string;
+    currentLevel: number | null;
+    newName: string;
+    newLevel: number | null;
+    newPrice: number;
+  }>(null);
+
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
 
@@ -165,7 +178,7 @@ export default function StorePage() {
     return purchases.some(p => p.store_item_id === itemId && (p.status === 'active' || p.status === 'inventory' || p.status === 'cancelling'));
   }
 
-  async function handleBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string) {
+  async function handleBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string, confirmReplace = false) {
     setBuying(true);
     try {
       const playerId = targetPlayerId || playerProfile?.id;
@@ -175,19 +188,53 @@ export default function StorePage() {
         p_player_profile_id: playerId,
         p_store_item_id: item.id,
         p_buyer_type: buyerType,
+        p_confirm_replace: confirmReplace,
       });
 
       if (error) { toast.error(error.message); return; }
       const result = data as any;
+
+      // RPC returned a conflict signal — open the swap dialog instead of charging.
+      if (result?.conflict) {
+        setSwapConflict({
+          item,
+          buyerType,
+          targetPlayerId,
+          currentName: result.current_item_name,
+          currentLevel: result.current_item_level,
+          newName: result.new_item_name,
+          newLevel: result.new_item_level,
+          newPrice: Number(result.new_item_price),
+        });
+        return;
+      }
+
       if (result?.error) { toast.error(result.error); return; }
       toast.success(result?.message || 'Compra realizada!');
       setGiftItem(null);
       setGiftPlayerId('');
+      setSwapConflict(null);
       fetchData(); // Refresh
     } catch (e: any) {
       toast.error(e.message || 'Erro na compra');
     } finally {
       setBuying(false);
+    }
+  }
+
+  async function handleReactivateSubscription(purchaseId: string) {
+    setActing(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('reactivate_store_subscription', { p_purchase_id: purchaseId });
+      if (error) { toast.error(error.message); return; }
+      const result = data as any;
+      if (result?.error) { toast.error(result.error); return; }
+      toast.success(result?.message || 'Renovação reativada!');
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao reativar');
+    } finally {
+      setActing(false);
     }
   }
 
@@ -426,7 +473,13 @@ export default function StorePage() {
                               </Button>
                             )}
                             {isCancelling && p.expires_at && (
-                              <span className="text-xs text-amber-500">Ativo até {new Date(p.expires_at).toLocaleDateString('pt-BR')}</span>
+                              <>
+                                <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700" disabled={acting}
+                                  onClick={() => handleReactivateSubscription(p.id)}>
+                                  <RefreshCw className="h-3 w-3 mr-1" />Reativar renovação
+                                </Button>
+                                <span className="text-xs text-amber-500">Ativo até {new Date(p.expires_at).toLocaleDateString('pt-BR')}</span>
+                              </>
                             )}
                           </div>
                         </CardContent>
@@ -474,6 +527,75 @@ export default function StorePage() {
           })}
         </Tabs>
       )}
+
+      {/* Swap confirmation dialog (trainer / physio) */}
+      <Dialog open={!!swapConflict} onOpenChange={(open) => { if (!open && !buying) setSwapConflict(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              {swapConflict?.item.category === 'trainer' ? 'Trocar Treinador?' : 'Trocar Fisioterapeuta?'}
+            </DialogTitle>
+          </DialogHeader>
+          {swapConflict && (() => {
+            const curLvl = swapConflict.currentLevel ?? 0;
+            const newLvl = swapConflict.newLevel ?? 0;
+            const isUpgrade = newLvl > curLvl;
+            const isDowngrade = newLvl < curLvl;
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Você só pode ter <strong>um {swapConflict.item.category === 'trainer' ? 'treinador' : 'fisioterapeuta'}</strong> ativo por vez.
+                </p>
+
+                <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Atual:</span>
+                    <span className="font-medium">
+                      {swapConflict.currentName}
+                      {swapConflict.currentLevel != null && ` — Nv.${swapConflict.currentLevel}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Novo:</span>
+                    <span className="font-medium flex items-center gap-1">
+                      {isUpgrade && <TrendingUp className="h-3.5 w-3.5 text-pitch" />}
+                      {isDowngrade && <TrendingDown className="h-3.5 w-3.5 text-destructive" />}
+                      {swapConflict.newName}
+                      {swapConflict.newLevel != null && ` — Nv.${swapConflict.newLevel}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                    <span className="text-muted-foreground">Custo do novo:</span>
+                    <span className="font-display font-bold">{formatBRL(swapConflict.newPrice)}</span>
+                  </div>
+                </div>
+
+                {isDowngrade && (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+                    <strong>Atenção:</strong> você está trocando para um nível <strong>INFERIOR</strong>. O bônus atual (Nv.{curLvl}) será perdido.
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  O item atual será substituído imediatamente. <strong>O valor já pago pelo item atual não é reembolsado.</strong>
+                </p>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" disabled={buying}
+                    onClick={() => setSwapConflict(null)}>
+                    Cancelar
+                  </Button>
+                  <Button variant={isDowngrade ? 'destructive' : 'default'} className="flex-1" disabled={buying}
+                    onClick={() => handleBuy(swapConflict.item, swapConflict.buyerType, swapConflict.targetPlayerId, true)}>
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    {buying ? 'Processando...' : 'Confirmar troca'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Gift dialog for managers */}
       <Dialog open={!!giftItem} onOpenChange={open => { if (!open) setGiftItem(null); }}>
