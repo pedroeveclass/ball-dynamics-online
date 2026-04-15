@@ -15,6 +15,7 @@ export const ACTION_LABELS: Record<string, string> = {
   header_controlled: 'CABECEIO CONTROLADO', header_power: 'CABECEIO FORTE',
   press: 'PRESSIONAR', intercept: 'INTERCEPTAR',
   block_lane: 'BLOQUEAR ROTA', block: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
+  receive_hard: 'CARRINHO',
 };
 
 export const PHASE_DURATION = 7;

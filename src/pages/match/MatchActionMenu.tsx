@@ -89,6 +89,11 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
             }
           }
         }
+        // ── Receive hard (Carrinho) — aggressive tackle variant ──
+        else if (a === 'receive_hard') {
+          label = 'CARRINHO';
+          icon = '\uD83E\uDDB5\uD83D\uDCA5'; // 🦵💥
+        }
 
         // ── One-touch suffix (1a) ──
         const isOneTouchOption = pic?.participantId === showActionMenu &&

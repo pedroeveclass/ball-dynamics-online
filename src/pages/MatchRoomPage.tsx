@@ -1725,11 +1725,14 @@ export default function MatchRoomPage() {
       setPendingInterceptChoice(null);
       return;
     }
-    if (actionType === 'receive') {
+    if (actionType === 'receive' || actionType === 'receive_hard') {
+      // `receive_hard` is the "Carrinho" variant — submitted as a normal receive with the
+      // hard_tackle flag in the payload so the engine picks up the success/foul/card bias.
+      const payload = actionType === 'receive_hard' ? { hard_tackle: true } : undefined;
       if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
-        submitAction(actionType, participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY);
+        submitAction('receive', participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY, undefined, payload);
       } else {
-        submitAction(actionType, participantId);
+        submitAction('receive', participantId, undefined, undefined, undefined, payload);
       }
       setShowActionMenu(null);
       setPendingInterceptChoice(null);
@@ -2840,6 +2843,14 @@ export default function MatchRoomPage() {
         return ['block'];
       }
       return ['receive']; // descending yellow — can receive (header)
+    }
+
+    // Tackle scenario: ball holder is dribbling → offer Desarme + Carrinho (hard tackle).
+    // Only applies when it's an opponent trying to stop a dribble.
+    if (trajType === 'move') {
+      const bh = participants.find(pp => pp.id === activeTurn?.ball_holder_participant_id);
+      const isOpponent = p && bh && p.club_id !== bh.club_id;
+      if (isOpponent) return ['receive', 'receive_hard'];
     }
 
     // Green zone: normal foot receive

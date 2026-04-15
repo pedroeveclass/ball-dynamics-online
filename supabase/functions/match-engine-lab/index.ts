@@ -2547,8 +2547,8 @@ function computeInterceptSuccess(
   ballHeightZone?: 'green' | 'yellow' | 'red',
   defenderHeight?: string,
   ballActionType?: string,
-  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string; gkMovementRatio?: number; defenderMoveRatio?: number },
-): { success: boolean; chance: number; foul: boolean; card?: 'yellow' } {
+  interceptContext?: { interceptX?: number; participantClubId?: string; homeClubId?: string; gkMovementRatio?: number; defenderMoveRatio?: number; hardTackle?: boolean },
+): { success: boolean; chance: number; foul: boolean; card?: 'yellow' | 'red' } {
   let attackerSkill: number;
   let defenderSkill: number;
 
@@ -2699,10 +2699,14 @@ function computeInterceptSuccess(
   }
 
   let successChance: number;
+  const hardTackle = context.type === 'tackle' && !!interceptContext?.hardTackle;
   if (context.type === 'tackle') {
-    // Tackle: 50% base when skills are equal, skill difference shifts ±35%, randomness ±10%
+    // Tackle: 50% base when skills are equal, skill difference shifts ±35%, randomness ±10%.
+    // Hard tackle ("carrinho") adds +20% to chance — more likely to win the ball but
+    // the foul/card math below is also amplified to balance.
     const skillDelta = defenderSkill - attackerSkill;
     successChance = 0.50 + skillDelta * 0.35 + (Math.random() - 0.5) * 0.20;
+    if (hardTackle) successChance += 0.20;
   } else if (context.type === 'gk_save' || (context.type === 'block' && context.defenderRole === 'goalkeeper')) {
     // GK save/block: movement-based difficulty + skill difference ±80% + randomness ±10%
     const moveRatio = interceptContext?.gkMovementRatio ?? 0.5;
@@ -2748,13 +2752,15 @@ function computeInterceptSuccess(
   let foul = false;
   if (context.type === 'tackle') {
     const tackleSkill = (normalizeAttr(defenderAttrs.desarme ?? 40) + normalizeAttr(defenderAttrs.marcacao ?? 40)) / 2;
+    // Hard tackle amplifies the foul probability (×1.6) — the trade-off for +20% success.
+    const hardFoulMult = hardTackle ? 1.6 : 1.0;
     if (success) {
       // Hard tackle wins ball but might be a foul
-      const foulChance = (1 - tackleSkill) * 0.20;
+      const foulChance = (1 - tackleSkill) * 0.20 * hardFoulMult;
       foul = Math.random() < foulChance;
     } else {
       // Failed tackle has higher foul chance
-      const foulChance = (1 - tackleSkill) * 0.55 + 0.10;
+      const foulChance = ((1 - tackleSkill) * 0.55 + 0.10) * hardFoulMult;
       foul = Math.random() < foulChance;
     }
     if (foul && success) {
@@ -2763,11 +2769,18 @@ function computeInterceptSuccess(
     }
   }
 
-  let card: 'yellow' | undefined;
+  let card: 'yellow' | 'red' | undefined;
   if (foul) {
     const recklessness = 1 - normalizeAttr(defenderAttrs.tomada_decisao ?? 40);
-    const yellowChance = 0.25 + recklessness * 0.15; // ~25-40% of fouls get yellow
-    if (Math.random() < yellowChance) {
+    // Hard tackle fouls are ×1.4 more likely to earn a yellow card.
+    const baseYellowChance = 0.25 + recklessness * 0.15; // ~25-40%
+    const yellowChance = hardTackle ? baseYellowChance * 1.4 : baseYellowChance;
+    // Hard tackle: small chance of direct red (violent play), scaled by recklessness.
+    const directRedChance = hardTackle ? 0.04 + recklessness * 0.04 : 0; // ~4-8%
+    const roll = Math.random();
+    if (roll < directRedChance) {
+      card = 'red';
+    } else if (roll < directRedChance + yellowChance) {
       card = 'yellow';
     }
   }
@@ -2876,7 +2889,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   failedContestLog?: string;
   foul?: boolean;
   foulPosition?: { x: number; y: number };
-  card?: 'yellow';
+  card?: 'yellow' | 'red';
   disputeInfo?: { winner: 'attacker' | 'defender'; zone: string };
   gkSaveAttempt?: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean };
   failedReceiveAttempts?: Array<{ participantId: string; chance: string }>;
@@ -3041,12 +3054,19 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       const gkMaxRange = 11.8; // approximate max move range
       gkMovementRatio = Math.min(1, gkMoveDist / gkMaxRange);
     }
+    // Read the hard-tackle flag from the defender's action payload — only meaningful
+    // when the ball holder is dribbling (context === 'tackle').
+    const interceptorPayload = interceptorAction?.payload && typeof interceptorAction.payload === 'object'
+      ? interceptorAction.payload as Record<string, any>
+      : null;
+    const hardTackle = context.type === 'tackle' && !!interceptorPayload?.hard_tackle;
     let { success, chance, foul, card } = computeInterceptSuccess(context, bhAttrs, defAttrs, ballHeightZone, defHeight, bhActionType, {
       interceptX: candidate.interceptX,
       participantClubId: candidate.participant.club_id,
       homeClubId: bh?.club_id || possClubId,
       gkMovementRatio,
       defenderMoveRatio: candidate.moveRatio,
+      hardTackle,
     });
 
     // ── Coach bonuses ──
@@ -3113,10 +3133,26 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
     }
 
     if (context.type === 'tackle') {
+      const tackleLabel = hardTackle ? 'Carrinho' : 'Desarme';
+      const tackleEmoji = hardTackle ? '🦵💥' : '🦵';
       if (foul) {
-        return { success: false, event: 'foul', description: `🟡 Falta! (Desarme: ${chancePct})`, possession_change: false, goal: false, foul: true, foulPosition: { x: candidate.interceptX ?? 50, y: candidate.interceptY ?? 50 }, failedContestParticipantId: candidate.participant.id, failedContestLog: `🟡 Falta cometida! (${chancePct})`, card };
+        return {
+          success: false, event: 'foul',
+          description: `🟡 Falta! (${tackleLabel}: ${chancePct})`,
+          possession_change: false, goal: false, foul: true,
+          foulPosition: { x: candidate.interceptX ?? 50, y: candidate.interceptY ?? 50 },
+          failedContestParticipantId: candidate.participant.id,
+          failedContestLog: `🟡 Falta cometida! (${tackleLabel} ${chancePct})`,
+          card,
+        };
       }
-      return { success: true, event: 'dribble', description: `🏃 Drible bem-sucedido! (Desarme: ${chancePct})`, possession_change: false, goal: false, failedContestParticipantId: candidate.participant.id, failedContestLog: `🦵 Desarme falhou! (${chancePct})` };
+      return {
+        success: true, event: 'dribble',
+        description: `🏃 Drible bem-sucedido! (${tackleLabel}: ${chancePct})`,
+        possession_change: false, goal: false,
+        failedContestParticipantId: candidate.participant.id,
+        failedContestLog: `${tackleEmoji} ${tackleLabel} falhou! (${chancePct})`,
+      };
     }
 
     if (context.type === 'block_shot' || context.type === 'block') {
@@ -5544,39 +5580,50 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             });
           }
           // ── Yellow / Red card processing ──
-          if (result.card === 'yellow' && result.failedContestParticipantId) {
+          if ((result.card === 'yellow' || result.card === 'red') && result.failedContestParticipantId) {
             const foulerParticipant = participants?.find((p: any) => p.id === result.failedContestParticipantId);
             let foulerName = 'Jogador';
             if (foulerParticipant?.player_profile_id) {
               const { data: profileData } = await supabase.from('player_profiles').select('display_name').eq('id', foulerParticipant.player_profile_id).single();
               if (profileData?.display_name) foulerName = profileData.display_name;
             }
-            // Increment yellow cards
-            const prevYellows = Number(foulerParticipant?.yellow_cards ?? 0);
-            const newYellows = prevYellows + 1;
-            const updateData: Record<string, any> = { yellow_cards: newYellows };
-            if (newYellows >= 2) {
-              updateData.is_sent_off = true;
-            }
-            await supabase.from('match_participants').update(updateData).eq('id', result.failedContestParticipantId);
-            // Update local participant cache
-            if (foulerParticipant) {
-              foulerParticipant.yellow_cards = newYellows;
-              if (newYellows >= 2) foulerParticipant.is_sent_off = true;
-            }
-            eventsToLog.push({
-              match_id, event_type: 'yellow_card',
-              title: '🟨 Cartão Amarelo!',
-              body: `${foulerName} recebeu cartão amarelo.`,
-              payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName },
-            });
-            if (newYellows >= 2) {
+            if (result.card === 'red') {
+              // Direct red (violent carrinho). Send-off immediately; yellow count unchanged.
+              await supabase.from('match_participants').update({ is_sent_off: true }).eq('id', result.failedContestParticipantId);
+              if (foulerParticipant) foulerParticipant.is_sent_off = true;
               eventsToLog.push({
                 match_id, event_type: 'red_card',
-                title: '🟥 Cartão Vermelho! Segundo amarelo!',
-                body: `${foulerName} recebeu o segundo amarelo e foi expulso!`,
+                title: '🟥 Cartão Vermelho direto!',
+                body: `${foulerName} foi expulso por carrinho violento.`,
+                payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName, reason: 'direct_red' },
+              });
+            } else {
+              // Yellow — may turn into red if it's the second yellow.
+              const prevYellows = Number(foulerParticipant?.yellow_cards ?? 0);
+              const newYellows = prevYellows + 1;
+              const updateData: Record<string, any> = { yellow_cards: newYellows };
+              if (newYellows >= 2) {
+                updateData.is_sent_off = true;
+              }
+              await supabase.from('match_participants').update(updateData).eq('id', result.failedContestParticipantId);
+              if (foulerParticipant) {
+                foulerParticipant.yellow_cards = newYellows;
+                if (newYellows >= 2) foulerParticipant.is_sent_off = true;
+              }
+              eventsToLog.push({
+                match_id, event_type: 'yellow_card',
+                title: '🟨 Cartão Amarelo!',
+                body: `${foulerName} recebeu cartão amarelo.`,
                 payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName },
               });
+              if (newYellows >= 2) {
+                eventsToLog.push({
+                  match_id, event_type: 'red_card',
+                  title: '🟥 Cartão Vermelho! Segundo amarelo!',
+                  body: `${foulerName} recebeu o segundo amarelo e foi expulso!`,
+                  payload: { player_participant_id: result.failedContestParticipantId, player_name: foulerName, reason: 'second_yellow' },
+                });
+              }
             }
           }
         } else if (result.event === 'dribble') {
