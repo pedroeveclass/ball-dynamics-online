@@ -9,6 +9,7 @@ import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState } from './match/types';
 import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
+import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
 import { MatchActionMenu } from './match/MatchActionMenu';
@@ -466,7 +467,7 @@ export default function MatchRoomPage() {
 
     const [playersRes, slotsRes] = await Promise.all([
       playerIds.length > 0
-        ? supabase.from('player_profiles').select('id, full_name, primary_position, overall, jersey_number').in('id', playerIds)
+        ? supabase.from('player_profiles').select('id, full_name, primary_position, secondary_position, overall, jersey_number').in('id', playerIds)
         : Promise.resolve({ data: [] as PlayerProfileSummary[] }),
       slotIds.length > 0
         ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds)
@@ -494,7 +495,7 @@ export default function MatchRoomPage() {
       // Load player user_ids for connected_user_id
       const profileIds = slots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
       const { data: profiles } = profileIds.length > 0
-        ? await supabase.from('player_profiles').select('id, user_id, full_name, primary_position, overall').in('id', profileIds)
+        ? await supabase.from('player_profiles').select('id, user_id, full_name, primary_position, secondary_position, overall').in('id', profileIds)
         : { data: [] as any[] };
       const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
 
@@ -804,9 +805,15 @@ export default function MatchRoomPage() {
   const computeMaxMoveRange = useCallback((participantId: string, targetDirection?: { x: number; y: number }, overrideMultiplier?: number): number => {
     const attrs = playerAttrsMap[participantId];
     const turnNum = match?.current_turn_number ?? 1;
-    const vel = Number(attrs?.velocidade ?? 40);
-    const accel = Number(attrs?.aceleracao ?? 40);
-    const stam = Number(attrs?.stamina ?? 40);
+    // Positional penalty: if fielded out of position, scale move-relevant attrs down
+    const part = participants.find(p => p.id === participantId);
+    const profile = part?.player_profile_id ? playerProfileCacheRef.current.get(part.player_profile_id) : null;
+    const posMult = part && profile
+      ? positionalMultiplier(part.slot_position || part.field_pos, profile.primary_position, profile.secondary_position)
+      : 1;
+    const vel = Number(attrs?.velocidade ?? 40) * posMult;
+    const accel = Number(attrs?.aceleracao ?? 40) * posMult;
+    const stam = Number(attrs?.stamina ?? 40) * posMult;
     const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
     const maxSpeed = 8 + normalizeAttr(vel) * 11; // ~12% of field per turn for avg player
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
@@ -873,7 +880,7 @@ export default function MatchRoomPage() {
     }
 
     return range;
-  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions]);
+  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions, participants]);
 
   // Apply ballSpeedFactor to a player's range based on current ball trajectory action.
   // Outfield players get reduced range (fast ball = less time to react).
@@ -1254,6 +1261,24 @@ export default function MatchRoomPage() {
       setSelectedParticipantId(targetPid);
     }
   }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions, activeTurn?.possession_club_id, selectedParticipantId, match?.home_club_id, match?.away_club_id]);
+
+  // ── Positioning auto-draw: players only ──
+  // During a positioning phase, if the current user is a PLAYER (not manager) and hasn't
+  // submitted yet, pre-activate the move drawing on their own avatar. Result: first click on
+  // the field picks the destination. Managers continue to pick their player manually.
+  useEffect(() => {
+    if (!isPositioningTurn) return;
+    if (match?.status !== 'live' || isPhaseProcessing) return;
+    if (myRole !== 'player') return;
+    if (!myParticipant) return;
+    if (myParticipant.is_sent_off) return;
+    if (myParticipant.role_type !== 'player') return;
+    if (submittedActions.has(myParticipant.id)) return;
+    if (drawingAction) return; // don't override an in-progress draw
+
+    setSelectedParticipantId(myParticipant.id);
+    setDrawingAction({ type: 'move', fromParticipantId: myParticipant.id });
+  }, [isPositioningTurn, activeTurn?.id, match?.status, isPhaseProcessing, myRole, myParticipant?.id, myParticipant?.is_sent_off, myParticipant?.role_type, submittedActions, drawingAction]);
 
   // ── Z hotkey: cancel current action + reopen menu for a fresh choice ─────────
   // If the player never picks a new action from the menu, the submitted
@@ -4163,6 +4188,14 @@ export default function MatchRoomPage() {
                 const glowColor = canReachBall ? 'rgba(139,92,246,0.3)' : 'rgba(34,197,94,0.3)';
                 const glowStroke = canReachBall ? 'rgba(139,92,246,0.15)' : 'rgba(34,197,94,0.15)';
 
+                // Positioning-phase attention pulse: only for the user's OWN player during
+                // a positioning turn. Makes the cursor circle pulse amber to grab attention
+                // now that the drawing is auto-activated (no need to click-to-select first).
+                const showPositioningPulse = isMove
+                  && isPositioningTurn
+                  && isPlayer
+                  && drawingAction?.fromParticipantId === myParticipant?.id;
+
                 return (
                   <>
                     {/* Outer glow around active player (all actions) */}
@@ -4171,6 +4204,18 @@ export default function MatchRoomPage() {
                     {/* Action circle at cursor (only for MOVE) — green=can't reach, purple=can reach */}
                     {isMove && (
                       <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill={circleColor} stroke={circleStroke} strokeWidth="1.2" />
+                    )}
+                    {/* Amber attention pulse overlay — tight loop, catches the eye */}
+                    {showPositioningPulse && (
+                      <>
+                        <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="none" stroke="#f59e0b" strokeWidth="2">
+                          <animate attributeName="opacity" values="0.95;0.25;0.95" dur="0.5s" repeatCount="indefinite" />
+                        </circle>
+                        <circle cx={cursorSvg.x} cy={cursorSvg.y} r={9} fill="none" stroke="#fbbf24" strokeWidth="1.5">
+                          <animate attributeName="r" from="9" to="16" dur="0.6s" repeatCount="indefinite" />
+                          <animate attributeName="opacity" from="0.75" to="0" dur="0.6s" repeatCount="indefinite" />
+                        </circle>
+                      </>
                     )}
                   </>
                 );
