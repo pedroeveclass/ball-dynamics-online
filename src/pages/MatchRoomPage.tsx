@@ -1081,6 +1081,10 @@ export default function MatchRoomPage() {
     setFinalBallPos(null);
     finalBallPosRef.current = null;
     animatedResolutionIdRef.current = null;
+    // Drop any leftover RAF transform from the previous turn so the new turn's
+    // React-rendered ball base isn't offset by a stale translate().
+    const ballGElTurn = ballGroupRef.current;
+    if (ballGElTurn) ballGElTurn.removeAttribute('transform');
   }, [activeTurn?.turn_number]);
 
   useEffect(() => {
@@ -2572,7 +2576,15 @@ export default function MatchRoomPage() {
                   // Only override ball position if NO interception happened
                   // (if intercepted, keep ball at intercept point)
                   const wasIntercepted = interceptAction && interceptAction.participant_id !== bhId;
-                  if (isNextTurnReady && nextTurn.ball_holder_participant_id && !wasIntercepted) {
+                  // Skip the nextTurn snap for move actions: the dribble's own branch
+                  // above already decided whether the ball stays with the dribbler
+                  // (dribble success) or moves to the interceptor's point. If the new
+                  // turn shows a different ball_holder (e.g., GK briefly via a transient
+                  // DB write), snapping the ball to that player produces the "ball
+                  // appeared with GK at end of move" visual bug. Trust the move-branch
+                  // fbp, let the next-turn render correct it naturally.
+                  const isMoveAction = ballAction.action_type === 'move';
+                  if (!isMoveAction && isNextTurnReady && nextTurn.ball_holder_participant_id && !wasIntercepted) {
                     const actualHolder = participantsRef.current.find(
                       p => p.id === nextTurn.ball_holder_participant_id
                     );
@@ -2640,6 +2652,15 @@ export default function MatchRoomPage() {
 
           // Release the interceptor snapshot — next render uses the live memo again.
           animationInterceptorSnapshotRef.current = null;
+
+          // Clear the ball's RAF-managed `transform` attribute. React doesn't set
+          // `transform` on the ball group in JSX, so if we leave it dirty the next
+          // React render (which updates `data-base-x/y` to the new fbp position)
+          // will display: fbp + stale_transform → ball floats past the arrow tip.
+          // This was the root cause of the pass/dribble overshoot visual.
+          const ballGElFinal = ballGroupRef.current;
+          if (ballGElFinal) ballGElFinal.removeAttribute('transform');
+
           setAnimating(false);
 
           // Fetch authoritative positions from DB (prevents client desync)
@@ -2666,6 +2687,9 @@ export default function MatchRoomPage() {
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      // Drop any stale RAF transform so the next animation starts from a clean slate.
+      const ballGElCleanup = ballGroupRef.current;
+      if (ballGElCleanup) ballGElCleanup.removeAttribute('transform');
     };
   }, [activeTurn?.phase, activeTurn?.id]);
 
@@ -3128,6 +3152,22 @@ export default function MatchRoomPage() {
     // Use locked final ball position if available (post-animation)
     if (finalBallPos && !animating) {
       return finalBallPos;
+    }
+
+    // During the resolution animation, RAF fully controls the ball position via a
+    // `transform` attribute on the group, computed relative to `data-base-x/y`.
+    // If React re-renders mid-animation (from a realtime event, state tick, etc.)
+    // and the base position changes, the RAF transform from the previous tick now
+    // points at the wrong absolute position — the ball visibly jumps. Returning a
+    // STABLE base here (the passer's pre-animation position) guarantees that
+    // mid-animation re-renders don't shift `data-base-x/y`, so RAF's math stays
+    // consistent.
+    if (animating && activeTurn?.phase === 'resolution' && ballHolder) {
+      const startPos = resolutionStartPositions[ballHolder.id] ?? {
+        x: ballHolder.field_x ?? 50,
+        y: ballHolder.field_y ?? 50,
+      };
+      return { x: startPos.x + 1.2, y: startPos.y - 1.2 };
     }
 
     if (!ballHolder) {
