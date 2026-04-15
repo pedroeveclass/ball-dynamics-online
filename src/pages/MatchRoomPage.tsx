@@ -147,6 +147,9 @@ export default function MatchRoomPage() {
   const resolutionEventsRef = useRef<EventLog[]>([]);
   // Players who failed a tackle in the previous turn — cannot tackle again this turn
   const [tackleBlockedIds, setTackleBlockedIds] = useState<Set<string>>(new Set());
+  // Multiplier applied to max move range this turn for players who failed a tackle last turn.
+  // 0.85 = missed a regular desarme (−15%), 0.50 = missed a carrinho (−50%).
+  const [tackleMovementPenalty, setTackleMovementPenalty] = useState<Record<string, number>>({});
 
   // Possession change visual feedback
   const [possessionChangePulse, setPossessionChangePulse] = useState<string | null>(null);
@@ -834,6 +837,12 @@ export default function MatchRoomPage() {
       }
     }
 
+    // Failed-tackle cooldown penalty: desarme miss → ×0.85, carrinho miss → ×0.50.
+    const failedTacklePenalty = tackleMovementPenalty[participantId];
+    if (failedTacklePenalty != null) {
+      range *= failedTacklePenalty;
+    }
+
     if (overrideMultiplier != null) range *= overrideMultiplier;
 
     // One-touch turn: movement scaled by ball speed (faster ball = less reaction time)
@@ -880,7 +889,7 @@ export default function MatchRoomPage() {
     }
 
     return range;
-  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions, participants]);
+  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions, participants, tackleMovementPenalty]);
 
   // Apply ballSpeedFactor to a player's range based on current ball trajectory action.
   // Outfield players get reduced range (fast ball = less time to react).
@@ -1004,15 +1013,21 @@ export default function MatchRoomPage() {
     setResolutionStartPositions({});
     setFinalPositions({});
 
-    // Capture players who failed a tackle in the turn we're LEAVING — they can't tackle in the new turn
+    // Capture players who failed a tackle in the turn we're LEAVING — they can't tackle
+    // in the new turn AND have their movement capped (−15% desarme / −50% carrinho).
     const prevTurnFailed = new Set<string>();
+    const prevTurnPenalty: Record<string, number> = {};
     for (const ev of resolutionEventsRef.current) {
       if (ev.event_type === 'tackle_failed') {
         const p = ev.payload as any;
-        if (p?.participant_id) prevTurnFailed.add(p.participant_id);
+        if (p?.participant_id) {
+          prevTurnFailed.add(p.participant_id);
+          prevTurnPenalty[p.participant_id] = p.hard_tackle ? 0.50 : 0.85;
+        }
       }
     }
     setTackleBlockedIds(prevTurnFailed);
+    setTackleMovementPenalty(prevTurnPenalty);
     resolutionEventsRef.current = [];
 
     const currentTurnNumberForInertia = activeTurn?.turn_number ?? null;

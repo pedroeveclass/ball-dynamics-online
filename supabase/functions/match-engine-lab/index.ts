@@ -5233,6 +5233,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         if (a.participant_id === ballHolder?.id && a.action_type === 'move' && !bhHasBallAction) {
           maxRange *= 0.85;
         }
+        // Failed-tackle movement penalty from the previous turn.
+        const tacklePenaltyMult = tackleMovementPenalty.get(a.participant_id);
+        if (tacklePenaltyMult != null) {
+          maxRange *= tacklePenaltyMult;
+        }
         // One-touch turn: movement scaled by ball speed (faster ball = less reaction time)
         const oneTouchAction = allActions.find((act: any) => act.payload && typeof act.payload === 'object' && (act.payload as any).one_touch_executed);
         if (oneTouchAction) {
@@ -5294,8 +5299,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         .find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
-      // Load players with tackle cooldown (failed tackle in the previous turn)
+      // Load players with tackle cooldown (failed tackle in the previous turn).
+      // Penalty by tackle type (applied to this turn's max move range):
+      //   - Desarme (regular): range × 0.85  (-15%)
+      //   - Carrinho (hard):   range × 0.50  (-50%)
       const tackleBlockedIds = new Set<string>();
+      const tackleMovementPenalty = new Map<string, number>();
       if ((match.current_turn_number ?? 1) > 1) {
         const { data: failedTackleEvents } = await supabase
           .from('match_event_logs')
@@ -5306,6 +5315,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const p = ev.payload as any;
           if (p?.participant_id && p?.turn_number === (match.current_turn_number - 1)) {
             tackleBlockedIds.add(p.participant_id);
+            tackleMovementPenalty.set(p.participant_id, p.hard_tackle ? 0.50 : 0.85);
           }
         }
         if (tackleBlockedIds.size > 0) {
@@ -5638,33 +5648,26 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               tackled_by_participant_id: result.failedContestParticipantId ?? null,
             },
           });
-          // Log the failed contest too (with participant_id so next turn can block tackles)
+          // Log the failed contest too — carries hard_tackle so next turn's tick knows
+          // whether to apply the -15% (desarme) or -50% (carrinho) movement penalty.
           if (result.failedContestLog) {
+            const failedTackleAction = allActions.find((a: any) =>
+              a.participant_id === result.failedContestParticipantId
+              && (a.action_type === 'receive' || a.action_type === 'block' || a.action_type === 'move'));
+            const failedWasHardTackle = !!(failedTackleAction?.payload && typeof failedTackleAction.payload === 'object'
+              && (failedTackleAction.payload as any).hard_tackle);
             eventsToLog.push({
               match_id, event_type: 'tackle_failed',
               title: result.failedContestLog,
-              body: 'O defensor perdeu o equilíbrio e terá penalidade de velocidade e não poderá dar tackle no próximo turno.',
+              body: failedWasHardTackle
+                ? 'Carrinho errado: não poderá dar tackle no próximo turno e perde 50% de movimentação.'
+                : 'Desarme errado: não poderá dar tackle no próximo turno e perde 15% de movimentação.',
               payload: {
                 participant_id: result.failedContestParticipantId,
                 turn_number: match.current_turn_number,
+                hard_tackle: failedWasHardTackle,
               },
             });
-          }
-          // Apply movement penalty to failed tackler: reduce their effective movement by 50%
-          if (result.failedContestParticipantId) {
-            const failedPart = (participants || []).find((p: any) => p.id === result.failedContestParticipantId);
-            if (failedPart) {
-              const failMoveAct = allActions.find((a: any) => a.participant_id === failedPart.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
-              if (failMoveAct) {
-                // Reduce their movement by 50% — move them only 50% of the way
-                const startX = Number(failedPart.pos_x ?? 50);
-                const startY = Number(failedPart.pos_y ?? 50);
-                const penaltyX = startX + (Number(failMoveAct.target_x) - startX) * 0.5;
-                const penaltyY = startY + (Number(failMoveAct.target_y) - startY) * 0.5;
-                deferredPositionUpdates.push({ id: failedPart.id, pos_x: penaltyX, pos_y: penaltyY });
-                console.log(`[ENGINE] Failed tackle penalty: ${failedPart.id.slice(0,8)} movement reduced by 50%`);
-              }
-            }
           }
         } else if (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) {
           // RULE: resolveAction already processed interceptions from opponents.
