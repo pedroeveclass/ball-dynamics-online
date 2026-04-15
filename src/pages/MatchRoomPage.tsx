@@ -22,6 +22,113 @@ function getFieldMoveDist(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVE_SCALE) * (dy * FIELD_Y_MOVE_SCALE));
 }
 
+// Ball outcome resolver — engine events are the source of truth for what
+// actually happened in resolution. The client used to predict using submitted
+// actions (which produced visuals that disagreed with the engine's result:
+// "animation showed the pass completing but next turn I had the ball"). Now
+// the trajectory selection asks this helper first.
+//
+// Returns an explicit outcome; `hasConclusiveEvent` flips to true as soon as a
+// definitive event arrives so callers can stop using the action-based fallback.
+interface BallOutcome {
+  interceptor: MatchAction | null;
+  hasConclusiveEvent: boolean;
+  passCompleted: boolean;
+  dribbled: boolean;
+  tackled: boolean;
+  blocked: boolean;
+}
+
+function resolveBallOutcome(
+  actions: MatchAction[],
+  resEvents: EventLog[],
+  bhId: string,
+): BallOutcome {
+  const out: BallOutcome = {
+    interceptor: null,
+    hasConclusiveEvent: false,
+    passCompleted: false,
+    dribbled: false,
+    tackled: false,
+    blocked: false,
+  };
+
+  const findReceiveActionFor = (pid: string): MatchAction | null => {
+    return actions.find(a =>
+      a.participant_id === pid
+      && (a.action_type === 'receive' || a.action_type === 'receive_hard' || a.action_type === 'block')
+      && a.target_x != null
+      && a.target_y != null
+    ) ?? null;
+  };
+
+  // Scan events in order. Later conclusive events override earlier ones (the
+  // engine emits per-candidate failures before the final success).
+  for (const ev of resEvents) {
+    const payload = (ev.payload ?? {}) as Record<string, any>;
+    switch (ev.event_type) {
+      case 'receive_success':
+      case 'intercepted': {
+        const pid = payload.participant_id ?? payload.new_ball_holder_participant_id;
+        if (pid) {
+          out.interceptor = findReceiveActionFor(pid);
+          out.hasConclusiveEvent = true;
+          out.passCompleted = false;
+        }
+        break;
+      }
+      case 'possession_change': {
+        const pid = payload.new_ball_holder_participant_id;
+        if (pid && pid !== bhId) {
+          out.interceptor = findReceiveActionFor(pid);
+          out.hasConclusiveEvent = true;
+          out.passCompleted = false;
+        }
+        break;
+      }
+      case 'tackle': {
+        const pid = payload.tackler_participant_id ?? payload.new_ball_holder_participant_id;
+        if (pid) {
+          out.interceptor = findReceiveActionFor(pid);
+          out.tackled = true;
+          out.hasConclusiveEvent = true;
+        }
+        break;
+      }
+      case 'dribble': {
+        out.dribbled = true;
+        out.interceptor = null;
+        out.hasConclusiveEvent = true;
+        break;
+      }
+      case 'pass_complete': {
+        out.passCompleted = true;
+        out.interceptor = null;
+        out.hasConclusiveEvent = true;
+        break;
+      }
+      case 'blocked':
+      case 'block':
+      case 'saved':
+      case 'gk_save': {
+        const pid = payload.blocker_participant_id ?? payload.gk_participant_id;
+        if (pid) {
+          out.interceptor = findReceiveActionFor(pid);
+          out.blocked = true;
+          out.hasConclusiveEvent = true;
+        }
+        break;
+      }
+      case 'goal': {
+        out.hasConclusiveEvent = true;
+        break;
+      }
+    }
+  }
+
+  return out;
+}
+
 // Single source of truth for resolving loose ball position from history.
 // Used by both the turn-transition useEffect and the render IIFE so both
 // paths agree on which position to surface when no canonical state exists.
@@ -2302,13 +2409,19 @@ export default function MatchRoomPage() {
         // Linear interpolation (ported from Solo Lab — constant ball speed, arc provides naturalism)
         const t = raw;
 
-        // Use the interceptor snapshot captured at animation start (locked for full flight
-        // so late-arriving events can't teleport the ball). Falls back to the live ref, then
-        // scans receive actions. See animationInterceptorSnapshotRef declaration.
-        const interceptAction = animationInterceptorSnapshotRef.current
-          ?? interceptorActionRef.current
-          ?? actionsSnap.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null)
-          ?? null;
+        // Resolve the authoritative ball outcome using engine events. This is the source
+        // of truth for where the ball ends up — the action-based prediction was wrong in
+        // cases like: user submitted `receive` that succeeded (engine said intercepted)
+        // but animation still showed the pass completing, or user submitted a tackle
+        // that failed (engine said dribble) but animation showed the ball stopping.
+        const outcome = resolveBallOutcome(actionsSnap, resolutionEventsRef.current, bhPart.id);
+        const interceptAction = outcome.interceptor
+          ?? (outcome.hasConclusiveEvent
+            ? null
+            : (animationInterceptorSnapshotRef.current
+              ?? interceptorActionRef.current
+              ?? actionsSnap.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null)
+              ?? null));
 
         if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
           const effectiveTarget = getEffectiveActionTarget(ballAction, startPos, actionsSnap);
@@ -2324,11 +2437,13 @@ export default function MatchRoomPage() {
           const offX = 0;
           const offY = 0;
           void dribLen;
-          // Dribble-success override: engine's `dribble` event means the dribbler kept the
-          // ball. Ignore any intercept candidate so the ball stays with the dribbler instead
-          // of visually sticking to the defender.
-          const dribbleSucceeded = resolutionEventsRef.current.some(e => e.event_type === 'dribble');
-          if (!dribbleSucceeded && interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+          // Engine truth for move: `dribble` = dribbler kept ball (ignore tacklers),
+          // `tackle` = tackler took it (ball stops at tackler). Only fall back to the
+          // action-based interceptor when no conclusive event exists yet.
+          if (outcome.dribbled) {
+            return holderPos ? { x: holderPos.x + offX, y: holderPos.y + offY } : defaultBallPos;
+          }
+          if ((outcome.tackled || !outcome.hasConclusiveEvent) && interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
             const len2 = dx * dx + dy * dy;
             const interceptT = len2 > 0 ? clamp(((interceptAction.target_x - startPos.x) * dx + (interceptAction.target_y - startPos.y) * dy) / len2, 0, 1) : 1;
             const effectiveT = Math.min(t, interceptT);
@@ -2503,8 +2618,15 @@ export default function MatchRoomPage() {
           }
           
            // Compute final ball position (bhId already declared above)
-           const interceptAction = latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null);
-           
+           // Source of truth: engine events. See resolveBallOutcome.
+           const finalOutcome = bhId
+             ? resolveBallOutcome(latestActions, resolutionEventsRef.current, bhId)
+             : null;
+           const interceptAction = finalOutcome?.interceptor
+             ?? (finalOutcome?.hasConclusiveEvent
+               ? null
+               : latestActions.find(a => a.action_type === 'receive' && a.target_x != null && a.target_y != null) ?? null);
+
            if (bhId) {
              // Prioritize pass/shoot over move for ball destination
              const bhAllActions = latestActions
@@ -2549,19 +2671,16 @@ export default function MatchRoomPage() {
                   }
                 } else if (ballAction.action_type === 'move' && ballAction.target_x != null && ballAction.target_y != null) {
                   const effectiveTarget = getEffectiveActionTarget(ballAction, snapshot[bhId], latestActions);
-                  // If engine confirmed the dribble, don't snap the final ball to an
-                  // intercept target (the defender lost the duel — ball stays with dribbler).
-                  const dribbleSucceeded = resolutionEventsRef.current.some(e => e.event_type === 'dribble');
-                  if (!dribbleSucceeded && interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                  // Engine truth: if `dribble` fired, ball stays with BH; if `tackle`
+                  // fired, ball snaps to tackler's receive target. Action-based fallback
+                  // only runs while no conclusive event exists yet.
+                  const useIntercept = (finalOutcome?.tackled === true)
+                    || (!finalOutcome?.hasConclusiveEvent && !!interceptAction);
+                  if (useIntercept && interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
                     fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
                   } else {
-                    // Ball ends up IN FRONT of the player (dribble direction), not on top
                     const endPos = effectiveTarget ?? { x: ballAction.target_x, y: ballAction.target_y };
-                    const startPosRef = sp ?? { x: ballAction.target_x, y: ballAction.target_y };
-                    const dribDx = endPos.x - startPosRef.x;
-                    const dribDy = endPos.y - startPosRef.y;
                     // Ball glued to the dribbler's centre — no offset at all during move.
-                    void dribDx; void dribDy;
                     fbp = { x: endPos.x, y: endPos.y };
                   }
                   lastBallDirRef.current = null; // No inertia for dribble
