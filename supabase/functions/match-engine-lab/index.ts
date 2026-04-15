@@ -3143,8 +3143,27 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
           deflectAngle = shotAngle + Math.PI + (Math.random() - 0.5) * Math.PI;
         }
         const deflectDist = 5 + Math.random() * 15; // 5-20 units
-        const looseBallX = Math.max(1, Math.min(99, blockX + Math.cos(deflectAngle) * deflectDist));
-        const looseBallY = Math.max(1, Math.min(99, blockY + Math.sin(deflectAngle) * deflectDist));
+        let looseBallX = Math.max(1, Math.min(99, blockX + Math.cos(deflectAngle) * deflectDist));
+        let looseBallY = Math.max(1, Math.min(99, blockY + Math.sin(deflectAngle) * deflectDist));
+        // Never deflect the ball BEHIND the GK (toward his own goal). Without this guard
+        // a GK near the goal line could end up with looseBallPos between him and the goal,
+        // and next-turn inertia would then push the ball into the net (seen in live
+        // matches — GK saves, but the "bounce" + inertia still counts as a goal). Use the
+        // shot direction to detect which side is "behind": the shot is travelling TOWARD
+        // the GK's goal, so any point beyond the GK in that direction is behind him.
+        if (isGKBlockCtx) {
+          const shotDxGuard = _attacker.target_x - Number(bh?.pos_x ?? 50);
+          // Keep the ball at least 2 units on the field-side of the GK.
+          const MIN_FRONT_OFFSET = 2;
+          if (shotDxGuard > 0) {
+            // Shot is going right → GK defends right goal → ball must be to the LEFT of GK.
+            looseBallX = Math.min(looseBallX, blockX - MIN_FRONT_OFFSET);
+          } else if (shotDxGuard < 0) {
+            // Shot is going left → GK defends left goal → ball must be to the RIGHT of GK.
+            looseBallX = Math.max(looseBallX, blockX + MIN_FRONT_OFFSET);
+          }
+          looseBallX = Math.max(1, Math.min(99, looseBallX));
+        }
         const blockDesc = isGKBlockCtx ? `🧤 Goleiro espalmou! (${chancePct})` : `🛡️ Bloqueio! (${chancePct})`;
         return {
           success: false, event: 'block', description: blockDesc,
@@ -5905,6 +5924,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // Check if the previous turn had a block/save event (GK espalmou or outfield blocked)
         // If so, the inertia should follow the DEFLECT direction, not the original shot direction.
         let deflectOverride: { fromX: number; fromY: number; toX: number; toY: number } | null = null;
+        // Shooter context (needed to credit a goal if inertia pushes the loose ball
+        // across the goal line after a GK save).
+        let deflectShooter: { id: string; clubId: string; name: string | null; shotTargetX: number } | null = null;
         const prevTurnNumber = match.current_turn_number - 1;
         if (prevTurnNumber >= 1) {
           const { data: prevDeflectEvent } = await supabase
@@ -5918,6 +5940,37 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const p = prevDeflectEvent[0].payload as any;
             if (p && typeof p.deflect_from_x === 'number' && typeof p.deflect_to_x === 'number') {
               deflectOverride = { fromX: p.deflect_from_x, fromY: p.deflect_from_y, toX: p.deflect_to_x, toY: p.deflect_to_y };
+            }
+          }
+          // Fetch the shooter from the previous turn (used only if inertia crosses goal).
+          if (deflectOverride) {
+            const { data: prevTurnRowsD } = await supabase
+              .from('match_turns')
+              .select('id')
+              .eq('match_id', match_id)
+              .eq('turn_number', prevTurnNumber)
+              .order('created_at', { ascending: false });
+            const prevTurnIdsD = (prevTurnRowsD || []).map((t: any) => t.id);
+            if (prevTurnIdsD.length > 0) {
+              const { data: prevShotRows } = await supabase
+                .from('match_actions')
+                .select('participant_id, target_x')
+                .in('match_turn_id', prevTurnIdsD)
+                .in('action_type', ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'])
+                .order('created_at', { ascending: false })
+                .limit(1);
+              if (prevShotRows && prevShotRows.length > 0) {
+                const shooterId = prevShotRows[0].participant_id;
+                const shooter = (participants || []).find((pp: any) => pp.id === shooterId);
+                if (shooter) {
+                  deflectShooter = {
+                    id: shooter.id,
+                    clubId: shooter.club_id,
+                    name: (shooter as any)._player_name ?? null,
+                    shotTargetX: Number(prevShotRows[0].target_x ?? 50),
+                  };
+                }
+              }
             }
           }
         }
@@ -5977,12 +6030,53 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           if (deflectOverride) console.log(`[ENGINE] Inertia from DEFLECT: ${dirLen.toFixed(1)} * ${inertiaFactor} = ${inertiaDistance.toFixed(1)} in direction (${normDirX.toFixed(2)},${normDirY.toFixed(2)})`);
         }
         ballEndPos = { x: inertiaBallX, y: inertiaBallY };
-        eventsToLog.push({
-          match_id, event_type: 'ball_inertia',
-          title: wasAlreadyLoose ? '⚽ Bola desacelerando...' : '⚽ Bola continua rolando...',
-          body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-          payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
-        });
+
+        // Goal-from-deflect detection: after a GK save/block, the ball's inertia can
+        // still carry it across the goal line (rebound goal). Credit the original
+        // shooter and treat it as a normal goal so the match doesn't end up with the
+        // ball "inside" the goal waiting to be picked up.
+        const crossedLeftGoal = inertiaBallX <= 0.5 && inertiaBallY >= 38 && inertiaBallY <= 62;
+        const crossedRightGoal = inertiaBallX >= 99.5 && inertiaBallY >= 38 && inertiaBallY <= 62;
+        let scoredOnRebound = false;
+        if ((crossedLeftGoal || crossedRightGoal) && deflectShooter) {
+          // Confirm the goal is on the side the shooter was attacking (sanity check
+          // — otherwise a weird inertia back over the shooter's own goal would score
+          // for them, which shouldn't happen).
+          const shooterAttacksRight = deflectShooter.shotTargetX > 50;
+          const goalIsOnAttackingSide = (shooterAttacksRight && crossedRightGoal) || (!shooterAttacksRight && crossedLeftGoal);
+          if (goalIsOnAttackingSide) {
+            if (deflectShooter.clubId === match.home_club_id) homeScore++;
+            else awayScore++;
+            eventsToLog.push({
+              match_id, event_type: 'goal',
+              title: `⚽ GOL! ${homeScore} – ${awayScore}`,
+              body: `Bola entrou no gol depois da espalmada (turno ${match.current_turn_number}).`,
+              payload: {
+                scorer_participant_id: deflectShooter.id,
+                scorer_club_id: deflectShooter.clubId,
+                scorer_name: deflectShooter.name,
+                assister_participant_id: null,
+                assister_name: null,
+                goal_type: 'rebound',
+              },
+            });
+            // Normal restart from the center after a goal.
+            newPossessionClubId = deflectShooter.clubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+            nextBallHolderParticipantId = await pickCenterKickoffPlayer(supabase, match_id, newPossessionClubId, participants || []);
+            nextSetPieceType = 'kickoff';
+            ballEndPos = { x: 50, y: 50 };
+            scoredOnRebound = true;
+          }
+        }
+
+        if (!scoredOnRebound) {
+          eventsToLog.push({
+            match_id, event_type: 'ball_inertia',
+            title: wasAlreadyLoose ? '⚽ Bola desacelerando...' : '⚽ Bola continua rolando...',
+            body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
+            payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
+          });
+        }
       }
     }
 
