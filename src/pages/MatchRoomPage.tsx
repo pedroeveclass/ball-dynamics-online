@@ -1010,6 +1010,15 @@ export default function MatchRoomPage() {
     return () => { if (rafId) cancelAnimationFrame(rafId); };
   }, [activeTurn, match?.status]);
 
+  // Reset the per-phase submitted cache when the phase flips (ball_holder →
+  // attacking_support → defending_response). Without this, a defender who submitted
+  // a receive in attacking_support stays in `submittedActions` and the action menu
+  // never auto-opens for them in defending_response. The persisted submitted ids
+  // (derived from turnActions) cover cross-phase display separately.
+  useEffect(() => {
+    setSubmittedActions(new Set());
+  }, [activeTurn?.phase]);
+
   // Reset local submission cache only when a brand-new turn starts
   useEffect(() => {
     setSubmittedActions(new Set());
@@ -2305,11 +2314,12 @@ export default function MatchRoomPage() {
           const dy = endY - startPos.y;
           // Ball offset is in the direction of dribble (in front of player), not a fixed corner
           const dribLen = Math.sqrt(dx * dx + dy * dy);
-          // Ball sits just in front of the dribbler — kept tight so the ball visual
-          // doesn't drift away at the end of the Motion (user feedback).
-          const OFFSET = 0.9;
-          const offX = dribLen > 0.1 ? (dx / dribLen) * OFFSET : 1.2;
-          const offY = dribLen > 0.1 ? (dy / dribLen) * OFFSET : -1.2;
+          // Ball glued to the dribbler's centre — no offset, so the ball visual
+          // stays inside the player circle during a dribble (user spec).
+          const OFFSET = 0;
+          const offX = 0;
+          const offY = 0;
+          void dribLen;
           // Dribble-success override: engine's `dribble` event means the dribbler kept the
           // ball. Ignore any intercept candidate so the ball stays with the dribbler instead
           // of visually sticking to the defender.
@@ -2566,18 +2576,9 @@ export default function MatchRoomPage() {
                     const startPosRef = sp ?? { x: ballAction.target_x, y: ballAction.target_y };
                     const dribDx = endPos.x - startPosRef.x;
                     const dribDy = endPos.y - startPosRef.y;
-                    const dribLen = Math.sqrt(dribDx * dribDx + dribDy * dribDy);
-                    // Ball sits just in front of the dribbler — kept tight so the ball visual
-          // doesn't drift away at the end of the Motion (user feedback).
-          const OFFSET = 0.9;
-                    if (dribLen > 0.1) {
-                      fbp = {
-                        x: endPos.x + (dribDx / dribLen) * OFFSET,
-                        y: endPos.y + (dribDy / dribLen) * OFFSET,
-                      };
-                    } else {
-                      fbp = { x: endPos.x + 1.2, y: endPos.y - 1.2 };
-                    }
+                    // Ball glued to the dribbler's centre — no offset at all during move.
+                    void dribDx; void dribDy;
+                    fbp = { x: endPos.x, y: endPos.y };
                   }
                   lastBallDirRef.current = null; // No inertia for dribble
                 }
@@ -3657,63 +3658,6 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Intercept zone visualization ── */}
-              {ballTrajectoryAction && ballTrajectoryHolder && ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
-                ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (
-                (() => {
-                  const holderIsBH = ballTrajectoryAction?.participant_id === activeTurn?.ball_holder_participant_id;
-                  const originX = holderIsBH ? (ballTrajectoryHolder.field_x! + 1.2) : ballTrajectoryHolder.field_x!;
-                  const originY = holderIsBH ? (ballTrajectoryHolder.field_y! - 1.2) : ballTrajectoryHolder.field_y!;
-                  const fromSvg = toSVG(originX, originY);
-                  const toSvgPt = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
-                  const dx = toSvgPt.x - fromSvg.x;
-                  const dy = toSvgPt.y - fromSvg.y;
-                  const len = Math.sqrt(dx * dx + dy * dy);
-                  if (len < 1) return null;
-                  // Perpendicular offset for the zone width
-                  const px = (-dy / len) * (INTERCEPT_RADIUS / 100) * INNER_W;
-                  const py = (dx / len) * (INTERCEPT_RADIUS / 100) * INNER_H;
-
-                  // Determine which segments of the trajectory are interceptable (not red zone)
-                  const actionType = ballTrajectoryAction.action_type;
-                  let segments: [number, number][] = [[0, 1]]; // default: full trajectory
-                  if (actionType === 'pass_high' || actionType === 'header_high') {
-                    segments = [[0, 0.2], [0.8, 1]]; // red zone: 0.2-0.8
-                  } else if (actionType === 'pass_launch') {
-                    segments = [[0, 0.35], [0.65, 1]]; // red zone: 0.35-0.65
-                  } else if (actionType === 'shoot_power' || actionType === 'header_power') {
-                    segments = [[0, 0.3]]; // only early part
-                  }
-
-                  return (
-                    <g>
-                      {segments.map(([t0, t1], si) => {
-                        const s0x = fromSvg.x + dx * t0;
-                        const s0y = fromSvg.y + dy * t0;
-                        const s1x = fromSvg.x + dx * t1;
-                        const s1y = fromSvg.y + dy * t1;
-                        const pts = [
-                          `${s0x + px},${s0y + py}`,
-                          `${s1x + px},${s1y + py}`,
-                          `${s1x - px},${s1y - py}`,
-                          `${s0x - px},${s0y - py}`,
-                        ].join(' ');
-                        return (
-                          <polygon key={si}
-                            points={pts}
-                            fill="rgba(59, 130, 246, 0.08)"
-                            stroke="rgba(59, 130, 246, 0.25)"
-                            strokeWidth="1"
-                            strokeDasharray="6,4"
-                          />
-                        );
-                      })}
-                    </g>
-                  );
-                })()
-              )}
-
               {/* ── Loose ball intercept zone (circle around loose ball) ── */}
               {isLooseBall && looseBallPos && !animating &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
@@ -4238,6 +4182,27 @@ export default function MatchRoomPage() {
                   const isTackleScenario = effectiveBallTrajectoryAction?.action_type === 'move';
                   if (isTackleScenario && tackleBlockedIds.has(drawingAction.fromParticipantId)) {
                     canReachBall = false;
+                  }
+                }
+
+                // Loose-ball scenario: no trajectory, just a ball at a fixed point.
+                // Purple if the cursor sits on/near the ball and the player can reach it.
+                if (isMove && isLooseBall && looseBallPos &&
+                    drawingFrom.field_x != null && drawingFrom.field_y != null) {
+                  const FIELD_Y_SCALE = INNER_H / INNER_W;
+                  const dxP = drawingFrom.field_x! - looseBallPos.x;
+                  const dyP = (drawingFrom.field_y! - looseBallPos.y) * FIELD_Y_SCALE;
+                  const distPlayerToBall = Math.sqrt(dxP * dxP + dyP * dyP);
+                  const cxP = mouseFieldPct.x - looseBallPos.x;
+                  const cyP = (mouseFieldPct.y - looseBallPos.y) * FIELD_Y_SCALE;
+                  const distCursorToBall = Math.sqrt(cxP * cxP + cyP * cyP);
+                  const looseBallRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+                  const circleRadiusField = 9 / INNER_W * 100;
+                  // Player can reach the ball AND cursor is close enough to "pick up"
+                  // (visually the move circle overlaps the ball).
+                  if (distPlayerToBall <= looseBallRange + 1.5
+                      && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
+                    canReachBall = true;
                   }
                 }
 
