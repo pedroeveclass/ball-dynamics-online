@@ -5210,6 +5210,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
+    // Load players with tackle cooldown (failed tackle in the previous turn).
+    // Must come BEFORE the movement loop because maxRange reads this map.
+    // Penalty by tackle type (applied to this turn's max move range):
+    //   - Desarme (regular): range × 0.85  (-15%)
+    //   - Carrinho (hard):   range × 0.50  (-50%)
+    const tackleBlockedIds = new Set<string>();
+    const tackleMovementPenalty = new Map<string, number>();
+    if ((match.current_turn_number ?? 1) > 1) {
+      const { data: failedTackleEvents } = await supabase
+        .from('match_event_logs')
+        .select('payload')
+        .eq('match_id', match_id)
+        .eq('event_type', 'tackle_failed');
+      for (const ev of (failedTackleEvents || [])) {
+        const p = ev.payload as any;
+        if (p?.participant_id && p?.turn_number === (match.current_turn_number - 1)) {
+          tackleBlockedIds.add(p.participant_id);
+          tackleMovementPenalty.set(p.participant_id, p.hard_tackle ? 0.50 : 0.85);
+        }
+      }
+      if (tackleBlockedIds.size > 0) {
+        console.log(`[ENGINE] Tackle cooldown active for ${tackleBlockedIds.size} players`);
+      }
+    }
+
     console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction} inertia=${prevMoveDirMap.size} players`);
     const resolutionMoveBatch: Array<{id: string, x: number, y: number}> = [];
     for (const a of allActions) {
@@ -5299,30 +5324,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         .find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
         || allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
 
-      // Load players with tackle cooldown (failed tackle in the previous turn).
-      // Penalty by tackle type (applied to this turn's max move range):
-      //   - Desarme (regular): range × 0.85  (-15%)
-      //   - Carrinho (hard):   range × 0.50  (-50%)
-      const tackleBlockedIds = new Set<string>();
-      const tackleMovementPenalty = new Map<string, number>();
-      if ((match.current_turn_number ?? 1) > 1) {
-        const { data: failedTackleEvents } = await supabase
-          .from('match_event_logs')
-          .select('payload')
-          .eq('match_id', match_id)
-          .eq('event_type', 'tackle_failed');
-        for (const ev of (failedTackleEvents || [])) {
-          const p = ev.payload as any;
-          if (p?.participant_id && p?.turn_number === (match.current_turn_number - 1)) {
-            tackleBlockedIds.add(p.participant_id);
-            tackleMovementPenalty.set(p.participant_id, p.hard_tackle ? 0.50 : 0.85);
-          }
-        }
-        if (tackleBlockedIds.size > 0) {
-          console.log(`[ENGINE] Tackle cooldown active for ${tackleBlockedIds.size} players`);
-        }
-      }
-
+      // tackleBlockedIds / tackleMovementPenalty were built before the movement loop
+      // (scope starts higher up in executeTickForMatch).
       if (ballHolderAction) {
         const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds);
 
