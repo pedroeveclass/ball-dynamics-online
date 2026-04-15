@@ -1333,6 +1333,7 @@ async function generateBotActions(
   tickCache?: TickCache,
   setPieceType?: string | null,
   looseBallPosition?: { x: number; y: number } | null,
+  tackleMovementPenalty?: Map<string, number>,
 ) {
   const botsToAct: any[] = [];
 
@@ -2200,7 +2201,18 @@ async function generateBotActions(
   }
 
   // ── Clamp all bot move actions to max movement range ──
+  // Must mirror the penalties the engine's move resolution applies (BH conducting,
+  // failed-tackle cooldown) so the bot's proposed target never exceeds what actually
+  // gets applied — fixes "arrow is huge but bot only walks 80%".
   const botMap = new Map(botsToAct.map(b => [b.id, b]));
+  const bhHasBallActionForClamp = ballHolderId && actions.some(a =>
+    a.participant_id === ballHolderId && (
+      a.action_type === 'pass_low' || a.action_type === 'pass_high' || a.action_type === 'pass_launch' ||
+      a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power' ||
+      a.action_type === 'header_low' || a.action_type === 'header_high' ||
+      a.action_type === 'header_controlled' || a.action_type === 'header_power'
+    )
+  );
   for (const action of actions) {
     if ((action.action_type === 'move' || action.action_type === 'receive' || action.action_type === 'block') && action.target_x != null && action.target_y != null) {
       const bot = botMap.get(action.participant_id);
@@ -2214,7 +2226,17 @@ async function generateBotActions(
           stamina: Number(botRaw?.stamina ?? 40) * posMult,
           forca: Number(botRaw?.forca ?? 40) * posMult,
         };
-        const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+        let maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+        // Mirror engine's move-resolution penalties:
+        // BH conducting (move, no ball action): × 0.85
+        if (action.participant_id === ballHolderId && action.action_type === 'move' && !bhHasBallActionForClamp) {
+          maxRange *= 0.85;
+        }
+        // Failed-tackle cooldown from previous turn.
+        if (tackleMovementPenalty) {
+          const p = tackleMovementPenalty.get(action.participant_id);
+          if (p != null) maxRange *= p;
+        }
         const bx = Number(bot.pos_x ?? 50);
         const by = Number(bot.pos_y ?? 50);
         const dx = action.target_x - bx;
