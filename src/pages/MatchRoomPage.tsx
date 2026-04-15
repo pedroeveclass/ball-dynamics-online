@@ -2052,12 +2052,19 @@ export default function MatchRoomPage() {
 
     if (drawingAction) {
       const p = participants.find(x => x.id === participantId);
+      // Pass/shot targeting a teammate: submit to their position.
       if (p && isAnyPassAction(drawingAction.type)) {
         submitAction(drawingAction.type, drawingAction.fromParticipantId, p.field_x, p.field_y, participantId);
         setDrawingAction(null);
         setMouseFieldPct(null);
         return;
       }
+      // Any other in-progress draw (move/block/intercept): let the SVG click handler
+      // decide (it does purple-circle detection + move submission). Calling into the
+      // player-selection branch below would open an action menu for the clicked player,
+      // which is what was happening when the ball hugged the ball holder and the user's
+      // intercept click was being hijacked as "click the ball holder, open their menu".
+      return;
     }
 
     const p = participants.find(x => x.id === participantId);
