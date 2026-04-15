@@ -2337,17 +2337,10 @@ export default function MatchRoomPage() {
         const isBallShoot = isShootAction(ballAction.action_type) || isAnyShootAction(ballAction.action_type);
         if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
           if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-            // Ball travels toward the receiver's FEET, not past them. Aim a small offset
-            // back from their intercept point toward the passer so the ball settles in the
-            // receiver's vicinity instead of overshooting at end of Motion (user feedback).
-            const rawEndX = interceptAction.target_x;
-            const rawEndY = interceptAction.target_y;
-            const toRcvX = rawEndX - ballStartX;
-            const toRcvY = rawEndY - ballStartY;
-            const toRcvLen = Math.sqrt(toRcvX * toRcvX + toRcvY * toRcvY);
-            const SETTLE_OFFSET = 0.8; // back off from the receiver's feet so the ball sits under them
-            const endX = toRcvLen > 0.5 ? rawEndX - (toRcvX / toRcvLen) * SETTLE_OFFSET : rawEndX;
-            const endY = toRcvLen > 0.5 ? rawEndY - (toRcvY / toRcvLen) * SETTLE_OFFSET : rawEndY;
+            // Ball animates straight to the interceptor's target point and stops there —
+            // matches where fbp places it at animation end, so no forward jump visible.
+            const endX = interceptAction.target_x;
+            const endY = interceptAction.target_y;
             return { x: ballStartX + (endX - ballStartX) * t, y: ballStartY + (endY - ballStartY) * t };
           }
           if (isBallShoot) {
@@ -2521,27 +2514,14 @@ export default function MatchRoomPage() {
                 const sp = snapshot[bhId];
                 
                 if ((ballAction.action_type === 'pass_low' || ballAction.action_type === 'pass_high' || ballAction.action_type === 'pass_launch') && ballAction.target_x != null && ballAction.target_y != null) {
-                  if (interceptAction && interceptAction.participant_id) {
-                    // Snap the ball to the receiver's ACTUAL final position (with a small
-                    // offset back toward the passer), not the raw trajectory intercept point.
-                    // Fixes the "ball stayed far from the player at end of Motion" glitch when
-                    // the receiver moved slightly beyond the computed intercept coord.
-                    const receiverFinal = finals[interceptAction.participant_id]
-                      ?? (interceptAction.target_x != null && interceptAction.target_y != null
-                        ? { x: interceptAction.target_x, y: interceptAction.target_y }
-                        : null);
-                    if (receiverFinal && sp) {
-                      const dx = receiverFinal.x - sp.x;
-                      const dy = receiverFinal.y - sp.y;
-                      const len = Math.sqrt(dx * dx + dy * dy);
-                      if (len > 0.5) {
-                        fbp = { x: receiverFinal.x - (dx / len) * 0.8, y: receiverFinal.y - (dy / len) * 0.8 };
-                      } else {
-                        fbp = { x: receiverFinal.x, y: receiverFinal.y };
-                      }
-                    } else if (interceptAction.target_x != null && interceptAction.target_y != null) {
-                      fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
-                    }
+                  // Ball settles exactly at the arrow tip (or the interceptor's target point)
+                  // — no extra offset toward/past the receiver. The engine's bump pass may
+                  // move the receiver slightly after animation ends, so any client-computed
+                  // "receiver-relative" offset drifts out of sync with where the receiver
+                  // actually lands. Keeping the ball exactly at the trajectory endpoint is
+                  // predictable and matches what the user sees on the arrow.
+                  if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
+                    fbp = { x: interceptAction.target_x, y: interceptAction.target_y };
                   } else {
                     fbp = { x: ballAction.target_x, y: ballAction.target_y };
                   }
@@ -4295,7 +4275,19 @@ export default function MatchRoomPage() {
               })()}
 
               {/* Players */}
-              {[...homePlayers, ...awayPlayers].map((p, idx) => {
+              {(() => {
+                // Z-order: winner of any overlap renders on top. Priority used by the
+                // engine's bump pass = ball holder first, then higher `forca`. Same order
+                // here so the circle that "wins" the push is drawn last (top-most in SVG).
+                const bhIdForZ = activeTurn?.ball_holder_participant_id ?? null;
+                const zRank = (p: Participant): number => {
+                  if (p.id === bhIdForZ) return 1e6;
+                  const attrs = playerAttrsMap[p.id];
+                  return Number(attrs?.forca ?? 40);
+                };
+                const rendered = [...homePlayers, ...awayPlayers].slice().sort((a, b) => zRank(a) - zRank(b));
+                return rendered;
+              })().map((p, idx) => {
                 if (p.field_x == null || p.field_y == null) return null;
                 // Sent-off players are removed from the pitch visually (team plays with 10).
                 if (p.is_sent_off) return null;
