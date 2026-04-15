@@ -1921,10 +1921,10 @@ export default function MatchRoomPage() {
           const projX = bfx + _tdx * _t;
           const projY = bfy + _tdy * _t;
 
-          // Range before ballSpeedFactor — the helper applies it per action type internally.
-          // GK handling: for shots, the goalkeeper uses FULL range (no ballSpeed shrink).
-          const mdx = projX - drawingParticipant.field_x;
-          const mdy = projY - drawingParticipant.field_y;
+          // Inertia direction: where the player is ACTUALLY moving (toward the cursor),
+          // not the projection. Matches the live ball-preview's maxRange so the two agree.
+          const mdx = pctX - drawingParticipant.field_x;
+          const mdy = pctY - drawingParticipant.field_y;
           const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId, { x: mdx, y: mdy });
           const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
           const clickActionType = ballPathAction.action_type;
@@ -1932,6 +1932,8 @@ export default function MatchRoomPage() {
           // For GK-on-shot: pass action type 'move' (ballSpeedFactor=1) so range isn't shrunk.
           const effectiveActionType = (clickIsGK && clickIsShot) ? 'move' : clickActionType;
 
+          // Physical reach: defender start → projection point within t × range × factor.
+          // Larger tolerance (1.5) to absorb float rounding + any small inertia variance.
           const reachesTrajPoint = canReachTrajectoryPoint(
             { x: drawingParticipant.field_x, y: drawingParticipant.field_y },
             { x: bfx, y: bfy },
@@ -1939,13 +1941,17 @@ export default function MatchRoomPage() {
             _t,
             baseRange,
             effectiveActionType,
+            1.5,
           );
 
           // Cursor must be near the trajectory line itself (otherwise they clicked way off).
           const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
-          const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
+          const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
 
           canReach = reachesTrajPoint && cursorNearTraj;
+          if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
+            console.log('[REACH][click]', { _t: _t.toFixed(2), d: Math.hypot(mdx, mdy).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj });
+          }
 
           // When accepted but the click itself was slightly off the line, snap to the line.
           if (canReach && distToTraj > INTERCEPT_RADIUS) {
@@ -4189,16 +4195,16 @@ export default function MatchRoomPage() {
                     const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
                                       (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
 
-                    // Range toward the projected point (projection of cursor onto trajectory).
-                    const projX = bfx + trajDx * tCursor;
-                    const projY = bfy + trajDy * tCursor;
-                    const dirX = projX - drawingFrom.field_x!;
-                    const dirY = projY - drawingFrom.field_y!;
+                    // Inertia direction: where the player is actually moving (to cursor),
+                    // not the projection. Matches live ball-preview so the two agree.
+                    const dirX = mouseFieldPct.x - drawingFrom.field_x!;
+                    const dirY = mouseFieldPct.y - drawingFrom.field_y!;
                     const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId, { x: dirX, y: dirY });
                     const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
                     const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
                     const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
 
+                    // Physical reach with larger tolerance (1.5) to absorb float/inertia variance.
                     const reachesTrajPoint = canReachTrajectoryPoint(
                       { x: drawingFrom.field_x!, y: drawingFrom.field_y! },
                       { x: bfx, y: bfy },
@@ -4206,9 +4212,13 @@ export default function MatchRoomPage() {
                       tCursor,
                       baseRange,
                       effectiveActionType,
+                      1.5,
                     );
-                    const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS);
+                    const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
                     canReachBall = !isRedZone && reachesTrajPoint && cursorNearTraj;
+                    if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
+                      console.log('[REACH][render]', { tCursor: tCursor.toFixed(2), d: Math.hypot(dirX, dirY).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj, purple: canReachBall });
+                    }
                   } else {
                     // Stationary ball holder — if within reach, can tackle
                     const distToBH = Math.sqrt((mouseFieldPct.x - bfx) ** 2 + (mouseFieldPct.y - bfy) ** 2);
