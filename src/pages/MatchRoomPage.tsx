@@ -263,7 +263,12 @@ export default function MatchRoomPage() {
   const prevPossClubRef = useRef<string | null>(null);
 
   // Contest visual feedback during phase 4
-  const [contestEffect, setContestEffect] = useState<{ type: 'tackle_fail' | 'tackle_success' | 'block' | 'dribble' | 'save' | 'intercept'; x: number; y: number; label: string } | null>(null);
+  type ContestEffectKind =
+    | 'tackle_fail' | 'tackle_success' | 'block' | 'dribble' | 'save' | 'intercept'
+    | 'goal' | 'foul' | 'penalty' | 'yellow_card' | 'red_card'
+    | 'receive_ok' | 'receive_fail';
+  const [contestEffect, setContestEffect] = useState<{ type: ContestEffectKind; x: number; y: number; label: string } | null>(null);
+  const contestEffectTsRef = useRef<number>(0);
 
   // Captain IDs (player_profile_id) for captain armband display
   const [homeCaptainProfileId, setHomeCaptainProfileId] = useState<string | null>(null);
@@ -1263,43 +1268,62 @@ export default function MatchRoomPage() {
     else if (last.event_type === 'corner' || last.event_type === 'throw_in' || last.event_type === 'free_kick') sounds.setPiece();
     else if (last.event_type === 'yellow_card' || last.event_type === 'red_card') sounds.foul();
 
-    // Only trigger visual during/near resolution
-    const isContest = ['tackle', 'dribble', 'blocked', 'saved', 'intercepted', 'possession_change'].includes(last.event_type);
-    if (!isContest) return;
+    // Events that should pop a visual pill on the pitch.
+    const PILL_EVENTS: Record<string, ContestEffectKind> = {
+      tackle: 'tackle_success',
+      tackle_failed: 'tackle_fail',
+      dribble: 'dribble',
+      blocked: 'block',
+      saved: 'save',
+      intercepted: 'intercept',
+      goal: 'goal',
+      foul: 'foul',
+      penalty: 'penalty',
+      yellow_card: 'yellow_card',
+      red_card: 'red_card',
+      receive_success: 'receive_ok',
+      receive_failed: 'receive_fail',
+    };
+    const effectType = PILL_EVENTS[last.event_type];
+    if (!effectType) return;
 
-    // Check recent events for contradictions (batched events arrive together)
+    // Skip block/save pill if the shot actually missed the frame (event batch contradicts itself).
     const recentTypes = new Set(events.slice(-8).map(e => e.event_type));
-    // Don't show block/save effect if the shot actually missed
     if ((last.event_type === 'blocked' || last.event_type === 'saved') &&
         (recentTypes.has('shot_missed') || recentTypes.has('shot_over'))) return;
-    // Don't show tackle effect if a dribble followed (tackle failed)
+    // If a tackle was followed by a dribble in the same batch, the tackle failed.
     if (last.event_type === 'tackle' && recentTypes.has('dribble')) return;
-    
-    // Find approximate position from interceptor or ball holder
+
+    // Resolve position. Prefer the participant named in the event payload
+    // (yellow/red cards, receives, tackles targeted at someone); fall back to
+    // ball holder position; then to midfield.
+    const payload = (last.payload || {}) as Record<string, any>;
+    const pidCandidates = [payload.participant_id, payload.target_participant_id, payload.victim_participant_id].filter(Boolean);
+    const participantMatch = pidCandidates
+      .map(pid => participants.find(p => p.id === pid))
+      .find(Boolean);
     const bhPart = participants.find(p => p.id === activeTurn?.ball_holder_participant_id);
-    const effectX = bhPart?.field_x ?? 50;
-    const effectY = bhPart?.field_y ?? 50;
-    
-    let effectType: typeof contestEffect extends { type: infer T } | null ? T : never = 'intercept';
-    if (last.event_type === 'tackle') effectType = 'tackle_success';
-    else if (last.event_type === 'dribble') effectType = 'dribble';
-    else if (last.event_type === 'blocked') effectType = 'block';
-    else if (last.event_type === 'saved') effectType = 'tackle_success';
-    
+    const ref = participantMatch || bhPart;
+    const effectX = ref?.field_x ?? 50;
+    const effectY = ref?.field_y ?? 50;
+
     setContestEffect({ type: effectType, x: effectX, y: effectY, label: last.title });
-    // Lifetime of contestEffect is now tied to the resolution animation finishing
-    // (see useEffect watching `animating`). A safety timeout clears the effect if animation
-    // never ends for any reason — 3500ms is comfortably above max duration (2500ms).
+    contestEffectTsRef.current = Date.now();
+
+    // Safety: always clear after 3500ms even if animation never ends.
     const safety = setTimeout(() => setContestEffect(null), 3500);
     return () => clearTimeout(safety);
   }, [events.length]);
 
   // Clear the contest effect shortly after the resolution animation actually ends,
-  // so the visual pulse stays in sync with the motion rather than a hardcoded timeout.
+  // but keep it visible for at least 1600ms so it doesn't flicker past.
   useEffect(() => {
     if (animating) return;
     if (!contestEffect) return;
-    const t = setTimeout(() => setContestEffect(null), 400);
+    const MIN_VISIBLE = 1600;
+    const elapsed = Date.now() - contestEffectTsRef.current;
+    const remaining = Math.max(0, MIN_VISIBLE - elapsed);
+    const t = setTimeout(() => setContestEffect(null), remaining + 200);
     return () => clearTimeout(t);
   }, [animating, contestEffect]);
 
@@ -4619,25 +4643,50 @@ export default function MatchRoomPage() {
               {/* Contest visual effect during phase 4 */}
               {contestEffect && (() => {
                 const pos = toSVG(contestEffect.x, contestEffect.y);
-                const isSuccess = contestEffect.type === 'tackle_success' || contestEffect.type === 'block' || contestEffect.type === 'intercept';
-                const color = isSuccess ? '#ef4444' : '#22c55e';
-                const bgColor = isSuccess ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+                // Color palette: green = in-possession/positive for the attacker,
+                // red = defender stop, amber = referee-neutral, red-card = deep red.
+                const POSITIVE = '#22c55e', NEGATIVE = '#ef4444', AMBER = '#f59e0b', GOLD = '#fbbf24';
+                let color = POSITIVE;
+                switch (contestEffect.type) {
+                  case 'tackle_success':
+                  case 'block':
+                  case 'intercept':
+                  case 'save':
+                  case 'tackle_fail':
+                  case 'receive_fail':
+                  case 'red_card':
+                    color = NEGATIVE; break;
+                  case 'dribble':
+                  case 'receive_ok':
+                    color = POSITIVE; break;
+                  case 'foul':
+                  case 'yellow_card':
+                  case 'penalty':
+                    color = AMBER; break;
+                  case 'goal':
+                    color = GOLD; break;
+                }
+                // Goal gets a bigger, longer flash.
+                const isGoal = contestEffect.type === 'goal';
+                const maxR = isGoal ? 55 : 35;
+                const dur = isGoal ? '2.2s' : '1.5s';
+                const bgColor = `${color}26`; // ~15% alpha
                 return (
                   <g pointerEvents="none">
                     {/* Expanding ring */}
-                    <circle cx={pos.x} cy={pos.y} r={8} fill="none" stroke={color} strokeWidth="2.5" opacity="0.7">
-                      <animate attributeName="r" from="8" to="35" dur="1.5s" fill="freeze" />
-                      <animate attributeName="opacity" from="0.8" to="0" dur="1.5s" fill="freeze" />
+                    <circle cx={pos.x} cy={pos.y} r={8} fill="none" stroke={color} strokeWidth={isGoal ? 3.5 : 2.5} opacity="0.7">
+                      <animate attributeName="r" from="8" to={String(maxR)} dur={dur} fill="freeze" />
+                      <animate attributeName="opacity" from="0.9" to="0" dur={dur} fill="freeze" />
                     </circle>
                     {/* Inner flash */}
                     <circle cx={pos.x} cy={pos.y} r={12} fill={bgColor}>
-                      <animate attributeName="r" from="6" to="20" dur="0.8s" fill="freeze" />
-                      <animate attributeName="opacity" from="0.6" to="0" dur="1.2s" fill="freeze" />
+                      <animate attributeName="r" from="6" to={String(maxR * 0.6)} dur="0.9s" fill="freeze" />
+                      <animate attributeName="opacity" from="0.7" to="0" dur="1.2s" fill="freeze" />
                     </circle>
                     {/* Label */}
-                    <text x={pos.x} y={pos.y - 22} textAnchor="middle" fontSize="8" fontWeight="800"
+                    <text x={pos.x} y={pos.y - 22} textAnchor="middle" fontSize={isGoal ? 12 : 8} fontWeight="800"
                       fontFamily="'Barlow Condensed', sans-serif" fill={color}>
-                      <animate attributeName="y" from={String(pos.y - 14)} to={String(pos.y - 30)} dur="1.5s" fill="freeze" />
+                      <animate attributeName="y" from={String(pos.y - 14)} to={String(pos.y - 34)} dur={dur} fill="freeze" />
                       <animate attributeName="opacity" from="1" to="0" dur="2s" fill="freeze" />
                       {contestEffect.label}
                     </text>
