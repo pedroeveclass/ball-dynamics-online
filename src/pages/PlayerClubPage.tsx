@@ -20,8 +20,9 @@ import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
-  Shirt, Footprints, Crosshair, ShieldAlert,
+  Shirt, Footprints, Crosshair, ShieldAlert, Pencil,
 } from 'lucide-react';
+import { LineupFieldView } from '@/components/LineupFieldView';
 import { formatBRL, formatDate } from '@/lib/formatting';
 
 // ── Types ──
@@ -237,7 +238,7 @@ function JerseyPreview({ label, shirtColor, numberColor }: { label: string; shir
 // ── Main Component ──
 
 export default function PlayerClubPage() {
-  const { playerProfile } = useAuth();
+  const { playerProfile, assistantClub } = useAuth();
 
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [managerInfo, setManagerInfo] = useState<ManagerInfo | null>(null);
@@ -686,16 +687,33 @@ export default function PlayerClubPage() {
 
         {/* ── Lineup Preview ── */}
         {lineup && lineup.slots.length > 0 && (
-          <div className="stat-card space-y-3">
-            <h3 className="font-display text-sm font-semibold">
-              Escalacao {lineup.name && `\u2014 ${lineup.name}`} ({lineup.formation})
-            </h3>
+          <div className="stat-card space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-display text-sm font-semibold">
+                Escalação {lineup.name && `\u2014 ${lineup.name}`} ({lineup.formation})
+              </h3>
+              {assistantClub?.id === clubInfo?.id && (
+                <Link
+                  to="/manager/lineup"
+                  className="inline-flex items-center gap-1 text-xs font-display font-semibold text-tactical hover:underline"
+                >
+                  <Pencil className="h-3 w-3" /> Editar (assistente)
+                </Link>
+              )}
+            </div>
+
+            <LineupFieldView
+              formation={lineup.formation}
+              slots={lineup.slots}
+              highlightPlayerId={playerProfile.id}
+            />
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/40 text-xs text-muted-foreground">
                     <th className="py-1.5 text-left">#</th>
-                    <th className="py-1.5 text-left">Posicao</th>
+                    <th className="py-1.5 text-left">Posição</th>
                     <th className="py-1.5 text-left">Jogador</th>
                     <th className="py-1.5 text-right">OVR</th>
                   </tr>
@@ -713,7 +731,7 @@ export default function PlayerClubPage() {
                         <td className="py-1.5 font-display font-semibold">
                           {slot.player?.full_name || 'Vago'}
                           {slot.player?.id === playerProfile.id && (
-                            <span className="ml-1 text-xs text-tactical">(voce)</span>
+                            <span className="ml-1 text-xs text-tactical">(você)</span>
                           )}
                         </td>
                         <td className="py-1.5 text-right font-display font-bold text-tactical">
@@ -724,15 +742,15 @@ export default function PlayerClubPage() {
                 </tbody>
               </table>
             </div>
-            {lineup.slots.filter((s) => s.role_type === 'substitute').length > 0 && (
+            {lineup.slots.filter((s) => s.role_type === 'bench').length > 0 && (
               <div>
                 <p className="mb-1 text-xs font-semibold text-muted-foreground">Reservas</p>
                 <div className="flex flex-wrap gap-2">
                   {lineup.slots
-                    .filter((s) => s.role_type === 'substitute')
+                    .filter((s) => s.role_type === 'bench')
                     .map((slot, idx) => (
                       <Badge key={idx} variant="outline" className="text-xs">
-                        {positionToPT(slot.slot_position)} \u2022 {slot.player?.full_name || 'Vago'} {slot.player ? `(${slot.player.overall})` : ''}
+                        {positionToPT(slot.player?.primary_position || slot.slot_position)} • {slot.player?.full_name || 'Vago'} {slot.player ? `(${slot.player.overall})` : ''}
                       </Badge>
                     ))}
                 </div>

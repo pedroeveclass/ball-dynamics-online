@@ -10,11 +10,13 @@ interface AuthContextType {
   playerProfile: Tables<'player_profiles'> | null;
   managerProfile: Tables<'manager_profiles'> | null;
   club: Tables<'clubs'> | null;
+  assistantClub: Tables<'clubs'> | null;
   isAdmin: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshPlayerProfile: () => Promise<void>;
   refreshManagerProfile: () => Promise<void>;
+  refreshAssistantClub: () => Promise<void>;
   switchPlayerProfile: (playerProfileId: string) => Promise<void>;
 }
 
@@ -25,11 +27,13 @@ const AuthContext = createContext<AuthContextType>({
   playerProfile: null,
   managerProfile: null,
   club: null,
+  assistantClub: null,
   isAdmin: false,
   loading: true,
   signOut: async () => {},
   refreshPlayerProfile: async () => {},
   refreshManagerProfile: async () => {},
+  refreshAssistantClub: async () => {},
   switchPlayerProfile: async () => {},
 });
 
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [playerProfile, setPlayerProfile] = useState<Tables<'player_profiles'> | null>(null);
   const [managerProfile, setManagerProfile] = useState<Tables<'manager_profiles'> | null>(null);
   const [club, setClub] = useState<Tables<'clubs'> | null>(null);
+  const [assistantClub, setAssistantClub] = useState<Tables<'clubs'> | null>(null);
   const [loading, setLoading] = useState(true);
   const dataLoadedRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
@@ -99,6 +104,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await fetchManagerProfile(user.id);
   };
 
+  const fetchAssistantClub = async (userId: string) => {
+    const { data } = await supabase.from('clubs').select('*').eq('assistant_manager_id', userId).maybeSingle();
+    stableSet(setAssistantClub, data ?? null);
+    return data;
+  };
+
+  const refreshAssistantClub = async () => {
+    if (user) await fetchAssistantClub(user.id);
+  };
+
   const loadUserData = async (userId: string) => {
     const prof = await fetchProfile(userId);
     if (prof?.role_selected === 'manager') {
@@ -106,6 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       await fetchPlayerProfile(userId, (prof as any)?.active_player_profile_id);
     }
+    // Every user can be assistant to a club, regardless of role.
+    await fetchAssistantClub(userId);
     dataLoadedRef.current = true;
     currentUserIdRef.current = userId;
     setLoading(false);
@@ -139,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPlayerProfile(null);
         setManagerProfile(null);
         setClub(null);
+        setAssistantClub(null);
         setLoading(false);
       }
     });
@@ -162,10 +180,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPlayerProfile(null);
     setManagerProfile(null);
     setClub(null);
+    setAssistantClub(null);
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, isAdmin: !!(profile as any)?.is_admin, loading, signOut, refreshPlayerProfile, refreshManagerProfile, switchPlayerProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, assistantClub, isAdmin: !!(profile as any)?.is_admin, loading, signOut, refreshPlayerProfile, refreshManagerProfile, refreshAssistantClub, switchPlayerProfile }}>
       {children}
     </AuthContext.Provider>
   );

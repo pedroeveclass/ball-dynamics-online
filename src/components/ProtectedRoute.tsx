@@ -36,6 +36,17 @@ export function ManagerRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Same as ManagerRoute but also lets in an assistant manager (a non-manager
+// user that was nominated assistant of some club). The page itself must then
+// fall back to `assistantClub` when `club` is null.
+export function ManagerOrAssistantRoute({ children }: { children: React.ReactNode }) {
+  const { user, managerProfile, assistantClub, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!managerProfile && !assistantClub) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 export function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading } = useAuth();
   if (loading) return <LoadingScreen />;

@@ -18,6 +18,7 @@ interface SquadPlayer {
   secondary_position: string | null;
   archetype: string;
   overall: number;
+  user_id: string | null;
 }
 
 interface SlotDef {
@@ -33,7 +34,7 @@ interface SlotAssignment {
   role_type: 'starter' | 'bench';
 }
 
-const FORMATIONS: Record<string, SlotDef[]> = {
+export const FORMATIONS: Record<string, SlotDef[]> = {
   '4-4-2': [
     { position: 'GK', label: 'GK', x: 50, y: 90 },
     { position: 'LB', label: 'LE', x: 15, y: 70 },
@@ -202,7 +203,10 @@ const parsePattern = (pattern: string): { category: string; count: string } => {
 };
 
 export default function ManagerLineupPage() {
-  const { club } = useAuth();
+  const { club: ownClub, assistantClub, managerProfile } = useAuth();
+  // Head manager edits their own club; an assistant edits the club that nominated them.
+  const club = ownClub || assistantClub;
+  const isHeadManager = !!ownClub;
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [formation, setFormation] = useState('4-4-2');
   const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
@@ -217,6 +221,10 @@ export default function ManagerLineupPage() {
   const [uniforms, setUniforms] = useState<UniformData[]>([]);
   const [uniformEdits, setUniformEdits] = useState<Record<number, { shirt_color: string; number_color: string; pattern: string; stripe_color: string }>>({});
   const [savingUniform, setSavingUniform] = useState<number | null>(null);
+
+  // Assistant manager state (head manager only can edit)
+  const [assistantUserId, setAssistantUserId] = useState<string | null>(null);
+  const [savingAssistant, setSavingAssistant] = useState(false);
 
   // Tactical roles state
   const [captainId, setCaptainId] = useState<string | null>(null);
@@ -255,13 +263,16 @@ export default function ManagerLineupPage() {
     if (playerIds.length > 0) {
       const { data } = await supabase
         .from('player_profiles')
-        .select('id, full_name, primary_position, secondary_position, archetype, overall')
+        .select('id, full_name, primary_position, secondary_position, archetype, overall, user_id')
         .in('id', playerIds)
         .order('overall', { ascending: false });
       players = data || [];
     }
 
     setSquad(sortPlayersByPosition(players));
+
+    // Load current assistant on the club (head manager sees/changes it).
+    setAssistantUserId((club as any).assistant_manager_id ?? null);
 
     // Load latest active lineup
     const { data: lineup } = await supabase
@@ -375,6 +386,25 @@ export default function ManagerLineupPage() {
       toast.error(`Erro: ${message}`);
     } finally {
       setSavingUniform(null);
+    }
+  };
+
+  const saveAssistant = async (newAssistantUserId: string | null) => {
+    if (!club) return;
+    setSavingAssistant(true);
+    try {
+      const { error } = await supabase.rpc('set_club_assistant_manager', {
+        p_club_id: club.id,
+        p_assistant_user_id: newAssistantUserId,
+      });
+      if (error) throw error;
+      setAssistantUserId(newAssistantUserId);
+      toast.success(newAssistantUserId ? 'Assistente designado.' : 'Assistente removido.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao salvar assistente.';
+      toast.error(`Erro: ${message}`);
+    } finally {
+      setSavingAssistant(false);
     }
   };
 
@@ -786,6 +816,39 @@ export default function ManagerLineupPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Assistente do Treinador (only the head manager can change) */}
+        {isHeadManager && (
+          <div className="space-y-4">
+            <h2 className="font-display text-xl font-bold">Assistente</h2>
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  O assistente pode editar toda a área de escalação (campo, banco, funções táticas) como você. Útil quando o treinador está ausente.
+                </p>
+                <div className="flex items-center justify-between gap-4">
+                  <label className="text-sm font-display font-semibold text-muted-foreground whitespace-nowrap">Assistente atual</label>
+                  <select
+                    className="flex-1 max-w-[300px] rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={assistantUserId || ''}
+                    disabled={savingAssistant}
+                    onChange={(e) => saveAssistant(e.target.value || null)}
+                  >
+                    <option value="">Sem assistente</option>
+                    {squad
+                      .filter(p => p.user_id && p.user_id !== managerProfile?.user_id)
+                      .map(p => (
+                        <option key={p.user_id!} value={p.user_id!}>
+                          {p.full_name} ({p.primary_position})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                {savingAssistant && <p className="text-xs text-muted-foreground">Salvando...</p>}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Uniformes */}
         {uniforms.length > 0 && (

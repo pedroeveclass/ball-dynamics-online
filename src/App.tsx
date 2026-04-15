@@ -5,7 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
-import { ProtectedRoute, PlayerRoute, ManagerRoute, AdminRoute } from "@/components/ProtectedRoute";
+import { ProtectedRoute, PlayerRoute, ManagerRoute, ManagerOrAssistantRoute, AdminRoute } from "@/components/ProtectedRoute";
 
 // Critical pages — static imports (landing, auth, 404)
 import LandingPage from "./pages/LandingPage";
@@ -114,7 +114,7 @@ const App = () => (
             <Route path="/manager/stadium" element={<ManagerRoute><ManagerStadiumPage /></ManagerRoute>} />
             <Route path="/manager/market" element={<ManagerRoute><ManagerMarketPage /></ManagerRoute>} />
             <Route path="/manager/squad" element={<ManagerRoute><ManagerSquadPage /></ManagerRoute>} />
-            <Route path="/manager/lineup" element={<ManagerRoute><ManagerLineupPage /></ManagerRoute>} />
+            <Route path="/manager/lineup" element={<ManagerOrAssistantRoute><ManagerLineupPage /></ManagerOrAssistantRoute>} />
             <Route path="/manager/challenges" element={<ManagerRoute><ManagerChallengesPage /></ManagerRoute>} />
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
             <Route path="/match/:id/replay" element={<MatchReplayPage />} />
