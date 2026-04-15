@@ -7,6 +7,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, Shield, Building2, Eye, Swords, Brain, CircleDot, Frown, Loader2 } from 'lucide-react';
+import { ClubCrest } from '@/components/ClubCrest';
+
+const CREST_EMOJI_PRESETS = ['⚽', '🦁', '🦅', '🐺', '🐉', '🐻', '🐯', '🦈', '⭐', '🔥', '🛡️', '⚓', '👑', '🌪️', '🦊', '🐍'];
 
 const STEPS = ['Manager', 'Time', 'Personalizar', 'Revisão'];
 const STEP_ICONS = [User, Shield, Building2, Eye];
@@ -59,6 +62,7 @@ export default function OnboardingManagerPage() {
   const [secondaryColor, setSecondaryColor] = useState('#ffffff');
   const [city, setCity] = useState('');
   const [stadiumName, setStadiumName] = useState('');
+  const [crestUrl, setCrestUrl] = useState<string | null>(null);
 
   // Fetch available clubs when entering step 1
   useEffect(() => {
@@ -206,6 +210,7 @@ export default function OnboardingManagerPage() {
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           city: city.trim() || null,
+          crest_url: crestUrl,
           is_bot_managed: false,
         })
         .eq('id', selectedClub.id);
@@ -420,14 +425,45 @@ export default function OnboardingManagerPage() {
               </div>
               {/* Club badge preview */}
               <div className="flex items-center gap-4 p-4 rounded-md bg-muted/50">
-                <div className="w-16 h-16 rounded-lg flex items-center justify-center font-display text-xl font-extrabold"
-                  style={{ backgroundColor: primaryColor, color: secondaryColor }}>
-                  {shortName || '???'}
-                </div>
+                <ClubCrest
+                  crestUrl={crestUrl}
+                  primaryColor={primaryColor}
+                  secondaryColor={secondaryColor}
+                  shortName={shortName || '???'}
+                  className="w-16 h-16 rounded-lg text-xl"
+                />
                 <div>
                   <p className="font-display font-bold text-foreground">{clubName || 'Nome do Clube'}</p>
                   <p className="text-xs text-muted-foreground">{shortName || '---'}</p>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Escudo (opcional)</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCrestUrl(null)}
+                    title="Usar sigla"
+                    className={`h-9 w-9 rounded border flex items-center justify-center text-[10px] font-display font-bold ${!crestUrl ? 'border-tactical bg-tactical/10 text-tactical' : 'border-border text-muted-foreground hover:border-tactical/40'}`}
+                  >
+                    ABC
+                  </button>
+                  {CREST_EMOJI_PRESETS.map(e => {
+                    const val = `emoji:${e}`;
+                    const active = crestUrl === val;
+                    return (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => setCrestUrl(val)}
+                        className={`h-9 w-9 rounded border flex items-center justify-center text-lg ${active ? 'border-tactical bg-tactical/10' : 'border-border hover:border-tactical/40'}`}
+                      >
+                        {e}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Escolha um emoji agora. Upload de imagem fica disponível depois em "Editar Clube".</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="city">Cidade</Label>

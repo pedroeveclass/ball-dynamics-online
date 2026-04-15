@@ -13,9 +13,12 @@ import { toast } from 'sonner';
 import {
   Shield, DollarSign, Users, Building2, Trophy, Wrench, Dumbbell,
   Store, Handshake, Calendar, TrendingUp, Star, LogOut, Loader2,
-  Swords, Brain, CircleDot, ArrowRight, Pencil,
+  Swords, Brain, CircleDot, ArrowRight, Pencil, Upload, X,
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
+import { ClubCrest } from '@/components/ClubCrest';
+
+const CREST_EMOJI_PRESETS = ['⚽', '🦁', '🦅', '🐺', '🐉', '🐻', '🐯', '🦈', '⭐', '🔥', '🛡️', '⚓', '👑', '🌪️', '🦊', '🐍'];
 
 const FACILITY_LABELS: Record<string, { label: string; icon: typeof Store }> = {
   souvenir_shop: { label: 'Souvenirs', icon: Store },
@@ -54,6 +57,8 @@ export default function ManagerClubPage() {
   const [editPrimary, setEditPrimary] = useState('');
   const [editSecondary, setEditSecondary] = useState('');
   const [editStadiumName, setEditStadiumName] = useState('');
+  const [editCrestUrl, setEditCrestUrl] = useState<string | null>(null);
+  const [crestUploading, setCrestUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -142,7 +147,7 @@ export default function ManagerClubPage() {
     if (nextMatches && nextMatches.length > 0) {
       const nm = nextMatches[0];
       const oppId = nm.home_club_id === clubId ? nm.away_club_id : nm.home_club_id;
-      const { data: oppClub } = await supabase.from('clubs').select('name, short_name, primary_color, secondary_color').eq('id', oppId).maybeSingle();
+      const { data: oppClub } = await supabase.from('clubs').select('name, short_name, primary_color, secondary_color, crest_url').eq('id', oppId).maybeSingle();
       setNextMatch({ ...nm, opponent: oppClub, isHome: nm.home_club_id === clubId });
     }
 
@@ -194,7 +199,37 @@ export default function ManagerClubPage() {
     setEditPrimary(club!.primary_color);
     setEditSecondary(club!.secondary_color);
     setEditStadiumName(stadium?.name || '');
+    setEditCrestUrl((club as any)!.crest_url || null);
     setEditOpen(true);
+  }
+
+  async function handleCrestUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !club) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Limite: 2MB.');
+      return;
+    }
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!ext || !['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+      toast.error('Formato inválido. Use PNG, JPG ou WebP.');
+      return;
+    }
+    setCrestUploading(true);
+    try {
+      const path = `${club.id}/crest.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('club-crests')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('club-crests').getPublicUrl(path);
+      setEditCrestUrl(`${pub.publicUrl}?v=${Date.now()}`);
+      toast.success('Escudo carregado!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao carregar escudo');
+    } finally {
+      setCrestUploading(false);
+    }
   }
 
   async function handleSaveEdit() {
@@ -213,6 +248,7 @@ export default function ManagerClubPage() {
         primary_color: editPrimary,
         secondary_color: editSecondary,
         city: editCity.trim() || null,
+        crest_url: editCrestUrl,
       }).eq('id', club.id);
       if (clubErr) throw clubErr;
 
@@ -276,12 +312,13 @@ export default function ManagerClubPage() {
         {/* Club header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-5">
-            <div
-              className="w-20 h-20 rounded-xl flex items-center justify-center font-display text-2xl font-extrabold shadow-lg"
-              style={{ backgroundColor: club.primary_color, color: club.secondary_color }}
-            >
-              {club.short_name}
-            </div>
+            <ClubCrest
+              crestUrl={(club as any).crest_url}
+              primaryColor={club.primary_color}
+              secondaryColor={club.secondary_color}
+              shortName={club.short_name}
+              className="w-20 h-20 rounded-xl text-2xl shadow-lg"
+            />
             <div>
               <h1 className="font-display text-3xl font-bold">{club.name}</h1>
               <p className="text-muted-foreground text-sm">
@@ -449,12 +486,13 @@ export default function ManagerClubPage() {
                   </div>
                 </div>
                 {nextMatch.opponent && (
-                  <div
-                    className="w-8 h-8 rounded flex items-center justify-center text-[8px] font-bold"
-                    style={{ backgroundColor: nextMatch.opponent.primary_color, color: nextMatch.opponent.secondary_color }}
-                  >
-                    {nextMatch.opponent.short_name}
-                  </div>
+                  <ClubCrest
+                    crestUrl={nextMatch.opponent.crest_url}
+                    primaryColor={nextMatch.opponent.primary_color}
+                    secondaryColor={nextMatch.opponent.secondary_color}
+                    shortName={nextMatch.opponent.short_name}
+                    className="w-8 h-8 rounded text-[8px]"
+                  />
                 )}
               </div>
             ) : (
@@ -505,12 +543,58 @@ export default function ManagerClubPage() {
           <div className="space-y-4">
             {/* Badge preview */}
             <div className="flex justify-center">
-              <div
-                className="h-16 w-16 rounded-lg flex items-center justify-center text-xl font-bold"
-                style={{ backgroundColor: editPrimary, color: editSecondary }}
-              >
-                {editShort.toUpperCase() || '???'}
+              <ClubCrest
+                crestUrl={editCrestUrl}
+                primaryColor={editPrimary}
+                secondaryColor={editSecondary}
+                shortName={editShort.toUpperCase() || '???'}
+                className="h-16 w-16 rounded-lg text-xl"
+              />
+            </div>
+
+            {/* Crest chooser */}
+            <div className="space-y-2">
+              <Label>Escudo do Time</Label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setEditCrestUrl(null)}
+                  title="Usar sigla (padrão)"
+                  className={`h-9 w-9 rounded border flex items-center justify-center text-[10px] font-display font-bold ${!editCrestUrl ? 'border-tactical bg-tactical/10 text-tactical' : 'border-border text-muted-foreground hover:border-tactical/40'}`}
+                >
+                  ABC
+                </button>
+                {CREST_EMOJI_PRESETS.map(e => {
+                  const val = `emoji:${e}`;
+                  const active = editCrestUrl === val;
+                  return (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => setEditCrestUrl(val)}
+                      className={`h-9 w-9 rounded border flex items-center justify-center text-lg ${active ? 'border-tactical bg-tactical/10' : 'border-border hover:border-tactical/40'}`}
+                    >
+                      {e}
+                    </button>
+                  );
+                })}
+                <label className={`h-9 px-2 rounded border flex items-center gap-1 text-xs cursor-pointer ${crestUploading ? 'opacity-60 pointer-events-none' : 'border-border hover:border-tactical/40'}`}>
+                  {crestUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  <span>Upload</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleCrestUpload} />
+                </label>
+                {editCrestUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setEditCrestUrl(null)}
+                    className="h-9 w-9 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-destructive hover:border-destructive/40"
+                    title="Remover"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
+              <p className="text-[10px] text-muted-foreground">Escolha um emoji, faça upload (PNG/JPG/WebP, máx 2MB) ou mantenha a sigla.</p>
             </div>
 
             <div className="space-y-2">

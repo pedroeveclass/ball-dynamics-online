@@ -176,31 +176,49 @@ export default function OnboardingPlayerPage() {
           )}
 
           {/* Step 1: Position */}
-          {step === 1 && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Posição Principal</Label>
-                <p className="text-xs text-muted-foreground">Posição secundária pode ser desbloqueada com créditos do jogo.</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {POSITIONS.map(pos => (
-                    <button
-                      key={pos.value}
-                      onClick={() => { setPrimaryPosition(pos.value); setBodyType(''); setExtraPoints({}); }}
-                      className={`px-3 py-3 rounded-md text-sm font-display font-semibold border transition-colors text-left ${
-                        primaryPosition === pos.value
-                          ? 'border-tactical bg-tactical/10 text-tactical'
-                          : 'border-border text-muted-foreground hover:border-tactical/40'
-                      }`}
-                    >
-                      <span className="text-xs text-muted-foreground">{positionToPT(pos.value)}</span>
-                      <br />
-                      {pos.label}
-                    </button>
-                  ))}
+          {step === 1 && (() => {
+            const CATEGORY_LABELS: Record<string, string> = {
+              GK: 'Goleiro',
+              DEF: 'Defesa',
+              MID: 'Meio-Campo',
+              FWD: 'Ataque',
+            };
+            const categories = ['GK', 'DEF', 'MID', 'FWD'] as const;
+            return (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Posição Principal</Label>
+                  <p className="text-xs text-muted-foreground">Posição secundária pode ser desbloqueada com créditos do jogo.</p>
+                  {categories.map(cat => {
+                    const items = POSITIONS.filter(p => p.category === cat);
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={cat} className="space-y-1.5">
+                        <h3 className="font-display text-[11px] font-bold text-muted-foreground uppercase tracking-wider pt-2">{CATEGORY_LABELS[cat]}</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                          {items.map(pos => (
+                            <button
+                              key={pos.value}
+                              onClick={() => { setPrimaryPosition(pos.value); setBodyType(''); setExtraPoints({}); }}
+                              className={`px-3 py-2.5 rounded-md text-sm font-display font-semibold border transition-colors text-left ${
+                                primaryPosition === pos.value
+                                  ? 'border-tactical bg-tactical/10 text-tactical'
+                                  : 'border-border text-muted-foreground hover:border-tactical/40'
+                              }`}
+                            >
+                              <span className="text-[10px] text-muted-foreground">{positionToPT(pos.value)}</span>
+                              <br />
+                              <span className="text-[13px]">{pos.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Step 2: Height */}
           {step === 2 && (

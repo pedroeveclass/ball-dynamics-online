@@ -17,6 +17,7 @@ export interface MatchData {
 export interface ClubInfo {
   id: string; name: string; short_name: string;
   primary_color: string; secondary_color: string; formation?: string;
+  crest_url?: string | null;
 }
 
 export interface Participant {

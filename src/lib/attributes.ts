@@ -99,12 +99,18 @@ const positionProfiles: Record<string, Partial<Record<keyof AttrKeys, number>>> 
   'CB': { marcacao: 8, desarme: 8, forca: 6, cabeceio: 6, posicionamento_defensivo: 8, coragem: 6, drible: -5, posicionamento_ofensivo: -5 },
   'LB': { velocidade: 6, aceleracao: 6, resistencia: 6, posicionamento_defensivo: 4, marcacao: 4 },
   'RB': { velocidade: 6, aceleracao: 6, resistencia: 6, posicionamento_defensivo: 4, marcacao: 4 },
+  'LWB': { velocidade: 7, aceleracao: 6, resistencia: 7, stamina: 5, posicionamento_defensivo: 3, marcacao: 3, drible: 3, posicionamento_ofensivo: 3 },
+  'RWB': { velocidade: 7, aceleracao: 6, resistencia: 7, stamina: 5, posicionamento_defensivo: 3, marcacao: 3, drible: 3, posicionamento_ofensivo: 3 },
   'DM': { marcacao: 6, desarme: 8, posicionamento_defensivo: 8, antecipacao: 6, trabalho_equipe: 4 },
+  'CDM': { marcacao: 6, desarme: 8, posicionamento_defensivo: 8, antecipacao: 6, trabalho_equipe: 4 },
   'CM': { passe_baixo: 6, visao_jogo: 4, tomada_decisao: 4, trabalho_equipe: 4, resistencia: 4 },
+  'LM': { velocidade: 5, resistencia: 6, passe_baixo: 5, drible: 5, posicionamento_ofensivo: 3, tomada_decisao: 3 },
+  'RM': { velocidade: 5, resistencia: 6, passe_baixo: 5, drible: 5, posicionamento_ofensivo: 3, tomada_decisao: 3 },
   'CAM': { visao_jogo: 8, passe_baixo: 6, drible: 6, um_toque: 6, posicionamento_ofensivo: 6 },
   'LW': { velocidade: 8, aceleracao: 6, drible: 8, agilidade: 6, posicionamento_ofensivo: 4 },
   'RW': { velocidade: 8, aceleracao: 6, drible: 8, agilidade: 6, posicionamento_ofensivo: 4 },
   'ST': { acuracia_chute: 8, forca_chute: 6, posicionamento_ofensivo: 8, cabeceio: 4, antecipacao: 4 },
+  'CF': { acuracia_chute: 6, forca_chute: 4, posicionamento_ofensivo: 8, passe_baixo: 4, drible: 4, um_toque: 4, visao_jogo: 3 },
 };
 
 // Age experience bonus
@@ -302,11 +308,17 @@ export const POSITIONS = [
   { value: 'CB', label: 'Zagueiro', category: 'DEF' },
   { value: 'LB', label: 'Lateral Esquerdo', category: 'DEF' },
   { value: 'RB', label: 'Lateral Direito', category: 'DEF' },
+  { value: 'LWB', label: 'Ala Esquerdo', category: 'DEF' },
+  { value: 'RWB', label: 'Ala Direito', category: 'DEF' },
   { value: 'DM', label: 'Volante', category: 'MID' },
+  { value: 'CDM', label: 'Volante Defensivo', category: 'MID' },
   { value: 'CM', label: 'Meio-Campista', category: 'MID' },
+  { value: 'LM', label: 'Meia Esquerda', category: 'MID' },
+  { value: 'RM', label: 'Meia Direita', category: 'MID' },
   { value: 'CAM', label: 'Meia Ofensivo', category: 'MID' },
   { value: 'LW', label: 'Ponta Esquerda', category: 'FWD' },
   { value: 'RW', label: 'Ponta Direita', category: 'FWD' },
+  { value: 'CF', label: 'Segundo Atacante', category: 'FWD' },
   { value: 'ST', label: 'Atacante', category: 'FWD' },
 ] as const;
 

@@ -4,19 +4,28 @@ import { Button } from '@/components/ui/button';
 import { Eye, Square, LogOut, User } from 'lucide-react';
 import type { ClubInfo } from './types';
 import { computeMatchMinute } from './constants';
+import { ClubCrest } from '@/components/ClubCrest';
 
 // ─── ClubBadgeInline ──────────────────────────────────────────
-function ClubBadgeInline({ club, right }: { club: ClubInfo | null; right?: boolean }) {
+function ClubBadgeInline({ club, right, hasPossession }: { club: ClubInfo | null; right?: boolean; hasPossession?: boolean }) {
   if (!club) return <div className="w-7 h-7 rounded bg-muted animate-pulse" />;
   return (
     <div className={`flex items-center gap-1.5 ${right ? 'flex-row-reverse' : ''}`}>
-      <div
-        className="w-7 h-7 rounded flex items-center justify-center font-display text-[9px] font-extrabold shadow"
-        style={{ backgroundColor: club.primary_color, color: club.secondary_color }}
+      <ClubCrest
+        crestUrl={club.crest_url}
+        primaryColor={club.primary_color}
+        secondaryColor={club.secondary_color}
+        shortName={club.short_name}
+        className={`w-7 h-7 rounded text-[9px] shadow transition-shadow ${hasPossession ? 'ring-2 ring-warning ring-offset-1 ring-offset-[hsl(220,15%,16%)]' : ''}`}
+      />
+      <span
+        className={`font-display font-bold text-[11px] hidden sm:inline-flex items-center gap-1 max-w-28 truncate px-1.5 py-0.5 rounded transition-colors ${
+          hasPossession ? 'text-warning bg-warning/15' : 'text-white'
+        }`}
       >
-        {club.short_name.substring(0, 3)}
-      </div>
-      <span className="font-display font-bold text-[11px] text-white hidden sm:block max-w-24 truncate">{club.name}</span>
+        {hasPossession && <span aria-label="com a posse" className="text-[12px] leading-none">&#x26BD;</span>}
+        <span className="truncate">{club.name}</span>
+      </span>
     </div>
   );
 }
@@ -38,6 +47,7 @@ export interface MatchScoreboardProps {
   awayActiveUniform: { shirt_color: string; number_color: string };
   onToggleUniform: (side: 'home' | 'away') => void;
   myClubId: string | null;
+  possessionClubId: string | null;
 }
 
 export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboardProps) {
@@ -47,7 +57,11 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
     halfStartedAt, currentHalf,
     myRole, isBenchPlayer, isManager, isPlayer, onFinishMatch, onExit,
     homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
+    possessionClubId,
   } = props;
+
+  const homeHasBall = !!homeClub && possessionClubId === homeClub.id && !isLooseBall;
+  const awayHasBall = !!awayClub && possessionClubId === awayClub.id && !isLooseBall;
 
   // Tick every second for halftime countdown
   const [, setTick] = useState(0);
@@ -73,7 +87,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
 
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1">
-          <ClubBadgeInline club={homeClub} />
+          <ClubBadgeInline club={homeClub} hasPossession={homeHasBall} />
           {isManager && isTestMatch && myClubId === homeClub?.id && (
             <button
               onClick={() => onToggleUniform('home')}
@@ -129,7 +143,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
               {awayUniformNum}
             </button>
           )}
-          <ClubBadgeInline club={awayClub} right />
+          <ClubBadgeInline club={awayClub} right hasPossession={awayHasBall} />
         </div>
       </div>
 

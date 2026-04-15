@@ -515,8 +515,8 @@ export default function MatchRoomPage() {
     setMatch(matchData);
 
     const [homeClubRes, awayClubRes, homeSettingsRes, awaySettingsRes] = await Promise.all([
-      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', matchData.home_club_id).single(),
-      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', matchData.away_club_id).single(),
+      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.home_club_id).single(),
+      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.away_club_id).single(),
       supabase.from('club_settings').select('default_formation').eq('club_id', matchData.home_club_id).maybeSingle(),
       supabase.from('club_settings').select('default_formation').eq('club_id', matchData.away_club_id).maybeSingle(),
     ]);
@@ -3713,6 +3713,7 @@ export default function MatchRoomPage() {
         homeActiveUniform={homeActiveUniform} awayActiveUniform={awayActiveUniform}
         onToggleUniform={handleToggleUniform}
         myClubId={myClubId}
+        possessionClubId={possClubId ?? null}
       />
 
       {/* ── Main layout ── */}
