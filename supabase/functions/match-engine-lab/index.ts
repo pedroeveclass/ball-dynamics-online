@@ -1081,6 +1081,91 @@ function computeTacticalTarget(
   return { x: targetX, y: targetY };
 }
 
+// ─── Human-priority passing ────────────────────────────────────
+// When a bot has the ball and at least one human is on the same team, bias passing
+// decisions toward the human. Only a TENDENCY — if other options are clearly better
+// the bot still picks them. "Most advanced" human is the priority (user's rule A).
+// Human goalkeepers are not actively sought (user's rule B).
+// Multi-level progression is NOT applied — at most one hop (user's rule E).
+// "Too far behind" = more than 15u behind the bot in the attacking direction
+// (everything else is in range per user's rule F).
+function getHumanPriorityTargets(
+  bot: any,
+  teammates: any[],
+  isHome: boolean,
+): { directHumanIds: Set<string>; progressionBotIds: Set<string> } {
+  const empty = { directHumanIds: new Set<string>(), progressionBotIds: new Set<string>() };
+  const forwardDir = isHome ? 1 : -1;
+  const bx = Number(bot.pos_x ?? 50);
+
+  const humans = teammates.filter(t =>
+    t.connected_user_id != null
+    && !t.is_sent_off
+    && t.role_type === 'player'
+    && getPositionRole((t._slot_position || t.slot_position || '').toUpperCase()) !== 'goalkeeper'
+  );
+  if (humans.length === 0) return empty;
+
+  // Exclude humans that are clearly behind the ball (atrás e longe).
+  const viableHumans = humans.filter(h => {
+    const hx = Number(h.pos_x ?? 50);
+    const fwdFromBot = (hx - bx) * forwardDir;
+    return fwdFromBot > -15;
+  });
+  if (viableHumans.length === 0) return empty;
+
+  const directHumanIds = new Set<string>(viableHumans.map(h => h.id));
+
+  // Pick the MOST ADVANCED human (user's rule A). Progression bots are teammates
+  // not-too-far from this target that the bot can pass to as an intermediate hop.
+  const mostAdvanced = viableHumans.reduce((best, h) =>
+    (Number(h.pos_x ?? 50) * forwardDir) > (Number(best.pos_x ?? 50) * forwardDir) ? h : best,
+    viableHumans[0]
+  );
+  const mx = Number(mostAdvanced.pos_x ?? 50);
+  const my = Number(mostAdvanced.pos_y ?? 50);
+
+  const progressionBotIds = new Set<string>();
+  const PROGRESSION_RADIUS = 25; // must be able to reach the human in one more pass
+  for (const t of teammates) {
+    if (t.connected_user_id != null) continue; // humans handled by directHumanIds
+    if (t.is_sent_off) continue;
+    if (t.role_type !== 'player') continue;
+    if (t.id === bot.id) continue;
+    const tx = Number(t.pos_x ?? 50);
+    const ty = Number(t.pos_y ?? 50);
+    const distToHuman = Math.sqrt((tx - mx) ** 2 + (ty - my) ** 2);
+    const fwdFromBot = (tx - bx) * forwardDir;
+    // Must be within range of the human and not a backwards pass from the bot.
+    if (distToHuman < PROGRESSION_RADIUS && fwdFromBot > -5) {
+      progressionBotIds.add(t.id);
+    }
+  }
+
+  return { directHumanIds, progressionBotIds };
+}
+
+// Per-role weighting: defensive roles barely bias, midfielders/attackers bias more.
+// GK doesn't apply human priority (goal kicks are role-preference driven already).
+function getHumanPriorityBias(role: TacticalRole): { direct: number; progression: number } {
+  switch (role) {
+    case 'goalkeeper':
+      return { direct: 0, progression: 0 };
+    case 'centerBack':
+    case 'fullBack':
+      return { direct: 9, progression: 5 };
+    case 'defensiveMid':
+      return { direct: 14, progression: 8 };
+    case 'centralMid':
+    case 'attackingMid':
+    case 'wideMid':
+    case 'winger':
+    case 'striker':
+    default:
+      return { direct: 18, progression: 10 };
+  }
+}
+
 function pickBestPassTarget(
   bot: any,
   role: TacticalRole,
@@ -1090,6 +1175,8 @@ function pickBestPassTarget(
   opponents: any[],
 ): { target: any; actionType: string } | null {
   if (teammates.length === 0) return null;
+  const humanPriority = getHumanPriorityTargets(bot, teammates, isHome);
+  const humanBias = getHumanPriorityBias(role);
 
   const scored = teammates.map((t: any) => {
     const tx = Number(t.pos_x ?? 50);
@@ -1146,7 +1233,13 @@ function pickBestPassTarget(
       else if (tRole === 'attackingMid' || tRole === 'winger') rolePreference = 1;
     }
 
-    const score = forwardness * 0.3 + freedom * 8 + rolePreference * 3 - dist * 0.08;
+    // Human-priority bias: additive bonus for direct human / progression bot.
+    // Additive (not multiplicative) so negative base scores aren't flipped.
+    let humanBonus = 0;
+    if (humanPriority.directHumanIds.has(t.id)) humanBonus = humanBias.direct;
+    else if (humanPriority.progressionBotIds.has(t.id)) humanBonus = humanBias.progression;
+
+    const score = forwardness * 0.3 + freedom * 8 + rolePreference * 3 - dist * 0.08 + humanBonus;
     return { ...t, score, dist, freedom };
   }).sort((a: any, b: any) => b.score - a.score);
 
