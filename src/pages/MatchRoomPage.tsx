@@ -1224,6 +1224,14 @@ export default function MatchRoomPage() {
   const isPositioningTurn = !isHalftimeNow && (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense');
   const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
   const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
+  // True only when the current positioning phase belongs to the viewer's team
+  // (attack phase → user's team has possession; defense phase → user's team doesn't).
+  // Used to scope the pulsing "act now" cue so the defending side doesn't flash during
+  // the attacking side's positioning turn (and vice-versa).
+  const isMyPositioningPhase = isPositioningTurn && myClubId != null && activeTurn?.possession_club_id != null && (
+    (isPositioningAttack && myClubId === activeTurn.possession_club_id) ||
+    (isPositioningDefense && myClubId !== activeTurn.possession_club_id)
+  );
   // Dead ball: first ball_holder phase after a positioning turn (kickoff, throw-in, corner, goal kick)
   const isDeadBall = activeTurn?.phase === 'ball_holder' && prevTurnWasPositioningRef.current;
 
@@ -4119,7 +4127,8 @@ export default function MatchRoomPage() {
                   toFieldX = mouseFieldPct.x;
                   toFieldY = mouseFieldPct.y;
                   // Clamp move arrow to maxRange (with ballSpeedFactor applied when there's active ball trajectory)
-                  if (drawingAction.type === 'move' && drawingFrom.field_x != null && drawingFrom.field_y != null) {
+                  // Positioning phases have no range limit — player can be placed anywhere.
+                  if (drawingAction.type === 'move' && drawingFrom.field_x != null && drawingFrom.field_y != null && !isPositioningTurn) {
                     const mdx = toFieldX - drawingFrom.field_x;
                     const mdy = toFieldY - drawingFrom.field_y;
                     const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
@@ -4354,7 +4363,7 @@ export default function MatchRoomPage() {
                 // a positioning turn. Makes the cursor circle pulse amber to grab attention
                 // now that the drawing is auto-activated (no need to click-to-select first).
                 const showPositioningPulse = isMove
-                  && isPositioningTurn
+                  && isMyPositioningPhase
                   && isPlayer
                   && drawingAction?.fromParticipantId === myParticipant?.id;
 
@@ -4481,8 +4490,10 @@ export default function MatchRoomPage() {
                       {`${p.jersey_number ? `#${p.jersey_number} ` : ''}${p.player_name ?? 'Jogador'}${p.field_pos ? ` (${p.field_pos})` : ''}`}
                     </title>
                     {/* Positioning-phase cue on YOUR own avatar: pulsing amber ring + small
-                        outward wave — makes it impossible to miss that it's your turn to act. */}
-                    {isPositioningTurn && isControllable && !hasSubmitted && (
+                        outward wave — makes it impossible to miss that it's your turn to act.
+                        Scoped to the viewer's own positioning phase so the defending side
+                        doesn't flash during the attacking side's positioning turn. */}
+                    {isMyPositioningPhase && isControllable && !hasSubmitted && (
                       <>
                         <circle cx={x} cy={y} r={R + 4} fill="none" stroke="#f59e0b" strokeWidth="2" opacity={0.85} filter="url(#pulse-glow)">
                           <animate attributeName="opacity" values="0.9;0.35;0.9" dur="1s" repeatCount="indefinite" />
