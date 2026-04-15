@@ -818,7 +818,10 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40) * posMult;
     const stam = Number(attrs?.stamina ?? 40) * posMult;
     const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
-    const maxSpeed = 8 + normalizeAttr(vel) * 11; // ~12% of field per turn for avg player
+    // Compressed spread: elite (99) still faster than average (40) but less extreme.
+    // 40 → ~12u/turn, 70 → ~14u, 90 → ~15u, 99 → ~16u (vs the old 8+n×11 that gave
+    // 40 → 11u and 99 → 19u, +80% range for top vs average, too discrepant).
+    const maxSpeed = 10 + normalizeAttr(vel) * 6;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     let range = 0;
     let speed = 0;

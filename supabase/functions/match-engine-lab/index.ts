@@ -1029,7 +1029,11 @@ function getDirectionalMultiplier(
 // ─── Compute max movement range based on attributes ──────────
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
-  const maxSpeed = 8 + normalizeAttr(attrs.velocidade) * 11; // ~12% of field per turn for avg player
+  // Compressed spread: elite (99) still faster than average (40) but less extreme.
+  // 40 → ~12u/turn, 70 → ~14u, 90 → ~15u, 99 → ~16u (vs the old 8+n×11 that gave
+  // 40 → 11u and 99 → 19u, +80% range for top vs average, too discrepant).
+  // MUST match src/pages/MatchRoomPage.tsx computeMaxMoveRange.
+  const maxSpeed = 10 + normalizeAttr(attrs.velocidade) * 6;
   // Stamina decay: after turn 20, players with low stamina lose up to 20% range
   const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.2;
   let totalDist = 0;
