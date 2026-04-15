@@ -1895,6 +1895,7 @@ export type Database = {
           money: number
           overall: number
           primary_position: string
+          primary_position_changes: number
           reputation: number
           secondary_position: string | null
           updated_at: string
@@ -1918,6 +1919,7 @@ export type Database = {
           money?: number
           overall?: number
           primary_position: string
+          primary_position_changes?: number
           reputation?: number
           secondary_position?: string | null
           updated_at?: string
@@ -1941,6 +1943,7 @@ export type Database = {
           money?: number
           overall?: number
           primary_position?: string
+          primary_position_changes?: number
           reputation?: number
           secondary_position?: string | null
           updated_at?: string

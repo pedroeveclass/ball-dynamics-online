@@ -118,6 +118,7 @@ interface TrainingRecord {
 
 const NEW_PLAYER_COST = 1_000_000;
 const SECONDARY_POS_COST = 100_000;
+const PRIMARY_POS_CHANGE_COST = 100_000;
 const ALL_POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'] as const;
 
 interface PlayerCard {
@@ -151,6 +152,11 @@ export default function PlayerProfilePage() {
   const [secondaryPosOpen, setSecondaryPosOpen] = useState(false);
   const [selectedSecondaryPos, setSelectedSecondaryPos] = useState<string>('');
   const [changingSecondaryPos, setChangingSecondaryPos] = useState(false);
+
+  // Primary position change state
+  const [primaryPosOpen, setPrimaryPosOpen] = useState(false);
+  const [selectedPrimaryPos, setSelectedPrimaryPos] = useState<string>('');
+  const [changingPrimaryPos, setChangingPrimaryPos] = useState(false);
 
   const p = playerProfile;
 
@@ -335,6 +341,57 @@ export default function PlayerProfilePage() {
       toast.error('Erro ao alterar posição secundária.');
     }
     setChangingSecondaryPos(false);
+  }
+
+  // ── Primary position change handler ──
+  async function handlePrimaryPositionChange() {
+    if (!p || !selectedPrimaryPos) return;
+    if (selectedPrimaryPos === p.primary_position) {
+      toast.error('Escolha uma posição diferente da atual.');
+      return;
+    }
+    setChangingPrimaryPos(true);
+
+    try {
+      const changesUsed = (p as any).primary_position_changes ?? 0;
+      const isFree = changesUsed === 0;
+      const cost = isFree ? 0 : PRIMARY_POS_CHANGE_COST;
+
+      if (!isFree && p.money < cost) {
+        toast.error('Saldo insuficiente para alterar posição principal.');
+        setChangingPrimaryPos(false);
+        return;
+      }
+
+      // If new primary matches current secondary, clear secondary to avoid duplicate.
+      const clearSecondary = p.secondary_position === selectedPrimaryPos;
+
+      const update: Record<string, unknown> = {
+        primary_position: selectedPrimaryPos,
+        primary_position_changes: changesUsed + 1,
+        money: p.money - cost,
+      };
+      if (clearSecondary) update.secondary_position = null;
+
+      const { error } = await supabase
+        .from('player_profiles')
+        .update(update)
+        .eq('id', p.id);
+
+      if (error) throw error;
+
+      toast.success(
+        isFree
+          ? `Posição principal alterada para ${positionToPT(selectedPrimaryPos)}! (1ª mudança gratuita)`
+          : `Posição principal alterada para ${positionToPT(selectedPrimaryPos)}!`
+      );
+      await refreshPlayerProfile();
+      setPrimaryPosOpen(false);
+      setSelectedPrimaryPos('');
+    } catch (err) {
+      toast.error('Erro ao alterar posição principal.');
+    }
+    setChangingPrimaryPos(false);
   }
 
   if (!p) {
@@ -546,6 +603,38 @@ export default function PlayerProfilePage() {
           )}
         </div>
 
+        {/* ── Primary Position ── */}
+        {(() => {
+          const changesUsed = (p as any).primary_position_changes ?? 0;
+          const nextIsFree = changesUsed === 0;
+          const nextCost = nextIsFree ? 0 : PRIMARY_POS_CHANGE_COST;
+          return (
+            <div className="stat-card space-y-3">
+              <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+                <Repeat className="h-4 w-4 text-tactical" /> Mudar Posição do Jogador
+              </h2>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Atual:</span>
+                  <PositionBadge position={p.primary_position} />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setSelectedPrimaryPos(''); setPrimaryPosOpen(true); }}
+                >
+                  Mudar
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {nextIsFree
+                  ? 'Primeira mudança gratuita. Próximas custarão ' + formatBRL(PRIMARY_POS_CHANGE_COST) + '.'
+                  : 'Próxima mudança: ' + formatBRL(nextCost) + '.'}
+              </p>
+            </div>
+          );
+        })()}
+
         {/* ── Secondary Position ── */}
         <div className="stat-card space-y-3">
           <h2 className="font-display font-semibold text-sm flex items-center gap-2">
@@ -685,6 +774,74 @@ export default function PlayerProfilePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Primary Position Change Dialog ── */}
+      {(() => {
+        const changesUsed = (p as any).primary_position_changes ?? 0;
+        const isFree = changesUsed === 0;
+        const cost = isFree ? 0 : PRIMARY_POS_CHANGE_COST;
+        const insufficient = !isFree && p.money < cost;
+        return (
+          <Dialog open={primaryPosOpen} onOpenChange={setPrimaryPosOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-display flex items-center gap-2">
+                  <Repeat className="h-5 w-5 text-tactical" /> Mudar Posição do Jogador
+                </DialogTitle>
+                <DialogDescription>
+                  {isFree
+                    ? 'Primeira mudança de posição principal é GRATUITA. As próximas custarão ' + formatBRL(PRIMARY_POS_CHANGE_COST) + '.'
+                    : 'Custo: ' + formatBRL(cost) + ' (debitado do saldo atual de ' + formatBRL(p.money) + ').'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Atual:</span>
+                  <PositionBadge position={p.primary_position} />
+                </div>
+                <Select value={selectedPrimaryPos} onValueChange={setSelectedPrimaryPos}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a nova posição principal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_POSITIONS.filter(pos => pos !== p.primary_position).map(pos => (
+                      <SelectItem key={pos} value={pos}>{positionToPT(pos)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {p.secondary_position && selectedPrimaryPos === p.secondary_position && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Sua posição secundária atual ({positionToPT(p.secondary_position)}) será removida.
+                  </p>
+                )}
+                {insufficient && (
+                  <p className="text-xs text-destructive flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Saldo insuficiente
+                  </p>
+                )}
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setPrimaryPosOpen(false)} disabled={changingPrimaryPos}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handlePrimaryPositionChange}
+                  disabled={changingPrimaryPos || !selectedPrimaryPos || insufficient}
+                  className="gap-2"
+                >
+                  {changingPrimaryPos ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat className="h-4 w-4" />}
+                  {changingPrimaryPos
+                    ? 'Processando...'
+                    : isFree
+                      ? 'Confirmar (Grátis)'
+                      : 'Confirmar - ' + formatBRL(cost)}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </AppLayout>
   );
 }
