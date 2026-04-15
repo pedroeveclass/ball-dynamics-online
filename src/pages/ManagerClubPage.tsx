@@ -528,7 +528,7 @@ export default function ManagerClubPage() {
 
       {/* Edit club dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display">Editar Clube</DialogTitle>
             <DialogDescription>
