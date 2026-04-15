@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PositionBadge } from '@/components/PositionBadge';
 import { Save, UserPlus, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { sortPlayersByPosition } from '@/lib/positions';
+import { sortPlayersByPosition, positionalPenaltyPercent } from '@/lib/positions';
 
 interface SquadPlayer {
   id: string;
@@ -636,6 +636,10 @@ export default function ManagerLineupPage() {
               {slots.map(slot => {
                 const assigned = assignments.find(a => a.slot_position === slot.position);
                 const player = assigned ? getPlayer(assigned.player_profile_id) : null;
+                const penalty = player
+                  ? positionalPenaltyPercent(slot.position, player.primary_position, player.secondary_position)
+                  : 0;
+                const effectiveOvr = player ? Math.round(player.overall * (1 - penalty / 100)) : 0;
 
                 return (
                   <div
@@ -650,13 +654,21 @@ export default function ManagerLineupPage() {
                         setPickType('starter');
                       }
                     }}
+                    title={player && penalty > 0
+                      ? `${player.full_name} fora de posição: ${player.primary_position}${player.secondary_position ? '/' + player.secondary_position : ''} escalado em ${slot.position} (−${penalty}% nos atributos). OVR efetivo: ${effectiveOvr}`
+                      : undefined}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-display font-bold transition-colors ${
+                    <div className={`relative w-10 h-10 rounded-full flex items-center justify-center text-xs font-display font-bold transition-colors ${
                       player
-                        ? 'bg-tactical text-tactical-foreground'
+                        ? (penalty > 0 ? 'bg-destructive/80 text-destructive-foreground' : 'bg-tactical text-tactical-foreground')
                         : 'bg-muted/60 text-muted-foreground border-2 border-dashed border-muted-foreground/40 group-hover:border-tactical'
                     }`}>
-                      {player ? player.overall : <UserPlus className="h-4 w-4" />}
+                      {player ? effectiveOvr : <UserPlus className="h-4 w-4" />}
+                      {player && penalty > 0 && (
+                        <span className="absolute -top-1 -right-1 text-[8px] font-display font-bold bg-background text-destructive border border-destructive rounded-full px-1 leading-tight">
+                          −{penalty}%
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] font-display font-bold text-foreground/80 max-w-[70px] truncate text-center">
                       {player ? (

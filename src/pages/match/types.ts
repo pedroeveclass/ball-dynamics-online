@@ -82,6 +82,7 @@ export interface PlayerProfileSummary {
   id: string;
   full_name: string | null;
   primary_position: string | null;
+  secondary_position?: string | null;
   overall: number | null;
   jersey_number?: number | null;
 }

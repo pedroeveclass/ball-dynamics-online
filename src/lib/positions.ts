@@ -56,3 +56,54 @@ export function sortPlayersByPosition<T extends { primary_position?: string | nu
     return (b.overall ?? 0) - (a.overall ?? 0);
   });
 }
+
+// ── Positional penalty: players out of position get an attribute multiplier ──
+// Groups: 0=GK, 1=DEF, 2=MID, 3=ATK. Penalty scales with distance between groups.
+const POSITION_GROUP: Record<string, 0 | 1 | 2 | 3> = {
+  GK: 0,
+  CB: 1, LB: 1, RB: 1, LWB: 1, RWB: 1,
+  DM: 2, CDM: 2, CM: 2, CAM: 2, LM: 2, RM: 2,
+  LW: 3, RW: 3, ST: 3, CF: 3,
+};
+
+function normalizePos(pos: string | null | undefined): string {
+  if (!pos) return '';
+  return pos.replace(/^BENCH_?/i, '').replace(/[0-9]/g, '').toUpperCase();
+}
+
+export function positionGroup(pos: string | null | undefined): number {
+  return POSITION_GROUP[normalizePos(pos)] ?? -1;
+}
+
+// Penalty percent (0, 5, 10, 15, 20) when a player whose natural position is
+// `primary` (or matches `secondary`) is fielded at `fielded`.
+// Rules: same position OR matches secondary → 0%. Same group, different sub-pos → 5%.
+// 1 group apart → 10%, 2 apart → 15%, 3 apart (GK ↔ ATK) → 20%.
+export function positionalPenaltyPercent(
+  fielded: string | null | undefined,
+  primary: string | null | undefined,
+  secondary: string | null | undefined,
+): number {
+  const f = normalizePos(fielded);
+  const p = normalizePos(primary);
+  const s = normalizePos(secondary);
+  if (!f || !p) return 0;
+  if (f === p) return 0;
+  if (s && f === s) return 0;
+  const fg = POSITION_GROUP[f];
+  const pg = POSITION_GROUP[p];
+  if (fg == null || pg == null) return 0;
+  const dist = Math.abs(fg - pg);
+  if (dist === 0) return 5;
+  if (dist === 1) return 10;
+  if (dist === 2) return 15;
+  return 20;
+}
+
+export function positionalMultiplier(
+  fielded: string | null | undefined,
+  primary: string | null | undefined,
+  secondary: string | null | undefined,
+): number {
+  return 1 - positionalPenaltyPercent(fielded, primary, secondary) / 100;
+}

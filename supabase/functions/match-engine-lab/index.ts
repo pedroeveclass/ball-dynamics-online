@@ -19,6 +19,43 @@ const HALFTIME_DURATION_MS = 5 * 60 * 1000;    // 5 min halftime break
 const MAX_INJURY_TIME_TURNS = 3;               // 1-3 extra turns after time is up
 const MAX_TURNS_SAFETY = 200;                  // absolute safety cap to prevent infinite games
 
+// ─── Positional penalty: attribute multiplier for out-of-position players ──
+// Mirror of src/lib/positions.ts (inline because edge functions can't import).
+const POSITION_GROUP: Record<string, number> = {
+  GK: 0,
+  CB: 1, LB: 1, RB: 1, LWB: 1, RWB: 1,
+  DM: 2, CDM: 2, CM: 2, CAM: 2, LM: 2, RM: 2,
+  LW: 3, RW: 3, ST: 3, CF: 3,
+};
+function normalizePos(pos: string | null | undefined): string {
+  if (!pos) return '';
+  return pos.replace(/^BENCH_?/i, '').replace(/[0-9]/g, '').toUpperCase();
+}
+function positionalMultiplier(fielded: string | null | undefined, primary: string | null | undefined, secondary: string | null | undefined): number {
+  const f = normalizePos(fielded);
+  const p = normalizePos(primary);
+  const s = normalizePos(secondary);
+  if (!f || !p) return 1;
+  if (f === p) return 1;
+  if (s && f === s) return 1;
+  const fg = POSITION_GROUP[f];
+  const pg = POSITION_GROUP[p];
+  if (fg == null || pg == null) return 1;
+  const dist = Math.abs(fg - pg);
+  if (dist === 0) return 0.95;
+  if (dist === 1) return 0.90;
+  if (dist === 2) return 0.85;
+  return 0.80;
+}
+function participantPositionalMultiplier(participant: any): number {
+  if (!participant) return 1;
+  return positionalMultiplier(
+    participant._slot_position || participant.slot_position || participant.field_pos,
+    participant._primary_position || participant.primary_position,
+    participant._secondary_position || participant.secondary_position,
+  );
+}
+
 // ─── Energy system constants ───────────────────────────────
 const ENERGY_BASE_DRAIN = 0.20;          // base drain per turn (just existing on field)
 const ENERGY_BASE_STAMINA_FACTOR = 0.6;  // how much stamina reduces base drain
@@ -432,13 +469,15 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     : { data: [] };
   const slotMap = new Map<string, string>((slots || []).map((s: any) => [s.id, s.slot_position]));
 
-  // Also load player profiles for primary_position fallback + name
+  // Also load player profiles for primary_position fallback + name + secondary_position (for positional penalty)
   const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
   let profilePosMap = new Map<string, string>();
+  let profileSecondaryPosMap = new Map<string, string | null>();
   let profileNameMap = new Map<string, string>();
   if (profileIds.length > 0) {
-    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position, full_name').in('id', profileIds);
+    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position, secondary_position, full_name').in('id', profileIds);
     profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
+    profileSecondaryPosMap = new Map((profiles || []).map((p: any) => [p.id, p.secondary_position]));
     profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.full_name]));
   }
 
@@ -479,6 +518,11 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     // Attach player name if available
     if (p.player_profile_id && profileNameMap.has(p.player_profile_id)) {
       p._player_name = profileNameMap.get(p.player_profile_id);
+    }
+    // Attach primary/secondary positions for positional penalty calculation
+    if (p.player_profile_id) {
+      p._primary_position = profilePosMap.get(p.player_profile_id) || null;
+      p._secondary_position = profileSecondaryPosMap.get(p.player_profile_id) || null;
     }
     return p;
   });
@@ -1484,12 +1528,13 @@ async function generateBotActions(
 
     // Calculate max movement range for this bot
     const botRawAttrs = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
+    const botPosMult = participantPositionalMultiplier(bot);
     const botMoveAttrs = {
-      velocidade: Number(botRawAttrs?.velocidade ?? 40),
-      aceleracao: Number(botRawAttrs?.aceleracao ?? 40),
-      agilidade: Number(botRawAttrs?.agilidade ?? 40),
-      stamina: Number(botRawAttrs?.stamina ?? 40),
-      forca: Number(botRawAttrs?.forca ?? 40),
+      velocidade: Number(botRawAttrs?.velocidade ?? 40) * botPosMult,
+      aceleracao: Number(botRawAttrs?.aceleracao ?? 40) * botPosMult,
+      agilidade: Number(botRawAttrs?.agilidade ?? 40) * botPosMult,
+      stamina: Number(botRawAttrs?.stamina ?? 40) * botPosMult,
+      forca: Number(botRawAttrs?.forca ?? 40) * botPosMult,
     };
     const maxMoveRange = computeMaxMoveRange(botMoveAttrs, turnNumber);
 
@@ -2152,12 +2197,13 @@ async function generateBotActions(
       const bot = botMap.get(action.participant_id);
       if (bot) {
         const botRaw = bot.player_profile_id ? botAttrMap[bot.player_profile_id] : null;
+        const posMult = participantPositionalMultiplier(bot);
         const moveAttrs = {
-          velocidade: Number(botRaw?.velocidade ?? 40),
-          aceleracao: Number(botRaw?.aceleracao ?? 40),
-          agilidade: Number(botRaw?.agilidade ?? 40),
-          stamina: Number(botRaw?.stamina ?? 40),
-          forca: Number(botRaw?.forca ?? 40),
+          velocidade: Number(botRaw?.velocidade ?? 40) * posMult,
+          aceleracao: Number(botRaw?.aceleracao ?? 40) * posMult,
+          agilidade: Number(botRaw?.agilidade ?? 40) * posMult,
+          stamina: Number(botRaw?.stamina ?? 40) * posMult,
+          forca: Number(botRaw?.forca ?? 40) * posMult,
         };
         const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
         const bx = Number(bot.pos_x ?? 50);
@@ -2741,10 +2787,11 @@ function resolveDispute(
     const raw = p?.player_profile_id ? attrByProfile[p.player_profile_id] : null;
     const energyPct = Number(p?.match_energy ?? 100);
     const penalty = getEnergyPenalty(energyPct);
+    const posMult = participantPositionalMultiplier(p);
     return (key: string) => {
       const val = Number(raw?.[key] ?? 40);
       if (key === 'stamina') return val; // stamina NOT penalized
-      return Math.max(10, Math.round(val * (1 - penalty)));
+      return Math.max(10, Math.round(val * posMult * (1 - penalty)));
     };
   };
 
@@ -2851,7 +2898,8 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       'cabeceio','pulo','defesa_aerea','posicionamento_defensivo','pegada',
       'equilibrio','posicionamento_ofensivo','trabalho_equipe',
       'distribuicao_curta','distribuicao_longa','saida_gol','comando_area','resistencia','stamina'];
-    for (const k of keys) result[k] = Number(raw?.[k] ?? 40);
+    const posMult = participantPositionalMultiplier(participant);
+    for (const k of keys) result[k] = Number(raw?.[k] ?? 40) * posMult;
     return result;
   };
 
@@ -3166,12 +3214,13 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
         let candidateMoveRatio = 0;
         if (interceptor && turnNumber != null && attrByProfile) {
           const pRaw = interceptor.player_profile_id ? attrByProfile[interceptor.player_profile_id] : null;
+          const posMult = participantPositionalMultiplier(interceptor);
           const moveAttrs = {
-            velocidade: Number(pRaw?.velocidade ?? 40),
-            aceleracao: Number(pRaw?.aceleracao ?? 40),
-            agilidade: Number(pRaw?.agilidade ?? 40),
-            stamina: Number(pRaw?.stamina ?? 40),
-            forca: Number(pRaw?.forca ?? 40),
+            velocidade: Number(pRaw?.velocidade ?? 40) * posMult,
+            aceleracao: Number(pRaw?.aceleracao ?? 40) * posMult,
+            agilidade: Number(pRaw?.agilidade ?? 40) * posMult,
+            stamina: Number(pRaw?.stamina ?? 40) * posMult,
+            forca: Number(pRaw?.forca ?? 40) * posMult,
           };
           const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
           // GK uses full range on shots, everyone else gets ballSpeed reduction
@@ -3433,12 +3482,13 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     // ── Check if player can physically reach the ball ──
     if (attrByProfile && turnNumber != null) {
       const raw = participant.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
+      const posMult = participantPositionalMultiplier(participant);
       const moveAttrs = {
-        velocidade: Number(raw?.velocidade ?? 40),
-        aceleracao: Number(raw?.aceleracao ?? 40),
-        agilidade: Number(raw?.agilidade ?? 40),
-        stamina: Number(raw?.stamina ?? 40),
-        forca: Number(raw?.forca ?? 40),
+        velocidade: Number(raw?.velocidade ?? 40) * posMult,
+        aceleracao: Number(raw?.aceleracao ?? 40) * posMult,
+        agilidade: Number(raw?.agilidade ?? 40) * posMult,
+        stamina: Number(raw?.stamina ?? 40) * posMult,
+        forca: Number(raw?.forca ?? 40) * posMult,
       };
       const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
       if (dist > maxRange + 0.5) { // small tolerance for floating point
