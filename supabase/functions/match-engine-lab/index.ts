@@ -123,6 +123,8 @@ function getBallSpeedFactor(actionType: string): number {
 // d(defender → P) ≤ t(P) × range × ballSpeedFactor(actionType)
 // At t=0 only a defender on top of the passer can block (d≤0). At t=1 the defender
 // can use their full range. Intermediate t scales linearly.
+// Y axis is Y-scaled to match getMovementDistance so predominantly-vertical moves
+// aren't over-counted as farther than they physically are.
 function canReachTrajectoryPoint(
   defX: number, defY: number,
   startX: number, startY: number,
@@ -133,7 +135,10 @@ function canReachTrajectoryPoint(
   if (t < 0 || t > 1 || range <= 0) return false;
   const px = startX + (targetX - startX) * t;
   const py = startY + (targetY - startY) * t;
-  const d = Math.hypot(defX - px, defY - py);
+  const dx = defX - px;
+  // Y-scale (INNER_H/INNER_W ≈ 0.628) — matches getMovementDistance declared later.
+  const dy = (defY - py) * (540 / 860);
+  const d = Math.sqrt(dx * dx + dy * dy);
   const effectiveRange = range * getBallSpeedFactor(actionType);
   return d <= t * effectiveRange + tolerance;
 }

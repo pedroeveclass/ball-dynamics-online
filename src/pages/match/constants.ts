@@ -154,7 +154,15 @@ export function canReachTrajectoryPoint(
   if (t < 0 || t > 1 || range <= 0) return false;
   const px = trajStart.x + (trajTarget.x - trajStart.x) * t;
   const py = trajStart.y + (trajTarget.y - trajStart.y) * t;
-  const d = Math.hypot(defenderPos.x - px, defenderPos.y - py);
+  // Field Y axis is physically ~63% of the X axis — match the engine's
+  // getMovementDistance (FIELD_Y_MOVEMENT_SCALE = INNER_H/INNER_W) so a vertical
+  // move doesn't get counted as farther than it physically is. Without this, the
+  // client was rejecting intercepts on predominantly-vertical passes that the
+  // engine would have accepted.
+  const Y_SCALE = INNER_H / INNER_W;
+  const dx = defenderPos.x - px;
+  const dy = (defenderPos.y - py) * Y_SCALE;
+  const d = Math.sqrt(dx * dx + dy * dy);
   const effectiveRange = range * getBallSpeedFactor(actionType);
   // `tolerance` absorbs floating-point / render-grid rounding (default 0.5 field %).
   return d <= t * effectiveRange + tolerance;
