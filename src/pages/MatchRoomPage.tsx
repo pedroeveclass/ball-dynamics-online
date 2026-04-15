@@ -1921,11 +1921,12 @@ export default function MatchRoomPage() {
           const projX = bfx + _tdx * _t;
           const projY = bfy + _tdy * _t;
 
-          // Inertia direction: where the player is ACTUALLY moving (toward the cursor),
-          // not the projection. Matches the live ball-preview's maxRange so the two agree.
+          // Intercept check uses BASE range (no inertia direction) to match the engine:
+          // findInterceptorCandidates calls computeMaxMoveRange without targetDirection,
+          // so applying inertia here would make the client stricter than the server.
           const mdx = pctX - drawingParticipant.field_x;
           const mdy = pctY - drawingParticipant.field_y;
-          const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId, { x: mdx, y: mdy });
+          const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
           const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
           const clickActionType = ballPathAction.action_type;
           const clickIsShot = clickActionType === 'shoot_controlled' || clickActionType === 'shoot_power' || clickActionType === 'header_controlled' || clickActionType === 'header_power';
@@ -4195,11 +4196,9 @@ export default function MatchRoomPage() {
                     const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
                                       (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
 
-                    // Inertia direction: where the player is actually moving (to cursor),
-                    // not the projection. Matches live ball-preview so the two agree.
-                    const dirX = mouseFieldPct.x - drawingFrom.field_x!;
-                    const dirY = mouseFieldPct.y - drawingFrom.field_y!;
-                    const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId, { x: dirX, y: dirY });
+                    // Intercept check uses BASE range (no inertia direction) to match the
+                    // engine's findInterceptorCandidates which doesn't apply inertia either.
+                    const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
                     const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
                     const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
                     const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
@@ -4217,7 +4216,9 @@ export default function MatchRoomPage() {
                     const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
                     canReachBall = !isRedZone && reachesTrajPoint && cursorNearTraj;
                     if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
-                      console.log('[REACH][render]', { tCursor: tCursor.toFixed(2), d: Math.hypot(dirX, dirY).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj, purple: canReachBall });
+                      const dxDbg = mouseFieldPct.x - drawingFrom.field_x!;
+                      const dyDbg = mouseFieldPct.y - drawingFrom.field_y!;
+                      console.log('[REACH][render]', { tCursor: tCursor.toFixed(2), d: Math.hypot(dxDbg, dyDbg).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj, purple: canReachBall });
                     }
                   } else {
                     // Stationary ball holder — if within reach, can tackle
