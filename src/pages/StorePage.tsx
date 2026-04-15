@@ -81,7 +81,7 @@ function getDurationLabel(duration: string | null): string | null {
 }
 
 export default function StorePage() {
-  const { profile, playerProfile, managerProfile, club } = useAuth();
+  const { profile, playerProfile, managerProfile, club, refreshPlayerProfile } = useAuth();
   const [items, setItems] = useState<StoreItem[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,7 +214,7 @@ export default function StorePage() {
       setGiftItem(null);
       setGiftPlayerId('');
       setSwapConflict(null);
-      fetchData(); // Refresh
+      await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
       toast.error(e.message || 'Erro na compra');
     } finally {
@@ -278,7 +278,7 @@ export default function StorePage() {
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
       toast.success(result?.message || 'Energético usado!');
-      fetchData();
+      await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
       toast.error(e.message || 'Erro ao usar energético');
     } finally {
