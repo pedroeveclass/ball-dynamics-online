@@ -2288,7 +2288,9 @@ export default function MatchRoomPage() {
           const dy = endY - startPos.y;
           // Ball offset is in the direction of dribble (in front of player), not a fixed corner
           const dribLen = Math.sqrt(dx * dx + dy * dy);
-          const OFFSET = 1.5;
+          // Ball sits just in front of the dribbler — kept tight so the ball visual
+          // doesn't drift away at the end of the Motion (user feedback).
+          const OFFSET = 0.9;
           const offX = dribLen > 0.1 ? (dx / dribLen) * OFFSET : 1.2;
           const offY = dribLen > 0.1 ? (dy / dribLen) * OFFSET : -1.2;
           // Dribble-success override: engine's `dribble` event means the dribbler kept the
@@ -2308,10 +2310,17 @@ export default function MatchRoomPage() {
         const isBallShoot = isShootAction(ballAction.action_type) || isAnyShootAction(ballAction.action_type);
         if ((isBallPass || isBallShoot) && ballAction.target_x != null && ballAction.target_y != null) {
           if (interceptAction && interceptAction.target_x != null && interceptAction.target_y != null) {
-            // Ball travels from start toward the interceptor's position (not along the original pass line).
-            // This ensures the ball visually reaches the receiver, even if they're slightly off the trajectory.
-            const endX = interceptAction.target_x;
-            const endY = interceptAction.target_y;
+            // Ball travels toward the receiver's FEET, not past them. Aim a small offset
+            // back from their intercept point toward the passer so the ball settles in the
+            // receiver's vicinity instead of overshooting at end of Motion (user feedback).
+            const rawEndX = interceptAction.target_x;
+            const rawEndY = interceptAction.target_y;
+            const toRcvX = rawEndX - ballStartX;
+            const toRcvY = rawEndY - ballStartY;
+            const toRcvLen = Math.sqrt(toRcvX * toRcvX + toRcvY * toRcvY);
+            const SETTLE_OFFSET = 0.8; // back off from the receiver's feet so the ball sits under them
+            const endX = toRcvLen > 0.5 ? rawEndX - (toRcvX / toRcvLen) * SETTLE_OFFSET : rawEndX;
+            const endY = toRcvLen > 0.5 ? rawEndY - (toRcvY / toRcvLen) * SETTLE_OFFSET : rawEndY;
             return { x: ballStartX + (endX - ballStartX) * t, y: ballStartY + (endY - ballStartY) * t };
           }
           if (isBallShoot) {
@@ -2541,7 +2550,9 @@ export default function MatchRoomPage() {
                     const dribDx = endPos.x - startPosRef.x;
                     const dribDy = endPos.y - startPosRef.y;
                     const dribLen = Math.sqrt(dribDx * dribDx + dribDy * dribDy);
-                    const OFFSET = 1.5;
+                    // Ball sits just in front of the dribbler — kept tight so the ball visual
+          // doesn't drift away at the end of the Motion (user feedback).
+          const OFFSET = 0.9;
                     if (dribLen > 0.1) {
                       fbp = {
                         x: endPos.x + (dribDx / dribLen) * OFFSET,
