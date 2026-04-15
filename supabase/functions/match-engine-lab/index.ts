@@ -5345,6 +5345,89 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
     }
+    // ── Bump pass: no two players share the same space ──
+    // After all moves are computed, push overlapping players apart. Winner (ball holder,
+    // then higher forca) stays; loser is displaced perpendicular to the overlap by
+    // (2·R − distance) so the circles separate with a minimum of one radius of slack.
+    // Iterates up to 3 passes to resolve chain overlaps.
+    {
+      const R_BUMP = 1.05; // player circle radius in field-%
+      const MIN_SEP = 2 * R_BUMP;
+      const finalPosById = new Map<string, { x: number; y: number }>();
+      const playerIds: string[] = [];
+      for (const p of (participants || [])) {
+        if (p.role_type !== 'player') continue;
+        if (p.is_sent_off) continue;
+        finalPosById.set(p.id, { x: Number(p.pos_x ?? 50), y: Number(p.pos_y ?? 50) });
+        playerIds.push(p.id);
+      }
+      for (const m of resolutionMoveBatch) {
+        if (finalPosById.has(m.id)) finalPosById.set(m.id, { x: m.x, y: m.y });
+      }
+      const bumpPriority = (id: string): number => {
+        if (id === ballHolder?.id) return 1000;
+        const p = (participants || []).find((pp: any) => pp.id === id);
+        if (!p) return 40;
+        const raw = p.player_profile_id ? attrByProfile[p.player_profile_id] : null;
+        return Number(raw?.forca ?? 40);
+      };
+      const Y_SCALE = 540 / 860;
+      for (let pass = 0; pass < 3; pass++) {
+        let bumped = false;
+        for (let i = 0; i < playerIds.length; i++) {
+          for (let j = i + 1; j < playerIds.length; j++) {
+            const idA = playerIds[i], idB = playerIds[j];
+            const pa = finalPosById.get(idA)!;
+            const pb = finalPosById.get(idB)!;
+            const dxRaw = pb.x - pa.x;
+            const dyScaled = (pb.y - pa.y) * Y_SCALE;
+            const distSq = dxRaw * dxRaw + dyScaled * dyScaled;
+            if (distSq >= MIN_SEP * MIN_SEP) continue;
+            const dist = Math.sqrt(distSq);
+            const prioA = bumpPriority(idA);
+            const prioB = bumpPriority(idB);
+            const loserId = prioA === prioB ? (Math.random() < 0.5 ? idA : idB) : (prioA > prioB ? idB : idA);
+            const winnerPos = loserId === idA ? pb : pa;
+            const loserPos = finalPosById.get(loserId)!;
+            let nx = loserPos.x - winnerPos.x;
+            let nyScaled = (loserPos.y - winnerPos.y) * Y_SCALE;
+            let n = Math.sqrt(nx * nx + nyScaled * nyScaled);
+            if (n < 0.01) {
+              const angle = Math.random() * Math.PI * 2;
+              nx = Math.cos(angle);
+              nyScaled = Math.sin(angle);
+              n = 1;
+            }
+            const push = MIN_SEP - dist + 0.1;
+            const newX = Math.max(2, Math.min(98, loserPos.x + (nx / n) * push));
+            const newY = Math.max(2, Math.min(98, loserPos.y + (nyScaled / n) * push / Y_SCALE));
+            finalPosById.set(loserId, { x: newX, y: newY });
+            bumped = true;
+          }
+        }
+        if (!bumped) break;
+      }
+      // Sync bump results back into the batch
+      const batchIdx = new Map(resolutionMoveBatch.map((m, i) => [m.id, i]));
+      for (const [id, pos] of finalPosById) {
+        const idx = batchIdx.get(id);
+        if (idx != null) {
+          resolutionMoveBatch[idx].x = pos.x;
+          resolutionMoveBatch[idx].y = pos.y;
+        } else {
+          // Non-moved player got bumped — add to batch
+          const origP = (participants || []).find((pp: any) => pp.id === id);
+          if (origP) {
+            const origX = Number(origP.pos_x ?? 50);
+            const origY = Number(origP.pos_y ?? 50);
+            if (Math.abs(pos.x - origX) > 0.05 || Math.abs(pos.y - origY) > 0.05) {
+              resolutionMoveBatch.push({ id, x: pos.x, y: pos.y });
+            }
+          }
+        }
+      }
+    }
+
     if (resolutionMoveBatch.length > 0) {
       await supabase.rpc('batch_update_participant_positions', { p_updates: resolutionMoveBatch });
     }
