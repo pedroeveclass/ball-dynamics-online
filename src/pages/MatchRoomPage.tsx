@@ -265,9 +265,16 @@ export default function MatchRoomPage() {
   // Inertia power per participant (0-100, from previous turn's move payload).
   // Scales the directional inertia multiplier: 100 = full effect, 0 = no effect.
   const inertiaPowerRef = useRef<Record<string, number>>({});
-  // Slider state: shown after a move is submitted, confirmed by clicking field.
-  const [inertiaSlider, setInertiaSlider] = useState<{ participantId: string; actionId: string } | null>(null);
-  const [inertiaSliderValue, setInertiaSliderValue] = useState(100);
+  // Inertia arrow: after confirming a move, a thick orange arrow extends from
+  // the move endpoint in the same direction. The player clicks to set how far
+  // the arrow goes (0-100% of move distance → inertia_power). Replaces the
+  // slider with a more intuitive "second move" visual.
+  const [inertiaArrow, setInertiaArrow] = useState<{
+    participantId: string;
+    startX: number; startY: number;   // field % — end of the move arrow
+    dirX: number; dirY: number;       // normalised direction of the move
+    maxLen: number;                    // max arrow length in field %
+  } | null>(null);
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
@@ -1159,6 +1166,7 @@ export default function MatchRoomPage() {
   useEffect(() => {
     setSubmittedActions(new Set());
     menuAutoOpenedRef.current = new Set();
+    setInertiaArrow(null);
   }, [activeTurn?.phase]);
 
   // Reset local submission cache only when a brand-new turn starts
@@ -2027,22 +2035,29 @@ export default function MatchRoomPage() {
   };
 
   const handleFieldClick = (pctX: number, pctY: number) => {
-    // Inertia slider confirmation: clicking anywhere on the field closes the
-    // slider and updates the move action's payload with the chosen power.
-    if (inertiaSlider) {
-      const { participantId } = inertiaSlider;
+    // Inertia arrow confirmation: clicking sets the power based on how far
+    // along the direction the cursor is, then updates the action payload.
+    if (inertiaArrow) {
+      const { participantId, startX, startY, dirX, dirY, maxLen } = inertiaArrow;
+      // Project click onto the arrow direction to compute length.
+      const cdx = pctX - startX;
+      const cdy = pctY - startY;
+      const proj = cdx * dirX + cdy * dirY; // signed projection
+      const clampedLen = Math.max(0, Math.min(maxLen, proj));
+      const power = maxLen > 0 ? Math.round((clampedLen / maxLen) * 100) : 100;
+
       // Update the already-submitted action's payload in the DB.
       if (matchId && activeTurn) {
         supabase
           .from('match_actions')
-          .update({ payload: { inertia_power: inertiaSliderValue } })
+          .update({ payload: { inertia_power: power } })
           .eq('match_id', matchId)
           .eq('match_turn_id', activeTurn.id)
           .eq('participant_id', participantId)
           .eq('action_type', 'move')
           .then(() => { scheduleTurnActionsReconcile(true); });
       }
-      setInertiaSlider(null);
+      setInertiaArrow(null);
       return;
     }
 
@@ -2297,11 +2312,22 @@ export default function MatchRoomPage() {
         console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange} inertia=${direction ? 'yes' : 'no'}`);
       }
       submitAction('move', drawingAction.fromParticipantId, mx, my, undefined, { inertia_power: 100 });
-      // Show the inertia power slider so the player can adjust 0-100%.
-      // Clicking anywhere on the field confirms.
-      if (!isPositioningTurn) {
-        setInertiaSlider({ participantId: drawingAction.fromParticipantId, actionId: '' });
-        setInertiaSliderValue(100);
+      // Show the inertia arrow so the player can set 0-100% visually.
+      // The arrow extends from the move endpoint in the same direction.
+      if (!isPositioningTurn && moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+        const adx = mx - moveFrom.field_x;
+        const ady = my - moveFrom.field_y;
+        const alen = Math.sqrt(adx * adx + ady * ady);
+        if (alen > 0.3) {
+          setInertiaArrow({
+            participantId: drawingAction.fromParticipantId,
+            startX: mx,
+            startY: my,
+            dirX: adx / alen,
+            dirY: ady / alen,
+            maxLen: alen,  // same length as the move itself
+          });
+        }
       }
     }
     setDrawingAction(null);
@@ -3310,6 +3336,15 @@ export default function MatchRoomPage() {
   };
 
   const handleSvgMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Track mouse for inertia arrow even when drawingAction is cleared.
+    if (inertiaArrow && svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const svgX = ((e.clientX - rect.left) / rect.width) * FIELD_W;
+      const svgY = ((e.clientY - rect.top) / rect.height) * FIELD_H;
+      const fp = toField(svgX, svgY);
+      setMouseFieldPct({ x: clamp(fp.x, 1, 99), y: clamp(fp.y, 1, 99) });
+      return;
+    }
     if (!drawingAction || !svgRef.current) return;
     // Throttle to ~30fps (33ms) to avoid re-renders on every pixel
     const now = performance.now();
@@ -3395,6 +3430,15 @@ export default function MatchRoomPage() {
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Inertia arrow click: convert to field coords and pass to handleFieldClick.
+    if (inertiaArrow && svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const svgX = ((e.clientX - rect.left) / rect.width) * FIELD_W;
+      const svgY = ((e.clientY - rect.top) / rect.height) * FIELD_H;
+      const fp = toField(svgX, svgY);
+      handleFieldClick(clamp(fp.x, 1, 99), clamp(fp.y, 1, 99));
+      return;
+    }
     if (!drawingAction || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
     const totalW = FIELD_W;
@@ -3905,6 +3949,7 @@ export default function MatchRoomPage() {
                 <marker id="ah-yellow" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#f59e0b" /></marker>
                 <marker id="ah-red" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#ef4444" /></marker>
                 <marker id="ah-cyan" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto"><polygon points="0 0, 5 2, 0 4" fill="#06b6d4" /></marker>
+                <marker id="ah-orange" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto"><polygon points="0 0, 6 2.5, 0 5" fill="#f59e0b" /></marker>
               </defs>
 
               {/* ── Kickoff half-field overlay during positioning ── */}
@@ -4397,6 +4442,48 @@ export default function MatchRoomPage() {
                     strokeLinecap="round" opacity={opacity}
                     markerEnd={`url(#${markerId})`}
                   />
+                );
+              })()}
+
+              {/* ── Inertia arrow: thick orange line extending from move endpoint ── */}
+              {inertiaArrow && mouseFieldPct && (() => {
+                const { startX, startY, dirX, dirY, maxLen } = inertiaArrow;
+                // Project cursor onto move direction to get current arrow length.
+                const cdx = mouseFieldPct.x - startX;
+                const cdy = mouseFieldPct.y - startY;
+                const proj = cdx * dirX + cdy * dirY;
+                const clampedLen = Math.max(0, Math.min(maxLen, proj));
+                const power = maxLen > 0 ? Math.round((clampedLen / maxLen) * 100) : 100;
+
+                const endX = startX + dirX * clampedLen;
+                const endY = startY + dirY * clampedLen;
+                const svgStart = toSVG(startX, startY);
+                const svgEnd = toSVG(endX, endY);
+
+                // Also show the 100% ghost line for reference.
+                const fullEndX = startX + dirX * maxLen;
+                const fullEndY = startY + dirY * maxLen;
+                const svgFullEnd = toSVG(fullEndX, fullEndY);
+
+                return (
+                  <g pointerEvents="none">
+                    {/* Ghost: full extent at low opacity */}
+                    <line x1={svgStart.x} y1={svgStart.y} x2={svgFullEnd.x} y2={svgFullEnd.y}
+                      stroke="#f59e0b" strokeWidth={6} strokeLinecap="round" opacity={0.15} />
+                    {/* Active portion */}
+                    {clampedLen > 0.2 && (
+                      <line x1={svgStart.x} y1={svgStart.y} x2={svgEnd.x} y2={svgEnd.y}
+                        stroke="#f59e0b" strokeWidth={6} strokeLinecap="round" opacity={0.85}
+                        markerEnd="url(#ah-orange)" />
+                    )}
+                    {/* Endpoint dot */}
+                    <circle cx={svgEnd.x} cy={svgEnd.y} r={4} fill="#f59e0b" opacity={0.9} />
+                    {/* Power label */}
+                    <text x={svgEnd.x} y={svgEnd.y - 10} textAnchor="middle" fontSize="9"
+                      fontWeight="800" fontFamily="'Barlow Condensed', sans-serif" fill="#f59e0b">
+                      {power}%
+                    </text>
+                  </g>
                 );
               })()}
 
@@ -4900,37 +4987,7 @@ export default function MatchRoomPage() {
               );
             })()}
 
-            {/* ── Inertia power slider: shown after a move is submitted ── */}
-            {inertiaSlider && (
-              <div
-                className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1 bg-[hsl(220,20%,10%)]/95 border border-[hsl(45,20%,40%)] rounded-lg px-5 py-2.5 shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <span className="text-[10px] font-display font-bold text-[hsl(45,30%,80%)] uppercase tracking-wider">
-                  Potência da Inércia
-                </span>
-                <div className="flex items-center gap-3 w-full">
-                  <span className="text-[9px] font-display text-muted-foreground">0%</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={inertiaSliderValue}
-                    onChange={(e) => setInertiaSliderValue(Number(e.target.value))}
-                    className="w-40 h-2 accent-[#f59e0b] cursor-pointer"
-                  />
-                  <span className="text-[9px] font-display text-muted-foreground">100%</span>
-                </div>
-                <span className="text-sm font-display font-bold text-[#f59e0b] tabular-nums">
-                  {inertiaSliderValue}%
-                </span>
-                <span className="text-[8px] font-display text-muted-foreground/60 mt-0.5">
-                  Clique no campo para confirmar
-                </span>
-              </div>
-            )}
+            {/* Inertia arrow UI moved to SVG overlay below */}
 
             {/* Clock moved to scoreboard — removed from field */}
 
