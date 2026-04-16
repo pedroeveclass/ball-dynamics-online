@@ -3974,7 +3974,10 @@ export default function MatchRoomPage() {
   // Auto-detect if a player is already on/near the ball trajectory. When true,
   // calling this sets pendingInterceptChoice so the menu opens with
   // receive/block/one-touch right away — no need to drag to the trajectory.
-  const tryAutoDetectIntercept = useCallback((participantId: string) => {
+  // Not a useCallback because it's defined after the early return — using a hook
+  // here would violate Rules of Hooks and crash in production (React error #310).
+  // Regular function is fine; it's only called from event handlers and effects.
+  const tryAutoDetectIntercept = (participantId: string) => {
     if (!activeTurn) return;
     const phase = activeTurn.phase;
     if (phase !== 'attacking_support' && phase !== 'defending_response') return;
@@ -3996,14 +3999,12 @@ export default function MatchRoomPage() {
     const tlen2 = tdx * tdx + tdy * tdy;
     if (tlen2 < 0.01) return;
 
-    // Project player onto trajectory to find their t and the nearest point.
     const t = clamp(((player.field_x - bfx) * tdx + (player.field_y - bfy) * tdy) / tlen2, 0, 1);
     const projX = bfx + tdx * t;
     const projY = bfy + tdy * t;
     const distToTraj = Math.sqrt((player.field_x - projX) ** 2 + (player.field_y - projY) ** 2);
     const circleRadiusField = 9 / INNER_W * 100;
 
-    // Must be close to the trajectory AND physically reachable.
     if (distToTraj > circleRadiusField + INTERCEPT_RADIUS + 1) return;
 
     const baseRange = computeMaxMoveRange(participantId);
@@ -4017,12 +4018,10 @@ export default function MatchRoomPage() {
     );
     if (!reaches) return;
 
-    // Red zone check
     const isRedZone = (bta.action_type === 'pass_high' && t > 0.2 && t < 0.8)
       || (bta.action_type === 'pass_launch' && t > 0.35 && t < 0.65);
     if (isRedZone) return;
 
-    // Tackle cooldown
     if (bta.action_type === 'move' && tackleBlockedIds.has(participantId)) return;
 
     setPendingInterceptChoice({
@@ -4032,7 +4031,7 @@ export default function MatchRoomPage() {
       trajectoryActionType: bta.action_type,
       trajectoryProgress: t,
     });
-  }, [activeTurn, computeMaxMoveRange, tackleBlockedIds]);
+  };
 
   // For inertia trajectories, create a virtual holder at the loose ball position
   const ballTrajectoryHolder = ballTrajectoryAction
