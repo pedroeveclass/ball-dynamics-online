@@ -5409,6 +5409,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // Read from move/receive/block since any of those can move the player and therefore
     // produce inertia for the next turn. Matches the client's stored direction.
     const prevMoveDirMap = new Map<string, { x: number; y: number }>();
+    const prevInertiaPowerMap = new Map<string, number>();
     if ((match.current_turn_number ?? 1) > 1) {
       const { data: prevTurnRows } = await supabase
         .from('match_turns').select('id').eq('match_id', match_id)
@@ -5428,6 +5429,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             if (!existing || pm.action_type === 'move') {
               prevMoveDirMap.set(pm.participant_id, { x: p.move_dx, y: p.move_dy });
             }
+          }
+          // Inertia power (0-100) — controls how much of the directional effect applies.
+          if (typeof p?.inertia_power === 'number') {
+            prevInertiaPowerMap.set(pm.participant_id, p.inertia_power);
           }
         }
       }
@@ -5507,9 +5512,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // Apply directional inertia: bonus for continuing same direction, penalty for reversing
         const prevMoveDir = prevMoveDirMap.get(a.participant_id) || null;
         // For current direction, use raw dx/dy (not Y-scaled — getDirectionalMultiplier scales internally)
-        const dirMultiplier = (a.action_type === 'move' || a.action_type === 'receive')
+        const rawDirMultiplier = (a.action_type === 'move' || a.action_type === 'receive')
           ? getDirectionalMultiplier(prevMoveDir, dist > 0.1 ? { x: dx, y: dy } : null)
           : 1.0;
+        // Scale by inertia power (0-100%): 100% = full effect, 0% = neutral.
+        const prevInertiaPower = (prevInertiaPowerMap.get(a.participant_id) ?? 100) / 100;
+        const dirMultiplier = 1.0 + (rawDirMultiplier - 1.0) * prevInertiaPower;
         maxRange *= dirMultiplier;
 
         if (dist > maxRange) {

@@ -262,6 +262,12 @@ export default function MatchRoomPage() {
   const [ballInertiaDir, setBallInertiaDir] = useState<{ dx: number; dy: number } | null>(null);
   const [playerAttrsMap, setPlayerAttrsMap] = useState<Record<string, any>>({});
   const prevDirectionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  // Inertia power per participant (0-100, from previous turn's move payload).
+  // Scales the directional inertia multiplier: 100 = full effect, 0 = no effect.
+  const inertiaPowerRef = useRef<Record<string, number>>({});
+  // Slider state: shown after a move is submitted, confirmed by clicking field.
+  const [inertiaSlider, setInertiaSlider] = useState<{ participantId: string; actionId: string } | null>(null);
+  const [inertiaSliderValue, setInertiaSliderValue] = useState(100);
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
@@ -1010,7 +1016,10 @@ export default function MatchRoomPage() {
           const dot = (prevX * curX + prevY * curY) / (prevLen * curLen);
           const angleDiff = Math.acos(Math.max(-1, Math.min(1, dot)));
           const normalizedAngle = angleDiff / Math.PI;
-          const dirMult = 1.2 - 0.7 * normalizedAngle; // 1.2x→0.5x
+          const rawDirMult = 1.2 - 0.7 * normalizedAngle; // 1.2x→0.5x
+          // Scale by inertia power (0-100%): 100% = full effect, 0% = no effect.
+          const power = (inertiaPowerRef.current[participantId] ?? 100) / 100;
+          const dirMult = 1.0 + (rawDirMult - 1.0) * power;
           range *= dirMult;
           // Debug: surface what the inertia is doing so we can catch any inversion.
           if (typeof window !== 'undefined' && (window as any).__bdo_inertia_log) {
@@ -2018,6 +2027,25 @@ export default function MatchRoomPage() {
   };
 
   const handleFieldClick = (pctX: number, pctY: number) => {
+    // Inertia slider confirmation: clicking anywhere on the field closes the
+    // slider and updates the move action's payload with the chosen power.
+    if (inertiaSlider) {
+      const { participantId } = inertiaSlider;
+      // Update the already-submitted action's payload in the DB.
+      if (matchId && activeTurn) {
+        supabase
+          .from('match_actions')
+          .update({ payload: { inertia_power: inertiaSliderValue } })
+          .eq('match_id', matchId)
+          .eq('match_turn_id', activeTurn.id)
+          .eq('participant_id', participantId)
+          .eq('action_type', 'move')
+          .then(() => { scheduleTurnActionsReconcile(true); });
+      }
+      setInertiaSlider(null);
+      return;
+    }
+
     if (!drawingAction) return;
 
     // GK block deflection drawing: submit block with deflection target in payload
@@ -2265,7 +2293,13 @@ export default function MatchRoomPage() {
         }
         console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange} inertia=${direction ? 'yes' : 'no'}`);
       }
-      submitAction('move', drawingAction.fromParticipantId, mx, my);
+      submitAction('move', drawingAction.fromParticipantId, mx, my, undefined, { inertia_power: 100 });
+      // Show the inertia power slider so the player can adjust 0-100%.
+      // Clicking anywhere on the field confirms.
+      if (!isPositioningTurn) {
+        setInertiaSlider({ participantId: drawingAction.fromParticipantId, actionId: '' });
+        setInertiaSliderValue(100);
+      }
     }
     setDrawingAction(null);
     setMouseFieldPct(null);
@@ -2715,6 +2749,16 @@ export default function MatchRoomPage() {
             }
           }
           prevDirectionsRef.current = newDirections;
+          // Store each participant's inertia_power from their move action payload
+          // so next turn's computeMaxMoveRange can scale the directional bonus/penalty.
+          const newPowers: Record<string, number> = {};
+          for (const a of latestActions) {
+            if (a.action_type === 'move' && a.payload && typeof a.payload === 'object') {
+              const pw = (a.payload as any).inertia_power;
+              if (typeof pw === 'number') newPowers[a.participant_id] = pw;
+            }
+          }
+          inertiaPowerRef.current = newPowers;
           if (typeof window !== 'undefined' && (window as any).__bdo_inertia_log) {
             console.log('[INERTIA STORE] turn', activeTurn?.turn_number, Object.entries(newDirections).map(
               ([id, d]) => `${id.slice(0, 8)}=(${d.x.toFixed(1)},${d.y.toFixed(1)})`
@@ -4850,6 +4894,38 @@ export default function MatchRoomPage() {
                 </div>
               );
             })()}
+
+            {/* ── Inertia power slider: shown after a move is submitted ── */}
+            {inertiaSlider && (
+              <div
+                className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1 bg-[hsl(220,20%,10%)]/95 border border-[hsl(45,20%,40%)] rounded-lg px-5 py-2.5 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <span className="text-[10px] font-display font-bold text-[hsl(45,30%,80%)] uppercase tracking-wider">
+                  Potência da Inércia
+                </span>
+                <div className="flex items-center gap-3 w-full">
+                  <span className="text-[9px] font-display text-muted-foreground">0%</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={inertiaSliderValue}
+                    onChange={(e) => setInertiaSliderValue(Number(e.target.value))}
+                    className="w-40 h-2 accent-[#f59e0b] cursor-pointer"
+                  />
+                  <span className="text-[9px] font-display text-muted-foreground">100%</span>
+                </div>
+                <span className="text-sm font-display font-bold text-[#f59e0b] tabular-nums">
+                  {inertiaSliderValue}%
+                </span>
+                <span className="text-[8px] font-display text-muted-foreground/60 mt-0.5">
+                  Clique no campo para confirmar
+                </span>
+              </div>
+            )}
 
             {/* Clock moved to scoreboard — removed from field */}
 
