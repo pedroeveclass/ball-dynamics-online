@@ -5,25 +5,15 @@ import { positionToPT } from '@/lib/positions';
 import type { ClubInfo, Participant, MatchTurn, EventLog, MatchData } from './types';
 import { HALF_DURATION_MS_CLIENT } from './constants';
 
-// Resolves the participant name to attribute to an event. Tries the obvious
-// *_name keys first, then any *_participant_id key via the supplied lookup.
-function resolveEventParticipantName(
+// Resolves which participant an event should be attributed to. Returns the
+// participant row when we can find one (gives us jersey + club_id), and falls
+// back to a name string pulled from the payload's *_name keys.
+function resolveEventParticipant(
   event: EventLog,
-  nameById: Map<string, string>,
-): string | null {
+  participantById: Map<string, Participant>,
+): { id: string | null; name: string; jersey: number | null; clubId: string | null } | null {
   const payload = event.payload as Record<string, any> | null | undefined;
   if (!payload) return null;
-  const NAME_KEYS = [
-    'scorer_name', 'assister_name', 'player_name', 'fouler_name',
-    'tackler_name', 'blocker_name', 'shooter_name', 'passer_name',
-    'dribbler_name', 'receiver_name', 'caught_name', 'attacker_name',
-    'defender_name', 'taker_name', 'in_player_name', 'new_ball_holder_name',
-    'tackled_name',
-  ];
-  for (const key of NAME_KEYS) {
-    const val = payload[key];
-    if (typeof val === 'string' && val.trim()) return val;
-  }
   const ID_KEYS = [
     'participant_id', 'scorer_participant_id', 'fouler_participant_id',
     'tackler_participant_id', 'tackled_participant_id', 'blocker_participant_id',
@@ -36,8 +26,31 @@ function resolveEventParticipantName(
   for (const key of ID_KEYS) {
     const id = payload[key];
     if (typeof id === 'string') {
-      const name = nameById.get(id);
-      if (name) return name;
+      const p = participantById.get(id);
+      if (p) {
+        return {
+          id,
+          name: p.player_name || 'Jogador',
+          jersey: p.jersey_number ?? null,
+          clubId: p.club_id,
+        };
+      }
+    }
+  }
+  // Fall back to payload *_name fields (useful when the participant has since
+  // left the field and isn't in our in-memory map anymore).
+  const NAME_KEYS = [
+    'scorer_name', 'assister_name', 'player_name', 'fouler_name',
+    'tackler_name', 'blocker_name', 'shooter_name', 'passer_name',
+    'dribbler_name', 'receiver_name', 'caught_name', 'attacker_name',
+    'defender_name', 'taker_name', 'in_player_name', 'new_ball_holder_name',
+    'tackled_name',
+  ];
+  for (const key of NAME_KEYS) {
+    const val = payload[key];
+    if (typeof val === 'string' && val.trim()) {
+      const clubIdRaw = payload.scorer_club_id || payload.fouler_club_id || payload.club_id || null;
+      return { id: null, name: val, jersey: null, clubId: typeof clubIdRaw === 'string' ? clubIdRaw : null };
     }
   }
   return null;
@@ -497,11 +510,14 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
             <p className="text-xs text-white/50 px-1">Aguardando eventos...</p>
           )}
           {(() => {
-            const nameById = new Map<string, string>();
-            for (const p of homePlayers) if (p.player_name) nameById.set(p.id, p.player_name);
-            for (const p of awayPlayers) if (p.player_name) nameById.set(p.id, p.player_name);
-            for (const p of homeBench) if (p.player_name) nameById.set(p.id, p.player_name);
-            for (const p of awayBench) if (p.player_name) nameById.set(p.id, p.player_name);
+            const participantById = new Map<string, Participant>();
+            for (const p of homePlayers) participantById.set(p.id, p);
+            for (const p of awayPlayers) participantById.set(p.id, p);
+            for (const p of homeBench) participantById.set(p.id, p);
+            for (const p of awayBench) participantById.set(p.id, p);
+            const clubById = new Map<string, ClubInfo>();
+            if (homeClub) clubById.set(homeClub.id, homeClub);
+            if (awayClub) clubById.set(awayClub.id, awayClub);
 
             // Suppress receive_failed events whose participant ended up receiving the ball
             // (engine logs every attempt; if the same player eventually succeeded or is now
@@ -526,14 +542,23 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
 
             return filteredEvents.slice(-30).map(e => {
               const minute = eventMinute(e, match);
-              const playerName = resolveEventParticipantName(e, nameById);
+              const subject = resolveEventParticipant(e, participantById);
+              const subjectClub = subject?.clubId ? clubById.get(subject.clubId) : null;
               const turnNum = (e.payload as any)?.turn_number;
               const prefixParts: string[] = [];
               if (minute != null) prefixParts.push(`${minute}\u2032`);
               else if (typeof turnNum === 'number') prefixParts.push(`T${turnNum}`);
               const prefix = prefixParts.length > 0 ? `${prefixParts.join(' ')} \u2022 ` : '';
+              // Subtle background wash in the subject's club color so the
+              // team "owning" the action is immediately recognizable.
+              const clubTint = subjectClub
+                ? { backgroundColor: `${subjectClub.primary_color}1f` }
+                : undefined;
               return (
-                <div key={e.id} className={`text-xs border-l-2 pl-2 leading-snug py-0.5 ${
+                <div
+                  key={e.id}
+                  style={clubTint}
+                  className={`text-xs border-l-2 pl-2 pr-1 leading-snug py-0.5 rounded-r ${
                   e.event_type === 'goal' ? 'border-pitch text-pitch font-bold' :
                   e.event_type === 'kickoff' ? 'border-tactical text-tactical/90' :
                   e.event_type === 'possession_change' ? 'border-warning/60 text-warning/80' :
@@ -559,8 +584,21 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
                     {prefix && <span className="opacity-70 font-normal">{prefix}</span>}
                     {e.title}
                   </p>
-                  {playerName && (
-                    <p className="opacity-90 text-[11px] font-semibold">{playerName}</p>
+                  {subject && (
+                    <p className="opacity-95 text-[11px] font-semibold flex items-center gap-1 flex-wrap">
+                      {subjectClub && (
+                        <span
+                          className="inline-flex items-center rounded px-1 text-[9px] font-display font-extrabold leading-none py-0.5"
+                          style={{ backgroundColor: subjectClub.primary_color, color: subjectClub.secondary_color }}
+                        >
+                          {subjectClub.short_name}
+                        </span>
+                      )}
+                      {subject.jersey != null && (
+                        <span className="opacity-90">#{subject.jersey}</span>
+                      )}
+                      <span>{subject.name}</span>
+                    </p>
                   )}
                   {e.body && <p className="opacity-80 text-[11px]">{e.body}</p>}
                 </div>
