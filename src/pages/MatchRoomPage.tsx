@@ -1473,12 +1473,13 @@ export default function MatchRoomPage() {
       if (!targetPid) return;
       if (submittedActions.has(targetPid)) return;
       if (menuAutoOpenedRef.current.has(targetPid)) return;
-      const alreadyHasAction = turnActions.some(a => a.participant_id === targetPid && a.action_type !== 'receive');
-      if (alreadyHasAction) return;
 
       // Ball holder in attacking_support: auto-start move drawing ONLY when BH
       // submitted a ball action (pass/shoot/header) in ball_holder phase. If BH
       // chose to dribble (move) in phase 1, they can't act again in phase 2.
+      // This check MUST run before the generic "alreadyHasAction" gate below —
+      // the BH's phase-1 ball action would otherwise count as "already acted"
+      // and skip the auto-move (seen after free-kick shots).
       const isBH = isAttackingPhase
         && activeTurn.ball_holder_participant_id === targetPid;
       if (isBH) {
@@ -1486,16 +1487,35 @@ export default function MatchRoomPage() {
           a.participant_id === targetPid &&
           (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
         );
+        const bhHasPhase2Action = turnActions.some(a =>
+          a.participant_id === targetPid
+          && a.turn_phase === 'attacking_support'
+          && a.action_type !== 'receive'
+        );
+        if (bhHasPhase2Action) {
+          // Already acted in phase 2 — respect that.
+          menuAutoOpenedRef.current.add(targetPid);
+          return;
+        }
         if (!bhHasBallAction) {
-          // BH dribbled (or no action yet) — no move available in phase 2.
+          // BH dribbled (or no phase-1 ball action) — no move available in phase 2.
           menuAutoOpenedRef.current.add(targetPid);
           return;
         }
         setSelectedParticipantId(targetPid);
         setDrawingAction({ type: 'move', fromParticipantId: targetPid });
+        // Seed mouseFieldPct so the glow + zero-length arrow render immediately.
+        const parts = participantsRef.current;
+        const autoFrom = parts.find(p => p.id === targetPid);
+        if (autoFrom?.field_x != null && autoFrom?.field_y != null) {
+          setMouseFieldPct({ x: autoFrom.field_x, y: autoFrom.field_y });
+        }
         menuAutoOpenedRef.current.add(targetPid);
         return;
       }
+
+      const alreadyHasAction = turnActions.some(a => a.participant_id === targetPid && a.action_type !== 'receive');
+      if (alreadyHasAction) return;
 
       setShowActionMenu(targetPid);
       setSelectedParticipantId(targetPid);
@@ -1519,6 +1539,9 @@ export default function MatchRoomPage() {
 
     setSelectedParticipantId(myParticipant.id);
     setDrawingAction({ type: 'move', fromParticipantId: myParticipant.id });
+    if (myParticipant.field_x != null && myParticipant.field_y != null) {
+      setMouseFieldPct({ x: myParticipant.field_x, y: myParticipant.field_y });
+    }
   }, [isPositioningTurn, activeTurn?.id, match?.status, isPhaseProcessing, myRole, myParticipant?.id, myParticipant?.is_sent_off, myParticipant?.role_type, submittedActions, drawingAction]);
 
   // ── Z hotkey: cancel current action + reopen menu for a fresh choice ─────────
@@ -1799,6 +1822,52 @@ export default function MatchRoomPage() {
       toast.info('Intervalo em andamento. Aguarde o fim ou clique em "Pronto" para pular.');
       return;
     }
+
+    // OPTIMISTIC UPDATE — push the action into local state BEFORE the HTTP
+    // round-trip so arrows / submitted badges appear instantly. The engine's
+    // validation rules match the client's, so rejections are rare; on failure
+    // we roll back the optimistic entry below.
+    const turnAtClick = activeTurnRef.current;
+    let optimisticPushed = false;
+    if (turnAtClick) {
+      pushOptimisticTurnAction({
+        match_id: matchId,
+        match_turn_id: turnAtClick.id,
+        participant_id: pid,
+        controlled_by_type: myRole === 'manager' ? 'manager' : 'player',
+        controlled_by_user_id: user?.id ?? null,
+        action_type: actionType,
+        target_x: targetX ?? null,
+        target_y: targetY ?? null,
+        target_participant_id: targetParticipantId ?? null,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        turn_phase: turnAtClick.phase,
+        turn_number: turnAtClick.turn_number,
+        payload: payload ?? null,
+      });
+      setSubmittedActions(prev => new Set([...prev, pid]));
+      optimisticPushed = true;
+    }
+
+    const rollbackOptimistic = () => {
+      if (!optimisticPushed) return;
+      // Remove the optimistic row by matching the participant + turn_phase.
+      // Keeps any server-confirmed action that may have landed in the meantime.
+      setTurnActionsState(
+        turnActionsRef.current.filter(a =>
+          !(a.participant_id === pid
+            && a.turn_phase === turnAtClick?.phase
+            && String(a.id).startsWith('optimistic-'))
+        )
+      );
+      setSubmittedActions(prev => {
+        const next = new Set(prev);
+        next.delete(pid);
+        return next;
+      });
+    };
+
     setSubmittingAction(true);
     try {
       const { response, result } = await invokeMatchEngine({
@@ -1809,9 +1878,11 @@ export default function MatchRoomPage() {
         ...(payload ? { payload } : {}),
       });
       if (!response.ok && !result?.error) {
+        rollbackOptimistic();
         throw new Error('Erro ao enviar ação');
       }
       if (result.error) {
+        rollbackOptimistic();
         if (result.recoverable || result.error === 'No active turn') {
           console.warn('[SUBMIT] No active turn - phase transition in progress, retrying...');
           await loadLiveSnapshot();
@@ -1821,26 +1892,6 @@ export default function MatchRoomPage() {
         }
       }
       else {
-        const currentTurn = activeTurnRef.current;
-        if (currentTurn) {
-          pushOptimisticTurnAction({
-            match_id: matchId,
-            match_turn_id: currentTurn.id,
-            participant_id: pid,
-            controlled_by_type: myRole === 'manager' ? 'manager' : 'player',
-            controlled_by_user_id: user?.id ?? null,
-            action_type: actionType,
-            target_x: targetX ?? null,
-            target_y: targetY ?? null,
-            target_participant_id: targetParticipantId ?? null,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            turn_phase: currentTurn.phase,
-            turn_number: currentTurn.turn_number,
-            payload: payload ?? null,
-          });
-        }
-        setSubmittedActions(prev => new Set([...prev, pid]));
         scheduleTurnActionsReconcile(true);
         // Context-aware label: 'receive' becomes DESARME when tackling,
         // AGARRAR when GK catches a shot, etc.
@@ -1861,7 +1912,10 @@ export default function MatchRoomPage() {
         else if (isAnyPassAction(actionType)) sounds.pass();
         else sounds.phaseChange();
       }
-    } catch { toast.error('Erro ao enviar ação'); }
+    } catch {
+      rollbackOptimistic();
+      toast.error('Erro ao enviar ação');
+    }
     finally { setSubmittingAction(false); }
   };
 
@@ -2030,6 +2084,14 @@ export default function MatchRoomPage() {
       return;
     }
     setDrawingAction({ type: actionType as DrawingState['type'], fromParticipantId: participantId });
+    // Seed mouseFieldPct at the player's position so the drawing-state visuals
+    // (player glow, action circle, zero-length arrow) render IMMEDIATELY on
+    // click. Previously they waited for the first mousemove event, which felt
+    // sluggish ("clicked MOVER and nothing happened until I moved the mouse").
+    const draftFrom = participants.find(p => p.id === participantId);
+    if (draftFrom?.field_x != null && draftFrom?.field_y != null) {
+      setMouseFieldPct({ x: draftFrom.field_x, y: draftFrom.field_y });
+    }
     setShowActionMenu(null);
     setPendingInterceptChoice(null);
   };
