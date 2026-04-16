@@ -5009,9 +5009,16 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // and cascade duplicate active turns (seen as the match "flickering between two
     // games" on the client). Serializing closes that window: after the resolve
     // returns, the only `active` row for this match is the one we're about to insert.
-    await supabase.from('match_turns')
+    // Token-guarded resolve: bail if claim was stolen.
+    const { data: posResolvedRows } = await supabase.from('match_turns')
       .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-      .eq('id', activeTurn.id);
+      .eq('id', activeTurn.id)
+      .eq('processing_token', processingToken)
+      .select('id');
+    if (!posResolvedRows || posResolvedRows.length === 0) {
+      console.log(`[ENGINE] Token stolen on positioning for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      return { status: 'skipped' };
+    }
 
     await Promise.all([
       actionIds.length > 0 ? supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds) : Promise.resolve(),
@@ -6627,9 +6634,16 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     const newTurnNumber = match.current_turn_number + 1;
 
-    await supabase.from('match_turns')
+    // Token-guarded resolve: bail if claim was stolen during long resolution.
+    const { data: resResolvedRows } = await supabase.from('match_turns')
       .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-      .eq('id', activeTurn.id);
+      .eq('id', activeTurn.id)
+      .eq('processing_token', processingToken)
+      .select('id');
+    if (!resResolvedRows || resResolvedRows.length === 0) {
+      console.log(`[ENGINE] Token stolen on resolution end for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      return { status: 'skipped' };
+    }
 
     // ── Real-time clock: halftime / end-of-match check ──
     const currentHalf = match.current_half || 1;
@@ -7215,9 +7229,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
   } else if (activeTurn.phase === 'ball_holder' && isLooseBall) {
-    await supabase.from('match_turns')
+    const { data: lbRes } = await supabase.from('match_turns')
       .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-      .eq('id', activeTurn.id);
+      .eq('id', activeTurn.id)
+      .eq('processing_token', processingToken)
+      .select('id');
+    if (!lbRes || lbRes.length === 0) {
+      console.log(`[ENGINE] Token stolen on loose-ball skip for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      return { status: 'skipped' };
+    }
 
     const nextPhaseStart = new Date().toISOString();
     const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
@@ -7317,9 +7337,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
     const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
 
-    await supabase.from('match_turns')
+    // Token-guarded resolve: only proceed if we still own the claim.
+    // Without this, a stale worker whose token was stolen by a re-claim
+    // would still resolve the turn and insert a new one → ghost phase.
+    const { data: resolvedRows } = await supabase.from('match_turns')
       .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-      .eq('id', activeTurn.id);
+      .eq('id', activeTurn.id)
+      .eq('processing_token', processingToken)
+      .select('id');
+    if (!resolvedRows || resolvedRows.length === 0) {
+      console.log(`[ENGINE] Token stolen on phase advance for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      return { status: 'skipped' };
+    }
 
     await supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id);
 
