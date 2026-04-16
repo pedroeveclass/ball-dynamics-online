@@ -1517,6 +1517,10 @@ export default function MatchRoomPage() {
       const alreadyHasAction = turnActions.some(a => a.participant_id === targetPid && a.action_type !== 'receive');
       if (alreadyHasAction) return;
 
+      // Before opening the menu, check if this player is already on the ball
+      // trajectory. If so, pre-fill pendingInterceptChoice so the menu shows
+      // receive/block/one-touch immediately — no need to drag to the trajectory.
+      tryAutoDetectIntercept(targetPid);
       setShowActionMenu(targetPid);
       setSelectedParticipantId(targetPid);
       menuAutoOpenedRef.current.add(targetPid);
@@ -2480,6 +2484,8 @@ export default function MatchRoomPage() {
           (phase === 'attacking_support' && isAttacking) ||
           (phase === 'defending_response' && !isAttacking)
         ) {
+          // Auto-detect trajectory overlap before opening menu.
+          tryAutoDetectIntercept(participantId);
           setShowActionMenu(participantId);
         }
       }
@@ -3961,6 +3967,70 @@ export default function MatchRoomPage() {
   };
 
   const ballTrajectoryAction = getBallTrajectoryAction();
+
+  // Auto-detect if a player is already on/near the ball trajectory. When true,
+  // calling this sets pendingInterceptChoice so the menu opens with
+  // receive/block/one-touch right away — no need to drag to the trajectory.
+  const tryAutoDetectIntercept = useCallback((participantId: string) => {
+    if (!activeTurn) return;
+    const phase = activeTurn.phase;
+    if (phase !== 'attacking_support' && phase !== 'defending_response') return;
+
+    const bta = getBallTrajectoryAction();
+    if (!bta || bta.target_x == null || bta.target_y == null) return;
+    const bhNow = participantsRef.current.find(p => p.id === activeTurn.ball_holder_participant_id);
+    if (!bhNow || bhNow.field_x == null || bhNow.field_y == null) return;
+    const player = participantsRef.current.find(p => p.id === participantId);
+    if (!player || player.field_x == null || player.field_y == null) return;
+    if (participantId === activeTurn.ball_holder_participant_id) return;
+
+    const bfx = bhNow.field_x;
+    const bfy = bhNow.field_y;
+    const btx = bta.target_x as number;
+    const bty = bta.target_y as number;
+    const tdx = btx - bfx;
+    const tdy = bty - bfy;
+    const tlen2 = tdx * tdx + tdy * tdy;
+    if (tlen2 < 0.01) return;
+
+    // Project player onto trajectory to find their t and the nearest point.
+    const t = clamp(((player.field_x - bfx) * tdx + (player.field_y - bfy) * tdy) / tlen2, 0, 1);
+    const projX = bfx + tdx * t;
+    const projY = bfy + tdy * t;
+    const distToTraj = Math.sqrt((player.field_x - projX) ** 2 + (player.field_y - projY) ** 2);
+    const circleRadiusField = 9 / INNER_W * 100;
+
+    // Must be close to the trajectory AND physically reachable.
+    if (distToTraj > circleRadiusField + INTERCEPT_RADIUS + 1) return;
+
+    const baseRange = computeMaxMoveRange(participantId);
+    const isGK = player.field_pos === 'GK' || player.slot_position === 'GK';
+    const isShot = isAnyShootAction(bta.action_type);
+    const effectiveActionType = (isGK && isShot) ? 'move' : bta.action_type;
+    const reaches = canReachTrajectoryPoint(
+      { x: player.field_x, y: player.field_y },
+      { x: bfx, y: bfy }, { x: btx, y: bty },
+      t, baseRange, effectiveActionType, 1.5,
+    );
+    if (!reaches) return;
+
+    // Red zone check
+    const isRedZone = (bta.action_type === 'pass_high' && t > 0.2 && t < 0.8)
+      || (bta.action_type === 'pass_launch' && t > 0.35 && t < 0.65);
+    if (isRedZone) return;
+
+    // Tackle cooldown
+    if (bta.action_type === 'move' && tackleBlockedIds.has(participantId)) return;
+
+    setPendingInterceptChoice({
+      participantId,
+      targetX: projX,
+      targetY: projY,
+      trajectoryActionType: bta.action_type,
+      trajectoryProgress: t,
+    });
+  }, [activeTurn, computeMaxMoveRange, tackleBlockedIds]);
+
   // For inertia trajectories, create a virtual holder at the loose ball position
   const ballTrajectoryHolder = ballTrajectoryAction
     ? (ballTrajectoryAction.id === '__inertia__' && looseBallPos
