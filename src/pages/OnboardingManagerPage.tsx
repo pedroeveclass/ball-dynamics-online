@@ -34,6 +34,7 @@ interface AvailableClub {
   short_name: string;
   primary_color: string;
   secondary_color: string;
+  crest_url?: string | null;
   city: string | null;
   league_id: string | null;
   stadiums: { id: string; name: string }[];
@@ -76,7 +77,7 @@ export default function OnboardingManagerPage() {
     try {
       const { data, error } = await supabase
         .from('clubs')
-        .select('id, name, short_name, primary_color, secondary_color, city, league_id, stadiums(id, name)')
+        .select('id, name, short_name, primary_color, secondary_color, crest_url, city, league_id, stadiums(id, name)')
         .eq('is_bot_managed', true)
         .not('league_id', 'is', null);
 
@@ -362,12 +363,7 @@ export default function OnboardingManagerPage() {
                       }`}
                     >
                       <div className="flex items-center gap-3 mb-2">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center font-display text-xs font-extrabold shrink-0"
-                          style={{ backgroundColor: club.primary_color, color: club.secondary_color }}
-                        >
-                          {club.short_name}
-                        </div>
+                        <ClubCrest crestUrl={club.crest_url} primaryColor={club.primary_color} secondaryColor={club.secondary_color} shortName={club.short_name} className="w-10 h-10 rounded-lg text-xs shrink-0" />
                         <div className="min-w-0">
                           <p className="font-display font-bold text-sm text-foreground truncate">{club.name}</p>
                           {club.city && <p className="text-xs text-muted-foreground truncate">{club.city}</p>}

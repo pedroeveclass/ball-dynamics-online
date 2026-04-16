@@ -33,6 +33,7 @@ interface ClubInfo {
   short_name: string;
   primary_color: string;
   secondary_color: string;
+  crest_url: string | null;
   city: string | null;
   reputation: number;
 }
@@ -272,7 +273,7 @@ export default function PlayerClubPage() {
       // First: get club info to know manager_profile_id
       const { data: club } = await supabase
         .from('clubs')
-        .select('id, name, short_name, primary_color, secondary_color, city, reputation, manager_profile_id')
+        .select('id, name, short_name, primary_color, secondary_color, crest_url, city, reputation, manager_profile_id')
         .eq('id', clubId)
         .single();
 
@@ -287,6 +288,7 @@ export default function PlayerClubPage() {
         short_name: club.short_name,
         primary_color: club.primary_color,
         secondary_color: club.secondary_color,
+        crest_url: (club as any).crest_url ?? null,
         city: club.city,
         reputation: club.reputation,
       });
@@ -417,7 +419,7 @@ export default function PlayerClubPage() {
       if (nextMatchRes.data && nextMatchRes.data.length > 0) {
         const nm = nextMatchRes.data[0];
         const oppId = nm.home_club_id === clubId ? nm.away_club_id : nm.home_club_id;
-        const { data: oppClub } = await supabase.from('clubs').select('name, short_name, primary_color, secondary_color').eq('id', oppId).maybeSingle();
+        const { data: oppClub } = await supabase.from('clubs').select('name, short_name, primary_color, secondary_color, crest_url').eq('id', oppId).maybeSingle();
         setNextMatch({ id: nm.id, scheduled_at: nm.scheduled_at, isHome: nm.home_club_id === clubId, opponent: oppClub });
       }
 
@@ -549,12 +551,13 @@ export default function PlayerClubPage() {
 
         {/* ── Header ── */}
         <div className="flex items-center gap-5">
-          <div
-            className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl font-display text-2xl font-extrabold shadow-lg"
-            style={{ backgroundColor: clubInfo.primary_color, color: clubInfo.secondary_color }}
-          >
-            {clubInfo.short_name}
-          </div>
+          <ClubCrest
+            crestUrl={(clubInfo as any).crest_url}
+            primaryColor={clubInfo.primary_color}
+            secondaryColor={clubInfo.secondary_color}
+            shortName={clubInfo.short_name}
+            className="h-20 w-20 shrink-0 rounded-xl text-2xl shadow-lg"
+          />
           <div>
             <h1 className="font-display text-3xl font-bold">{clubInfo.name}</h1>
             <p className="text-sm text-muted-foreground">

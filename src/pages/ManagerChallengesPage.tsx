@@ -13,6 +13,7 @@ import { Swords, Clock, CheckCircle2, XCircle, Ban, Send, Plus, CalendarClock, F
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { useNavigate, Link } from 'react-router-dom';
+import { ClubCrest } from '@/components/ClubCrest';
 import { format } from 'date-fns';
 import { FORMATION_POSITIONS, getFormationPositions } from '@/lib/formations';
 import { ptBR } from 'date-fns/locale';
@@ -80,7 +81,7 @@ export default function ManagerChallengesPage() {
       // Load ALL league matches for this club (no limit)
       const { data } = await supabase
         .from('matches')
-        .select('id, status, scheduled_at, home_score, away_score, home_club_id, away_club_id, home_club:clubs!matches_home_club_id_fkey(name, short_name, primary_color, secondary_color), away_club:clubs!matches_away_club_id_fkey(name, short_name, primary_color, secondary_color)')
+        .select('id, status, scheduled_at, home_score, away_score, home_club_id, away_club_id, home_club:clubs!matches_home_club_id_fkey(name, short_name, primary_color, secondary_color, crest_url), away_club:clubs!matches_away_club_id_fkey(name, short_name, primary_color, secondary_color, crest_url)')
         .or(`home_club_id.eq.${club.id},away_club_id.eq.${club.id}`)
         .in('status', ['scheduled', 'live', 'finished'])
         .order('scheduled_at', { ascending: true });
@@ -102,7 +103,7 @@ export default function ManagerChallengesPage() {
     const { data } = await supabase.from('match_challenges').select('*').order('created_at', { ascending: false });
     if (!data) { setLoading(false); return; }
     const clubIds = [...new Set(data.flatMap(c => [c.challenger_club_id, c.challenged_club_id]))];
-    const { data: clubsData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', clubIds);
+    const { data: clubsData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').in('id', clubIds);
     const clubMap = new Map((clubsData || []).map(c => [c.id, c]));
     setChallenges(data.map(c => ({ ...c, challenger_club: clubMap.get(c.challenger_club_id), challenged_club: clubMap.get(c.challenged_club_id) })));
     setLoading(false);
@@ -121,7 +122,7 @@ export default function ManagerChallengesPage() {
   const openCreateDialog = async () => {
     if (!club) return;
     const [clubsRes, lineupRes] = await Promise.all([
-      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, reputation').neq('id', club.id),
+      supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url, reputation').neq('id', club.id),
       supabase.from('lineups').select('id').eq('club_id', club.id).eq('is_active', true).limit(1),
     ]);
     setClubs(clubsRes.data || []);
@@ -634,9 +635,7 @@ export default function ManagerChallengesPage() {
                 return (
                   <div key={m.id} className="stat-card flex items-center justify-between hover:border-tactical/40 transition-colors">
                     <Link to={`/match/${m.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="h-8 w-8 rounded flex items-center justify-center text-[8px] font-bold shrink-0" style={{ backgroundColor: opponent?.primary_color, color: opponent?.secondary_color }}>
-                        {opponent?.short_name}
-                      </div>
+                      <ClubCrest crestUrl={opponent?.crest_url} primaryColor={opponent?.primary_color || '#333'} secondaryColor={opponent?.secondary_color || '#fff'} shortName={opponent?.short_name || '?'} className="h-8 w-8 rounded text-[8px] shrink-0" />
                       <div>
                         <p className="font-display font-semibold text-sm">
                           {isHome ? 'vs' : '@'} {opponent?.name}
@@ -726,7 +725,7 @@ export default function ManagerChallengesPage() {
             <div>
               <p className="text-xs text-muted-foreground mb-1">Seu Clube</p>
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded flex items-center justify-center text-xs font-display font-bold" style={{ backgroundColor: club?.primary_color, color: club?.secondary_color }}>{club?.short_name}</div>
+                <ClubCrest crestUrl={(club as any)?.crest_url} primaryColor={club?.primary_color || '#333'} secondaryColor={club?.secondary_color || '#fff'} shortName={club?.short_name || '?'} className="w-8 h-8 rounded text-xs" />
                 <span className="font-display font-bold">{club?.name}</span>
               </div>
             </div>
@@ -840,8 +839,7 @@ function ChallengeCard({ challenge: c, direction, isActing, onAccept, onReject, 
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           {opponent && (
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center font-display font-bold text-sm shrink-0"
-              style={{ backgroundColor: opponent.primary_color, color: opponent.secondary_color }}>{opponent.short_name}</div>
+            <ClubCrest crestUrl={opponent.crest_url} primaryColor={opponent.primary_color} secondaryColor={opponent.secondary_color} shortName={opponent.short_name} className="w-10 h-10 rounded-lg text-sm shrink-0" />
           )}
           <div>
             <p className="font-display font-bold text-sm">{opponent?.name || '—'}</p>

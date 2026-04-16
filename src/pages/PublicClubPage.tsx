@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { PositionBadge } from '@/components/PositionBadge';
+import { ClubCrest } from '@/components/ClubCrest';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -258,7 +259,7 @@ export default function PublicClubPage() {
       const oppId = nm.home_club_id === id ? nm.away_club_id : nm.home_club_id;
       const { data: oppClub } = await supabase
         .from('clubs')
-        .select('name, short_name, primary_color, secondary_color')
+        .select('name, short_name, primary_color, secondary_color, crest_url')
         .eq('id', oppId)
         .maybeSingle();
       setNextMatch({ ...nm, opponent: oppClub, isHome: nm.home_club_id === id });
@@ -367,12 +368,13 @@ export default function PublicClubPage() {
       <div className="space-y-6">
         {/* ── Header ── */}
         <div className="flex items-start gap-5">
-          <div
-            className="w-20 h-20 rounded-xl flex items-center justify-center font-display text-2xl font-extrabold shadow-lg shrink-0"
-            style={{ backgroundColor: clubData.primary_color, color: clubData.secondary_color }}
-          >
-            {clubData.short_name}
-          </div>
+          <ClubCrest
+            crestUrl={clubData.crest_url}
+            primaryColor={clubData.primary_color}
+            secondaryColor={clubData.secondary_color}
+            shortName={clubData.short_name}
+            className="w-20 h-20 rounded-xl text-2xl shadow-lg shrink-0"
+          />
           <div>
             <h1 className="font-display text-3xl font-bold">{clubData.name}</h1>
             <p className="text-muted-foreground text-sm">
@@ -460,12 +462,13 @@ export default function PublicClubPage() {
                   </div>
                 </div>
                 {nextMatch.opponent && (
-                  <div
-                    className="w-8 h-8 rounded flex items-center justify-center text-[8px] font-bold"
-                    style={{ backgroundColor: nextMatch.opponent.primary_color, color: nextMatch.opponent.secondary_color }}
-                  >
-                    {nextMatch.opponent.short_name}
-                  </div>
+                  <ClubCrest
+                    crestUrl={nextMatch.opponent.crest_url}
+                    primaryColor={nextMatch.opponent.primary_color}
+                    secondaryColor={nextMatch.opponent.secondary_color}
+                    shortName={nextMatch.opponent.short_name}
+                    className="w-8 h-8 rounded text-[8px]"
+                  />
                 )}
               </div>
             ) : (

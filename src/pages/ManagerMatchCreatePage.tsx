@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Swords, AlertCircle, Send } from 'lucide-react';
+import { ClubCrest } from '@/components/ClubCrest';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -35,7 +36,7 @@ export default function ManagerMatchCreatePage() {
     if (!club) return;
     const load = async () => {
       const [clubsRes, lineupRes] = await Promise.all([
-        supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, reputation').neq('id', club.id),
+        supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, reputation, crest_url').neq('id', club.id),
         supabase.from('lineups').select('id').eq('club_id', club.id).eq('is_active', true).limit(1),
       ]);
       setClubs(clubsRes.data || []);
@@ -135,12 +136,7 @@ export default function ManagerMatchCreatePage() {
           <div>
             <p className="text-xs text-muted-foreground mb-1">Seu Clube (Casa)</p>
             <div className="flex items-center gap-2">
-              <div
-                className="w-8 h-8 rounded flex items-center justify-center text-xs font-display font-bold"
-                style={{ backgroundColor: club?.primary_color, color: club?.secondary_color }}
-              >
-                {club?.short_name}
-              </div>
+              <ClubCrest crestUrl={(club as any)?.crest_url} primaryColor={club?.primary_color || '#333'} secondaryColor={club?.secondary_color || '#fff'} shortName={club?.short_name || '?'} className="w-8 h-8 rounded text-xs" />
               <span className="font-display font-bold">{club?.name}</span>
             </div>
           </div>

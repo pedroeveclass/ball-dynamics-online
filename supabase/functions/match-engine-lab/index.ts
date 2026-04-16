@@ -5538,10 +5538,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         if (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') {
           const actualDist = getMovementDistance(finalX - startX, finalY - startY);
           const moveRatioVal = maxRange > 0 ? Math.min(1, actualDist / maxRange) : 0;
-          const existingPayload = (a.payload && typeof a.payload === 'object') ? a.payload as Record<string, any> : {};
-          await supabase.from('match_actions').update({
-            payload: { ...existingPayload, move_ratio: moveRatioVal, move_dx: finalX - startX, move_dy: finalY - startY },
-          }).eq('id', a.id);
+          // Atomic JSONB merge in Postgres. Using `.update({ payload: {...} })`
+          // with an in-memory spread would overwrite whatever the client wrote
+          // between our SELECT and UPDATE (e.g. the inertia_power slider).
+          await supabase.rpc('merge_match_action_payload', {
+            p_action_id: a.id,
+            p_patch: { move_ratio: moveRatioVal, move_dx: finalX - startX, move_dy: finalY - startY },
+          });
         }
       }
     }

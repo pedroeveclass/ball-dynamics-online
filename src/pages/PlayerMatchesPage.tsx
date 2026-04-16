@@ -10,6 +10,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { ClubCrest } from '@/components/ClubCrest';
 
 interface MatchEntry {
   match_id: string;
@@ -67,7 +68,7 @@ export default function PlayerMatchesPage() {
     // Filter out test matches (3x3 and bot-only with no lineups)
     const matchData = rawMatchData.filter((m: any) => m.home_lineup_id || m.away_lineup_id);
     const clubIds = [...new Set(matchData.flatMap(m => [m.home_club_id, m.away_club_id]))];
-    const { data: clubData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', clubIds);
+    const { data: clubData } = await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').in('id', clubIds);
     const clubMap = new Map((clubData || []).map(c => [c.id, c]));
     const partMap = new Map((parts || []).map(p => [p.match_id, p]));
     setMatches(matchData.map(m => ({
@@ -290,14 +291,11 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
   );
 }
 
-function ClubMini({ club }: { club?: { name: string; short_name: string; primary_color: string; secondary_color: string } }) {
+function ClubMini({ club }: { club?: { name: string; short_name: string; primary_color: string; secondary_color: string; crest_url?: string | null } }) {
   if (!club) return <div className="w-8 h-8 rounded bg-muted animate-pulse shrink-0" />;
   return (
     <div className="flex items-center gap-1.5 min-w-0">
-      <div className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
-        style={{ backgroundColor: club.primary_color, color: club.secondary_color }}>
-        {club.short_name}
-      </div>
+      <ClubCrest crestUrl={club.crest_url} primaryColor={club.primary_color} secondaryColor={club.secondary_color} shortName={club.short_name} className="w-8 h-8 rounded text-xs shrink-0" />
       <span className="font-display font-bold text-sm truncate hidden sm:block">{club.name}</span>
     </div>
   );

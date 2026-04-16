@@ -170,8 +170,8 @@ export default function LeaguePage() {
               home_club_id,
               away_club_id,
               match_id,
-              home_club:clubs!league_matches_home_club_id_fkey(id, name, short_name, primary_color, secondary_color),
-              away_club:clubs!league_matches_away_club_id_fkey(id, name, short_name, primary_color, secondary_color)
+              home_club:clubs!league_matches_home_club_id_fkey(id, name, short_name, primary_color, secondary_color, crest_url),
+              away_club:clubs!league_matches_away_club_id_fkey(id, name, short_name, primary_color, secondary_color, crest_url)
             )
           `)
           .eq('season_id', season.id)

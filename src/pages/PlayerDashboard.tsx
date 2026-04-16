@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { StatCard } from '@/components/StatCard';
 import { EnergyBar } from '@/components/EnergyBar';
 import { PositionBadge } from '@/components/PositionBadge';
+import { ClubCrest } from '@/components/ClubCrest';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Zap, DollarSign, Star, Bell, Swords, CalendarClock, Play } from 'lucide-react';
@@ -103,8 +104,8 @@ export default function PlayerDashboard() {
       if (!matchData) return;
 
       const [homeRes, awayRes] = await Promise.all([
-        supabase.from('clubs').select('name, short_name, primary_color, secondary_color').eq('id', matchData.home_club_id).single(),
-        supabase.from('clubs').select('name, short_name, primary_color, secondary_color').eq('id', matchData.away_club_id).single(),
+        supabase.from('clubs').select('name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.home_club_id).single(),
+        supabase.from('clubs').select('name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.away_club_id).single(),
       ]);
 
       if (homeRes.data && awayRes.data) {
@@ -181,22 +182,12 @@ export default function PlayerDashboard() {
             </div>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 min-w-0">
-                <div
-                  className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
-                  style={{ backgroundColor: nextMatch.home_club.primary_color, color: nextMatch.home_club.secondary_color }}
-                >
-                  {nextMatch.home_club.short_name}
-                </div>
+                <ClubCrest crestUrl={(nextMatch.home_club as any).crest_url} primaryColor={nextMatch.home_club.primary_color} secondaryColor={nextMatch.home_club.secondary_color} shortName={nextMatch.home_club.short_name} className="w-8 h-8 rounded text-xs shrink-0" />
                 <span className="font-display font-bold text-sm hidden sm:block truncate">{nextMatch.home_club.name}</span>
               </div>
               <span className="font-display font-bold text-muted-foreground shrink-0">vs</span>
               <div className="flex items-center gap-2 min-w-0">
-                <div
-                  className="w-8 h-8 rounded flex items-center justify-center font-display text-xs font-bold shrink-0"
-                  style={{ backgroundColor: nextMatch.away_club.primary_color, color: nextMatch.away_club.secondary_color }}
-                >
-                  {nextMatch.away_club.short_name}
-                </div>
+                <ClubCrest crestUrl={(nextMatch.away_club as any).crest_url} primaryColor={nextMatch.away_club.primary_color} secondaryColor={nextMatch.away_club.secondary_color} shortName={nextMatch.away_club.short_name} className="w-8 h-8 rounded text-xs shrink-0" />
                 <span className="font-display font-bold text-sm hidden sm:block truncate">{nextMatch.away_club.name}</span>
               </div>
             </div>

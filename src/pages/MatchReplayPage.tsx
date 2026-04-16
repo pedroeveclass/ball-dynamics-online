@@ -178,8 +178,8 @@ export default function MatchReplayPage() {
 
       // 2. Fetch clubs + uniforms in parallel
       const [homeClubRes, awayClubRes, homeUniformsRes, awayUniformsRes] = await Promise.all([
-        supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', matchData.home_club_id).single(),
-        supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').eq('id', matchData.away_club_id).single(),
+        supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.home_club_id).single(),
+        supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.away_club_id).single(),
         supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', matchData.home_club_id),
         supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', matchData.away_club_id),
       ]);

@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatBRL } from '@/lib/formatting';
+import { ClubCrest } from '@/components/ClubCrest';
 
 const COACH_TYPE_MAP: Record<string, { label: string; icon: typeof Shield }> = {
   defensive: { label: 'Defensivo', icon: Shield },
@@ -106,10 +107,7 @@ export default function ManagerDashboard() {
 
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-lg flex items-center justify-center font-display text-xl font-extrabold"
-              style={{ backgroundColor: club.primary_color, color: club.secondary_color }}>
-              {club.short_name}
-            </div>
+            <ClubCrest crestUrl={(club as any).crest_url} primaryColor={club.primary_color} secondaryColor={club.secondary_color} shortName={club.short_name} className="w-14 h-14 rounded-lg text-xl" />
             <div>
               <h1 className="font-display text-3xl font-bold">{club.name}</h1>
               <p className="text-sm text-muted-foreground">
