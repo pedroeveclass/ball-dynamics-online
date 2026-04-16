@@ -76,7 +76,9 @@ export function getFormationPositions(
   clampToOwnHalf = false,
 ): FormationSlot[] {
   const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS[DEFAULT_FORMATION];
-  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
+  // When attacking LEFT (away side / home 2nd half), mirror BOTH axes so
+  // LB/LM go to the bottom and RB/RM to the top (matching player perspective).
+  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x, y: 100 - p.y }));
   if (clampToOwnHalf) {
     positions = positions.map(p => ({
       ...p,

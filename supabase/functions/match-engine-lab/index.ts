@@ -419,7 +419,8 @@ const FORMATION_POSITIONS: Record<string, Array<{ x: number; y: number; pos: str
 
 function getFormationForFill(formation: string, isHome: boolean, clampToOwnHalf = true): Array<{ x: number; y: number; pos: string }> {
   const base = FORMATION_POSITIONS[formation] || FORMATION_POSITIONS['4-4-2'];
-  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x }));
+  // Mirror both X and Y when attacking left — LB/LM swap with RB/RM visually.
+  let positions = isHome ? base : base.map(p => ({ ...p, x: 100 - p.x, y: 100 - p.y }));
   if (clampToOwnHalf) {
     positions = positions.map(p => ({
       ...p,
@@ -1034,11 +1035,11 @@ function getDirectionalMultiplier(
 // ─── Compute max movement range based on attributes ──────────
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
-  // Compressed spread: elite (99) still faster than average (40) but less extreme.
-  // 40 → ~12u/turn, 70 → ~14u, 90 → ~15u, 99 → ~16u (vs the old 8+n×11 that gave
-  // 40 → 11u and 99 → 19u, +80% range for top vs average, too discrepant).
+  // Halved from the original 10+n*6 after feedback from the first human league
+  // round — players covered too much ground per turn, reducing tactical depth.
+  // 40 → ~6u, 70 → ~7u, 90 → ~7.5u, 99 → ~8u per turn.
   // MUST match src/pages/MatchRoomPage.tsx computeMaxMoveRange.
-  const maxSpeed = 10 + normalizeAttr(attrs.velocidade) * 6;
+  const maxSpeed = 5 + normalizeAttr(attrs.velocidade) * 3;
   // Stamina decay: after turn 20, players with low stamina lose up to 20% range
   const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.2;
   let totalDist = 0;
@@ -4035,6 +4036,134 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       }
     }
     const isTestMatch = !homeLineupId && !awayLineupId;
+
+    // ── BOT-ONLY LEAGUE MATCH SIMULATION ──
+    // If both clubs have ZERO human players AND zero human managers, skip the
+    // full match engine and simulate with a simple dice roll (0–3 goals each).
+    // Check at start time so a human joining late (manager claiming the club
+    // minutes before kickoff) still triggers a real match.
+    if (isLeagueMatch && !isTestMatch) {
+      // Count human connections: player_profiles with a user_id in each lineup,
+      // plus manager_profiles with a user_id on each club.
+      const countHumans = async (lineupId: string | null, clubId: string): Promise<number> => {
+        let humans = 0;
+        if (lineupId) {
+          const { data: slots } = await supabase
+            .from('lineup_slots')
+            .select('player_profile_id')
+            .eq('lineup_id', lineupId)
+            .not('player_profile_id', 'is', null);
+          const profileIds = (slots || []).map((s: any) => s.player_profile_id).filter(Boolean);
+          if (profileIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('player_profiles')
+              .select('id')
+              .in('id', profileIds)
+              .not('user_id', 'is', null);
+            humans += (profiles || []).length;
+          }
+        }
+        // Check manager
+        const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', clubId).maybeSingle();
+        if (club?.manager_profile_id) {
+          const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle();
+          if (mgr?.user_id) humans++;
+        }
+        return humans;
+      };
+
+      const [homeHumans, awayHumans] = await Promise.all([
+        countHumans(homeLineupId, m.home_club_id),
+        countHumans(awayLineupId, m.away_club_id),
+      ]);
+
+      if (homeHumans === 0 && awayHumans === 0) {
+        // Pure bot match — simulate with dice roll (0–3 goals each side).
+        const homeGoals = Math.floor(Math.random() * 4); // 0, 1, 2, or 3
+        const awayGoals = Math.floor(Math.random() * 4);
+        console.log(`[ENGINE] Bot-only league match ${m.id.slice(0,8)}: simulated ${homeGoals}–${awayGoals}`);
+
+        // Pick random scorers from lineup slots
+        const pickRandomScorers = async (lineupId: string | null, goals: number): Promise<Array<{ id: string; name: string | null }>> => {
+          if (!lineupId || goals === 0) return [];
+          const { data: slots } = await supabase
+            .from('lineup_slots')
+            .select('player_profile_id')
+            .eq('lineup_id', lineupId)
+            .eq('role_type', 'starter')
+            .not('player_profile_id', 'is', null);
+          const profileIds = (slots || []).map((s: any) => s.player_profile_id).filter(Boolean);
+          if (profileIds.length === 0) return [];
+          const { data: profiles } = await supabase.from('player_profiles').select('id, full_name').in('id', profileIds);
+          const pool = profiles || [];
+          const scorers: Array<{ id: string; name: string | null }> = [];
+          for (let i = 0; i < goals; i++) {
+            const pick = pool[Math.floor(Math.random() * pool.length)];
+            if (pick) scorers.push({ id: pick.id, name: pick.full_name });
+          }
+          return scorers;
+        };
+
+        const [homeScorers, awayScorers] = await Promise.all([
+          pickRandomScorers(homeLineupId, homeGoals),
+          pickRandomScorers(awayLineupId, awayGoals),
+        ]);
+
+        // Log goal events
+        const simEvents: any[] = [];
+        let hS = 0, aS = 0;
+        const allGoals = [
+          ...homeScorers.map(s => ({ ...s, side: 'home' as const })),
+          ...awayScorers.map(s => ({ ...s, side: 'away' as const })),
+        ].sort(() => Math.random() - 0.5); // shuffle goals chronologically
+        for (const g of allGoals) {
+          if (g.side === 'home') hS++; else aS++;
+          simEvents.push({
+            match_id: m.id,
+            event_type: 'goal',
+            title: `⚽ GOL! ${hS} – ${aS}`,
+            body: `Gol simulado.`,
+            payload: {
+              scorer_participant_id: null,
+              scorer_profile_id: g.id,
+              scorer_club_id: g.side === 'home' ? m.home_club_id : m.away_club_id,
+              scorer_name: g.name,
+              goal_type: 'simulated',
+            },
+          });
+        }
+        if (simEvents.length > 0) {
+          await supabase.from('match_event_logs').insert(simEvents);
+        }
+
+        // Mark match as finished immediately
+        await supabase.from('matches').update({
+          status: 'finished',
+          home_score: homeGoals,
+          away_score: awayGoals,
+          current_half: 2,
+        }).eq('id', m.id);
+
+        // Trigger standings update via league-scheduler
+        try {
+          await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/league-scheduler`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            },
+            body: JSON.stringify({ action: 'update_standings', match_id: m.id }),
+          });
+        } catch (e) {
+          console.error(`[ENGINE] Failed to trigger standings update for simulated match ${m.id}:`, e);
+        }
+
+        started.push(m.id);
+        console.log(`[ENGINE] Bot-only match ${m.id.slice(0,8)} finished: ${homeGoals}–${awayGoals}`);
+        continue; // Skip the full match engine for this match
+      }
+    }
+
     if (!isTestMatch && (!existingParts || existingParts.length === 0)) {
       console.log(`[ENGINE] No existing participants for match ${m.id.slice(0,8)} — seeding from lineups`);
 

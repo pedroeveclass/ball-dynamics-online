@@ -200,6 +200,11 @@ export default function MatchRoomPage() {
   const timerBarRef = useRef<HTMLDivElement>(null);
   const [preMatchCountdownLeft, setPreMatchCountdownLeft] = useState(PRE_MATCH_COUNTDOWN_SECONDS);
   const [submittingAction, setSubmittingAction] = useState(false);
+  // Tracks players whose menu was already auto-opened this phase. Prevents the
+  // auto-open effect from re-triggering after the player submits (the effect
+  // re-runs because turnActions changes from the insert, and submittedActions
+  // might not have flushed yet in React state).
+  const menuAutoOpenedRef = useRef<Set<string>>(new Set());
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('Processando todos os movimientos...');
   // Server clock offset: serverTime ≈ Date.now() + serverClockOffset
@@ -946,10 +951,9 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40) * posMult;
     const stam = Number(attrs?.stamina ?? 40) * posMult;
     const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
-    // Compressed spread: elite (99) still faster than average (40) but less extreme.
-    // 40 → ~12u/turn, 70 → ~14u, 90 → ~15u, 99 → ~16u (vs the old 8+n×11 that gave
-    // 40 → 11u and 99 → 19u, +80% range for top vs average, too discrepant).
-    const maxSpeed = 10 + normalizeAttr(vel) * 6;
+    // Halved from the original 10+n*6 after feedback from the first human league round.
+    // 40 → ~6u, 70 → ~7u, 90 → ~7.5u, 99 → ~8u per turn.
+    const maxSpeed = 5 + normalizeAttr(vel) * 3;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     let range = 0;
     let speed = 0;
@@ -1145,6 +1149,7 @@ export default function MatchRoomPage() {
   // (derived from turnActions) cover cross-phase display separately.
   useEffect(() => {
     setSubmittedActions(new Set());
+    menuAutoOpenedRef.current = new Set();
   }, [activeTurn?.phase]);
 
   // Reset local submission cache only when a brand-new turn starts
@@ -1230,6 +1235,13 @@ export default function MatchRoomPage() {
       // prevTurnWasPositioningRef is already set from the previous phase
     } else if (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense') {
       prevTurnWasPositioningRef.current = true;
+      // Entering a positioning phase means the ball was dead (kick-off, goal kick,
+      // throw-in, etc.). Zero ALL player inertia and ball inertia so the restart
+      // doesn't carry momentum from the play that ended.
+      prevDirectionsRef.current = {};
+      setBallInertiaDir(null);
+      lastBallDirRef.current = null;
+      inertiaConsumedRef.current = false;
     } else {
       prevTurnWasPositioningRef.current = false;
     }
@@ -1397,9 +1409,10 @@ export default function MatchRoomPage() {
         (myRole === 'player' && myParticipant?.id === bh.id) ||
         (myRole === 'manager' && (bh.club_id === myClubId || isTest))
       );
-      if (canControlBH) {
+      if (canControlBH && !menuAutoOpenedRef.current.has(bh.id)) {
         setShowActionMenu(bh.id);
         setSelectedParticipantId(bh.id);
+        menuAutoOpenedRef.current.add(bh.id);
       }
       return;
     }
@@ -1427,8 +1440,10 @@ export default function MatchRoomPage() {
         const aCount = parts.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
         const isTest = hCount <= 4 && aCount <= 4;
 
-        // Fall back to ball holder if nothing is selected yet
-        const candidateId = selectedParticipantId || activeTurn.ball_holder_participant_id || null;
+        // Manager must explicitly click a player — no random fallback.
+        // Previously fell back to ball_holder, which opened the menu for a
+        // player the manager didn't intend to control.
+        const candidateId = selectedParticipantId || null;
         const candidate = candidateId ? parts.find(p => p.id === candidateId) : null;
         if (candidate && candidate.role_type === 'player') {
           const candidateIsAttacking = candidate.club_id === possClubId;
@@ -1440,11 +1455,34 @@ export default function MatchRoomPage() {
 
       if (!targetPid) return;
       if (submittedActions.has(targetPid)) return;
+      if (menuAutoOpenedRef.current.has(targetPid)) return;
       const alreadyHasAction = turnActions.some(a => a.participant_id === targetPid && a.action_type !== 'receive');
       if (alreadyHasAction) return;
 
+      // Ball holder in attacking_support: auto-start move drawing ONLY when BH
+      // submitted a ball action (pass/shoot/header) in ball_holder phase. If BH
+      // chose to dribble (move) in phase 1, they can't act again in phase 2.
+      const isBH = isAttackingPhase
+        && activeTurn.ball_holder_participant_id === targetPid;
+      if (isBH) {
+        const bhHasBallAction = turnActions.some(a =>
+          a.participant_id === targetPid &&
+          (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
+        );
+        if (!bhHasBallAction) {
+          // BH dribbled (or no action yet) — no move available in phase 2.
+          menuAutoOpenedRef.current.add(targetPid);
+          return;
+        }
+        setSelectedParticipantId(targetPid);
+        setDrawingAction({ type: 'move', fromParticipantId: targetPid });
+        menuAutoOpenedRef.current.add(targetPid);
+        return;
+      }
+
       setShowActionMenu(targetPid);
       setSelectedParticipantId(targetPid);
+      menuAutoOpenedRef.current.add(targetPid);
     }
   }, [activeTurn?.phase, activeTurn?.id, match?.status, myRole, myParticipant?.id, myClubId, isPhaseProcessing, isPositioningTurn, turnActions, submittedActions, activeTurn?.possession_club_id, selectedParticipantId, match?.home_club_id, match?.away_club_id]);
 
@@ -1500,11 +1538,16 @@ export default function MatchRoomPage() {
       setDrawingAction(null);
       setPendingInterceptChoice(null);
 
-      // Reset to "no action" (move to current position). Engine dedupes within
-      // a category, so a real action picked afterwards replaces this one.
-      const cx = candidate.field_x ?? candidate.pos_x ?? 50;
-      const cy = candidate.field_y ?? candidate.pos_y ?? 50;
-      void submitAction('move', candidate.id, cx, cy);
+      // Ball holder: pressing Z submits no_action (stay still, keep ball).
+      // Other players: move to current position (effectively no-op).
+      const isBH = activeTurn.ball_holder_participant_id === candidate.id;
+      if (isBH) {
+        void submitAction('no_action', candidate.id, null, null);
+      } else {
+        const cx = candidate.field_x ?? candidate.pos_x ?? 50;
+        const cy = candidate.field_y ?? candidate.pos_y ?? 50;
+        void submitAction('move', candidate.id, cx, cy);
+      }
 
       setShowActionMenu(candidate.id);
     };
@@ -1782,7 +1825,20 @@ export default function MatchRoomPage() {
         }
         setSubmittedActions(prev => new Set([...prev, pid]));
         scheduleTurnActionsReconcile(true);
-        toast.success(`✅ ${ACTION_LABELS[actionType] || actionType}`);
+        // Context-aware label: 'receive' becomes DESARME when tackling,
+        // AGARRAR when GK catches a shot, etc.
+        let toastLabel = ACTION_LABELS[actionType] || actionType;
+        if (actionType === 'receive') {
+          const bhId = activeTurnRef.current?.ball_holder_participant_id;
+          const bhPart = bhId ? participantsRef.current.find(pp => pp.id === bhId) : null;
+          const actingPart = participantsRef.current.find(pp => pp.id === pid);
+          const bhAction = turnActionsRef.current.find(a => a.participant_id === bhId);
+          const isOpponent = actingPart && bhPart && actingPart.club_id !== bhPart.club_id;
+          const isGK = actingPart?.field_pos === 'GK' || actingPart?.slot_position === 'GK';
+          if (bhAction?.action_type === 'move' && isOpponent) toastLabel = 'DESARME';
+          else if (isAnyShootAction(bhAction?.action_type ?? '') && isGK) toastLabel = 'AGARRAR';
+        }
+        toast.success(`✅ ${toastLabel}`);
         // Sound effects
         if (isAnyShootAction(actionType)) sounds.kick();
         else if (isAnyPassAction(actionType)) sounds.pass();
@@ -2396,7 +2452,7 @@ export default function MatchRoomPage() {
         const targetX = moveAction.target_x;
         const targetY = moveAction.target_y;
         const moveDist = getFieldMoveDist(targetX - startPos.x, targetY - startPos.y);
-        const MAX_RANGE_APPROX = 12;
+        const MAX_RANGE_APPROX = 6;
         const arrivalFraction = Math.max(0.15, Math.min(1, moveDist / MAX_RANGE_APPROX));
         const scaledRaw = Math.min(1, raw / arrivalFraction);
 
@@ -2889,7 +2945,7 @@ export default function MatchRoomPage() {
 
     // Calculate move distance as fraction of max range (~12% of field)
     const moveDist = getFieldMoveDist(targetX - startX, targetY - startY);
-    const MAX_RANGE_APPROX = 12; // approximate max move range in field %
+    const MAX_RANGE_APPROX = 6; // approximate max move range in field %
     const moveFraction = Math.min(1, moveDist / MAX_RANGE_APPROX);
 
     // Scale animation: player arrives at (moveFraction * 100%) of the animation timeline
@@ -3155,8 +3211,15 @@ export default function MatchRoomPage() {
     }
     if (phase === 'ball_holder' && isBH && isDeadBall) return filterShots(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
-    // Ball holder can also mini-move in phase 2 (after passing/shooting in phase 1)
-    if (phase === 'attacking_support' && isBH) return ['move', 'no_action'];
+    // Ball holder in phase 2: can mini-move ONLY if they submitted a ball action
+    // (pass/shoot/header) in phase 1. If they dribbled, no further action allowed.
+    if (phase === 'attacking_support' && isBH) {
+      const bhHasBallAction = turnActions.some(a =>
+        a.participant_id === participantId &&
+        (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
+      );
+      return bhHasBallAction ? ['move', 'no_action'] : [];
+    }
     if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
     if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
     return [];
