@@ -2872,14 +2872,17 @@ export default function MatchRoomPage() {
           prevDirectionsRef.current = newDirections;
           // Store each participant's inertia_power from their move action payload
           // so next turn's computeMaxMoveRange can scale the directional bonus/penalty.
-          const newPowers: Record<string, number> = {};
+          // MERGE — don't replace the whole ref. If this resolution had no move for
+          // a player (e.g., positioning phase or they didn't act), keep the PREVIOUS
+          // value. Replacing the whole ref would reset to {} → default 100%.
+          const updatedPowers = { ...inertiaPowerRef.current };
           for (const a of latestActions) {
             if (a.action_type === 'move' && a.payload && typeof a.payload === 'object') {
               const pw = (a.payload as any).inertia_power;
-              if (typeof pw === 'number') newPowers[a.participant_id] = pw;
+              if (typeof pw === 'number') updatedPowers[a.participant_id] = pw;
             }
           }
-          inertiaPowerRef.current = newPowers;
+          inertiaPowerRef.current = updatedPowers;
           if (typeof window !== 'undefined' && (window as any).__bdo_inertia_log) {
             console.log('[INERTIA STORE] turn', activeTurn?.turn_number, Object.entries(newDirections).map(
               ([id, d]) => `${id.slice(0, 8)}=(${d.x.toFixed(1)},${d.y.toFixed(1)})`
