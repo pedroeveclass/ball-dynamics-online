@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
 import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft } from 'lucide-react';
+import { ClubCrest } from '@/components/ClubCrest';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -156,7 +157,7 @@ export default function LeaguePage() {
       const [standingsRes, roundsRes] = await Promise.all([
         supabase
           .from('league_standings')
-          .select('*, clubs(id, name, short_name, primary_color, secondary_color)')
+          .select('*, clubs(id, name, short_name, primary_color, secondary_color, crest_url)')
           .eq('season_id', season.id)
           .order('points', { ascending: false })
           .order('goals_for', { ascending: false }),
@@ -230,7 +231,7 @@ export default function LeaguePage() {
   async function fetchAvailableClubs() {
     const { data } = await supabase
       .from('clubs')
-      .select('id, name, short_name, primary_color, secondary_color, city, stadiums(id, name)')
+      .select('id, name, short_name, primary_color, secondary_color, crest_url, city, stadiums(id, name)')
       .eq('is_bot_managed', true)
       .not('league_id', 'is', null);
     setAvailableClubs((data as any) || []);
@@ -268,42 +269,66 @@ export default function LeaguePage() {
         return;
       }
 
-      // Aggregate scorers and assisters, collecting names from payload
-      const scorerMap: Record<string, number> = {};
-      const assisterMap: Record<string, number> = {};
-      const participantIds = new Set<string>();
-      const payloadNames: Record<string, string> = {}; // pid → name from payload
-      const participantClubIds: Record<string, string> = {}; // pid → club_id from payload
+      // Collect participant IDs from goal events so we can resolve
+      // them to player_profile_ids (the same player gets a NEW
+      // participant_id every match, so we must aggregate by profile).
+      const participantIdsFromEvents = new Set<string>();
+      const payloadNames: Record<string, string> = {};
+      const participantClubIds: Record<string, string> = {};
 
       for (const ev of goalEvents) {
         const payload = ev.payload as any;
         if (!payload) continue;
         if (payload.scorer_participant_id) {
-          scorerMap[payload.scorer_participant_id] = (scorerMap[payload.scorer_participant_id] || 0) + 1;
-          participantIds.add(payload.scorer_participant_id);
+          participantIdsFromEvents.add(payload.scorer_participant_id);
           if (payload.scorer_name) payloadNames[payload.scorer_participant_id] = payload.scorer_name;
           if (payload.scorer_club_id) participantClubIds[payload.scorer_participant_id] = payload.scorer_club_id;
         }
         if (payload.assister_participant_id) {
-          assisterMap[payload.assister_participant_id] = (assisterMap[payload.assister_participant_id] || 0) + 1;
-          participantIds.add(payload.assister_participant_id);
+          participantIdsFromEvents.add(payload.assister_participant_id);
           if (payload.assister_name) payloadNames[payload.assister_participant_id] = payload.assister_name;
         }
       }
 
-      if (participantIds.size === 0) {
+      if (participantIdsFromEvents.size === 0) {
         setStatsLoaded(true);
         setStatsLoading(false);
         return;
       }
 
-      // Fetch participant details (player name via player_profile_id, club)
+      // Resolve participant → player_profile_id + club
       const { data: participantsData } = await supabase
         .from('match_participants')
-        .select('id, club_id, player_profile_id, player_profiles(full_name), clubs(name, short_name, primary_color, secondary_color)')
-        .in('id', Array.from(participantIds));
+        .select('id, club_id, player_profile_id, player_profiles(full_name), clubs(name, short_name, primary_color, secondary_color, crest_url)')
+        .in('id', Array.from(participantIdsFromEvents));
 
-      // Also fetch club info for participants without club join (e.g. via scorer_club_id)
+      // Map participant_id → player_profile_id
+      const pidToProfileId: Record<string, string> = {};
+      for (const p of (participantsData || [])) {
+        if (p.player_profile_id) pidToProfileId[p.id] = p.player_profile_id;
+      }
+
+      // Re-aggregate goals/assists by player_profile_id
+      const scorerMap: Record<string, number> = {};
+      const assisterMap: Record<string, number> = {};
+      const profileParticipantId: Record<string, string> = {}; // profile → any participant (for lookup)
+
+      for (const ev of goalEvents) {
+        const payload = ev.payload as any;
+        if (!payload) continue;
+        if (payload.scorer_participant_id) {
+          const profileId = pidToProfileId[payload.scorer_participant_id] || payload.scorer_participant_id;
+          scorerMap[profileId] = (scorerMap[profileId] || 0) + 1;
+          if (!profileParticipantId[profileId]) profileParticipantId[profileId] = payload.scorer_participant_id;
+        }
+        if (payload.assister_participant_id) {
+          const profileId = pidToProfileId[payload.assister_participant_id] || payload.assister_participant_id;
+          assisterMap[profileId] = (assisterMap[profileId] || 0) + 1;
+          if (!profileParticipantId[profileId]) profileParticipantId[profileId] = payload.assister_participant_id;
+        }
+      }
+
+      // Club lookup
       const allClubIds = new Set<string>();
       for (const p of (participantsData || [])) {
         if (p.club_id) allClubIds.add(p.club_id);
@@ -312,49 +337,55 @@ export default function LeaguePage() {
         allClubIds.add(cid);
       }
       const { data: clubsData } = allClubIds.size > 0
-        ? await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color').in('id', Array.from(allClubIds))
+        ? await supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').in('id', Array.from(allClubIds))
         : { data: [] };
       const clubLookup: Record<string, any> = {};
       for (const c of (clubsData || [])) clubLookup[c.id] = c;
 
-      // Build lookup: prefer payload name → then player_profiles.full_name → then 'Jogador'
-      const participantLookup: Record<string, { player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string }> = {};
+      // Build lookup by player_profile_id (use the first participant row we found)
+      const profileLookup: Record<string, { player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; club_crest_url: string | null }> = {};
+
       for (const p of (participantsData || [])) {
+        const ppId = p.player_profile_id || p.id;
+        if (profileLookup[ppId]) continue; // first wins
         const profile = p.player_profiles as any;
         const clubData = (p.clubs as any) || clubLookup[p.club_id] || clubLookup[participantClubIds[p.id]];
         const name = payloadNames[p.id] || profile?.full_name || null;
-        participantLookup[p.id] = {
+        profileLookup[ppId] = {
           player_name: name || 'Jogador',
           club_name: clubData?.name || '',
           club_short_name: clubData?.short_name || '',
           club_primary_color: clubData?.primary_color || '#333',
           club_secondary_color: clubData?.secondary_color || '#fff',
+          club_crest_url: clubData?.crest_url || null,
         };
       }
 
-      // For participants not in DB (edge case), use payload info
-      for (const pid of participantIds) {
-        if (!participantLookup[pid]) {
-          const clubId = participantClubIds[pid];
+      // Fallback for profiles not in participantsData
+      for (const profileId of [...Object.keys(scorerMap), ...Object.keys(assisterMap)]) {
+        if (!profileLookup[profileId]) {
+          const anyPid = profileParticipantId[profileId];
+          const clubId = anyPid ? participantClubIds[anyPid] : undefined;
           const clubData = clubId ? clubLookup[clubId] : null;
-          participantLookup[pid] = {
-            player_name: payloadNames[pid] || 'Jogador',
+          profileLookup[profileId] = {
+            player_name: anyPid ? (payloadNames[anyPid] || 'Jogador') : 'Jogador',
             club_name: clubData?.name || '',
             club_short_name: clubData?.short_name || '',
             club_primary_color: clubData?.primary_color || '#333',
             club_secondary_color: clubData?.secondary_color || '#fff',
+            club_crest_url: clubData?.crest_url || null,
           };
         }
       }
 
       // Build sorted lists — top 5
       const scorers = Object.entries(scorerMap)
-        .map(([pid, goals]) => ({ participant_id: pid, goals, ...participantLookup[pid] }))
+        .map(([profileId, goals]) => ({ participant_id: profileId, goals, ...profileLookup[profileId] }))
         .sort((a, b) => b.goals - a.goals)
         .slice(0, 5);
 
       const assisters = Object.entries(assisterMap)
-        .map(([pid, assists]) => ({ participant_id: pid, assists, ...participantLookup[pid] }))
+        .map(([profileId, assists]) => ({ participant_id: profileId, assists, ...profileLookup[profileId] }))
         .sort((a, b) => b.assists - a.assists)
         .slice(0, 5);
 
@@ -510,12 +541,13 @@ export default function LeaguePage() {
                         <td className="font-display font-bold text-center">{i + 1}</td>
                         <td>
                           <div className="flex items-center gap-2">
-                            <div
-                              className="h-6 w-6 rounded flex items-center justify-center text-[9px] font-bold shrink-0"
-                              style={{ backgroundColor: club?.primary_color, color: club?.secondary_color }}
-                            >
-                              {club?.short_name}
-                            </div>
+                            <ClubCrest
+                              crestUrl={club?.crest_url}
+                              primaryColor={club?.primary_color || '#333'}
+                              secondaryColor={club?.secondary_color || '#fff'}
+                              shortName={club?.short_name || '???'}
+                              className="h-6 w-6 rounded text-[9px] shrink-0"
+                            />
                             <Link to={`/club/${club?.id}`} className="font-medium text-sm hover:text-tactical hover:underline transition-colors">{club?.name}</Link>
                           </div>
                         </td>
@@ -608,12 +640,7 @@ export default function LeaguePage() {
                         {/* Home club */}
                         <div className="flex items-center gap-2 flex-1 justify-end">
                           <span className="font-medium text-sm text-right">{homeClub?.name}</span>
-                          <div
-                            className="h-6 w-6 rounded flex items-center justify-center text-[9px] font-bold shrink-0"
-                            style={{ backgroundColor: homeClub?.primary_color, color: homeClub?.secondary_color }}
-                          >
-                            {homeClub?.short_name}
-                          </div>
+                          <ClubCrest crestUrl={homeClub?.crest_url} primaryColor={homeClub?.primary_color || '#333'} secondaryColor={homeClub?.secondary_color || '#fff'} shortName={homeClub?.short_name || '?'} className="h-6 w-6 rounded text-[9px] shrink-0" />
                         </div>
 
                         {/* Score */}
@@ -650,12 +677,7 @@ export default function LeaguePage() {
 
                         {/* Away club */}
                         <div className="flex items-center gap-2 flex-1">
-                          <div
-                            className="h-6 w-6 rounded flex items-center justify-center text-[9px] font-bold shrink-0"
-                            style={{ backgroundColor: awayClub?.primary_color, color: awayClub?.secondary_color }}
-                          >
-                            {awayClub?.short_name}
-                          </div>
+                          <ClubCrest crestUrl={awayClub?.crest_url} primaryColor={awayClub?.primary_color || '#333'} secondaryColor={awayClub?.secondary_color || '#fff'} shortName={awayClub?.short_name || '?'} className="h-6 w-6 rounded text-[9px] shrink-0" />
                           <span className="font-medium text-sm">{awayClub?.name}</span>
                         </div>
                       </div>
@@ -709,12 +731,7 @@ export default function LeaguePage() {
                             <div>
                               <p className="text-xs text-muted-foreground">Melhor Ataque</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                <div
-                                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                                  style={{ backgroundColor: bestAttack.clubs?.primary_color, color: bestAttack.clubs?.secondary_color }}
-                                >
-                                  {bestAttack.clubs?.short_name}
-                                </div>
+                                <ClubCrest crestUrl={bestAttack.clubs?.crest_url} primaryColor={bestAttack.clubs?.primary_color || '#333'} secondaryColor={bestAttack.clubs?.secondary_color || '#fff'} shortName={bestAttack.clubs?.short_name || '?'} className="h-5 w-5 rounded text-[8px] shrink-0" />
                                 <span className="font-display font-bold text-sm">{bestAttack.clubs?.name}</span>
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{bestAttack.goals_for} gols</p>
@@ -727,12 +744,7 @@ export default function LeaguePage() {
                             <div>
                               <p className="text-xs text-muted-foreground">Melhor Defesa</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                <div
-                                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                                  style={{ backgroundColor: bestDefense.clubs?.primary_color, color: bestDefense.clubs?.secondary_color }}
-                                >
-                                  {bestDefense.clubs?.short_name}
-                                </div>
+                                <ClubCrest crestUrl={bestDefense.clubs?.crest_url} primaryColor={bestDefense.clubs?.primary_color || '#333'} secondaryColor={bestDefense.clubs?.secondary_color || '#fff'} shortName={bestDefense.clubs?.short_name || '?'} className="h-5 w-5 rounded text-[8px] shrink-0" />
                                 <span className="font-display font-bold text-sm">{bestDefense.clubs?.name}</span>
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{bestDefense.goals_against} gols sofridos</p>
@@ -745,12 +757,7 @@ export default function LeaguePage() {
                             <div>
                               <p className="text-xs text-muted-foreground">Mais Vitórias</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                <div
-                                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                                  style={{ backgroundColor: mostWins.clubs?.primary_color, color: mostWins.clubs?.secondary_color }}
-                                >
-                                  {mostWins.clubs?.short_name}
-                                </div>
+                                <ClubCrest crestUrl={mostWins.clubs?.crest_url} primaryColor={mostWins.clubs?.primary_color || '#333'} secondaryColor={mostWins.clubs?.secondary_color || '#fff'} shortName={mostWins.clubs?.short_name || '?'} className="h-5 w-5 rounded text-[8px] shrink-0" />
                                 <span className="font-display font-bold text-sm">{mostWins.clubs?.name}</span>
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{mostWins.won} vitórias</p>
@@ -786,12 +793,7 @@ export default function LeaguePage() {
                               <span className="font-medium text-sm">{s.player_name}</span>
                             </td>
                             <td>
-                              <div
-                                className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                                style={{ backgroundColor: s.club_primary_color, color: s.club_secondary_color }}
-                              >
-                                {s.club_short_name}
-                              </div>
+                              <ClubCrest crestUrl={(s as any).club_crest_url} primaryColor={s.club_primary_color} secondaryColor={s.club_secondary_color} shortName={s.club_short_name} className="h-5 w-5 rounded text-[8px] shrink-0" />
                             </td>
                             <td className="text-center font-display text-lg font-bold">{s.goals}</td>
                           </tr>
@@ -825,12 +827,7 @@ export default function LeaguePage() {
                               <span className="font-medium text-sm">{a.player_name}</span>
                             </td>
                             <td>
-                              <div
-                                className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                                style={{ backgroundColor: a.club_primary_color, color: a.club_secondary_color }}
-                              >
-                                {a.club_short_name}
-                              </div>
+                              <ClubCrest crestUrl={(a as any).club_crest_url} primaryColor={a.club_primary_color} secondaryColor={a.club_secondary_color} shortName={a.club_short_name} className="h-5 w-5 rounded text-[8px] shrink-0" />
                             </td>
                             <td className="text-center font-display text-lg font-bold">{a.assists}</td>
                           </tr>
@@ -854,12 +851,7 @@ export default function LeaguePage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {availableClubs.map((ac) => (
                     <div key={ac.id} className="stat-card flex flex-col items-center text-center gap-3 p-4">
-                      <div
-                        className="h-14 w-14 rounded-lg flex items-center justify-center text-lg font-bold"
-                        style={{ backgroundColor: ac.primary_color, color: ac.secondary_color }}
-                      >
-                        {ac.short_name}
-                      </div>
+                      <ClubCrest crestUrl={ac.crest_url} primaryColor={ac.primary_color} secondaryColor={ac.secondary_color} shortName={ac.short_name} className="h-14 w-14 rounded-lg text-lg" />
                       <div>
                         <h3 className="font-display font-bold">{ac.name}</h3>
                         {ac.city && <p className="text-xs text-muted-foreground">{ac.city}</p>}
