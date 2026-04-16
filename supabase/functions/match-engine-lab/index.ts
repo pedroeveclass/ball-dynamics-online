@@ -3982,10 +3982,25 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     // ALWAYS re-fetch the currently active lineup at match start. Manager edits
     // create a new `lineups` row and deactivate the previous one — the stale
     // home_lineup_id/away_lineup_id stored on the match would otherwise seed
-    // participants from the old lineup (causing "match started with bots while
-    // 8 humans were escalated"). We skip re-seeding only when participants are
-    // already present (5v5 tests / friendly challenges pre-create participants).
-    if (!partsAlreadyExist) {
+    // participants from the old lineup.
+    //
+    // This used to be gated on `!partsAlreadyExist`, but for LEAGUE matches
+    // `auto_start` can fire more than once before kickoff (cron + client +
+    // retries), and the first call seeds participants from whatever lineup was
+    // active at that moment. A later edit by the manager would then be silently
+    // ignored on subsequent calls. Fix: always refresh the active lineup IDs,
+    // and if they diverge from what was stored on the match, wipe that club's
+    // existing participants so the re-seed below picks up the new lineup.
+    //
+    // Only league matches are affected by this — 5v5 tests and friendly
+    // challenges either don't have an active lineup (`isTestMatch`) or
+    // pre-create their participants with a specific roster we must NOT touch.
+    // We detect a league match via the `league_matches.match_id` row.
+    const { data: leagueLink } = await supabase
+      .from('league_matches').select('match_id').eq('match_id', m.id).maybeSingle();
+    const isLeagueMatch = !!leagueLink;
+
+    if (isLeagueMatch || !partsAlreadyExist) {
       const [{ data: hl }, { data: al }] = await Promise.all([
         supabase.from('lineups').select('id').eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle(),
         supabase.from('lineups').select('id').eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle(),
@@ -3998,6 +4013,25 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         await supabase.from('matches').update({
           home_lineup_id: homeLineupId, away_lineup_id: awayLineupId,
         }).eq('id', m.id);
+      }
+
+      // If a league match was pre-seeded with a stale lineup (earlier auto_start
+      // run, or client-side fallback before the manager finished editing), wipe
+      // ALL participants so the seed block below recreates them from the current
+      // active lineups. We wipe both clubs together (even if only one is stale)
+      // because the seed block runs both in a single pass.
+      if (isLeagueMatch && partsAlreadyExist) {
+        const homeStale = m.home_lineup_id != null && homeLineupId != null && homeLineupId !== m.home_lineup_id;
+        const awayStale = m.away_lineup_id != null && awayLineupId != null && awayLineupId !== m.away_lineup_id;
+        if (homeStale || awayStale) {
+          console.log(`[ENGINE] Stale pre-seeded participants for match ${m.id.slice(0,8)} (homeStale=${homeStale} awayStale=${awayStale}) — wiping to re-seed from active lineup`);
+          // FK-safe order: actions reference participants, turns reference match.
+          await supabase.from('match_actions').delete().eq('match_id', m.id);
+          await supabase.from('match_turns').delete().eq('match_id', m.id);
+          await supabase.from('match_event_logs').delete().eq('match_id', m.id);
+          await supabase.from('match_participants').delete().eq('match_id', m.id);
+          existingParts = [];
+        }
       }
     }
     const isTestMatch = !homeLineupId && !awayLineupId;
