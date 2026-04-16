@@ -119,6 +119,22 @@ function resolveBallOutcome(
         }
         break;
       }
+      case 'loose_ball':
+      case 'loose_ball_phase': {
+        // Nobody dominated the ball — it went loose. Clear any predicted
+        // interceptor so the ball animation follows the full pass/shot
+        // trajectory instead of stopping at a defender who tried and failed.
+        out.interceptor = null;
+        out.hasConclusiveEvent = true;
+        break;
+      }
+      case 'shot_missed':
+      case 'shot_over': {
+        // Shot went wide / over — no interception, ball travels to target.
+        out.interceptor = null;
+        out.hasConclusiveEvent = true;
+        break;
+      }
       case 'goal': {
         out.hasConclusiveEvent = true;
         break;
