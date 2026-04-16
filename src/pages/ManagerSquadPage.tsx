@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Users, MoreVertical, AlertTriangle } from 'lucide-react';
+import { Users, MoreVertical, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { sortPlayersByPosition } from '@/lib/positions';
@@ -41,6 +41,7 @@ export default function ManagerSquadPage() {
   const { club, managerProfile } = useAuth();
   const [players, setPlayers] = useState<SquadPlayer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingJerseyIds, setSavingJerseyIds] = useState<Set<string>>(new Set());
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   // Fire dialog state
@@ -243,7 +244,8 @@ export default function ManagerSquadPage() {
   };
 
   // Update the permanent jersey number chosen by the manager for this player.
-  // Value 0-99 or null to clear. Optimistic UI; reverts and toasts on error.
+  // Uses a SECURITY DEFINER RPC — a plain UPDATE is blocked by RLS
+  // (only the player-owning user can self-update player_profiles).
   const updateJerseyNumber = async (playerId: string, rawValue: string) => {
     const trimmed = rawValue.trim();
     let nextNumber: number | null;
@@ -260,13 +262,22 @@ export default function ManagerSquadPage() {
     const previous = players.find(p => p.id === playerId)?.jersey_number ?? null;
     if (previous === nextNumber) return;
     setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, jersey_number: nextNumber } : p));
-    const { error } = await supabase.from('player_profiles')
-      .update({ jersey_number: nextNumber })
-      .eq('id', playerId);
+    setSavingJerseyIds(prev => new Set(prev).add(playerId));
+    const { error } = await supabase.rpc('set_player_jersey_number', {
+      p_player_id: playerId,
+      p_jersey_number: nextNumber,
+    });
+    setSavingJerseyIds(prev => {
+      const n = new Set(prev);
+      n.delete(playerId);
+      return n;
+    });
     if (error) {
-      toast.error('Não foi possível salvar o número da camisa.');
+      toast.error(error.message || 'Não foi possível salvar o número da camisa.');
       setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, jersey_number: previous } : p));
+      return;
     }
+    toast.success(nextNumber == null ? 'Número removido.' : `Número ${nextNumber} salvo.`);
   };
 
   const handleRejectPlayerExit = async (player: SquadPlayer) => {
@@ -345,22 +356,28 @@ export default function ManagerSquadPage() {
                       <span className="font-display text-lg font-extrabold text-tactical">{p.overall}</span>
                     </td>
                     <td className="py-3 pr-3" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="number"
-                        min={0}
-                        max={99}
-                        defaultValue={p.jersey_number ?? ''}
-                        placeholder="—"
-                        className="w-12 px-1.5 py-1 text-center font-display font-bold bg-muted/40 border border-border/60 rounded text-sm focus:outline-none focus:ring-1 focus:ring-tactical"
-                        onBlur={(e) => updateJerseyNumber(p.id, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          if (e.key === 'Escape') {
-                            (e.target as HTMLInputElement).value = p.jersey_number != null ? String(p.jersey_number) : '';
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={99}
+                          defaultValue={p.jersey_number ?? ''}
+                          placeholder="—"
+                          disabled={savingJerseyIds.has(p.id)}
+                          className="w-12 px-1.5 py-1 text-center font-display font-bold bg-muted/40 border border-border/60 rounded text-sm focus:outline-none focus:ring-1 focus:ring-tactical disabled:opacity-50"
+                          onBlur={(e) => updateJerseyNumber(p.id, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            if (e.key === 'Escape') {
+                              (e.target as HTMLInputElement).value = p.jersey_number != null ? String(p.jersey_number) : '';
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                        />
+                        {savingJerseyIds.has(p.id) && (
+                          <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+                        )}
+                      </div>
                     </td>
                     <td
                       className="py-3 pr-3 font-display font-bold cursor-pointer"
