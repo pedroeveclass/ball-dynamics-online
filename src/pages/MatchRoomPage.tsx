@@ -1390,6 +1390,9 @@ export default function MatchRoomPage() {
   // IMPORTANT: If there's already a one_touch_executed action for this turn, DON'T auto-open
   useEffect(() => {
     if (!activeTurn || match?.status !== 'live' || isPhaseProcessing) return;
+    // Don't open menus while the inertia arrow is active — the menu overlay
+    // would steal the click the user intends for the slider confirmation.
+    if (inertiaArrow) return;
 
     // Positioning turn: no auto-open action menu, players click manually
     if (isPositioningTurn) return;

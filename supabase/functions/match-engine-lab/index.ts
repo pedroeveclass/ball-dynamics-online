@@ -7614,7 +7614,9 @@ Deno.serve(async (req) => {
       const isManagerOfClub = managerProfile?.id
         ? (await supabase.from('clubs').select('id').eq('id', participant?.club_id).eq('manager_profile_id', managerProfile.id).maybeSingle()).data !== null
         : false;
-      const isTestMatch = (allParts || []).length <= 4;
+      // Test match = small-sided friendly (≤5v5). Allow the manager to control
+      // any player in the match, not just their own club's.
+      const isTestMatch = (allParts || []).length <= 10;
       const isManagerOfMatch = isTestMatch && managerProfile?.id
         ? (await supabase.from('clubs').select('id').eq('manager_profile_id', managerProfile.id)
             .in('id', [(participant as any)?.matches?.home_club_id, (participant as any)?.matches?.away_club_id].filter(Boolean))
