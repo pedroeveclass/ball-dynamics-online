@@ -2146,9 +2146,12 @@ export default function MatchRoomPage() {
         ballPathAction.target_y != null &&
         (canContestBallPath || canContestCarrierMove)
       ) {
-        const _bhIsBH = ballPathAction.participant_id === activeTurn?.ball_holder_participant_id;
-        const _bhOriginX = _bhIsBH ? (ballHolderNow.field_x + 1.2) : ballHolderNow.field_x;
-        const _bhOriginY = _bhIsBH ? (ballHolderNow.field_y - 1.2) : ballHolderNow.field_y;
+        // Use raw field_x/y — NO ball-visual offset. Must match the purple-circle
+        // render which also uses effectiveHolder.field_x/y directly. The old +1.2/-1.2
+        // offset shifted the trajectory line enough to make canReach fail on click
+        // even when the purple circle was visible.
+        const _bhOriginX = ballHolderNow.field_x;
+        const _bhOriginY = ballHolderNow.field_y;
         const _tdx = ballPathAction.target_x - _bhOriginX;
         const _tdy = ballPathAction.target_y - _bhOriginY;
         const _tlen2 = _tdx * _tdx + _tdy * _tdy;
@@ -4421,7 +4424,9 @@ export default function MatchRoomPage() {
                 
                 const effectiveHolder = effectiveBallTrajectoryAction ? (ballTrajectoryHolder || participants.find(p => p.id === effectiveBallTrajectoryAction.participant_id)) : null;
                 
-                if (isMove && effectiveBallTrajectoryAction && effectiveHolder &&
+                // Ball holder can't intercept their own trajectory — hide purple for BH.
+                const isBHSelf = drawingAction.fromParticipantId === activeTurn?.ball_holder_participant_id;
+                if (isMove && !isBHSelf && effectiveBallTrajectoryAction && effectiveHolder &&
                     effectiveHolder.field_x != null && effectiveHolder.field_y != null &&
                     effectiveBallTrajectoryAction.target_x != null && effectiveBallTrajectoryAction.target_y != null &&
                     (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
