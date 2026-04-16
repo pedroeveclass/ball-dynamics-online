@@ -6070,6 +6070,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     } else {
       // ── LOOSE BALL HANDLING ──
+      // Initialize ballEndPos from looseBallPos so the inertia calculation below
+      // starts from where the ball actually is — NOT from (50,50) which is the
+      // uninitialized default. This was the root cause of "espalmada inertia goes
+      // to the center of the field" (and then into the goal).
+      if (looseBallPos && !ballEndPos) {
+        ballEndPos = { x: looseBallPos.x, y: looseBallPos.y };
+      }
       // Check if ball was ALREADY loose in the previous turn (single-turn inertia)
       const { data: prevTurnData } = await supabase
         .from('match_turns')
