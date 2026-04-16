@@ -4850,9 +4850,19 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
+    // IMPORTANT: resolve the current active turn BEFORE inserting the next one.
+    // Running resolve + insert in parallel opened a tiny race window where both the
+    // old (status='active') and the new (status='active') rows coexisted — a
+    // concurrent cron tick (every 1s) could claim each, run the phase engine twice,
+    // and cascade duplicate active turns (seen as the match "flickering between two
+    // games" on the client). Serializing closes that window: after the resolve
+    // returns, the only `active` row for this match is the one we're about to insert.
+    await supabase.from('match_turns')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', activeTurn.id);
+
     await Promise.all([
       actionIds.length > 0 ? supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds) : Promise.resolve(),
-      supabase.from('match_turns').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', activeTurn.id),
       supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id),
       supabase.from('match_turns').insert({
         match_id, turn_number: activeTurn.turn_number,
