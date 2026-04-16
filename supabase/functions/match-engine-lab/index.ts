@@ -4220,19 +4220,42 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         }
 
         if (participants.length > 0) {
-          const { data: inserted } = await supabase.from('match_participants').insert(participants).select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y');
-          const starterCount = starterSlots.length;
-          const benchCount = benchSlots.length;
-          console.log(`[ENGINE] Seeded ${starterCount} starters + ${benchCount} bench (${participants.filter((p: any) => !p.is_bot).length} human) for club ${clubId.slice(0,8)}`);
+          // Safeguard against duplicate seeding: skip slots that already have a
+          // participant for this match. Previously a racing auto_start or a
+          // partial prior wipe could leave participants behind, and a second
+          // seed run would add more on top (seen in match d0612662: 16 players
+          // across 11 distinct slots = 5 duplicates per team).
+          const { data: alreadySeeded } = await supabase
+            .from('match_participants')
+            .select('lineup_slot_id')
+            .eq('match_id', m.id)
+            .eq('club_id', clubId)
+            .not('lineup_slot_id', 'is', null);
+          const occupiedSlots = new Set((alreadySeeded || []).map((r: any) => r.lineup_slot_id));
+          const toInsert = participants.filter(p => !occupiedSlots.has(p.lineup_slot_id));
+          if (toInsert.length === 0) {
+            console.log(`[ENGINE] All slots already seeded for club ${clubId.slice(0,8)} — skipping`);
+            return [];
+          }
+          const { data: inserted } = await supabase.from('match_participants').insert(toInsert).select('id, club_id, role_type, lineup_slot_id, player_profile_id, pos_x, pos_y');
+          const starterCount = toInsert.filter(p => p.role_type === 'player').length;
+          const benchCount = toInsert.filter(p => p.role_type === 'bench').length;
+          console.log(`[ENGINE] Seeded ${starterCount} starters + ${benchCount} bench (${toInsert.filter((p: any) => !p.is_bot).length} human) for club ${clubId.slice(0,8)}`);
           return inserted || [];
         }
         return [];
       };
 
-      // Also create manager participants
+      // Also create manager participants — but only if one doesn't already exist
+      // for that club (avoid duplicating managers on re-runs / concurrent seeds).
       const seedManagers = async () => {
+        const { data: existingMgrs } = await supabase
+          .from('match_participants').select('club_id')
+          .eq('match_id', m.id).eq('role_type', 'manager');
+        const mgrClubs = new Set((existingMgrs || []).map((r: any) => r.club_id));
         const managerParts: any[] = [];
         for (const clubId of [m.home_club_id, m.away_club_id]) {
+          if (mgrClubs.has(clubId)) continue;
           const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', clubId).maybeSingle();
           if (club?.manager_profile_id) {
             const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle();

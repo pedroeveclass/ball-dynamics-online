@@ -2337,6 +2337,17 @@ export default function MatchRoomPage() {
   const handlePlayerClick = (participantId: string) => {
     if (isPhaseProcessing) return;
 
+    // Inertia arrow is active → treat the click as a slider confirmation at
+    // the clicked player's field position. Previously this opened the clicked
+    // player's action menu, stealing the click the user intended for the slider.
+    if (inertiaArrow) {
+      const p = participants.find(x => x.id === participantId);
+      if (p && p.field_x != null && p.field_y != null) {
+        handleFieldClick(p.field_x, p.field_y);
+      }
+      return;
+    }
+
     if (drawingAction) {
       const p = participants.find(x => x.id === participantId);
       // Pass/shot targeting a teammate: submit to their position.
@@ -2997,6 +3008,15 @@ export default function MatchRoomPage() {
     }
 
     if (!animating || activeTurn?.phase !== 'resolution') {
+      // During positioning, if this player has submitted a move, render them
+      // directly at the target (no arrow/dot — the sprite itself moves).
+      if (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense') {
+        const posMove = turnActions.find(a =>
+          a.participant_id === p.id && a.action_type === 'move'
+          && a.target_x != null && a.target_y != null
+        );
+        if (posMove) return { x: posMove.target_x as number, y: posMove.target_y as number };
+      }
       return { x: p.field_x ?? 50, y: p.field_y ?? 50 };
     }
 
@@ -4117,14 +4137,10 @@ export default function MatchRoomPage() {
                   const dx = to.x - from.x;
                   const dy = to.y - from.y;
 
-                  // Positioning move: show destination dot only (no arrow line)
+                  // Positioning move: no visual — the player sprite itself moves
+                  // to the target via getAnimatedPos.
                   if (isPositioningTurn && action.action_type === 'move') {
-                    return [(
-                      <g key="pos-dot">
-                        <circle cx={to.x} cy={to.y} r={2.2} fill="#22c55e" opacity={0.95} />
-                        <circle cx={to.x} cy={to.y} r={3.2} fill="none" stroke="#22c55e" strokeWidth={0.6} opacity={0.6} />
-                      </g>
-                    )];
+                    return [];
                   }
 
                   // Map header types to their visual equivalents
@@ -4346,14 +4362,10 @@ export default function MatchRoomPage() {
                 const opacity = 0.85;
 
                 if (isMove) {
-                  // Positioning phases: show only a destination dot (no arrow line)
+                  // Positioning phases: no preview visual — the player sprite
+                  // repositions directly on click via getAnimatedPos override.
                   if (isPositioningTurn) {
-                    return (
-                      <g>
-                        <circle cx={to.x} cy={to.y} r={2.2} fill="#22c55e" opacity={0.95} />
-                        <circle cx={to.x} cy={to.y} r={3.2} fill="none" stroke="#22c55e" strokeWidth={0.6} opacity={0.6} />
-                      </g>
-                    );
+                    return null;
                   }
                   return (
                     <line
