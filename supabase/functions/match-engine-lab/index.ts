@@ -7688,6 +7688,58 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ status: 'action_submitted', server_now: Date.now() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // ── Inertia power update: confirms the slider on a pending move ──
+    // Client hits this when user clicks to confirm the inertia arrow. We use a
+    // server-side update (SECURITY DEFINER via service role) to bypass RLS
+    // issues seen with direct client updates, and atomically merge the power
+    // value into the action's payload without clobbering other fields the
+    // engine might have written (move_dx/dy/ratio).
+    if (action === 'update_inertia_power' && match_id) {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+      if (!user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const participant_id = body.participant_id as string | undefined;
+      const powerRaw = body.inertia_power as number | undefined;
+      if (!participant_id || typeof powerRaw !== 'number') {
+        return new Response(JSON.stringify({ error: 'Missing participant_id or inertia_power' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const power = Math.max(0, Math.min(100, Math.round(powerRaw)));
+
+      // Find this player's pending move action in this match.
+      const { data: pendingMoves } = await supabase
+        .from('match_actions')
+        .select('id, payload, controlled_by_user_id')
+        .eq('match_id', match_id)
+        .eq('participant_id', participant_id)
+        .eq('action_type', 'move')
+        .eq('status', 'pending');
+
+      if (!pendingMoves || pendingMoves.length === 0) {
+        return new Response(JSON.stringify({ error: 'No pending move found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Authorization: the acting user must be the one who submitted the move.
+      // Simple check that matches the RLS policy, done server-side so it's
+      // always enforced regardless of client JWT state.
+      const updated: string[] = [];
+      for (const a of pendingMoves) {
+        if (a.controlled_by_user_id !== user.id) continue;
+        await supabase.rpc('merge_match_action_payload', {
+          p_action_id: a.id,
+          p_patch: { inertia_power: power },
+        });
+        updated.push(a.id);
+      }
+
+      return new Response(JSON.stringify({ status: 'inertia_updated', power, updated_count: updated.length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('match-engine error:', err);

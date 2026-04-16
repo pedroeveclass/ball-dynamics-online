@@ -2046,16 +2046,29 @@ export default function MatchRoomPage() {
       const clampedLen = Math.max(0, Math.min(maxLen, proj));
       const power = maxLen > 0 ? Math.round((clampedLen / maxLen) * 100) : 100;
 
-      // Update the already-submitted action's payload in the DB.
-      if (matchId && activeTurn) {
-        supabase
-          .from('match_actions')
-          .update({ payload: { inertia_power: power } })
-          .eq('match_id', matchId)
-          .eq('match_turn_id', activeTurn.id)
-          .eq('participant_id', participantId)
-          .eq('action_type', 'move')
-          .then(() => { scheduleTurnActionsReconcile(true); });
+      // Server-side update via edge function — bypasses direct-client RLS that
+      // was silently rejecting .update() calls on match_actions (user's session
+      // JWT wasn't reliably picked up). The endpoint authorises against auth
+      // and only updates moves where controlled_by_user_id matches the caller.
+      if (matchId) {
+        (async () => {
+          try {
+            const { result } = await invokeMatchEngine({
+              action: 'update_inertia_power',
+              match_id: matchId,
+              participant_id: participantId,
+              inertia_power: power,
+            });
+            if ((result as any)?.error) {
+              console.warn('[INERTIA] update rejected:', (result as any).error);
+            } else {
+              console.log(`[INERTIA] saved power=${power}% (${(result as any)?.updated_count ?? 0} action)`);
+            }
+          } catch (e) {
+            console.error('[INERTIA] RPC failed:', e);
+          }
+          scheduleTurnActionsReconcile(true);
+        })();
       }
       setInertiaArrow(null);
       return;
