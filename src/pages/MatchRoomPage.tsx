@@ -4469,11 +4469,11 @@ export default function MatchRoomPage() {
                   <g pointerEvents="none">
                     {/* Ghost: full extent at low opacity */}
                     <line x1={svgStart.x} y1={svgStart.y} x2={svgFullEnd.x} y2={svgFullEnd.y}
-                      stroke="#f59e0b" strokeWidth={6} strokeLinecap="round" opacity={0.15} />
+                      stroke="#f59e0b" strokeWidth={2.5} strokeLinecap="round" opacity={0.15} />
                     {/* Active portion */}
                     {clampedLen > 0.2 && (
                       <line x1={svgStart.x} y1={svgStart.y} x2={svgEnd.x} y2={svgEnd.y}
-                        stroke="#f59e0b" strokeWidth={6} strokeLinecap="round" opacity={0.85}
+                        stroke="#f59e0b" strokeWidth={2.5} strokeLinecap="round" opacity={0.85}
                         markerEnd="url(#ah-orange)" />
                     )}
                     {/* Endpoint dot */}
