@@ -7742,24 +7742,30 @@ Deno.serve(async (req) => {
       }
       const power = Math.max(0, Math.min(100, Math.round(powerRaw)));
 
-      // Find this player's pending move action in this match.
-      const { data: pendingMoves } = await supabase
+      // Find this player's most recent move action in this match.
+      // Accept both 'pending' and 'used' — the engine may have resolved the
+      // turn between the initial submit and the slider confirmation, flipping
+      // the status. The inertia_power is only read on the NEXT turn, so
+      // merging into a 'used' action is still valuable.
+      const { data: recentMoves } = await supabase
         .from('match_actions')
         .select('id, payload, controlled_by_user_id')
         .eq('match_id', match_id)
         .eq('participant_id', participant_id)
         .eq('action_type', 'move')
-        .eq('status', 'pending');
+        .in('status', ['pending', 'used'])
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (!pendingMoves || pendingMoves.length === 0) {
-        return new Response(JSON.stringify({ error: 'No pending move found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (!recentMoves || recentMoves.length === 0) {
+        return new Response(JSON.stringify({ error: 'No move found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       // Authorization: the acting user must be the one who submitted the move.
       // Simple check that matches the RLS policy, done server-side so it's
       // always enforced regardless of client JWT state.
       const updated: string[] = [];
-      for (const a of pendingMoves) {
+      for (const a of recentMoves) {
         if (a.controlled_by_user_id !== user.id) continue;
         await supabase.rpc('merge_match_action_payload', {
           p_action_id: a.id,
