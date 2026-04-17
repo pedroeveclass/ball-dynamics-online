@@ -4341,6 +4341,9 @@ export default function MatchRoomPage() {
                 const fromPart = participants.find(p => p.id === action.participant_id);
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
+                // Hide all arrows during motion phase — let the animation speak for itself.
+                if (animating && activeTurn?.phase === 'resolution') return null;
+
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
 

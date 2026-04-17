@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Bell, Check } from 'lucide-react';
@@ -18,10 +19,11 @@ interface Notification {
 }
 
 export default function NotificationsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const Layout = profile?.role_selected === 'manager' ? ManagerLayout : AppLayout;
 
   useEffect(() => {
     if (!user) return;
@@ -53,7 +55,7 @@ export default function NotificationsPage() {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <AppLayout>
+    <Layout>
       <div className="space-y-5 max-w-2xl px-1 sm:px-0">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h1 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
@@ -103,6 +105,6 @@ export default function NotificationsPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </Layout>
   );
 }
