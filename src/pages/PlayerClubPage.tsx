@@ -23,6 +23,7 @@ import {
   Shirt, Footprints, Crosshair, ShieldAlert, Pencil,
 } from 'lucide-react';
 import { LineupFieldView } from '@/components/LineupFieldView';
+import { ClubCrest } from '@/components/ClubCrest';
 import { formatBRL, formatDate } from '@/lib/formatting';
 
 // ── Types ──
