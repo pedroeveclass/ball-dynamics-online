@@ -410,8 +410,19 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
     setSendingChat(false);
   };
 
+  const [collapsed, setCollapsed] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+
   return (
-    <div className="w-72 shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-y-auto">
+    <>
+      {/* Floating toggle (always visible) — slides the sidebar in/out. */}
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="fixed right-2 top-2 z-50 bg-[hsl(220,20%,12%)]/90 border border-[hsl(220,10%,30%)] rounded-md px-2 py-1.5 text-[11px] font-display font-bold text-[hsl(45,30%,80%)] shadow-lg hover:bg-[hsl(220,20%,18%)] md:right-3"
+        aria-label={collapsed ? 'Abrir menu' : 'Recolher menu'}
+      >
+        {collapsed ? '☰' : '✕'}
+      </button>
+    <div className={`${collapsed ? 'w-0 overflow-hidden border-l-0' : 'w-72'} shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-y-auto transition-[width] duration-200`}>
       {/* Turn Wheel */}
       <div className="p-3 border-b border-[hsl(220,10%,22%)]">
         <TurnWheel
@@ -650,5 +661,6 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
         )}
       </AccordionSection>
     </div>
+    </>
   );
 });
