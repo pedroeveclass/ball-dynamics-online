@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS, getAttrCap } from '@/lib/attributes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -167,13 +167,15 @@ export default function PlayerAttributesPage() {
           const bonusFactor = 1 + attrCoachBonus + attrTcBonus + attrTrainerBonus;
           const effectiveGrowthMin = (growthRate * tierMult * bonusFactor).toFixed(2);
           const effectiveGrowthMax = ((growthRate + 0.99) * tierMult * bonusFactor).toFixed(2);
+          const cap = getAttrCap(playerProfile.archetype, playerProfile.height, key);
+          const atCap = value >= cap;
           return (
             <Popover key={key}>
               <PopoverTrigger asChild>
                 <button className="w-full text-left hover:bg-muted/50 rounded-md p-1 transition-colors cursor-pointer" disabled={training === key}>
                   <div className="flex items-center gap-2">
                     <div className="flex-1">
-                      <AttributeBar label={ATTR_LABELS[key] || key} value={value} showTier />
+                      <AttributeBar label={ATTR_LABELS[key] || key} value={value} cap={cap} showTier />
                     </div>
                     {evo && evo > 0 && (
                       <span className="flex items-center text-xs text-pitch font-display font-bold gap-0.5 shrink-0">
@@ -198,7 +200,13 @@ export default function PlayerAttributesPage() {
                   <p className="text-xs text-muted-foreground">
                     Atual: <span className="font-bold text-foreground">{value.toFixed(2)}</span> → Ganho estimado: <span className="font-bold text-pitch">~{effectiveGrowthMin} - {effectiveGrowthMax}</span>
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    Limite do seu tipo ({playerProfile.archetype} / {playerProfile.height}): <span className="font-bold text-foreground">{cap}</span>
+                  </p>
                   <p className="text-xs text-muted-foreground">Custo: {ENERGY_COST} energia</p>
+                  {atCap && (
+                    <p className="text-xs text-destructive">⚠ Atributo no limite do seu tipo. Não evolui mais com treino.</p>
+                  )}
                   {tierMult < 1 && (
                     <p className="text-xs text-warning">Crescimento reduzido pelo nível do atributo ({Math.round(tierMult * 100)}%)</p>
                   )}
@@ -223,10 +231,10 @@ export default function PlayerAttributesPage() {
                   <Button
                     size="sm"
                     onClick={() => handleTrain(key)}
-                    disabled={training !== null || playerProfile.energy_current < ENERGY_COST}
+                    disabled={training !== null || playerProfile.energy_current < ENERGY_COST || atCap}
                     className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
                   >
-                    {training === key ? 'Treinando...' : 'Confirmar Treino'}
+                    {atCap ? 'No limite' : training === key ? 'Treinando...' : 'Confirmar Treino'}
                   </Button>
                 </div>
               </PopoverContent>

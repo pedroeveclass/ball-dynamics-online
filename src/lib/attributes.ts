@@ -302,6 +302,125 @@ export function getTrainingCenterBonus(level: number): number {
   return TRAINING_CENTER_BONUS[level] ?? 0;
 }
 
+// ══════════════════════════════════════════════════════════════
+// Attribute caps by archetype + height.
+//
+// A "hard" cap (80) means the opposition is strong — a Torre will
+// never be fast. "soft" (88) is a gentler ceiling — still strong but
+// not world-class. Default (99) is no restriction.
+//
+// Archetype cap and height cap stack: the smaller number wins.
+// Existing players past the cap are grandfathered (growth = 0, no
+// rebate).
+// ══════════════════════════════════════════════════════════════
+
+export const CAP_HARD = 80;
+export const CAP_SOFT = 88;
+export const CAP_DEFAULT = 99;
+export const CAP_GK_FIELD = 70; // Every GK archetype is hard-capped at 70 on outfield attrs
+
+type CapTier = 'hard' | 'soft';
+
+const ARCHETYPE_CAPS: Record<string, Partial<Record<string, CapTier>>> = {
+  'All Around': {
+    velocidade: 'soft', aceleracao: 'soft', agilidade: 'soft', forca: 'soft',
+    equilibrio: 'soft', resistencia: 'soft', pulo: 'soft', stamina: 'soft',
+    drible: 'soft', controle_bola: 'soft', marcacao: 'soft', desarme: 'soft',
+    um_toque: 'soft', curva: 'soft', passe_baixo: 'soft', passe_alto: 'soft',
+    visao_jogo: 'soft', tomada_decisao: 'soft', antecipacao: 'soft',
+    trabalho_equipe: 'soft', coragem: 'soft',
+    posicionamento_ofensivo: 'soft', posicionamento_defensivo: 'soft',
+    cabeceio: 'soft', acuracia_chute: 'soft', forca_chute: 'soft',
+  },
+  'Condutor': {
+    forca: 'hard', marcacao: 'hard', desarme: 'hard',
+    cabeceio: 'soft', pulo: 'soft',
+  },
+  'Chutador': {
+    marcacao: 'hard', desarme: 'hard', posicionamento_defensivo: 'hard',
+    trabalho_equipe: 'soft', passe_alto: 'soft', visao_jogo: 'soft',
+  },
+  'Velocista': {
+    forca: 'hard', cabeceio: 'hard', pulo: 'hard',
+    forca_chute: 'soft', marcacao: 'soft',
+  },
+  'Torre': {
+    velocidade: 'hard', aceleracao: 'hard', agilidade: 'hard',
+    drible: 'soft', controle_bola: 'soft',
+  },
+  'Cão de Guarda': {
+    um_toque: 'hard', curva: 'hard', passe_alto: 'hard',
+    acuracia_chute: 'soft', controle_bola: 'soft', drible: 'soft',
+  },
+};
+
+// Outfield attrs that every GK archetype is hard-capped at 70 on.
+// (GKs don't need to dribble or shoot at world-class levels.)
+const GK_CAPPED_FIELD_ATTRS = new Set<string>([
+  'velocidade', 'aceleracao', 'agilidade',
+  'drible', 'controle_bola', 'marcacao', 'desarme',
+  'um_toque', 'curva', 'passe_baixo', 'passe_alto',
+  'posicionamento_ofensivo', 'posicionamento_defensivo',
+  'cabeceio', 'acuracia_chute', 'forca_chute',
+]);
+
+// Per-GK-archetype restrictions on the GK-specific attrs.
+const GK_ARCHETYPE_CAPS: Record<string, Partial<Record<string, CapTier>>> = {
+  'Goleiro Completo': {},
+  'Goleiro Felino': {
+    defesa_aerea: 'hard', comando_area: 'hard',
+    pegada: 'soft',
+  },
+  'Goleiro Muralha': {
+    reflexo: 'soft', um_contra_um: 'soft', tempo_reacao: 'soft',
+  },
+};
+
+const HEIGHT_CAPS: Record<string, Partial<Record<string, CapTier>>> = {
+  'Muito Baixo': {
+    cabeceio: 'hard', pulo: 'hard', forca: 'hard',
+    defesa_aerea: 'soft',
+  },
+  'Baixo': {
+    cabeceio: 'soft', pulo: 'soft',
+  },
+  'Médio': {},
+  'Alto': {
+    velocidade: 'soft', agilidade: 'soft',
+  },
+  'Muito Alto': {
+    velocidade: 'hard', aceleracao: 'hard', agilidade: 'hard',
+    equilibrio: 'soft',
+  },
+};
+
+function tierValue(t: CapTier | undefined | null): number {
+  if (t === 'hard') return CAP_HARD;
+  if (t === 'soft') return CAP_SOFT;
+  return CAP_DEFAULT;
+}
+
+// Public: computes the maximum value an attribute can reach for a given
+// archetype + height. Multiple restrictions stack (min wins).
+export function getAttrCap(archetype: string | null | undefined, height: string | null | undefined, attrKey: string): number {
+  const isGK = archetype?.startsWith('Goleiro');
+  let cap = CAP_DEFAULT;
+
+  if (isGK) {
+    if (GK_CAPPED_FIELD_ATTRS.has(attrKey)) cap = Math.min(cap, CAP_GK_FIELD);
+    const gkTier = archetype ? GK_ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined;
+    cap = Math.min(cap, tierValue(gkTier));
+  } else {
+    const fieldTier = archetype ? ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined;
+    cap = Math.min(cap, tierValue(fieldTier));
+  }
+
+  const heightTier = height ? HEIGHT_CAPS[height]?.[attrKey] : undefined;
+  cap = Math.min(cap, tierValue(heightTier));
+
+  return cap;
+}
+
 // Positions
 export const POSITIONS = [
   { value: 'GK', label: 'Goleiro', category: 'GK' },
