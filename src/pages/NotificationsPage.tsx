@@ -54,14 +54,16 @@ export default function NotificationsPage() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 max-w-2xl">
-        <div className="flex items-center justify-between">
-          <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-            <Bell className="h-6 w-6 text-tactical" /> Notificações
+      <div className="space-y-5 max-w-2xl px-1 sm:px-0">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h1 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-tactical" /> Notificações
           </h1>
           {unreadCount > 0 && (
-            <Button size="sm" variant="outline" onClick={markAllAsRead} className="text-xs font-display">
-              <Check className="h-3 w-3 mr-1" /> Marcar todas como lidas
+            <Button size="sm" variant="outline" onClick={markAllAsRead} className="text-xs font-display shrink-0">
+              <Check className="h-3 w-3 mr-1" />
+              <span className="hidden sm:inline">Marcar todas como lidas</span>
+              <span className="sm:hidden">Ler todas</span>
             </Button>
           )}
         </div>
@@ -80,7 +82,7 @@ export default function NotificationsPage() {
             {notifications.map(n => (
               <div
                 key={n.id}
-                className={`stat-card flex items-start gap-3 cursor-pointer transition-colors ${
+                className={`stat-card flex items-start gap-3 cursor-pointer transition-colors overflow-hidden ${
                   !n.read ? 'border-tactical/30 bg-tactical/5' : ''
                 }`}
                 onClick={() => {
@@ -88,10 +90,10 @@ export default function NotificationsPage() {
                   navigate(getNotificationLink(n));
                 }}
               >
-                <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${!n.read ? 'bg-tactical' : 'bg-transparent'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-display font-bold text-sm">{n.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{n.body}</p>
+                <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${!n.read ? 'bg-tactical' : 'bg-transparent'}`} />
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <p className="font-display font-bold text-sm break-words">{n.title}</p>
+                  {n.body && <p className="text-xs text-muted-foreground mt-0.5 break-words">{n.body}</p>}
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {new Date(n.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                   </p>

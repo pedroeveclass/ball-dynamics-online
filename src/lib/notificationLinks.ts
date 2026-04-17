@@ -9,6 +9,7 @@ const TYPE_FALLBACK: Record<string, string> = {
   finance: '/manager/finance',
   energy: '/player',
   league: '/league',
+  forum: '/forum',
   system: '/notifications',
 };
 

@@ -89,14 +89,16 @@ export function NotificationBell() {
       >
         <Bell className="h-5 w-5 text-muted-foreground" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-destructive text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 bg-destructive text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center leading-none">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-80 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+        <div
+          className="fixed left-1/2 -translate-x-1/2 top-14 w-[min(calc(100vw-1rem),380px)] sm:absolute sm:translate-x-0 sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-80 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden"
+        >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="font-display font-bold text-sm">Notificações</span>
             <Link
@@ -108,7 +110,7 @@ export function NotificationBell() {
             </Link>
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-[70vh] sm:max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
               <p className="text-center text-muted-foreground text-xs py-6">Sem notificações</p>
             ) : (
@@ -124,10 +126,12 @@ export function NotificationBell() {
                 >
                   <div className="flex items-start gap-2">
                     {!n.read && <span className="mt-1.5 h-2 w-2 rounded-full bg-tactical shrink-0" />}
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-semibold truncate ${!n.read ? 'text-foreground' : 'text-muted-foreground'}`}>{n.title}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{n.body}</p>
-                      <p className="text-[9px] text-muted-foreground/60 mt-0.5">{timeAgo(n.created_at)}</p>
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <p className={`text-[13px] font-semibold break-words line-clamp-2 ${!n.read ? 'text-foreground' : 'text-muted-foreground'}`}>{n.title}</p>
+                      {n.body && (
+                        <p className="text-[11px] text-muted-foreground break-words line-clamp-2 mt-0.5">{n.body}</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                   </div>
                 </button>
