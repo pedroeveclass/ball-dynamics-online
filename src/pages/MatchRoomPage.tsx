@@ -275,6 +275,12 @@ export default function MatchRoomPage() {
   // Inertia power per participant (0-100, from previous turn's move payload).
   // Scales the directional inertia multiplier: 100 = full effect, 0 = no effect.
   const inertiaPowerRef = useRef<Record<string, number>>({});
+  // Safety helpers for the deferred move (declared here so they're visible
+  // to the unmount effect below). Defined as inline functions so they always
+  // close over the latest state/refs.
+  // Flush the pending move with the given power (default 100) if any.
+  const flushPendingMoveRef = useRef<((power?: number) => void) | null>(null);
+
   // Inertia arrow: after confirming a move, a thick orange arrow extends from
   // the move endpoint in the same direction. The player clicks to set how far
   // the arrow goes (0-100% of move distance → inertia_power). Replaces the
@@ -285,6 +291,34 @@ export default function MatchRoomPage() {
     dirX: number; dirY: number;       // normalised direction of the move
     maxLen: number;                    // max arrow length in field %
   } | null>(null);
+  // Pending move: held locally until the inertia arrow is confirmed. The
+  // submitAction call is deferred so the inertia_power goes in the INITIAL
+  // insert — no more payload race with the engine's resolve. If the player
+  // doesn't confirm, a safety net auto-flushes with 100% before phase end.
+  const pendingMoveRef = useRef<{ participantId: string; targetX: number; targetY: number } | null>(null);
+
+  // Safety: auto-submit any deferred move with 100% before the phase timer
+  // expires. Also fires on unmount (tab close / navigate away) so the move
+  // isn't silently lost.
+  useEffect(() => {
+    flushPendingMoveRef.current = (power: number = 100) => {
+      const pending = pendingMoveRef.current;
+      if (!pending) return;
+      pendingMoveRef.current = null;
+      setInertiaArrow(null);
+      submitAction('move', pending.participantId, pending.targetX, pending.targetY, undefined, { inertia_power: power });
+    };
+  });
+  // Phase timer watcher: when time is getting low, flush pending.
+  useEffect(() => {
+    if (phaseTimeLeft <= 1 && pendingMoveRef.current) {
+      flushPendingMoveRef.current?.(100);
+    }
+  }, [phaseTimeLeft]);
+  // Unmount flush.
+  useEffect(() => {
+    return () => { flushPendingMoveRef.current?.(100); };
+  }, []);
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
   const inertiaConsumedRef = useRef<boolean>(false);
@@ -1174,6 +1208,10 @@ export default function MatchRoomPage() {
   // never auto-opens for them in defending_response. The persisted submitted ids
   // (derived from turnActions) cover cross-phase display separately.
   useEffect(() => {
+    // Before wiping, flush any deferred move so we don't silently lose it
+    // across phase transitions (the phase-timer watcher should have fired
+    // first, but belt-and-suspenders).
+    flushPendingMoveRef.current?.(100);
     setSubmittedActions(new Set());
     menuAutoOpenedRef.current = new Set();
     setInertiaArrow(null);
@@ -1591,6 +1629,9 @@ export default function MatchRoomPage() {
       if (!canControl) return;
 
       e.preventDefault();
+      // Cancel any pending inertia-confirmation: the Z is overriding the move.
+      pendingMoveRef.current = null;
+      setInertiaArrow(null);
       setSelectedParticipantId(candidate.id);
       setDrawingAction(null);
       setPendingInterceptChoice(null);
@@ -2173,40 +2214,21 @@ export default function MatchRoomPage() {
   };
 
   const handleFieldClick = (pctX: number, pctY: number) => {
-    // Inertia arrow confirmation: clicking sets the power based on how far
-    // along the direction the cursor is, then updates the action payload.
+    // Inertia arrow confirmation: submit the DEFERRED move with the chosen
+    // power. No more racing the engine's resolve — the single insert carries
+    // the final inertia_power from the start.
     if (inertiaArrow) {
-      const { participantId, startX, startY, dirX, dirY, maxLen } = inertiaArrow;
-      // Project click onto the arrow direction to compute length.
+      const { startX, startY, dirX, dirY, maxLen } = inertiaArrow;
       const cdx = pctX - startX;
       const cdy = pctY - startY;
-      const proj = cdx * dirX + cdy * dirY; // signed projection
+      const proj = cdx * dirX + cdy * dirY;
       const clampedLen = Math.max(0, Math.min(maxLen, proj));
       const power = maxLen > 0 ? Math.round((clampedLen / maxLen) * 100) : 100;
 
-      // Server-side update via edge function — bypasses direct-client RLS that
-      // was silently rejecting .update() calls on match_actions (user's session
-      // JWT wasn't reliably picked up). The endpoint authorises against auth
-      // and only updates moves where controlled_by_user_id matches the caller.
-      if (matchId) {
-        (async () => {
-          try {
-            const { result } = await invokeMatchEngine({
-              action: 'update_inertia_power',
-              match_id: matchId,
-              participant_id: participantId,
-              inertia_power: power,
-            });
-            if ((result as any)?.error) {
-              console.warn('[INERTIA] update rejected:', (result as any).error);
-            } else {
-              console.log(`[INERTIA] saved power=${power}% (${(result as any)?.updated_count ?? 0} action)`);
-            }
-          } catch (e) {
-            console.error('[INERTIA] RPC failed:', e);
-          }
-          scheduleTurnActionsReconcile(true);
-        })();
+      const pending = pendingMoveRef.current;
+      if (pending) {
+        submitAction('move', pending.participantId, pending.targetX, pending.targetY, undefined, { inertia_power: power });
+        pendingMoveRef.current = null;
       }
       setInertiaArrow(null);
       return;
@@ -2462,22 +2484,53 @@ export default function MatchRoomPage() {
         }
         console.log(`[PHYSICS] Move submitted: player=${drawingAction.fromParticipantId.slice(0,8)} dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} clamped=${dist > maxRange} inertia=${direction ? 'yes' : 'no'}`);
       }
-      submitAction('move', drawingAction.fromParticipantId, mx, my, undefined, { inertia_power: 100 });
-      // Show the inertia arrow so the player can set 0-100% visually.
-      // The arrow extends from the move endpoint in the same direction.
-      if (!isPositioningTurn && moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+      // DEFER the submit until the inertia arrow is confirmed (or safety
+      // net auto-flush before phase end). Positioning moves skip the arrow
+      // and submit immediately.
+      const drawnParticipantId = drawingAction.fromParticipantId;
+      if (isPositioningTurn) {
+        submitAction('move', drawnParticipantId, mx, my, undefined, { inertia_power: 100 });
+      } else if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
+        // Push an optimistic row so the move arrow renders immediately
+        // (visual feedback) while we wait for the inertia confirmation.
+        const turnAtClick = activeTurnRef.current;
+        if (turnAtClick) {
+          pushOptimisticTurnAction({
+            match_id: matchId!,
+            match_turn_id: turnAtClick.id,
+            participant_id: drawnParticipantId,
+            controlled_by_type: myRole === 'manager' ? 'manager' : 'player',
+            controlled_by_user_id: user?.id ?? null,
+            action_type: 'move',
+            target_x: mx,
+            target_y: my,
+            target_participant_id: null,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            turn_phase: turnAtClick.phase,
+            turn_number: turnAtClick.turn_number,
+            payload: { inertia_power: 100 },
+          });
+          setSubmittedActions(prev => new Set([...prev, drawnParticipantId]));
+        }
+        pendingMoveRef.current = { participantId: drawnParticipantId, targetX: mx, targetY: my };
+
         const adx = mx - moveFrom.field_x;
         const ady = my - moveFrom.field_y;
         const alen = Math.sqrt(adx * adx + ady * ady);
         if (alen > 0.3) {
           setInertiaArrow({
-            participantId: drawingAction.fromParticipantId,
+            participantId: drawnParticipantId,
             startX: mx,
             startY: my,
             dirX: adx / alen,
             dirY: ady / alen,
-            maxLen: alen,  // same length as the move itself
+            maxLen: alen,
           });
+        } else {
+          // Zero-length move (click on current position) — submit immediately.
+          submitAction('move', drawnParticipantId, mx, my, undefined, { inertia_power: 100 });
+          pendingMoveRef.current = null;
         }
       }
     }
