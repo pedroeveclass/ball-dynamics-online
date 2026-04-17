@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
-import { Save, UserPlus, X, Users } from 'lucide-react';
+import { Save, UserPlus, X, Users, Target } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { sortPlayersByPosition, positionalPenaltyPercent } from '@/lib/positions';
 
@@ -631,13 +632,19 @@ export default function ManagerLineupPage() {
             <h1 className="font-display text-2xl font-bold">Escalação</h1>
             <p className="text-sm text-muted-foreground">{assignments.length}/{slots.length} titulares • {benchPlayers.length}/{MAX_BENCH} banco</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Select value={formation} onValueChange={handleFormationChange}>
               <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
               </SelectContent>
             </Select>
+            <Button asChild variant="outline" className="gap-1.5">
+              <Link to="/manager/lineup/tactics">
+                <Target className="h-4 w-4" />
+                Táticas — Jogo Situacional
+              </Link>
+            </Button>
             <Button onClick={saveLineup} disabled={saving} className="gap-1.5">
               <Save className="h-4 w-4" />
               {saving ? 'Salvando...' : 'Salvar'}

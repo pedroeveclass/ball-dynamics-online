@@ -29,6 +29,7 @@ const ManagerStadiumPage = lazy(() => import("./pages/ManagerStadiumPage"));
 const ManagerMarketPage = lazy(() => import("./pages/ManagerMarketPage"));
 const ManagerSquadPage = lazy(() => import("./pages/ManagerSquadPage"));
 const ManagerLineupPage = lazy(() => import("./pages/ManagerLineupPage"));
+const SituationalTacticsPage = lazy(() => import("./pages/SituationalTacticsPage"));
 const ManagerChallengesPage = lazy(() => import("./pages/ManagerChallengesPage"));
 const ManagerCoachPage = lazy(() => import("./pages/ManagerCoachPage"));
 const PlayerMatchesPage = lazy(() => import("./pages/PlayerMatchesPage"));
@@ -115,6 +116,7 @@ const App = () => (
             <Route path="/manager/market" element={<ManagerRoute><ManagerMarketPage /></ManagerRoute>} />
             <Route path="/manager/squad" element={<ManagerRoute><ManagerSquadPage /></ManagerRoute>} />
             <Route path="/manager/lineup" element={<ManagerOrAssistantRoute><ManagerLineupPage /></ManagerOrAssistantRoute>} />
+            <Route path="/manager/lineup/tactics" element={<ManagerOrAssistantRoute><SituationalTacticsPage /></ManagerOrAssistantRoute>} />
             <Route path="/manager/challenges" element={<ManagerRoute><ManagerChallengesPage /></ManagerRoute>} />
             <Route path="/match/:id" element={<ProtectedRoute><MatchRoomPage /></ProtectedRoute>} />
             <Route path="/match/:id/replay" element={<MatchReplayPage />} />
