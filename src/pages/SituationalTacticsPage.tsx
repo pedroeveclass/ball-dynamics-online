@@ -25,9 +25,15 @@ const QUADRANT_H = 100 / ROWS; // ~14.286
 
 type Phase = 'with_ball' | 'without_ball';
 type Pos = { x: number; y: number };
-/** Quadrant index (0-34) → { slot_position → {x, y} } */
-type QuadrantMap = Record<number, Record<string, Pos>>;
+type QuadrantPositions = Record<string, Pos>;
+/** Quadrant index (0-34) → positions, OR null = use dynamic default (team shifts with ball). */
+type QuadrantMap = Record<number, QuadrantPositions | null>;
 type PhaseMap = Record<Phase, QuadrantMap>;
+
+// How strongly the team drifts toward the ball when a quadrant isn't customized.
+// Vertical pull > lateral pull — attack/defense swings should feel bigger than sideways slides.
+const DYNAMIC_SHIFT_X = 0.25;
+const DYNAMIC_SHIFT_Y = 0.45;
 
 const PHASES: Phase[] = ['with_ball', 'without_ball'];
 const PHASE_LABEL: Record<Phase, string> = {
@@ -65,22 +71,40 @@ function snapPlayerPosition(x: number, y: number): Pos {
   };
 }
 
-/** Default = base formation position for every quadrant (players don't move with the ball). */
-function buildDefaultPhaseMap(formation: string): QuadrantMap {
+/** Dynamic default for a quadrant — shift the whole formation proportionally to ball position. */
+function computeDynamicPositions(quadrantIdx: number, formation: string): QuadrantPositions {
   const slots = FORMATIONS[formation] || [];
-  const map: QuadrantMap = {};
-  for (let i = 0; i < COLS * ROWS; i++) {
-    map[i] = {};
-    for (const s of slots) map[i][s.position] = { x: s.x, y: s.y };
+  const center = quadrantCenter(quadrantIdx);
+  const dx = (center.x - 50) * DYNAMIC_SHIFT_X;
+  const dy = (center.y - 50) * DYNAMIC_SHIFT_Y;
+  const result: QuadrantPositions = {};
+  for (const s of slots) {
+    result[s.position] = {
+      x: clamp(s.x + dx, 0, 100),
+      y: clamp(s.y + dy, 0, 100),
+    };
   }
-  return map;
+  return result;
 }
 
-function buildDefaultBothPhases(formation: string): PhaseMap {
-  return {
-    with_ball: buildDefaultPhaseMap(formation),
-    without_ball: buildDefaultPhaseMap(formation),
-  };
+/** All quadrants start as null = dynamic default. Customization only exists when the user drags. */
+function buildEmptyPhaseMap(): QuadrantMap {
+  const m: QuadrantMap = {};
+  for (let i = 0; i < COLS * ROWS; i++) m[i] = null;
+  return m;
+}
+
+function buildEmptyBothPhases(): PhaseMap {
+  return { with_ball: buildEmptyPhaseMap(), without_ball: buildEmptyPhaseMap() };
+}
+
+function resolvePositions(
+  phaseMap: PhaseMap,
+  phase: Phase,
+  qIdx: number,
+  formation: string,
+): QuadrantPositions {
+  return phaseMap[phase][qIdx] ?? computeDynamicPositions(qIdx, formation);
 }
 
 // ── Draggable player piece ────────────────────────────────────
@@ -181,7 +205,7 @@ export default function SituationalTacticsPage() {
   const [formation, setFormation] = useState('4-4-2');
   const [phase, setPhase] = useState<Phase>('with_ball');
   const [ballQuadrant, setBallQuadrant] = useState(17); // middle-ish (row 3, col 2)
-  const [phaseMap, setPhaseMap] = useState<PhaseMap>(() => buildDefaultBothPhases('4-4-2'));
+  const [phaseMap, setPhaseMap] = useState<PhaseMap>(() => buildEmptyBothPhases());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
@@ -205,28 +229,29 @@ export default function SituationalTacticsPage() {
       if (error) {
         console.error(error);
         toast.error('Erro ao carregar táticas');
-        setPhaseMap(buildDefaultBothPhases(formation));
+        setPhaseMap(buildEmptyBothPhases());
         setLoading(false);
         return;
       }
-      const fresh: PhaseMap = buildDefaultBothPhases(formation);
+      // DB now stores ONLY customized quadrants. Missing keys = use dynamic default.
+      const fresh: PhaseMap = buildEmptyBothPhases();
+      const validSlots = new Set(slots.map(s => s.position));
       for (const row of (data || []) as any[]) {
         const p = row.phase as Phase;
-        const stored = (row.positions || {}) as QuadrantMap;
-        // Merge: keep defaults for missing quadrants/slots.
+        const stored = (row.positions || {}) as Record<string, QuadrantPositions>;
         for (const [q, slotMap] of Object.entries(stored)) {
           const qi = Number(q);
-          if (!Number.isFinite(qi)) continue;
-          fresh[p][qi] = { ...fresh[p][qi], ...(slotMap as Record<string, Pos>) };
-        }
-      }
-      // Keep only slots that exist in the current formation (formation schemas differ).
-      for (const p of PHASES) {
-        for (let i = 0; i < COLS * ROWS; i++) {
-          const entry = fresh[p][i];
-          const filtered: Record<string, Pos> = {};
-          for (const s of slots) filtered[s.position] = entry[s.position] || { x: s.x, y: s.y };
-          fresh[p][i] = filtered;
+          if (!Number.isFinite(qi) || qi < 0 || qi >= COLS * ROWS) continue;
+          // Ignore quadrants whose stored slots don't match current formation at all (stale data).
+          const relevant = Object.keys(slotMap).some(k => validSlots.has(k));
+          if (!relevant) continue;
+          // Start from dynamic, overlay stored slots. Missing slots (e.g., formation change) fall back to dynamic.
+          const base = computeDynamicPositions(qi, formation);
+          const merged: QuadrantPositions = { ...base };
+          for (const s of slots) {
+            if (slotMap[s.position]) merged[s.position] = slotMap[s.position];
+          }
+          fresh[p][qi] = merged;
         }
       }
       setPhaseMap(fresh);
@@ -238,21 +263,38 @@ export default function SituationalTacticsPage() {
   }, [club?.id, formation]);
 
   // ── Mutators ───────────────────────────────────────────────
-  const currentQuadrantPositions = phaseMap[phase][ballQuadrant] || {};
+  const isQuadrantCustomized = phaseMap[phase][ballQuadrant] != null;
+  const currentQuadrantPositions = resolvePositions(phaseMap, phase, ballQuadrant, formation);
 
   const updatePlayerPos = (slotPosition: string, newPos: Pos) => {
     setPhaseMap(prev => {
-      const next: PhaseMap = {
-        with_ball: { ...prev.with_ball },
-        without_ball: { ...prev.without_ball },
+      // Promote to customized: take whatever we're currently showing (custom or dynamic) as the baseline.
+      const baseline = prev[phase][ballQuadrant] ?? computeDynamicPositions(ballQuadrant, formation);
+      const nextQuadrant: QuadrantPositions = { ...baseline, [slotPosition]: newPos };
+      return {
+        ...prev,
+        [phase]: { ...prev[phase], [ballQuadrant]: nextQuadrant },
       };
-      next[phase] = { ...next[phase] };
-      next[phase][ballQuadrant] = { ...next[phase][ballQuadrant], [slotPosition]: newPos };
-      return next;
     });
   };
 
+  const resetCurrentQuadrant = () => {
+    setPhaseMap(prev => ({
+      ...prev,
+      [phase]: { ...prev[phase], [ballQuadrant]: null },
+    }));
+  };
+
   const ballPos = quadrantCenter(ballQuadrant);
+
+  const serializePhase = (p: Phase): Record<string, QuadrantPositions> => {
+    const out: Record<string, QuadrantPositions> = {};
+    for (let i = 0; i < COLS * ROWS; i++) {
+      const entry = phaseMap[p][i];
+      if (entry) out[String(i)] = entry;
+    }
+    return out;
+  };
 
   const handleSave = async () => {
     if (!club) return;
@@ -261,7 +303,7 @@ export default function SituationalTacticsPage() {
       club_id: club.id,
       formation,
       phase: p,
-      positions: phaseMap[p] as any,
+      positions: serializePhase(p) as any,
     }));
     const { error } = await supabase
       .from('situational_tactics' as any)
@@ -276,34 +318,43 @@ export default function SituationalTacticsPage() {
   };
 
   const handleReset = () => {
-    setPhaseMap(buildDefaultBothPhases(formation));
-    toast.success('Revertido para o padrão — não esquece de salvar');
+    setPhaseMap(buildEmptyBothPhases());
+    toast.success('Todas as personalizações removidas — não esquece de salvar');
   };
 
   const handleDuplicate = async () => {
     if (!club || !dupTarget || dupTarget === formation) return;
     const targetSlots = FORMATIONS[dupTarget] || [];
     const targetSlotPositions = targetSlots.map(s => s.position);
-    // Slot-by-slot copy: source slot N → target slot N (user-approved heuristic).
-    const translated: PhaseMap = buildDefaultBothPhases(dupTarget);
+    // Slot-by-slot copy, preserving the "customized or not" flag.
+    const translated: PhaseMap = buildEmptyBothPhases();
     for (const p of PHASES) {
       for (let i = 0; i < COLS * ROWS; i++) {
         const sourceQuad = phaseMap[p][i];
+        if (!sourceQuad) continue; // Leave null → dynamic default on target.
         const sourceValues = slots.map(s => sourceQuad[s.position]).filter(Boolean);
-        translated[p][i] = {};
+        const out: QuadrantPositions = {};
         for (let j = 0; j < targetSlotPositions.length; j++) {
           const key = targetSlotPositions[j];
           const targetDefault = targetSlots[j];
-          translated[p][i][key] = sourceValues[j] || { x: targetDefault.x, y: targetDefault.y };
+          out[key] = sourceValues[j] || { x: targetDefault.x, y: targetDefault.y };
         }
+        translated[p][i] = out;
       }
     }
-    const rows = PHASES.map(p => ({
-      club_id: club.id,
-      formation: dupTarget,
-      phase: p,
-      positions: translated[p] as any,
-    }));
+    const rows = PHASES.map(p => {
+      const payload: Record<string, QuadrantPositions> = {};
+      for (let i = 0; i < COLS * ROWS; i++) {
+        const entry = translated[p][i];
+        if (entry) payload[String(i)] = entry;
+      }
+      return {
+        club_id: club.id,
+        formation: dupTarget,
+        phase: p,
+        positions: payload as any,
+      };
+    });
     const { error } = await supabase
       .from('situational_tactics' as any)
       .upsert(rows, { onConflict: 'club_id,formation,phase' });
@@ -323,8 +374,15 @@ export default function SituationalTacticsPage() {
       row <= 1 ? 'ataque' : row <= 4 ? 'meio-campo' : 'defesa';
     const zoneX =
       col === 0 ? 'esquerda' : col === 4 ? 'direita' : col === 2 ? 'centro' : col === 1 ? 'centro-esquerda' : 'centro-direita';
-    return `Quadrante ${ballQuadrant + 1}/35 — ${zoneY} ${zoneX}`;
-  }, [ballQuadrant]);
+    const state = isQuadrantCustomized ? 'personalizado' : 'dinâmico';
+    return `Quadrante ${ballQuadrant + 1}/35 — ${zoneY} ${zoneX} · ${state}`;
+  }, [ballQuadrant, isQuadrantCustomized]);
+
+  const customizedIndices = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 0; i < COLS * ROWS; i++) if (phaseMap[phase][i]) out.push(i);
+    return out;
+  }, [phaseMap, phase]);
 
   if (!club) {
     return <ManagerLayout><div className="p-6">Clube não encontrado.</div></ManagerLayout>;
@@ -417,9 +475,27 @@ export default function SituationalTacticsPage() {
                 style={{ width: '38%', height: '14%' }}
               />
 
-              {/* Highlight active quadrant */}
+              {/* Customized quadrants: yellow dot in the top-right corner of each */}
+              {customizedIndices.map(qi => {
+                const col = qi % COLS;
+                const row = Math.floor(qi / COLS);
+                return (
+                  <div
+                    key={`cust-${qi}`}
+                    className="absolute pointer-events-none h-1.5 w-1.5 rounded-full bg-yellow-300 shadow"
+                    style={{
+                      left: `${(col + 1) * QUADRANT_W}%`,
+                      top: `${row * QUADRANT_H}%`,
+                      marginLeft: -8,
+                      marginTop: 4,
+                    }}
+                  />
+                );
+              })}
+
+              {/* Highlight active quadrant (stronger when customized) */}
               <div
-                className="absolute bg-yellow-400/15 pointer-events-none"
+                className={`absolute pointer-events-none ${isQuadrantCustomized ? 'bg-yellow-400/25 border-2 border-yellow-300/70' : 'bg-yellow-400/15'}`}
                 style={{
                   left: `${(ballQuadrant % COLS) * QUADRANT_W}%`,
                   top: `${Math.floor(ballQuadrant / COLS) * QUADRANT_H}%`,
@@ -455,8 +531,13 @@ export default function SituationalTacticsPage() {
 
         {/* Secondary actions */}
         <div className="flex items-center gap-2 flex-wrap">
+          {isQuadrantCustomized && (
+            <Button variant="outline" size="sm" onClick={resetCurrentQuadrant} className="gap-1.5">
+              <RotateCcw className="h-4 w-4" /> Resetar este quadrante
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5">
-            <RotateCcw className="h-4 w-4" /> Resetar para o padrão
+            <RotateCcw className="h-4 w-4" /> Limpar todas as personalizações
           </Button>
           <Button
             variant="outline"
@@ -470,10 +551,14 @@ export default function SituationalTacticsPage() {
           >
             <Copy className="h-4 w-4" /> Duplicar para outra formação
           </Button>
+          <div className="ml-auto text-xs text-muted-foreground">
+            {customizedIndices.length}/35 quadrante(s) personalizado(s) nesta fase
+          </div>
         </div>
 
         <div className="text-xs text-muted-foreground">
-          Dica: arraste a <strong>bola</strong> para escolher o quadrante e arraste os <strong>jogadores</strong> para posicioná-los. Cada jogador encaixa em 9 pontos dentro de cada quadrante.
+          <strong>Dinâmico (padrão):</strong> o time inteiro acompanha a bola — verticalmente mais, lateralmente menos.
+          Quando você arrasta um jogador, o quadrante vira <strong>personalizado</strong> (pontinho amarelo no canto) e trava naquela configuração.
         </div>
       </div>
 
@@ -483,8 +568,8 @@ export default function SituationalTacticsPage() {
           <DialogHeader>
             <DialogTitle>Duplicar ajustes</DialogTitle>
             <DialogDescription>
-              Copia os 35 quadrantes (ambas as fases) de <strong>{formation}</strong> para a formação escolhida, slot por slot.
-              Salva direto no banco.
+              Copia só os quadrantes <strong>personalizados</strong> de <strong>{formation}</strong> para a formação escolhida, slot por slot
+              (os não-personalizados continuam usando o dinâmico na nova formação). Salva direto no banco.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
