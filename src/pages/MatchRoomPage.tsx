@@ -12,6 +12,7 @@ import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantL
 import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
+import { HelpModal } from '@/components/HelpModal';
 import { MatchActionMenu } from './match/MatchActionMenu';
 import { PitchSVG, DEFAULT_STADIUM_STYLE } from '@/components/PitchSVG';
 import type { StadiumStyle } from '@/components/PitchSVG';
@@ -200,6 +201,15 @@ export default function MatchRoomPage() {
   const timerBarRef = useRef<HTMLDivElement>(null);
   const [preMatchCountdownLeft, setPreMatchCountdownLeft] = useState(PRE_MATCH_COUNTDOWN_SECONDS);
   const [submittingAction, setSubmittingAction] = useState(false);
+  // Help modal — auto-opens on first match (localStorage flag).
+  const [helpOpen, setHelpOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('bdo_tutorial_seen') !== '1') {
+      setHelpOpen(true);
+      localStorage.setItem('bdo_tutorial_seen', '1');
+    }
+  }, []);
   // Tracks players whose menu was already auto-opened this phase. Prevents the
   // auto-open effect from re-triggering after the player submits (the effect
   // re-runs because turnActions changes from the insert, and submittedActions
@@ -1601,6 +1611,65 @@ export default function MatchRoomPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeTurn?.id, activeTurn?.phase, activeTurn?.ball_holder_participant_id, match?.status, match?.home_club_id, match?.away_club_id, myRole, myParticipant?.id, myClubId, selectedParticipantId, isPhaseProcessing, isPositioningTurn]);
+
+  // ── Action letter hotkeys (M/P/A/L/C/F/D/T/B/N + H prefix for headers) ───────
+  // Fires when the action menu is open. Maps a letter to the action if it's
+  // currently available for the selected player. H enters a 1.5s chord window:
+  // the next letter is treated as a header variant.
+  useEffect(() => {
+    const headerChordRef = { current: 0 as number };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      if (match?.status !== 'live' || !activeTurn) return;
+      if (isPhaseProcessing) return;
+      if (!showActionMenu) return; // hotkeys only active when menu is open
+      const key = e.key.toLowerCase();
+
+      // H-chord: header variant. Pressing H alone sets the chord; next letter
+      // picks the header type within 1.5s.
+      const now = Date.now();
+      const inHeaderChord = now - headerChordRef.current < 1500;
+      if (key === 'h' && !inHeaderChord) {
+        headerChordRef.current = now;
+        e.preventDefault();
+        return;
+      }
+
+      const isHeader = inHeaderChord;
+      if (inHeaderChord) headerChordRef.current = 0;
+
+      const shortcutMap: Record<string, string> = isHeader ? {
+        p: 'header_low',
+        a: 'header_high',
+        c: 'header_controlled',
+        f: 'header_power',
+      } : {
+        m: 'move',
+        p: 'pass_low',
+        a: 'pass_high',
+        l: 'pass_launch',
+        c: 'shoot_controlled',
+        f: 'shoot_power',
+        d: 'receive',
+        t: 'receive_hard',
+        b: 'block',
+        n: 'no_action',
+      };
+      const actionType = shortcutMap[key];
+      if (!actionType) return;
+
+      // Only fire if this action is currently available in the menu.
+      const availableActions = getActionsForParticipant(showActionMenu);
+      if (!availableActions.includes(actionType)) return;
+
+      e.preventDefault();
+      handleActionMenuSelect(actionType, showActionMenu);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showActionMenu, activeTurn, match?.status, isPhaseProcessing]);
 
   // ── Engine tick — process once per phase end with explicit pause ─────────────
   useEffect(() => {
@@ -5098,6 +5167,16 @@ export default function MatchRoomPage() {
               );
             })()}
 
+            {/* Help button — floating "?" at top-right of the field */}
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="fixed top-2 right-12 z-50 bg-[hsl(220,20%,12%)]/90 border border-[hsl(220,10%,30%)] rounded-md w-7 h-7 flex items-center justify-center text-[12px] font-display font-bold text-[hsl(45,30%,80%)] shadow-lg hover:bg-[hsl(220,20%,18%)] md:right-14"
+              aria-label="Ajuda"
+              title="Como jogar"
+            >
+              ?
+            </button>
+
             {/* Pass/Shot quality indicator */}
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
@@ -5249,6 +5328,7 @@ export default function MatchRoomPage() {
           }}
         />
       </div>
+      <HelpModal open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }

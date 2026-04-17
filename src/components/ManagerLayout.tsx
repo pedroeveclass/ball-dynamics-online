@@ -1,16 +1,18 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { ManagerSidebar } from '@/components/ManagerSidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { LogOut } from 'lucide-react';
+import { LogOut, HelpCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
 import { NotificationBell } from '@/components/NotificationBell';
+import { HelpModal } from '@/components/HelpModal';
 
 export function ManagerLayout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
@@ -28,6 +30,9 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
               <span className="font-display text-lg font-bold tracking-tight text-foreground">FOOTBALL IDENTITY</span>
             </div>
             <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => setHelpOpen(true)} className="text-muted-foreground hover:text-foreground" title="Tutorial / Como jogar">
+                <HelpCircle className="h-5 w-5" />
+              </Button>
               <NotificationBell />
               <Link to="/account/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
                 <UserAvatar
@@ -48,6 +53,7 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <HelpModal open={helpOpen} onOpenChange={setHelpOpen} />
     </SidebarProvider>
   );
 }

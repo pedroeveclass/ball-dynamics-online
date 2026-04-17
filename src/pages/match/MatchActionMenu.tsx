@@ -104,6 +104,16 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
           icon = `\u26A1${icon}`;
         }
 
+        // Keyboard shortcut hint — matches the hotkeys in MatchRoomPage.
+        const SHORTCUT_MAP: Record<string, string> = {
+          move: 'M', pass_low: 'P', pass_high: 'A', pass_launch: 'L',
+          shoot_controlled: 'C', shoot_power: 'F',
+          receive: 'D', receive_hard: 'T', block: 'B', no_action: 'N',
+          header_low: 'H→P', header_high: 'H→A',
+          header_controlled: 'H→C', header_power: 'H→F',
+        };
+        const shortcut = SHORTCUT_MAP[a];
+
         return (
           <button
             key={a}
@@ -112,7 +122,12 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
             className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
           >
             <span className="text-[10px]">{icon}</span>
-            {label}
+            <span className="flex-1">{label}</span>
+            {shortcut && (
+              <span className="text-[9px] font-mono text-[hsl(220,20%,45%)] tabular-nums">
+                {shortcut}
+              </span>
+            )}
           </button>
         );
       })}
