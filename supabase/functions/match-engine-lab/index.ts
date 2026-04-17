@@ -489,7 +489,7 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
 
   const gkIdByClub = getGoalkeeperIdsByClub(participants, slotMap, profilePosMap);
 
-  return participants.map(p => {
+  const result = participants.map(p => {
     if (p.lineup_slot_id && slotMap.has(p.lineup_slot_id)) {
       p._slot_position = slotMap.get(p.lineup_slot_id);
     } else if (p.player_profile_id && profilePosMap.get(p.player_profile_id)) {
@@ -532,6 +532,42 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     }
     return p;
   });
+
+  // ─── _editor_slot_position: unique slot names matching EDITOR_FORMATIONS ───
+  // Situational tactics / editor FORMATIONS use unique slot IDs (CB1/CB2/ST1/ST2…).
+  // Lineup slots may use generic names (CB, ST) or be absent entirely (no lineup
+  // linked, bot-only teams). Without unique slots every "CB" bot targets the same
+  // zone → players clump. Here we guarantee each team has 11 distinct editor slot
+  // names, falling back to 4-4-2 when the formation isn't mapped.
+  const clubPlayers = new Map<string, any[]>();
+  for (const p of result) {
+    if (p.role_type !== 'player') continue;
+    if (!clubPlayers.has(p.club_id)) clubPlayers.set(p.club_id, []);
+    clubPlayers.get(p.club_id)!.push(p);
+  }
+  for (const [clubId, players] of clubPlayers) {
+    const formation = formationByClub?.[clubId] || '4-4-2';
+    const editorForm = EDITOR_FORMATIONS[formation] || EDITOR_FORMATIONS['4-4-2'];
+    const validSlots = new Set(editorForm.map(s => s.position));
+    const claimed = new Set<string>();
+    // Phase 1: keep players whose slot already matches the editor exactly.
+    for (const p of players) {
+      const s = (p._slot_position || '').toUpperCase();
+      if (validSlots.has(s) && !claimed.has(s)) {
+        p._editor_slot_position = s;
+        claimed.add(s);
+      }
+    }
+    // Phase 2: fill the rest in editor order (GK first, then defenders, mids, forwards).
+    const remaining = editorForm.map(s => s.position).filter(s => !claimed.has(s));
+    let idx = 0;
+    for (const p of players) {
+      if (p._editor_slot_position) continue;
+      if (idx >= remaining.length) break;
+      p._editor_slot_position = remaining[idx++];
+    }
+  }
+  return result;
 }
 
 // ─── GK detection helper (handles EN + PT-BR) ───────────────
@@ -1224,10 +1260,11 @@ function resolveSituationalTarget(
   formation: string,
   tickCache?: TickCache,
 ): { x: number; y: number } | null {
-  const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
+  // Prefer _editor_slot_position (guaranteed unique by enrichment), fall back to raw slot.
+  const slotPos = (bot._editor_slot_position || bot._slot_position || bot.slot_position || '').toUpperCase();
   if (!slotPos) return null;
-  const editorForm = EDITOR_FORMATIONS[formation];
-  if (!editorForm) return null;
+  // Fallback: 4-4-2 editor shape if the formation isn't mapped (e.g., custom/legacy formations).
+  const editorForm = EDITOR_FORMATIONS[formation] || EDITOR_FORMATIONS['4-4-2'];
   const slotDef = editorForm.find(s => s.position === slotPos);
   if (!slotDef) return null;
 
