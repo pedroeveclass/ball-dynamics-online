@@ -1052,6 +1052,197 @@ function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; ag
   return totalDist;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Situational tactics — manager-defined positioning per ball quadrant
+//
+// Editor uses a PORTRAIT coord system (y=100 = own goal, y=0 = opponent goal).
+// Engine uses LANDSCAPE (x=0 = home goal, x=100 = away goal).
+//
+// NOTE: EDITOR_FORMATIONS duplicates src/pages/ManagerLineupPage.tsx FORMATIONS
+// (slot_positions like CB1/CB2/ST1/ST2 — unique per slot). Deno edge functions
+// can't import from src/. If you edit one, edit both.
+// ═══════════════════════════════════════════════════════════════════
+interface EditorSlot { position: string; label: string; x: number; y: number }
+const EDITOR_FORMATIONS: Record<string, EditorSlot[]> = {
+  '4-4-2': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'LB', label: 'LE', x: 15, y: 70 },
+    { position: 'CB1', label: 'ZAG', x: 37, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 63, y: 75 },
+    { position: 'RB', label: 'LD', x: 85, y: 70 },
+    { position: 'LM', label: 'ME', x: 15, y: 45 },
+    { position: 'CM1', label: 'MC', x: 37, y: 50 },
+    { position: 'CM2', label: 'MC', x: 63, y: 50 },
+    { position: 'RM', label: 'MD', x: 85, y: 45 },
+    { position: 'ST1', label: 'ATA', x: 37, y: 18 },
+    { position: 'ST2', label: 'ATA', x: 63, y: 18 },
+  ],
+  '4-3-3': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'LB', label: 'LE', x: 15, y: 70 },
+    { position: 'CB1', label: 'ZAG', x: 37, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 63, y: 75 },
+    { position: 'RB', label: 'LD', x: 85, y: 70 },
+    { position: 'CM1', label: 'MC', x: 25, y: 48 },
+    { position: 'CM2', label: 'MC', x: 50, y: 52 },
+    { position: 'CM3', label: 'MC', x: 75, y: 48 },
+    { position: 'LW', label: 'PE', x: 18, y: 22 },
+    { position: 'ST', label: 'ATA', x: 50, y: 15 },
+    { position: 'RW', label: 'PD', x: 82, y: 22 },
+  ],
+  '4-2-3-1': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'LB', label: 'LE', x: 15, y: 70 },
+    { position: 'CB1', label: 'ZAG', x: 37, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 63, y: 75 },
+    { position: 'RB', label: 'LD', x: 85, y: 70 },
+    { position: 'CDM1', label: 'VOL', x: 37, y: 55 },
+    { position: 'CDM2', label: 'VOL', x: 63, y: 55 },
+    { position: 'LW', label: 'ME', x: 18, y: 35 },
+    { position: 'CAM', label: 'MEI', x: 50, y: 35 },
+    { position: 'RW', label: 'MD', x: 82, y: 35 },
+    { position: 'ST', label: 'ATA', x: 50, y: 15 },
+  ],
+  '3-5-2': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'CB1', label: 'ZAG', x: 25, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 50, y: 78 },
+    { position: 'CB3', label: 'ZAG', x: 75, y: 75 },
+    { position: 'LWB', label: 'ALE', x: 10, y: 50 },
+    { position: 'CM1', label: 'MC', x: 30, y: 48 },
+    { position: 'CM2', label: 'MC', x: 50, y: 45 },
+    { position: 'CM3', label: 'MC', x: 70, y: 48 },
+    { position: 'RWB', label: 'ALD', x: 90, y: 50 },
+    { position: 'ST1', label: 'ATA', x: 37, y: 18 },
+    { position: 'ST2', label: 'ATA', x: 63, y: 18 },
+  ],
+  '3-4-3': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'CB1', label: 'ZAG', x: 25, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 50, y: 78 },
+    { position: 'CB3', label: 'ZAG', x: 75, y: 75 },
+    { position: 'LM', label: 'ME', x: 15, y: 48 },
+    { position: 'CM1', label: 'MC', x: 37, y: 50 },
+    { position: 'CM2', label: 'MC', x: 63, y: 50 },
+    { position: 'RM', label: 'MD', x: 85, y: 48 },
+    { position: 'LW', label: 'PE', x: 18, y: 20 },
+    { position: 'ST', label: 'ATA', x: 50, y: 15 },
+    { position: 'RW', label: 'PD', x: 82, y: 20 },
+  ],
+  '5-3-2': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'LWB', label: 'ALE', x: 10, y: 65 },
+    { position: 'CB1', label: 'ZAG', x: 30, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 50, y: 78 },
+    { position: 'CB3', label: 'ZAG', x: 70, y: 75 },
+    { position: 'RWB', label: 'ALD', x: 90, y: 65 },
+    { position: 'CM1', label: 'MC', x: 25, y: 48 },
+    { position: 'CM2', label: 'MC', x: 50, y: 45 },
+    { position: 'CM3', label: 'MC', x: 75, y: 48 },
+    { position: 'ST1', label: 'ATA', x: 37, y: 18 },
+    { position: 'ST2', label: 'ATA', x: 63, y: 18 },
+  ],
+  '5-4-1': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'LWB', label: 'ALE', x: 10, y: 65 },
+    { position: 'CB1', label: 'ZAG', x: 30, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 50, y: 78 },
+    { position: 'CB3', label: 'ZAG', x: 70, y: 75 },
+    { position: 'RWB', label: 'ALD', x: 90, y: 65 },
+    { position: 'LM', label: 'ME', x: 15, y: 45 },
+    { position: 'CM1', label: 'MC', x: 37, y: 48 },
+    { position: 'CM2', label: 'MC', x: 63, y: 48 },
+    { position: 'RM', label: 'MD', x: 85, y: 45 },
+    { position: 'ST', label: 'ATA', x: 50, y: 15 },
+  ],
+  '4-1-4-1': [
+    { position: 'GK', label: 'GK', x: 50, y: 90 },
+    { position: 'LB', label: 'LE', x: 15, y: 70 },
+    { position: 'CB1', label: 'ZAG', x: 37, y: 75 },
+    { position: 'CB2', label: 'ZAG', x: 63, y: 75 },
+    { position: 'RB', label: 'LD', x: 85, y: 70 },
+    { position: 'CDM', label: 'VOL', x: 50, y: 58 },
+    { position: 'LM', label: 'ME', x: 15, y: 38 },
+    { position: 'CM1', label: 'MC', x: 37, y: 40 },
+    { position: 'CM2', label: 'MC', x: 63, y: 40 },
+    { position: 'RM', label: 'MD', x: 85, y: 38 },
+    { position: 'ST', label: 'ATA', x: 50, y: 15 },
+  ],
+};
+
+const SITU_COLS = 5;
+const SITU_ROWS = 7;
+const SITU_QW = 100 / SITU_COLS;
+const SITU_QH = 100 / SITU_ROWS;
+// Kept in sync with SituationalTacticsPage.tsx.
+const SITU_SHIFT_X = 0.25;
+const SITU_SHIFT_Y = 0.45;
+
+type SituSide = { with_ball?: Record<string, Record<string, { x: number; y: number }>>; without_ball?: Record<string, Record<string, { x: number; y: number }>> };
+type SituCache = { home?: SituSide; away?: SituSide };
+
+/** Engine ball position → editor quadrant index (0..34), in the team's own frame. */
+function engineBallToEditorQuadrant(ballX: number, ballY: number, isHome: boolean): number {
+  const editorX = isHome ? ballY : 100 - ballY;
+  const editorY = isHome ? 100 - ballX : ballX;
+  const col = Math.max(0, Math.min(SITU_COLS - 1, Math.floor(editorX / SITU_QW)));
+  const row = Math.max(0, Math.min(SITU_ROWS - 1, Math.floor(editorY / SITU_QH)));
+  return row * SITU_COLS + col;
+}
+
+/** Editor coords → engine coords, mirroring for away team. */
+function editorPosToEngine(editorX: number, editorY: number, isHome: boolean): { x: number; y: number } {
+  if (isHome) return { x: 100 - editorY, y: editorX };
+  return { x: editorY, y: 100 - editorX };
+}
+
+/** Frontend's dynamic-default formula: base formation pos shifted by ball quadrant. */
+function computeDynamicEditorSlotPos(quadrantIdx: number, slot: EditorSlot): { x: number; y: number } {
+  const col = quadrantIdx % SITU_COLS;
+  const row = Math.floor(quadrantIdx / SITU_COLS);
+  const cx = (col + 0.5) * SITU_QW;
+  const cy = (row + 0.5) * SITU_QH;
+  const dx = (cx - 50) * SITU_SHIFT_X;
+  const dy = (cy - 50) * SITU_SHIFT_Y;
+  return {
+    x: Math.max(0, Math.min(100, slot.x + dx)),
+    y: Math.max(0, Math.min(100, slot.y + dy)),
+  };
+}
+
+/**
+ * Returns the engine-space target for a bot based on situational tactics.
+ * - If the current quadrant is customized for the bot's slot → use that.
+ * - Otherwise use the dynamic default (same formula as the editor preview).
+ * Returns null if the formation isn't mapped or the bot has no matching slot.
+ */
+function resolveSituationalTarget(
+  bot: any,
+  ballPos: { x: number; y: number },
+  isHome: boolean,
+  isDefending: boolean,
+  formation: string,
+  tickCache?: TickCache,
+): { x: number; y: number } | null {
+  const slotPos = (bot._slot_position || bot.slot_position || '').toUpperCase();
+  if (!slotPos) return null;
+  const editorForm = EDITOR_FORMATIONS[formation];
+  if (!editorForm) return null;
+  const slotDef = editorForm.find(s => s.position === slotPos);
+  if (!slotDef) return null;
+
+  const side = isHome ? 'home' : 'away';
+  const phaseKey: 'with_ball' | 'without_ball' = isDefending ? 'without_ball' : 'with_ball';
+  const quadrantIdx = engineBallToEditorQuadrant(ballPos.x, ballPos.y, isHome);
+
+  const sideTactics = tickCache?.situationalTactics?.[side];
+  const savedQuadrant = sideTactics?.[phaseKey]?.[String(quadrantIdx)];
+  const savedSlot = savedQuadrant?.[slotPos];
+
+  const editorPos = savedSlot ?? computeDynamicEditorSlotPos(quadrantIdx, slotDef);
+  return editorPosToEngine(editorPos.x, editorPos.y, isHome);
+}
+
 function computeTacticalTarget(
   bot: any,
   role: TacticalRole,
@@ -1063,7 +1254,35 @@ function computeTacticalTarget(
   slotIndex: number,
   maxMoveRange?: number,
   attractOverride?: { x: number; y: number },
+  tickCache?: TickCache,
 ): { x: number; y: number } {
+  // ── Situational tactics override ─────────────────────────────
+  // Only when NOT marking a specific attacker (marking hint wins — it's a reactive
+  // assignment, not a shape decision). Also skip for GKs so their reactive "shadow
+  // the ball" behavior below stays intact.
+  if (!attractOverride && role !== 'goalkeeper') {
+    const situ = resolveSituationalTarget(bot, ballPos, isHome, isDefending, formation, tickCache);
+    if (situ) {
+      let targetX = situ.x + (Math.random() - 0.5) * 1.5;
+      let targetY = situ.y + (Math.random() - 0.5) * 1.5;
+      targetX = Math.max(2, Math.min(98, targetX));
+      targetY = Math.max(2, Math.min(98, targetY));
+      if (maxMoveRange && maxMoveRange > 0) {
+        const botX = Number(bot.pos_x ?? 50);
+        const botY = Number(bot.pos_y ?? 50);
+        const dx = targetX - botX;
+        const dy = targetY - botY;
+        const dist = getMovementDistance(dx, dy);
+        if (dist > maxMoveRange) {
+          const scale = maxMoveRange / dist;
+          targetX = botX + dx * scale;
+          targetY = botY + dy * scale;
+        }
+      }
+      return { x: targetX, y: targetY };
+    }
+  }
+
   // Determine game moment
   const moment = isDefending ? 'defensive' : detectGameMoment(!isDefending, ballPos.x, isHome);
 
@@ -1318,6 +1537,7 @@ interface TickCache {
   enrichedParticipants?: any[];
   lineupRoles?: { home: any | null; away: any | null };
   coachBonuses?: { home: CoachBonus[]; away: CoachBonus[] };
+  situationalTactics?: SituCache;
 }
 
 async function generateBotActions(
@@ -1793,7 +2013,7 @@ async function generateBotActions(
         }
       } else {
         // Not closest — move toward ball but maintain some formation
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex, maxMoveRange);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex, maxMoveRange, undefined, tickCache);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -1852,7 +2072,7 @@ async function generateBotActions(
                   target_x: interceptX, target_y: interceptY, status: 'pending',
                 });
               } else {
-                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
                 actions.push({
                   match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                   controlled_by_type: 'bot', action_type: 'move',
@@ -1860,7 +2080,7 @@ async function generateBotActions(
                 });
               }
             } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -1933,7 +2153,7 @@ async function generateBotActions(
               });
             } else {
               // Too far even for trajectory — just move tactically
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -1959,7 +2179,7 @@ async function generateBotActions(
                 const ownGoalX = isHome ? 0 : 100;
                 const markX = oppX + (ownGoalX - oppX) * 0.25;
                 const markY = oppY + (50 - oppY) * 0.1;
-                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, { x: markX, y: markY });
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, { x: markX, y: markY }, tickCache);
                 actions.push({
                   match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                   controlled_by_type: 'bot', action_type: 'move',
@@ -1967,7 +2187,7 @@ async function generateBotActions(
                 });
               }
             } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -2033,7 +2253,7 @@ async function generateBotActions(
                 target_x: tackleX, target_y: tackleY, status: 'pending',
               });
             } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -2051,7 +2271,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -2070,7 +2290,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -2079,7 +2299,7 @@ async function generateBotActions(
           }
         }
       } else {
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2092,7 +2312,7 @@ async function generateBotActions(
       if (isBH) continue;
       if (isGK) {
         // GK stays back
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2120,7 +2340,7 @@ async function generateBotActions(
         }
       } else {
         // Move to tactical position with attacking push
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2130,7 +2350,7 @@ async function generateBotActions(
     } else {
       // ── Positioning phases or fallback ──
       const isDefending = phase === 'positioning_defense';
-      let target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex);
+      let target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex, undefined, undefined, tickCache);
 
       // ── Set piece specific positioning ──
       if (setPieceType && isDefending) {
@@ -4573,6 +4793,24 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       const homeForm = homeLineupFormRes.data?.formation || homeSettingsRes.data?.default_formation || '4-4-2';
       const awayForm = awayLineupFormRes.data?.formation || awaySettingsRes.data?.default_formation || '4-4-2';
 
+      // Situational tactics for both clubs (both phases), snapshot at match start.
+      const situationalTactics: SituCache = { home: {}, away: {} };
+      try {
+        const { data: situRows } = await supabase
+          .from('situational_tactics')
+          .select('club_id, formation, phase, positions')
+          .in('club_id', [m.home_club_id, m.away_club_id]);
+        for (const row of (situRows || []) as any[]) {
+          const side = row.club_id === m.home_club_id ? 'home' : 'away';
+          const expectedFormation = side === 'home' ? homeForm : awayForm;
+          if (row.formation !== expectedFormation) continue;
+          if (row.phase !== 'with_ball' && row.phase !== 'without_ball') continue;
+          situationalTactics[side]![row.phase as 'with_ball' | 'without_ball'] = row.positions || {};
+        }
+      } catch (e) {
+        console.error(`[ENGINE] Failed to load situational_tactics (will fall back to dynamic default):`, e);
+      }
+
       const engineCache = {
         attrByProfile: Object.fromEntries((attrRes.data || []).map((r: any) => [r.player_profile_id, r])),
         clubSettings: {
@@ -4589,10 +4827,11 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           home: homeCoachRes.data || [],
           away: awayCoachRes.data || [],
         },
+        situationalTactics,
       };
 
       await supabase.from('matches').update({ engine_cache: engineCache }).eq('id', m.id);
-      console.log(`[ENGINE] Pre-loaded engine cache: ${profileIds.length} attrs, 2 settings, 2 coach bonuses`);
+      console.log(`[ENGINE] Pre-loaded engine cache: ${profileIds.length} attrs, 2 settings, 2 coach bonuses, situational tactics`);
     } catch (e) {
       console.error(`[ENGINE] Failed to pre-load engine cache:`, e);
     }
@@ -4692,6 +4931,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ec.clubSettings) tickCache.clubSettings = ec.clubSettings;
     if (ec.lineupRoles) tickCache.lineupRoles = ec.lineupRoles;
     if (ec.coachBonuses) tickCache.coachBonuses = ec.coachBonuses;
+    if (ec.situationalTactics) tickCache.situationalTactics = ec.situationalTactics;
   }
 
   // ── Compute loose ball position if ball is loose (parallel with next phase queries) ──
