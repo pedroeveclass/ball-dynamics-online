@@ -24,6 +24,9 @@ export function PlayerRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (!playerProfile) return <Navigate to="/onboarding/player" replace />;
+  // One-shot forced avatar creation — any player without a saved visual must
+  // customize before entering the app. Editing later is not allowed.
+  if ((playerProfile as any).appearance == null) return <Navigate to="/player/avatar/create" replace />;
   return <>{children}</>;
 }
 

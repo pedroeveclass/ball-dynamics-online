@@ -3,6 +3,7 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { EnergyBar } from '@/components/EnergyBar';
 import { PlayerCardDialog } from '@/components/PlayerCardDialog';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ interface SquadPlayer {
   has_pending_agreement: boolean;
   pending_agreement_from: 'club' | 'player' | null;
   jersey_number: number | null;
+  appearance: any;
 }
 
 export default function ManagerSquadPage() {
@@ -72,7 +74,7 @@ export default function ManagerSquadPage() {
 
     const { data: playerData } = await supabase
       .from('player_profiles')
-      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max, user_id, jersey_number')
+      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max, user_id, jersey_number, appearance')
       .in('id', playerIds)
       .order('overall', { ascending: false });
 
@@ -99,6 +101,7 @@ export default function ManagerSquadPage() {
         has_pending_agreement: pendingContractIds.has(contract?.id ?? ''),
         pending_agreement_from: pendingPlayerAgreements.has(contract?.id ?? '') ? 'player' : pendingClubAgreements.has(contract?.id ?? '') ? 'club' : null,
         jersey_number: p.jersey_number ?? null,
+        appearance: (p as any).appearance ?? null,
       };
     })));
     setLoading(false);
@@ -332,6 +335,7 @@ export default function ManagerSquadPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 pr-3 w-10"></th>
                   <th className="py-2 pr-3">OVR</th>
                   <th className="py-2 pr-3 w-16">Nº</th>
                   <th className="py-2 pr-3">Nome</th>
@@ -349,6 +353,20 @@ export default function ManagerSquadPage() {
                     key={p.id}
                     className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                   >
+                    <td
+                      className="py-3 pr-3 cursor-pointer"
+                      onClick={() => setSelectedPlayerId(p.id)}
+                    >
+                      <PlayerAvatar
+                        appearance={p.appearance}
+                        variant="face"
+                        clubPrimaryColor={club.primary_color}
+                        clubSecondaryColor={club.secondary_color}
+                        playerName={p.full_name}
+                        className="h-9 w-9"
+                        fallbackSeed={p.id}
+                      />
+                    </td>
                     <td
                       className="py-3 pr-3 cursor-pointer"
                       onClick={() => setSelectedPlayerId(p.id)}

@@ -6,6 +6,7 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
 import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -114,8 +115,8 @@ export default function LeaguePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Statistics state
-  const [topScorers, setTopScorers] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; goals: number }[]>([]);
-  const [topAssisters, setTopAssisters] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; assists: number }[]>([]);
+  const [topScorers, setTopScorers] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; goals: number; appearance?: any }[]>([]);
+  const [topAssisters, setTopAssisters] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; assists: number; appearance?: any }[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [seasonId, setSeasonId] = useState<string | null>(null);
@@ -299,7 +300,7 @@ export default function LeaguePage() {
       // Resolve participant → player_profile_id + club
       const { data: participantsData } = await supabase
         .from('match_participants')
-        .select('id, club_id, player_profile_id, player_profiles(full_name), clubs(name, short_name, primary_color, secondary_color, crest_url)')
+        .select('id, club_id, player_profile_id, player_profiles(full_name, appearance), clubs(name, short_name, primary_color, secondary_color, crest_url)')
         .in('id', Array.from(participantIdsFromEvents));
 
       // Map participant_id → player_profile_id
@@ -343,7 +344,7 @@ export default function LeaguePage() {
       for (const c of (clubsData || [])) clubLookup[c.id] = c;
 
       // Build lookup by player_profile_id (use the first participant row we found)
-      const profileLookup: Record<string, { player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; club_crest_url: string | null }> = {};
+      const profileLookup: Record<string, { player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; club_crest_url: string | null; appearance: any }> = {};
 
       for (const p of (participantsData || [])) {
         const ppId = p.player_profile_id || p.id;
@@ -358,6 +359,7 @@ export default function LeaguePage() {
           club_primary_color: clubData?.primary_color || '#333',
           club_secondary_color: clubData?.secondary_color || '#fff',
           club_crest_url: clubData?.crest_url || null,
+          appearance: profile?.appearance ?? null,
         };
       }
 
@@ -374,6 +376,7 @@ export default function LeaguePage() {
             club_primary_color: clubData?.primary_color || '#333',
             club_secondary_color: clubData?.secondary_color || '#fff',
             club_crest_url: clubData?.crest_url || null,
+            appearance: null,
           };
         }
       }
@@ -780,6 +783,7 @@ export default function LeaguePage() {
                       <thead>
                         <tr>
                           <th className="w-8">#</th>
+                          <th className="w-10"></th>
                           <th>Jogador</th>
                           <th className="w-10"></th>
                           <th className="text-center w-16">Gols</th>
@@ -789,6 +793,17 @@ export default function LeaguePage() {
                         {topScorers.map((s, i) => (
                           <tr key={s.participant_id}>
                             <td className="font-display font-bold text-center">{i + 1}</td>
+                            <td>
+                              <PlayerAvatar
+                                appearance={(s as any).appearance}
+                                variant="face"
+                                clubPrimaryColor={s.club_primary_color}
+                                clubSecondaryColor={s.club_secondary_color}
+                                playerName={s.player_name}
+                                className="h-7 w-7"
+                                fallbackSeed={s.participant_id}
+                              />
+                            </td>
                             <td>
                               <span className="font-medium text-sm">{s.player_name}</span>
                             </td>
@@ -814,6 +829,7 @@ export default function LeaguePage() {
                       <thead>
                         <tr>
                           <th className="w-8">#</th>
+                          <th className="w-10"></th>
                           <th>Jogador</th>
                           <th className="w-10"></th>
                           <th className="text-center w-16">Assist.</th>
@@ -823,6 +839,17 @@ export default function LeaguePage() {
                         {topAssisters.map((a, i) => (
                           <tr key={a.participant_id}>
                             <td className="font-display font-bold text-center">{i + 1}</td>
+                            <td>
+                              <PlayerAvatar
+                                appearance={(a as any).appearance}
+                                variant="face"
+                                clubPrimaryColor={a.club_primary_color}
+                                clubSecondaryColor={a.club_secondary_color}
+                                playerName={a.player_name}
+                                className="h-7 w-7"
+                                fallbackSeed={a.participant_id}
+                              />
+                            </td>
                             <td>
                               <span className="font-medium text-sm">{a.player_name}</span>
                             </td>

@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { PositionBadge } from '@/components/PositionBadge';
 import { ClubCrest } from '@/components/ClubCrest';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -191,7 +192,7 @@ export default function PublicClubPage() {
 
       const { data: playerData } = await supabase
         .from('player_profiles')
-        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, height')
+        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, height, appearance')
         .in('id', playerIds)
         .order('overall', { ascending: false });
 
@@ -509,6 +510,7 @@ export default function PublicClubPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="py-2 pr-3 w-10"></th>
                     <th className="py-2 pr-3">POS</th>
                     <th className="py-2 pr-3">Nome</th>
                     <th className="py-2 pr-3">OVR</th>
@@ -522,6 +524,17 @@ export default function PublicClubPage() {
                       className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
                       onClick={() => openPlayerDetail(p)}
                     >
+                      <td className="py-3 pr-3">
+                        <PlayerAvatar
+                          appearance={p.appearance}
+                          variant="face"
+                          clubPrimaryColor={clubData?.primary_color}
+                          clubSecondaryColor={clubData?.secondary_color}
+                          playerName={p.full_name}
+                          className="h-9 w-9"
+                          fallbackSeed={p.id}
+                        />
+                      </td>
                       <td className="py-3 pr-3">
                         <div className="flex items-center gap-1">
                           <PositionBadge position={p.primary_position} />

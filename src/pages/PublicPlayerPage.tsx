@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
 import { PositionBadge } from '@/components/PositionBadge';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -106,7 +107,8 @@ export default function PublicPlayerPage() {
   const { managerProfile, club } = useAuth();
   const [player, setPlayer] = useState<any>(null);
   const [attrs, setAttrs] = useState<any>(null);
-  const [clubInfo, setClubInfo] = useState<{ name: string; primary: string; secondary: string } | null>(null);
+  const [clubInfo, setClubInfo] = useState<{ name: string; primary: string; secondary: string; crestUrl: string | null } | null>(null);
+  const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -131,10 +133,10 @@ export default function PublicPlayerPage() {
         if (p.club_id) {
           const { data: c } = await supabase
             .from('clubs')
-            .select('name, primary_color, secondary_color')
+            .select('name, primary_color, secondary_color, crest_url')
             .eq('id', p.club_id)
             .maybeSingle();
-          if (c) setClubInfo({ name: c.name, primary: c.primary_color, secondary: c.secondary_color });
+          if (c) setClubInfo({ name: c.name, primary: c.primary_color, secondary: c.secondary_color, crestUrl: (c as any).crest_url ?? null });
         }
       }
       setLoading(false);
@@ -171,15 +173,15 @@ export default function PublicPlayerPage() {
       <div className="space-y-4">
         <div className="stat-card p-4">
           <div className="flex items-start gap-4">
-            <div
-              className="h-20 w-20 rounded-full flex items-center justify-center shrink-0 border-2"
-              style={{
-                backgroundColor: clubInfo?.primary || 'hsl(var(--primary))',
-                color: clubInfo?.secondary || 'hsl(var(--primary-foreground))',
-              }}
-            >
-              <span className="font-display text-3xl font-extrabold">{player.full_name[0]}</span>
-            </div>
+            <PlayerAvatar
+              appearance={(player as any).appearance}
+              variant="face"
+              clubPrimaryColor={clubInfo?.primary}
+              clubSecondaryColor={clubInfo?.secondary}
+              playerName={player.full_name}
+              className="h-20 w-20 shrink-0 border-2"
+              fallbackSeed={player.id}
+            />
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -228,6 +230,44 @@ export default function PublicPlayerPage() {
             )}
           </div>
         </div>
+
+        {/* Full-body visual */}
+        {(player as any).appearance && (
+          <div className="stat-card p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display text-lg font-bold">Visual do Jogador</h2>
+              <div className="flex gap-1">
+                {(['full-front', 'full-back'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setBodyVariant(v)}
+                    className={`px-3 py-1 rounded text-xs font-display font-semibold transition-colors ${
+                      bodyVariant === v ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                    }`}
+                  >
+                    {v === 'full-front' ? 'Frente' : 'Costas'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-center py-2">
+              <div className="h-80 w-40">
+                <PlayerAvatar
+                  appearance={(player as any).appearance}
+                  variant={bodyVariant}
+                  height={player.height}
+                  clubPrimaryColor={clubInfo?.primary}
+                  clubSecondaryColor={clubInfo?.secondary}
+                  clubCrestUrl={clubInfo?.crestUrl}
+                  playerName={player.full_name}
+                  jerseyNumber={(player as any).jersey_number}
+                  className="w-full h-full"
+                  fallbackSeed={player.id}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Attributes */}
         {attrs && (

@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -134,7 +135,8 @@ export default function PlayerProfilePage() {
   const navigate = useNavigate();
 
   const [clubName, setClubName] = useState<string | null>(null);
-  const [clubColors, setClubColors] = useState<{ primary: string; secondary: string } | null>(null);
+  const [clubColors, setClubColors] = useState<{ primary: string; secondary: string; crestUrl: string | null } | null>(null);
+  const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
   const [stats, setStats] = useState<CareerStats>({ matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
@@ -171,12 +173,12 @@ export default function PlayerProfilePage() {
     (async () => {
       const { data } = await supabase
         .from('clubs')
-        .select('name, primary_color, secondary_color')
+        .select('name, primary_color, secondary_color, crest_url')
         .eq('id', p.club_id!)
         .single();
       if (data) {
         setClubName(data.name);
-        setClubColors({ primary: data.primary_color, secondary: data.secondary_color });
+        setClubColors({ primary: data.primary_color, secondary: data.secondary_color, crestUrl: (data as any).crest_url ?? null });
       }
     })();
   }, [p?.club_id]);
@@ -486,15 +488,15 @@ export default function PlayerProfilePage() {
         <div className="stat-card space-y-4">
           <div className="flex items-start gap-4">
             {/* Avatar */}
-            <div
-              className="h-20 w-20 rounded-full flex items-center justify-center shrink-0"
-              style={{
-                backgroundColor: clubColors?.primary || 'hsl(var(--primary))',
-                color: clubColors?.secondary || 'hsl(var(--primary-foreground))',
-              }}
-            >
-              <span className="font-display text-3xl font-extrabold">{p.full_name[0]}</span>
-            </div>
+            <PlayerAvatar
+              appearance={(p as any).appearance}
+              variant="face"
+              clubPrimaryColor={clubColors?.primary}
+              clubSecondaryColor={clubColors?.secondary}
+              playerName={p.full_name}
+              className="h-20 w-20 shrink-0"
+              fallbackSeed={p.id}
+            />
 
             {/* Name + positions */}
             <div className="flex-1 min-w-0">
@@ -561,6 +563,46 @@ export default function PlayerProfilePage() {
             </Badge>
           </div>
         </div>
+
+        {/* ── Full-body visual ── */}
+        {(p as any).appearance && (
+          <div className="stat-card p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+                <User className="h-4 w-4 text-tactical" /> Visual
+              </h2>
+              <div className="flex gap-1">
+                {(['full-front', 'full-back'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setBodyVariant(v)}
+                    className={`px-3 py-1 rounded text-xs font-display font-semibold transition-colors ${
+                      bodyVariant === v ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                    }`}
+                  >
+                    {v === 'full-front' ? 'Frente' : 'Costas'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-center py-2">
+              <div className="h-80 w-40">
+                <PlayerAvatar
+                  appearance={(p as any).appearance}
+                  variant={bodyVariant}
+                  height={p.height}
+                  clubPrimaryColor={clubColors?.primary}
+                  clubSecondaryColor={clubColors?.secondary}
+                  clubCrestUrl={clubColors?.crestUrl}
+                  playerName={p.full_name}
+                  jerseyNumber={(p as any).jersey_number}
+                  className="w-full h-full"
+                  fallbackSeed={p.id}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Career Statistics ── */}
         <div className="stat-card space-y-3">
