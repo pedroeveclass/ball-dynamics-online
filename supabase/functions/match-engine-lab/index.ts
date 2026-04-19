@@ -1214,8 +1214,49 @@ const SITU_QH = 100 / SITU_ROWS;
 const SITU_SHIFT_X = 0.25;
 const SITU_SHIFT_Y = 0.45;
 
-type SituSide = { with_ball?: Record<string, Record<string, { x: number; y: number }>>; without_ball?: Record<string, Record<string, { x: number; y: number }>> };
+// Tactical knobs — kept in sync with SituationalTacticsPage.tsx.
+const SITU_ATTACK_X_SCALE = { central: 0.78, balanced: 1.0, wide: 1.22 } as const;
+const SITU_POSITIONING_SCALE = { short: 0.82, normal: 1.0, spread: 1.18 } as const;
+const SITU_INCLINATION_CELLS = { ultra_def: 2, def: 1, normal: 0, off: -1, ultra_off: -2 } as const;
+type SituAttackType = keyof typeof SITU_ATTACK_X_SCALE;
+type SituPositioning = keyof typeof SITU_POSITIONING_SCALE;
+type SituInclination = keyof typeof SITU_INCLINATION_CELLS;
+type SituKnobs = { attack_type: SituAttackType; positioning: SituPositioning; inclination: SituInclination };
+const DEFAULT_SITU_KNOBS: SituKnobs = { attack_type: 'balanced', positioning: 'normal', inclination: 'normal' };
+
+type SituSide = {
+  with_ball?: Record<string, Record<string, { x: number; y: number }>>;
+  without_ball?: Record<string, Record<string, { x: number; y: number }>>;
+  knobs?: SituKnobs;
+};
 type SituCache = { home?: SituSide; away?: SituSide };
+
+/** Replicates SituationalTacticsPage.applyKnobs for a single slot, on the dynamic default. */
+function applyKnobsToDynamicSlotPos(
+  quadrantIdx: number,
+  slotDef: EditorSlot,
+  editorForm: EditorSlot[],
+  knobs: SituKnobs,
+): { x: number; y: number } {
+  const raw = computeDynamicEditorSlotPos(quadrantIdx, slotDef);
+  if (slotDef.position === 'GK') return raw;
+  const outfield = editorForm.filter(s => s.position !== 'GK');
+  if (outfield.length === 0) return raw;
+  let cx = 0, cy = 0;
+  for (const s of outfield) {
+    const p = computeDynamicEditorSlotPos(quadrantIdx, s);
+    cx += p.x; cy += p.y;
+  }
+  cx /= outfield.length; cy /= outfield.length;
+  const xScale = SITU_ATTACK_X_SCALE[knobs.attack_type];
+  const posScale = SITU_POSITIONING_SCALE[knobs.positioning];
+  const yShift = SITU_INCLINATION_CELLS[knobs.inclination] * (SITU_QH / 3);
+  let x = cx + (raw.x - cx) * posScale;
+  let y = cy + (raw.y - cy) * posScale;
+  x = 50 + (x - 50) * xScale;
+  y += yShift;
+  return { x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) };
+}
 
 /** Engine ball position → editor quadrant index (0..34), in the team's own frame. */
 function engineBallToEditorQuadrant(ballX: number, ballY: number, isHome: boolean): number {
@@ -1275,8 +1316,12 @@ function resolveSituationalTarget(
   const sideTactics = tickCache?.situationalTactics?.[side];
   const savedQuadrant = sideTactics?.[phaseKey]?.[String(quadrantIdx)];
   const savedSlot = savedQuadrant?.[slotPos];
+  const knobs = sideTactics?.knobs ?? DEFAULT_SITU_KNOBS;
 
-  const editorPos = savedSlot ?? computeDynamicEditorSlotPos(quadrantIdx, slotDef);
+  // Custom quadrant → use the stored layout as-is (knobs don't re-apply, matching editor behavior).
+  // Dynamic → apply knobs on top of the default formula.
+  const editorPos = savedSlot
+    ?? applyKnobsToDynamicSlotPos(quadrantIdx, slotDef, editorForm, knobs);
   return editorPosToEngine(editorPos.x, editorPos.y, isHome);
 }
 
@@ -4835,7 +4880,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       try {
         const { data: situRows } = await supabase
           .from('situational_tactics')
-          .select('club_id, formation, phase, positions')
+          .select('club_id, formation, phase, positions, attack_type, positioning, inclination')
           .in('club_id', [m.home_club_id, m.away_club_id]);
         for (const row of (situRows || []) as any[]) {
           const side = row.club_id === m.home_club_id ? 'home' : 'away';
@@ -4843,6 +4888,14 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           if (row.formation !== expectedFormation) continue;
           if (row.phase !== 'with_ball' && row.phase !== 'without_ball') continue;
           situationalTactics[side]![row.phase as 'with_ball' | 'without_ball'] = row.positions || {};
+          // Same knob set lives on both phase rows — last one wins, which is fine since we write them identically.
+          if (row.attack_type || row.positioning || row.inclination) {
+            situationalTactics[side]!.knobs = {
+              attack_type: (row.attack_type as SituAttackType) || 'balanced',
+              positioning: (row.positioning as SituPositioning) || 'normal',
+              inclination: (row.inclination as SituInclination) || 'normal',
+            };
+          }
         }
       } catch (e) {
         console.error(`[ENGINE] Failed to load situational_tactics (will fall back to dynamic default):`, e);

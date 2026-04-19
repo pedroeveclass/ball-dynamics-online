@@ -42,6 +42,30 @@ const PHASE_LABEL: Record<Phase, string> = {
   without_ball: 'Sem bola',
 };
 
+// ── Tactical knobs ────────────────────────────────────────────
+// These multiply/shift positions on top of the dynamic/custom layout.
+// Same values are used in the match engine so the editor preview matches
+// what actually happens on the pitch.
+type AttackType = 'central' | 'balanced' | 'wide';
+type Positioning = 'short' | 'normal' | 'spread';
+type Inclination = 'ultra_def' | 'def' | 'normal' | 'off' | 'ultra_off';
+interface TacticKnobs {
+  attack_type: AttackType;
+  positioning: Positioning;
+  inclination: Inclination;
+}
+const DEFAULT_KNOBS: TacticKnobs = { attack_type: 'balanced', positioning: 'normal', inclination: 'normal' };
+
+const ATTACK_TYPE_X_SCALE: Record<AttackType, number> = { central: 0.78, balanced: 1.0, wide: 1.22 };
+const POSITIONING_SCALE: Record<Positioning, number> = { short: 0.82, normal: 1.0, spread: 1.18 };
+const INCLINATION_CELLS: Record<Inclination, number> = { ultra_def: 2, def: 1, normal: 0, off: -1, ultra_off: -2 };
+
+const ATTACK_TYPE_LABEL: Record<AttackType, string> = { central: 'Ataque central', balanced: 'Balanceado', wide: 'Pelos lados' };
+const POSITIONING_LABEL: Record<Positioning, string> = { short: 'Jogo curto', normal: 'Normal', spread: 'Espalhado' };
+const INCLINATION_LABEL: Record<Inclination, string> = {
+  ultra_def: 'Ultra defensivo', def: 'Defensivo', normal: 'Normal', off: 'Ofensivo', ultra_off: 'Ultra ofensivo',
+};
+
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 function quadrantCenter(idx: number): Pos {
@@ -106,6 +130,55 @@ function resolvePositions(
   formation: string,
 ): QuadrantPositions {
   return phaseMap[phase][qIdx] ?? computeDynamicPositions(qIdx, formation);
+}
+
+/** Apply the 3 tactical knobs on top of a set of positions.
+ *  Keeper is left untouched so the GK stays in the goal. */
+function applyKnobs(
+  positions: QuadrantPositions,
+  knobs: TacticKnobs,
+  formation: string,
+): QuadrantPositions {
+  const slots = FORMATIONS[formation] || [];
+  const outfield = slots.filter(s => s.position !== 'GK');
+  if (outfield.length === 0) return positions;
+  const centroidX = outfield.reduce((sum, s) => sum + (positions[s.position]?.x ?? s.x), 0) / outfield.length;
+  const centroidY = outfield.reduce((sum, s) => sum + (positions[s.position]?.y ?? s.y), 0) / outfield.length;
+
+  const xScale = ATTACK_TYPE_X_SCALE[knobs.attack_type];
+  const posScale = POSITIONING_SCALE[knobs.positioning];
+  const yShift = INCLINATION_CELLS[knobs.inclination] * (QUADRANT_H / 3);
+
+  const result: QuadrantPositions = {};
+  for (const slot of slots) {
+    const p = positions[slot.position];
+    if (!p) continue;
+    if (slot.position === 'GK') {
+      result[slot.position] = p;
+      continue;
+    }
+    let x = centroidX + (p.x - centroidX) * posScale;
+    let y = centroidY + (p.y - centroidY) * posScale;
+    x = 50 + (x - 50) * xScale;
+    y += yShift;
+    result[slot.position] = { x: clamp(x, 2, 98), y: clamp(y, 2, 98) };
+  }
+  return result;
+}
+
+/** Final positions shown on the field.
+ *  Knobs only act on dynamic (non-customized) quadrants — once the user
+ *  drags a chip in a quadrant, that layout is frozen and knobs are skipped. */
+function resolveRenderedPositions(
+  phaseMap: PhaseMap,
+  phase: Phase,
+  qIdx: number,
+  formation: string,
+  knobs: TacticKnobs,
+): QuadrantPositions {
+  const custom = phaseMap[phase][qIdx];
+  if (custom) return custom;
+  return applyKnobs(computeDynamicPositions(qIdx, formation), knobs, formation);
 }
 
 const oppositePhase = (p: Phase): Phase => (p === 'with_ball' ? 'without_ball' : 'with_ball');
@@ -280,6 +353,14 @@ export default function SituationalTacticsPage() {
   // Opponent overrides are per (formation, quadrant) but kept only in memory.
   const [opponentOverrides, setOpponentOverrides] = useState<Record<number, QuadrantPositions>>({});
 
+  // Tactical knobs (persisted per formation — saved to both phase rows).
+  const [knobs, setKnobs] = useState<TacticKnobs>(DEFAULT_KNOBS);
+
+  // Compare-with-quadrant feature: when set, ghost shows this quadrant
+  // (optionally of a different phase) instead of the opposite phase.
+  const [compareQuadrant, setCompareQuadrant] = useState<number | null>(null);
+  const [comparePhase, setComparePhase] = useState<Phase>('with_ball');
+
   const fieldRef = useRef<HTMLDivElement>(null);
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
@@ -313,7 +394,7 @@ export default function SituationalTacticsPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from('situational_tactics' as any)
-        .select('phase, positions')
+        .select('phase, positions, attack_type, positioning, inclination')
         .eq('club_id', club.id)
         .eq('formation', formation);
       if (cancelled) return;
@@ -321,11 +402,23 @@ export default function SituationalTacticsPage() {
         console.error(error);
         toast.error('Erro ao carregar táticas');
         setPhaseMap(buildEmptyBothPhases());
+        setKnobs(DEFAULT_KNOBS);
         setLoading(false);
         return;
       }
       // DB now stores ONLY customized quadrants. Missing keys = use dynamic default.
       const fresh: PhaseMap = buildEmptyBothPhases();
+      // Pull knobs from whichever phase row has them (we save same values on both).
+      const knobRow = (data || [])[0] as any;
+      if (knobRow) {
+        setKnobs({
+          attack_type: (knobRow.attack_type as AttackType) || 'balanced',
+          positioning: (knobRow.positioning as Positioning) || 'normal',
+          inclination: (knobRow.inclination as Inclination) || 'normal',
+        });
+      } else {
+        setKnobs(DEFAULT_KNOBS);
+      }
       const validSlots = new Set(slots.map(s => s.position));
       for (const row of (data || []) as any[]) {
         const p = row.phase as Phase;
@@ -355,12 +448,16 @@ export default function SituationalTacticsPage() {
 
   // ── Mutators ───────────────────────────────────────────────
   const isQuadrantCustomized = phaseMap[phase][ballQuadrant] != null;
-  const currentQuadrantPositions = resolvePositions(phaseMap, phase, ballQuadrant, formation);
+  // Positions we render = knob-transformed when the quadrant is dynamic,
+  // raw stored layout otherwise. Drag starts from whatever we render so
+  // the user snaps off the visible position.
+  const currentQuadrantPositions = resolveRenderedPositions(phaseMap, phase, ballQuadrant, formation, knobs);
 
   const updatePlayerPos = (slotPosition: string, newPos: Pos) => {
     setPhaseMap(prev => {
-      // Promote to customized: take whatever we're currently showing (custom or dynamic) as the baseline.
-      const baseline = prev[phase][ballQuadrant] ?? computeDynamicPositions(ballQuadrant, formation);
+      // Promote to customized: take whatever we're currently showing (custom or dynamic+knobs) as the baseline.
+      const baseline = prev[phase][ballQuadrant]
+        ?? applyKnobs(computeDynamicPositions(ballQuadrant, formation), knobs, formation);
       const nextQuadrant: QuadrantPositions = { ...baseline, [slotPosition]: newPos };
       return {
         ...prev,
@@ -436,6 +533,9 @@ export default function SituationalTacticsPage() {
       formation,
       phase: p,
       positions: serializePhase(p) as any,
+      attack_type: knobs.attack_type,
+      positioning: knobs.positioning,
+      inclination: knobs.inclination,
     }));
     const { error } = await supabase
       .from('situational_tactics' as any)
@@ -611,6 +711,69 @@ export default function SituationalTacticsPage() {
           </div>
         </div>
 
+        {/* Tactical knobs + quadrant comparison */}
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Ataque:</span>
+            <Select value={knobs.attack_type} onValueChange={(v) => setKnobs(k => ({ ...k, attack_type: v as AttackType }))}>
+              <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(ATTACK_TYPE_LABEL) as AttackType[]).map(k => (
+                  <SelectItem key={k} value={k}>{ATTACK_TYPE_LABEL[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Posicionamento:</span>
+            <Select value={knobs.positioning} onValueChange={(v) => setKnobs(k => ({ ...k, positioning: v as Positioning }))}>
+              <SelectTrigger className="h-8 w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(POSITIONING_LABEL) as Positioning[]).map(k => (
+                  <SelectItem key={k} value={k}>{POSITIONING_LABEL[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Inclinação:</span>
+            <Select value={knobs.inclination} onValueChange={(v) => setKnobs(k => ({ ...k, inclination: v as Inclination }))}>
+              <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(INCLINATION_LABEL) as Inclination[]).map(k => (
+                  <SelectItem key={k} value={k}>{INCLINATION_LABEL[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5 pl-2 border-l ml-1">
+            <span className="text-muted-foreground">Comparar quadrante:</span>
+            <Select
+              value={compareQuadrant == null ? 'none' : String(compareQuadrant)}
+              onValueChange={(v) => setCompareQuadrant(v === 'none' ? null : Number(v))}
+            >
+              <SelectTrigger className="h-8 w-[90px]"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                <SelectItem value="none">Nenhum</SelectItem>
+                {Array.from({ length: COLS * ROWS }, (_, i) => (
+                  <SelectItem key={i} value={String(i)}>{i + 1}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {compareQuadrant != null && (
+              <Select value={comparePhase} onValueChange={(v) => setComparePhase(v as Phase)}>
+                <SelectTrigger className="h-8 w-[110px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PHASES.map(p => <SelectItem key={p} value={p}>{PHASE_LABEL[p]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            {compareQuadrant != null && !showGhost && (
+              <span className="text-[10px] text-amber-600">Ative "Fase oposta" pra ver o ghost</span>
+            )}
+          </div>
+        </div>
+
         {/* Field */}
         <Card>
           <CardContent className="p-3">
@@ -685,9 +848,18 @@ export default function SituationalTacticsPage() {
                 }}
               />
 
-              {/* Ghost (opposite phase) + distance lines */}
+              {/* Ghost (opposite phase OR compare quadrant) + colored distance lines */}
               {!loading && showGhost && (() => {
-                const ghostPositions = resolvePositions(phaseMap, oppositePhase(phase), ballQuadrant, formation);
+                const useCompare = compareQuadrant != null && compareQuadrant !== ballQuadrant;
+                const ghostPhase = useCompare ? comparePhase : oppositePhase(phase);
+                const ghostQ = useCompare ? compareQuadrant! : ballQuadrant;
+                const ghostPositions = resolveRenderedPositions(phaseMap, ghostPhase, ghostQ, formation, knobs);
+                // Color lines by how far the player has to travel. Black = short, yellow/orange = medium, red = far.
+                const colorFor = (d: number) => {
+                  if (d < 15) return 'rgba(0, 0, 0, 0.85)';
+                  if (d < 30) return 'rgba(251, 146, 60, 0.9)'; // orange-400
+                  return 'rgba(239, 68, 68, 0.95)'; // red-500
+                };
                 return (
                   <>
                     {showDistance && (
@@ -700,12 +872,13 @@ export default function SituationalTacticsPage() {
                           const a = currentQuadrantPositions[slot.position];
                           const b = ghostPositions[slot.position];
                           if (!a || !b) return null;
+                          const d = Math.hypot(a.x - b.x, a.y - b.y);
                           return (
                             <line
                               key={`dist-${slot.position}`}
                               x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                              stroke="rgba(253, 224, 71, 0.85)"
-                              strokeWidth="0.35"
+                              stroke={colorFor(d)}
+                              strokeWidth="0.5"
                               strokeDasharray="1.2 0.8"
                               vectorEffect="non-scaling-stroke"
                             />
