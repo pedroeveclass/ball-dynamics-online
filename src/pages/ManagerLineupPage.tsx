@@ -7,10 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
+import { PlayerHoverStats } from '@/components/PlayerHoverStats';
 import { Save, UserPlus, X, Users, Target, User, Bot } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { sortPlayersByPosition, positionalPenaltyPercent } from '@/lib/positions';
+import type { Tables } from '@/integrations/supabase/types';
 
 interface SquadPlayer {
   id: string;
@@ -209,6 +211,9 @@ export default function ManagerLineupPage() {
   const club = ownClub || assistantClub;
   const isHeadManager = !!ownClub;
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
+  // Attribute rows for every player in the squad. Loaded once with the squad so
+  // hover cards on slot/bench/available rows are instant — no per-hover fetch.
+  const [attrsByPlayerId, setAttrsByPlayerId] = useState<Record<string, Tables<'player_attributes'>>>({});
   const [formation, setFormation] = useState('4-4-2');
   const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
   const [benchPlayers, setBenchPlayers] = useState<string[]>([]);
@@ -261,16 +266,27 @@ export default function ManagerLineupPage() {
 
     const playerIds = (contracts || []).map(c => c.player_profile_id);
     let players: SquadPlayer[] = [];
+    let attrsMap: Record<string, Tables<'player_attributes'>> = {};
     if (playerIds.length > 0) {
-      const { data } = await supabase
-        .from('player_profiles')
-        .select('id, full_name, primary_position, secondary_position, archetype, overall, user_id')
-        .in('id', playerIds)
-        .order('overall', { ascending: false });
-      players = data || [];
+      const [profilesRes, attrsRes] = await Promise.all([
+        supabase
+          .from('player_profiles')
+          .select('id, full_name, primary_position, secondary_position, archetype, overall, user_id')
+          .in('id', playerIds)
+          .order('overall', { ascending: false }),
+        supabase
+          .from('player_attributes')
+          .select('*')
+          .in('player_profile_id', playerIds),
+      ]);
+      players = profilesRes.data || [];
+      for (const row of attrsRes.data || []) {
+        attrsMap[row.player_profile_id] = row as Tables<'player_attributes'>;
+      }
     }
 
     setSquad(sortPlayersByPosition(players));
+    setAttrsByPlayerId(attrsMap);
 
     // Load current assistant on the club (head manager sees/changes it).
     setAssistantUserId((club as any).assistant_manager_id ?? null);
@@ -678,7 +694,7 @@ export default function ManagerLineupPage() {
                   : 0;
                 const effectiveOvr = player ? Math.round(player.overall * (1 - penalty / 100)) : 0;
 
-                return (
+                const slotNode = (
                   <div
                     key={slot.position}
                     className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 cursor-pointer group"
@@ -720,6 +736,15 @@ export default function ManagerLineupPage() {
                     )}
                   </div>
                 );
+
+                // Empty slots render as-is. Assigned slots get the hover card with
+                // the player's attributes so the manager can compare before swapping.
+                if (!player) return slotNode;
+                return (
+                  <PlayerHoverStats key={slot.position} player={player} attrs={attrsByPlayerId[player.id]}>
+                    {slotNode}
+                  </PlayerHoverStats>
+                );
               })}
             </div>
           </div>
@@ -742,20 +767,22 @@ export default function ManagerLineupPage() {
                     const p = getPlayer(id);
                     if (!p) return null;
                     return (
-                      <div key={id} className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-muted/30">
-                        <div className="flex items-center gap-2">
-                          <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
-                          {p.user_id ? (
-                            <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
-                          ) : (
-                            <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
-                          )}
-                          <span className="font-display font-bold text-xs">{p.full_name}</span>
+                      <PlayerHoverStats key={id} player={p} attrs={attrsByPlayerId[id]} side="left">
+                        <div className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-muted/30">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
+                            {p.user_id ? (
+                              <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
+                            ) : (
+                              <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
+                            )}
+                            <span className="font-display font-bold text-xs">{p.full_name}</span>
+                          </div>
+                          <button onClick={() => removeFromBench(id)} className="text-muted-foreground hover:text-destructive">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                        <button onClick={() => removeFromBench(id)} className="text-muted-foreground hover:text-destructive">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      </PlayerHoverStats>
                     );
                   })}
                 </div>
@@ -770,25 +797,27 @@ export default function ManagerLineupPage() {
               ) : (
                 <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                   {availablePlayers.map(p => (
-                    <div key={p.id} className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-muted/30">
-                      <div className="flex items-center gap-2">
-                        <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
-                        <div>
-                          <span className="font-display font-bold text-xs flex items-center gap-1">
-                            {p.user_id ? (
-                              <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
-                            ) : (
-                              <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
-                            )}
-                            {p.full_name}
-                          </span>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <PositionBadge position={p.primary_position} />
-                            <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                    <PlayerHoverStats key={p.id} player={p} attrs={attrsByPlayerId[p.id]} side="left">
+                      <div className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-muted/30">
+                        <div className="flex items-center gap-2">
+                          <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
+                          <div>
+                            <span className="font-display font-bold text-xs flex items-center gap-1">
+                              {p.user_id ? (
+                                <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
+                              ) : (
+                                <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
+                              )}
+                              {p.full_name}
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <PositionBadge position={p.primary_position} />
+                              <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </PlayerHoverStats>
                   ))}
                 </div>
               )}
