@@ -3,7 +3,7 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight } from 'lucide-react';
+import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight, BarChart3, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatBRL } from '@/lib/formatting';
 import { ClubCrest } from '@/components/ClubCrest';
@@ -21,6 +21,7 @@ export default function ManagerDashboard() {
   const [stadium, setStadium] = useState<any>(null);
   const [playerCount, setPlayerCount] = useState(0);
   const [bankruptcyStatus, setBankruptcyStatus] = useState<any>(null);
+  const [inactivePlayerCount, setInactivePlayerCount] = useState(0);
 
   useEffect(() => {
     if (!club) return;
@@ -38,6 +39,17 @@ export default function ManagerDashboard() {
         const { data: bStatus } = await supabase.rpc('get_bankruptcy_status', { p_club_id: club.id });
         if (bStatus && bStatus.length > 0) setBankruptcyStatus(bStatus[0]);
       } catch { /* table may not exist yet */ }
+      // Inactive players (5+ dias sem treinar). Cheap count query for dashboard card.
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      const { data: inactive } = await supabase
+        .from('player_profiles')
+        .select('id, last_trained_at')
+        .eq('club_id', club.id)
+        .not('user_id', 'is', null);
+      const cutoff = fiveDaysAgo.getTime();
+      const count = (inactive ?? []).filter(p => !p.last_trained_at || new Date(p.last_trained_at).getTime() < cutoff).length;
+      setInactivePlayerCount(count);
     };
     fetchData();
   }, [club]);
@@ -229,6 +241,29 @@ export default function ManagerDashboard() {
             <p className="text-sm text-muted-foreground">Classificação e rodadas</p>
           </Link>
         </div>
+
+        <Link
+          to="/manager/relatorios"
+          className={`stat-card block transition-colors ${inactivePlayerCount > 0 ? 'hover:border-amber-500/50 border-amber-500/30 bg-amber-500/5' : 'hover:border-tactical/40'}`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BarChart3 className={`h-5 w-5 ${inactivePlayerCount > 0 ? 'text-amber-400' : 'text-tactical'}`} />
+              <div>
+                <span className="font-display font-semibold text-sm block">Relatório de Jogadores</span>
+                {inactivePlayerCount > 0 ? (
+                  <span className="text-xs text-amber-400 flex items-center gap-1 mt-0.5">
+                    <Clock className="h-3 w-3" />
+                    {inactivePlayerCount} jogador{inactivePlayerCount > 1 ? 'es' : ''} sem treinar há 5+ dias
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Atividade, treinos, jogos e compras do elenco</span>
+                )}
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground">→</span>
+          </div>
+        </Link>
       </div>
     </ManagerLayout>
   );

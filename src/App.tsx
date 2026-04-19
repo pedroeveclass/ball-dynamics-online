@@ -18,6 +18,7 @@ const OnboardingPlayerPage = lazy(() => import("./pages/OnboardingPlayerPage"));
 const OnboardingManagerPage = lazy(() => import("./pages/OnboardingManagerPage"));
 const PlayerDashboard = lazy(() => import("./pages/PlayerDashboard"));
 const PlayerAttributesPage = lazy(() => import("./pages/PlayerAttributesPage"));
+const PlayerTrainingPlanPage = lazy(() => import("./pages/PlayerTrainingPlanPage"));
 const PlayerProfilePage = lazy(() => import("./pages/PlayerProfilePage"));
 const PlayerContractPage = lazy(() => import("./pages/PlayerContractPage"));
 const PlayerOffersPage = lazy(() => import("./pages/PlayerOffersPage"));
@@ -33,6 +34,7 @@ const ManagerLineupPage = lazy(() => import("./pages/ManagerLineupPage"));
 const SituationalTacticsPage = lazy(() => import("./pages/SituationalTacticsPage"));
 const ManagerChallengesPage = lazy(() => import("./pages/ManagerChallengesPage"));
 const ManagerCoachPage = lazy(() => import("./pages/ManagerCoachPage"));
+const ManagerReportsPage = lazy(() => import("./pages/ManagerReportsPage"));
 const PlayerMatchesPage = lazy(() => import("./pages/PlayerMatchesPage"));
 const MatchRoomPage = lazy(() => import("./pages/MatchRoomPage"));
 const SoloPhysicsLabPage = lazy(() => import("./pages/SoloPhysicsLabPage"));
@@ -106,6 +108,7 @@ const App = () => (
             <Route path="/player/avatar/create" element={<ProtectedRoute><AvatarCreatePage /></ProtectedRoute>} />
             <Route path="/player" element={<PlayerRoute><PlayerDashboard /></PlayerRoute>} />
             <Route path="/player/attributes" element={<PlayerRoute><PlayerAttributesPage /></PlayerRoute>} />
+            <Route path="/player/training-plan" element={<PlayerRoute><PlayerTrainingPlanPage /></PlayerRoute>} />
             <Route path="/player/profile" element={<PlayerRoute><PlayerProfilePage /></PlayerRoute>} />
             <Route path="/player/contract" element={<PlayerRoute><PlayerContractPage /></PlayerRoute>} />
             <Route path="/player/offers" element={<PlayerRoute><PlayerOffersPage /></PlayerRoute>} />
@@ -129,6 +132,7 @@ const App = () => (
             <Route path="/league/vote" element={<ManagerRoute><LeagueScheduleVotePage /></ManagerRoute>} />
             <Route path="/manager/facilities" element={<ManagerRoute><ManagerFacilitiesPage /></ManagerRoute>} />
             <Route path="/manager/coach" element={<ManagerRoute><ManagerCoachPage /></ManagerRoute>} />
+            <Route path="/manager/relatorios" element={<ManagerRoute><ManagerReportsPage /></ManagerRoute>} />
             <Route path="/account/profile" element={<ProtectedRoute><AccountProfilePage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/store" element={<ProtectedRoute><StorePage /></ProtectedRoute>} />

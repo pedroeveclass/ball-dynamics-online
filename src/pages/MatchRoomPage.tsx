@@ -5120,6 +5120,46 @@ export default function MatchRoomPage() {
                         fontFamily="'Barlow Condensed', sans-serif" fill="#fbbf24" stroke="#000" strokeWidth="0.3"
                       >C</text>
                     )}
+                    {/* Inertia arrow: small triangle at the rim pointing where the player
+                        moved LAST turn. Color encodes the inertia_power they spent (0%→
+                        black/faded, 1-33%→yellow, 34-66%→orange, 67-100%→red). No arrow
+                        when they stayed still — prevDirectionsRef drops the entry on a
+                        no-move turn and on dead-ball restarts, so the visual disappears
+                        exactly when the inertia bonus is actually gone. */}
+                    {(() => {
+                      const prevDir = prevDirectionsRef.current[p.id];
+                      if (!prevDir) return null;
+                      // Convert field-% delta to SVG delta so the tip points the right way
+                      // on the non-square pitch, then normalise.
+                      const sdx = (prevDir.x / 100) * INNER_W;
+                      const sdy = (prevDir.y / 100) * INNER_H;
+                      const len = Math.sqrt(sdx * sdx + sdy * sdy);
+                      if (len < 0.01) return null;
+                      const ux = sdx / len;
+                      const uy = sdy / len;
+                      const power = inertiaPowerRef.current[p.id] ?? 100;
+                      let fill: string, stroke: string, op: number;
+                      if (power <= 0)       { fill = '#1a1a1a'; stroke = '#000'; op = 0.55; }
+                      else if (power <= 33) { fill = '#fbbf24'; stroke = '#000'; op = 0.95; }
+                      else if (power <= 66) { fill = '#f97316'; stroke = '#000'; op = 0.95; }
+                      else                  { fill = '#ef4444'; stroke = '#000'; op = 0.95; }
+                      const tipR = R + 3.5;
+                      const baseR = R - 0.5;
+                      const half = 2.4;
+                      const tipX = x + ux * tipR, tipY = y + uy * tipR;
+                      const baseCX = x + ux * baseR, baseCY = y + uy * baseR;
+                      const px = -uy, py = ux; // perpendicular
+                      const b1x = baseCX + px * half, b1y = baseCY + py * half;
+                      const b2x = baseCX - px * half, b2y = baseCY - py * half;
+                      return (
+                        <polygon
+                          pointerEvents="none"
+                          points={`${tipX},${tipY} ${b1x},${b1y} ${b2x},${b2y}`}
+                          fill={fill} stroke={stroke} strokeWidth="0.5"
+                          strokeLinejoin="round" opacity={op}
+                        />
+                      );
+                    })()}
                   </g>
                 );
               })}

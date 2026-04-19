@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Shield, DollarSign, Building2, ShoppingCart, Users, ClipboardList, CalendarDays, Bell, Settings, Wrench, Trophy, Vote, Landmark, Store, Brain, MessageSquare,
+  LayoutDashboard, Shield, DollarSign, Building2, ShoppingCart, Users, ClipboardList, CalendarDays, Bell, Settings, Wrench, Trophy, Vote, Landmark, Store, Brain, MessageSquare, BarChart3,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -18,6 +18,7 @@ const managerNav = [
   { title: 'Estádio', url: '/manager/stadium', icon: Building2 },
   { title: 'Facilities', url: '/manager/facilities', icon: Wrench },
   { title: 'Treinamento', url: '/manager/coach', icon: Brain },
+  { title: 'Relatórios', url: '/manager/relatorios', icon: BarChart3 },
   { title: 'Liga', url: '/league', icon: Trophy },
   { title: 'Votação Liga', url: '/league/vote', icon: Vote },
   { title: 'Jogos', url: '/manager/challenges', icon: CalendarDays },

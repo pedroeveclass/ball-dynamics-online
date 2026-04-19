@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS, getAttrCap } from '@/lib/attributes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
 import { Dumbbell, TrendingUp, History, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap } from 'lucide-react';
@@ -32,6 +33,10 @@ export default function PlayerAttributesPage() {
   const [showBonusInfo, setShowBonusInfo] = useState(false);
   const [hasClub, setHasClub] = useState<boolean>(true);
   const [trainerBonus, setTrainerBonus] = useState<{ level: number; value: number } | null>(null);
+  // Today's match (if any) — used to warn the player before they burn energy on
+  // a training session that'd leave them short for kickoff.
+  const [todayMatch, setTodayMatch] = useState<{ scheduledAt: string; opponent: string | null } | null>(null);
+  const [matchWarnFor, setMatchWarnFor] = useState<string | null>(null);
 
   const weeklyEvolution = (() => {
     const oneWeekAgo = new Date();
@@ -109,7 +114,34 @@ export default function PlayerAttributesPage() {
     setHistory((data as TrainingRecord[]) || []);
   };
 
-  useEffect(() => { fetchAttrs(); fetchHistory(); fetchTrainingBonuses(); }, [playerProfile]);
+  const fetchTodayMatch = async () => {
+    if (!playerProfile?.club_id) { setTodayMatch(null); return; }
+    const now = new Date();
+    const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(now); dayEnd.setHours(23, 59, 59, 999);
+
+    const { data } = await supabase
+      .from('matches')
+      .select('scheduled_at, home_club_id, away_club_id, status')
+      .or(`home_club_id.eq.${playerProfile.club_id},away_club_id.eq.${playerProfile.club_id}`)
+      .gte('scheduled_at', dayStart.toISOString())
+      .lte('scheduled_at', dayEnd.toISOString())
+      .in('status', ['scheduled', 'live'])
+      .order('scheduled_at', { ascending: true })
+      .limit(1);
+
+    const match = (data || [])[0] as any;
+    if (!match) { setTodayMatch(null); return; }
+
+    const opponentClubId = match.home_club_id === playerProfile.club_id ? match.away_club_id : match.home_club_id;
+    const { data: opp } = await supabase.from('clubs').select('short_name, name').eq('id', opponentClubId).maybeSingle();
+    setTodayMatch({
+      scheduledAt: match.scheduled_at,
+      opponent: (opp as any)?.short_name || (opp as any)?.name || null,
+    });
+  };
+
+  useEffect(() => { fetchAttrs(); fetchHistory(); fetchTrainingBonuses(); fetchTodayMatch(); }, [playerProfile]);
 
   if (!playerProfile || !attrs) {
     return <AppLayout><p className="text-muted-foreground">Carregando atributos...</p></AppLayout>;
@@ -117,6 +149,20 @@ export default function PlayerAttributesPage() {
 
   const isGK = playerProfile.primary_position === 'GK';
   const growthRate = getTrainingGrowthRate(playerProfile.age);
+
+  const handleTrainClick = (attrKey: string) => {
+    if (playerProfile.energy_current < ENERGY_COST) {
+      toast.error('Energia insuficiente para treinar.');
+      return;
+    }
+    if (todayMatch) {
+      // Defer actual training until the player confirms they still want to burn
+      // energy on a match day. Cancel = abort silently.
+      setMatchWarnFor(attrKey);
+      return;
+    }
+    void handleTrain(attrKey);
+  };
 
   const handleTrain = async (attrKey: string) => {
     if (playerProfile.energy_current < ENERGY_COST) {
@@ -229,7 +275,7 @@ export default function PlayerAttributesPage() {
                   )}
                   <Button
                     size="sm"
-                    onClick={() => handleTrain(key)}
+                    onClick={() => handleTrainClick(key)}
                     disabled={training !== null || playerProfile.energy_current < ENERGY_COST || atCap}
                     className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
                   >
@@ -388,6 +434,35 @@ export default function PlayerAttributesPage() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={!!matchWarnFor} onOpenChange={(open) => { if (!open) setMatchWarnFor(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Swords className="h-5 w-5 text-destructive" />
+              Hoje é dia de jogo!
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {todayMatch?.opponent
+                ? <>Você tem partida contra <strong>{todayMatch.opponent}</strong>{todayMatch?.scheduledAt ? ` às ${new Date(todayMatch.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.</>
+                : 'Você tem uma partida marcada para hoje.'}
+              {' '}Treinar agora vai gastar <strong>{ENERGY_COST}</strong> de energia — você entrará em campo com <strong>{Math.max(0, playerProfile.energy_current - ENERGY_COST)}</strong>. Ainda quer treinar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const key = matchWarnFor;
+                setMatchWarnFor(null);
+                if (key) void handleTrain(key);
+              }}
+            >
+              Treinar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
