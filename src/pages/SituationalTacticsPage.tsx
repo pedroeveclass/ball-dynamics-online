@@ -11,7 +11,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Save, RotateCcw, Copy } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { FORMATIONS } from './ManagerLineupPage';
 
@@ -107,17 +108,92 @@ function resolvePositions(
   return phaseMap[phase][qIdx] ?? computeDynamicPositions(qIdx, formation);
 }
 
+const oppositePhase = (p: Phase): Phase => (p === 'with_ball' ? 'without_ball' : 'with_ball');
+
+/** Pair each slot with its left/right mirror by grouping slots into rows (by y±5) and reversing x order. */
+function computeMirrorMapping(formation: string): Record<string, string> {
+  const slots = FORMATIONS[formation] || [];
+  const rows: (typeof slots)[] = [];
+  for (const s of slots) {
+    const row = rows.find(r => Math.abs(r[0].y - s.y) <= 5);
+    if (row) row.push(s);
+    else rows.push([s]);
+  }
+  const mapping: Record<string, string> = {};
+  for (const row of rows) {
+    const sorted = [...row].sort((a, b) => a.x - b.x);
+    for (let i = 0; i < sorted.length; i++) {
+      mapping[sorted[i].position] = sorted[sorted.length - 1 - i].position;
+    }
+  }
+  return mapping;
+}
+
+/** Opponent attacks the opposite way, so mirror the ball's quadrant vertically
+ *  (as if they were looking at the field from their side), compute their dynamic
+ *  default there, then flip Y to bring it back into our field coords. */
+function computeOpponentPositions(quadrantIdx: number, oppFormation: string): QuadrantPositions {
+  const row = Math.floor(quadrantIdx / COLS);
+  const col = quadrantIdx % COLS;
+  const mirroredIdx = (ROWS - 1 - row) * COLS + col;
+  const base = computeDynamicPositions(mirroredIdx, oppFormation);
+  const flipped: QuadrantPositions = {};
+  for (const [k, p] of Object.entries(base)) {
+    flipped[k] = { x: p.x, y: 100 - p.y };
+  }
+  return flipped;
+}
+
 // ── Draggable player piece ────────────────────────────────────
+type ChipVariant = 'own' | 'ghost' | 'opponent';
+
 interface PlayerChipProps {
   jersey: number;
   label: string;
   pos: Pos;
   fieldRef: React.RefObject<HTMLDivElement>;
-  onDragEndSnapped: (newPos: Pos) => void;
+  onDragEndSnapped?: (newPos: Pos) => void;
+  variant?: ChipVariant;
 }
 
-function PlayerChip({ jersey, label, pos, fieldRef, onDragEndSnapped }: PlayerChipProps) {
+function PlayerChip({ jersey, label, pos, fieldRef, onDragEndSnapped, variant = 'own' }: PlayerChipProps) {
   const controls = useAnimationControls();
+  const isGhost = variant === 'ghost';
+  const isOpponent = variant === 'opponent';
+  const draggable = !!onDragEndSnapped && !isGhost;
+
+  const bgClass = isOpponent ? 'bg-blue-600' : 'bg-red-600';
+  const zClass = isGhost ? 'z-10' : isOpponent ? 'z-20' : 'z-30';
+  const opacityClass = isGhost ? 'opacity-50' : '';
+
+  const body = (
+    <div className={`flex flex-col items-center gap-0.5 select-none ${opacityClass}`}>
+      <div
+        className={`h-8 w-8 rounded-full ${bgClass} border-2 border-black text-white flex items-center justify-center font-bold text-sm shadow-md`}
+      >
+        {jersey}
+      </div>
+      <span className="text-[9px] font-semibold text-white bg-black/60 px-1 rounded">
+        {label}
+      </span>
+    </div>
+  );
+
+  const positionStyle = {
+    left: `${pos.x}%`,
+    top: `${pos.y}%`,
+    marginLeft: -16,
+    marginTop: -16,
+  } as const;
+
+  if (!draggable) {
+    return (
+      <div className={`absolute ${zClass} pointer-events-none`} style={positionStyle}>
+        {body}
+      </div>
+    );
+  }
+
   return (
     <motion.div
       drag
@@ -133,26 +209,12 @@ function PlayerChip({ jersey, label, pos, fieldRef, onDragEndSnapped }: PlayerCh
         const newY = clamp(pos.y + dyPct, 0, 100);
         const snapped = snapPlayerPosition(newX, newY);
         controls.set({ x: 0, y: 0 });
-        onDragEndSnapped(snapped);
+        onDragEndSnapped!(snapped);
       }}
-      className="absolute z-20 cursor-grab active:cursor-grabbing touch-none"
-      style={{
-        left: `${pos.x}%`,
-        top: `${pos.y}%`,
-        marginLeft: -16,
-        marginTop: -16,
-      }}
+      className={`absolute ${zClass} cursor-grab active:cursor-grabbing touch-none`}
+      style={positionStyle}
     >
-      <div className="flex flex-col items-center gap-0.5 select-none">
-        <div
-          className="h-8 w-8 rounded-full bg-red-600 border-2 border-black text-white flex items-center justify-center font-bold text-sm shadow-md"
-        >
-          {jersey}
-        </div>
-        <span className="text-[9px] font-semibold text-white bg-black/60 px-1 rounded">
-          {label}
-        </span>
-      </div>
+      {body}
     </motion.div>
   );
 }
@@ -183,7 +245,7 @@ function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
         controls.set({ x: 0, y: 0 });
         onDragEndSnapped(idx);
       }}
-      className="absolute z-30 cursor-grab active:cursor-grabbing touch-none"
+      className="absolute z-40 cursor-grab active:cursor-grabbing touch-none"
       style={{
         left: `${pos.x}%`,
         top: `${pos.y}%`,
@@ -210,6 +272,13 @@ export default function SituationalTacticsPage() {
   const [saving, setSaving] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [dupTarget, setDupTarget] = useState<string>('');
+
+  // Visualization toggles (all local, non-persisted).
+  const [showGhost, setShowGhost] = useState(false);
+  const [showDistance, setShowDistance] = useState(false);
+  const [opponentFormation, setOpponentFormation] = useState<string | null>(null);
+  // Opponent overrides are per (formation, quadrant) but kept only in memory.
+  const [opponentOverrides, setOpponentOverrides] = useState<Record<number, QuadrantPositions>>({});
 
   const fieldRef = useRef<HTMLDivElement>(null);
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
@@ -283,6 +352,47 @@ export default function SituationalTacticsPage() {
       ...prev,
       [phase]: { ...prev[phase], [ballQuadrant]: null },
     }));
+  };
+
+  // Opponent positions: start from dynamic mirror, let user drag to override (mem-only).
+  const opponentPositions = useMemo(() => {
+    if (!opponentFormation) return null;
+    return opponentOverrides[ballQuadrant] ?? computeOpponentPositions(ballQuadrant, opponentFormation);
+  }, [opponentFormation, opponentOverrides, ballQuadrant]);
+
+  const updateOpponentPos = (slotPosition: string, newPos: Pos) => {
+    if (!opponentFormation) return;
+    setOpponentOverrides(prev => {
+      const baseline = prev[ballQuadrant] ?? computeOpponentPositions(ballQuadrant, opponentFormation);
+      return { ...prev, [ballQuadrant]: { ...baseline, [slotPosition]: newPos } };
+    });
+  };
+
+  // Clear opponent overrides whenever opp formation changes or is removed.
+  const setOpponentFormationAndReset = (f: string | null) => {
+    setOpponentFormation(f);
+    setOpponentOverrides({});
+  };
+
+  // Mirror: copy one side (left or right) of the current quadrant onto the other.
+  const applyMirror = (direction: 'leftToRight' | 'rightToLeft') => {
+    const mirrorMap = computeMirrorMapping(formation);
+    const baseline = resolvePositions(phaseMap, phase, ballQuadrant, formation);
+    const next: QuadrantPositions = { ...baseline };
+    for (const s of slots) {
+      const isSource = direction === 'leftToRight' ? s.x < 50 : s.x > 50;
+      if (!isSource) continue;
+      const target = mirrorMap[s.position];
+      if (!target || target === s.position) continue;
+      const src = baseline[s.position];
+      if (!src) continue;
+      next[target] = { x: 100 - src.x, y: src.y };
+    }
+    setPhaseMap(prev => ({
+      ...prev,
+      [phase]: { ...prev[phase], [ballQuadrant]: next },
+    }));
+    toast.success(direction === 'leftToRight' ? 'Espelhado: esquerda → direita' : 'Espelhado: direita → esquerda');
   };
 
   const ballPos = quadrantCenter(ballQuadrant);
@@ -430,6 +540,55 @@ export default function SituationalTacticsPage() {
           <div className="text-xs text-muted-foreground font-semibold">{quadrantLabel}</div>
         </div>
 
+        {/* Visualization toolbar: ghost overlay, distance, opponent, mirror */}
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <Button
+            variant={showGhost ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowGhost(v => !v)}
+            className="gap-1.5"
+          >
+            {showGhost ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            Fase oposta ({PHASE_LABEL[oppositePhase(phase)]})
+          </Button>
+          <label className={`flex items-center gap-1.5 px-2 py-1 rounded border ${showGhost ? '' : 'opacity-50 pointer-events-none'}`}>
+            <Checkbox
+              checked={showDistance}
+              onCheckedChange={(v) => setShowDistance(!!v)}
+            />
+            <span>Distância</span>
+          </label>
+
+          <div className="flex items-center gap-1.5 pl-2 border-l ml-1">
+            <span className="text-muted-foreground">Adversário:</span>
+            <Select
+              value={opponentFormation ?? 'none'}
+              onValueChange={(v) => setOpponentFormationAndReset(v === 'none' ? null : v)}
+            >
+              <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem adversário</SelectItem>
+                {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {opponentFormation && (
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setOpponentFormationAndReset(null)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 pl-2 border-l ml-1">
+            <span className="text-muted-foreground">Espelhar:</span>
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => applyMirror('leftToRight')}>
+              <FlipHorizontal className="h-3.5 w-3.5" /> E → D
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => applyMirror('rightToLeft')}>
+              <FlipHorizontal className="h-3.5 w-3.5" /> D → E
+            </Button>
+          </div>
+        </div>
+
         {/* Field */}
         <Card>
           <CardContent className="p-3">
@@ -503,6 +662,70 @@ export default function SituationalTacticsPage() {
                   height: `${QUADRANT_H}%`,
                 }}
               />
+
+              {/* Ghost (opposite phase) + distance lines */}
+              {!loading && showGhost && (() => {
+                const ghostPositions = resolvePositions(phaseMap, oppositePhase(phase), ballQuadrant, formation);
+                return (
+                  <>
+                    {showDistance && (
+                      <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                      >
+                        {slots.map(slot => {
+                          const a = currentQuadrantPositions[slot.position];
+                          const b = ghostPositions[slot.position];
+                          if (!a || !b) return null;
+                          return (
+                            <line
+                              key={`dist-${slot.position}`}
+                              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                              stroke="rgba(253, 224, 71, 0.85)"
+                              strokeWidth="0.35"
+                              strokeDasharray="1.2 0.8"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          );
+                        })}
+                      </svg>
+                    )}
+                    {slots.map((slot, i) => {
+                      const p = ghostPositions[slot.position] || { x: slot.x, y: slot.y };
+                      return (
+                        <PlayerChip
+                          key={`ghost-${formation}-${slot.position}`}
+                          jersey={i + 1}
+                          label={slot.label}
+                          pos={p}
+                          fieldRef={fieldRef}
+                          variant="ghost"
+                        />
+                      );
+                    })}
+                  </>
+                );
+              })()}
+
+              {/* Opponent (visualization only, not persisted) */}
+              {!loading && opponentFormation && opponentPositions && (() => {
+                const oppSlots = FORMATIONS[opponentFormation] || [];
+                return oppSlots.map((slot, i) => {
+                  const p = opponentPositions[slot.position] || { x: slot.x, y: 100 - slot.y };
+                  return (
+                    <PlayerChip
+                      key={`opp-${opponentFormation}-${slot.position}`}
+                      jersey={i + 1}
+                      label={slot.label}
+                      pos={p}
+                      fieldRef={fieldRef}
+                      variant="opponent"
+                      onDragEndSnapped={(np) => updateOpponentPos(slot.position, np)}
+                    />
+                  );
+                });
+              })()}
 
               {/* Players */}
               {!loading && slots.map((slot, i) => {
