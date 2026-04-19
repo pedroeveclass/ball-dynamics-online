@@ -6004,6 +6004,40 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       // tackleBlockedIds / tackleMovementPenalty were built before the movement loop
       // (scope starts higher up in executeTickForMatch).
       if (ballHolderAction) {
+        // ── MatchFlow: always log the ball holder's action (regardless of outcome).
+        // Outcome-specific logs (pass_complete, intercepted, shot_over, blocked, dribble
+        // from tackle-fail, etc.) still fire below; this entry is the "the BH did X"
+        // narrative beat the user wanted to see on every turn. Move = drible.
+        {
+          const bhAct = ballHolderAction.action_type;
+          const bhName = (ballHolder as any)?._player_name ?? 'Jogador';
+          let bhEventType: string | null = null;
+          let bhTitle = '';
+          if (bhAct === 'move') {
+            bhEventType = 'bh_dribble';
+            bhTitle = `⚽ ${bhName} avançou driblando`;
+          } else if (isPassType(bhAct) || isHeaderPassType(bhAct)) {
+            bhEventType = 'bh_pass';
+            bhTitle = `🎯 ${bhName} passou a bola`;
+          } else if (isShootType(bhAct) || isHeaderShootType(bhAct)) {
+            bhEventType = 'bh_shot';
+            bhTitle = `🚀 ${bhName} finalizou ao gol`;
+          }
+          if (bhEventType) {
+            eventsToLog.push({
+              match_id, event_type: bhEventType,
+              title: bhTitle,
+              body: '',
+              payload: {
+                ball_holder_participant_id: ballHolder.id,
+                ball_holder_name: bhName,
+                action_type: bhAct,
+                turn_number: match.current_turn_number,
+              },
+            });
+          }
+        }
+
         const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds);
 
         // Log GK save attempt if there was one
@@ -6849,6 +6883,61 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             title: restart.title,
             body: restart.body,
           });
+        }
+      }
+    }
+
+    // ── Set-piece: snap all bots to their situational-tactics quadrant ──
+    // When any dead-ball restart is awarded (corner, throw-in, free kick, goal kick)
+    // we pre-position every non-taker bot at its situational-tactics target for the
+    // quadrant closest to the ball. The positioning phases run right after and let
+    // humans override; this snap is just the baseline so defenders/attackers are
+    // already in a recognizable shape when the set piece starts. Kickoff & penalty
+    // have their own hardcoded exclusion logic — skip them here.
+    if (nextSetPieceType && nextSetPieceType !== 'kickoff' && nextSetPieceType !== 'penalty') {
+      const takerId = nextBallHolderParticipantId;
+      const takerPart = takerId ? (participants || []).find((p: any) => p.id === takerId) : null;
+      if (takerPart) {
+        const snapBallPos = {
+          x: Number(takerPart.pos_x ?? 50),
+          y: Number(takerPart.pos_y ?? 50),
+        };
+        const homeForm = tickCache.clubSettings?.homeFormation || '4-4-2';
+        const awayForm = tickCache.clubSettings?.awayFormation || '4-4-2';
+        const isSecondHalfSnap = (match.current_half ?? 1) >= 2;
+        const snapBatch: Array<{ id: string; x: number; y: number }> = [];
+        for (const p of (participants || [])) {
+          if (p.role_type !== 'player' || p.is_sent_off) continue;
+          if (p.id === takerId) continue; // taker stays at set-piece spot
+          const isHomeRaw = p.club_id === match.home_club_id;
+          const isHome = isSecondHalfSnap ? !isHomeRaw : isHomeRaw;
+          const formation = isHomeRaw ? homeForm : awayForm;
+          const isDefending = p.club_id !== newPossessionClubId;
+          const situ = resolveSituationalTarget(p, snapBallPos, isHome, isDefending, formation, tickCache);
+          if (!situ) continue;
+          // Push defenders outside the 10u exclusion zone around the ball (FIFA ~9.15m)
+          let tx = situ.x;
+          let ty = situ.y;
+          if (isDefending) {
+            const dx = tx - snapBallPos.x;
+            const dy = ty - snapBallPos.y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 10.5) {
+              const ang = Math.atan2(dy, dx) || 0;
+              tx = snapBallPos.x + Math.cos(ang) * 11;
+              ty = snapBallPos.y + Math.sin(ang) * 11;
+            }
+          }
+          tx = Math.max(1, Math.min(99, tx));
+          ty = Math.max(1, Math.min(99, ty));
+          // Update in-memory so later reads (event logs, energy calc) see the snap.
+          p.pos_x = tx;
+          p.pos_y = ty;
+          snapBatch.push({ id: p.id, x: tx, y: ty });
+        }
+        if (snapBatch.length > 0) {
+          deferredPositionUpdates.push(...snapBatch.map(b => ({ id: b.id, pos_x: b.x, pos_y: b.y })));
+          console.log(`[ENGINE] Set-piece (${nextSetPieceType}) snap: ${snapBatch.length} bots moved to situational target`);
         }
       }
     }

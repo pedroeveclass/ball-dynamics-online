@@ -5046,8 +5046,12 @@ export default function MatchRoomPage() {
                     {isBH && (
                       <circle cx={x} cy={y} r={R + 5} fill="none" stroke="#f59e0b" strokeWidth="1.5" opacity={0.6} filter="url(#glow)" />
                     )}
-                    {isSelected && (
-                      <circle cx={x} cy={y} r={R + 3} fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="3,2" opacity={0.8} />
+                    {/* Controlled-avatar highlight: amber ring around whoever the viewer
+                        is controlling. Manager → the participant they selected. Player →
+                        their own avatar (always). Same visual so the controlled unit is
+                        unmistakable in both views. */}
+                    {((isManager && isSelected) || (isPlayer && isMe)) && (
+                      <circle cx={x} cy={y} r={R + 3} fill="none" stroke="#f59e0b" strokeWidth="2" opacity={0.9} filter="url(#glow)" />
                     )}
                     {hasSubmitted && (
                       <circle cx={x} cy={y} r={R + 3} fill="none" stroke="#22c55e" strokeWidth="1" opacity={0.6} />

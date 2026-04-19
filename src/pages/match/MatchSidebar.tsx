@@ -21,7 +21,7 @@ function resolveEventParticipant(
     'dribbler_participant_id', 'tackled_by_participant_id',
     'player_participant_id', 'new_ball_holder_participant_id', 'gk_participant_id',
     'caught_participant_id', 'attacker_participant_id', 'defender_participant_id',
-    'taker_participant_id', 'in_participant_id',
+    'taker_participant_id', 'in_participant_id', 'ball_holder_participant_id',
   ];
   for (const key of ID_KEYS) {
     const id = payload[key];
@@ -44,7 +44,7 @@ function resolveEventParticipant(
     'tackler_name', 'blocker_name', 'shooter_name', 'passer_name',
     'dribbler_name', 'receiver_name', 'caught_name', 'attacker_name',
     'defender_name', 'taker_name', 'in_player_name', 'new_ball_holder_name',
-    'tackled_name',
+    'tackled_name', 'ball_holder_name',
   ];
   for (const key of NAME_KEYS) {
     const val = payload[key];
@@ -589,6 +589,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
                   e.event_type === 'shot_over' || e.event_type === 'shot_missed' ? 'border-slate-400 text-slate-300' :
                   e.event_type === 'penalty_kick' ? 'border-red-400 text-red-300 font-bold' :
                   e.event_type === 'pass_complete' ? 'border-green-400/60 text-green-300/80' :
+                  e.event_type === 'bh_dribble' ? 'border-emerald-400/70 text-emerald-300' :
+                  e.event_type === 'bh_pass' ? 'border-cyan-400/70 text-cyan-300' :
+                  e.event_type === 'bh_shot' ? 'border-amber-400/70 text-amber-300 font-semibold' :
                   'border-white/20 text-white/70'
                 }`}>
                   <p className="font-display font-semibold">

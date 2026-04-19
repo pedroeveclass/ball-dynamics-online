@@ -16,6 +16,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ClubCrest } from '@/components/ClubCrest';
 import { format } from 'date-fns';
 import { FORMATION_POSITIONS, getFormationPositions } from '@/lib/formations';
+import {
+  groupFromPos,
+  coordForPickupIndex,
+  FIVE_V_FIVE_COORDS,
+  COORD_GROUPS,
+  type GroupKey,
+} from '@/lib/fivePickup';
 import { ptBR } from 'date-fns/locale';
 
 interface Challenge {
@@ -176,36 +183,33 @@ export default function ManagerChallengesPage() {
     finally { setSending(false); }
   };
 
-  const FRIENDLY_5V5_COORDS: Array<{ x: number; y: number; pos: 'GK' | 'CB' | 'CM' | 'ST' }> = [
-    { x: 5, y: 50, pos: 'GK' },
-    { x: 25, y: 30, pos: 'CB' },
-    { x: 25, y: 70, pos: 'CB' },
-    { x: 40, y: 35, pos: 'CM' },
-    { x: 40, y: 65, pos: 'ST' },
-  ];
-
-  const getFriendlySlotRole = (slotPosition?: string | null): 'GK' | 'CB' | 'ST' | null => {
-    if (!slotPosition) return null;
-    if (slotPosition === 'GK') return 'GK';
-    if (slotPosition.startsWith('CB')) return 'CB';
-    if (slotPosition.startsWith('ST')) return 'ST';
-    return null;
-  };
-
-  const pickFriendlySlots = <T extends { id: string; slot_position: string | null }>(clubSlots: T[]) => {
-    const picked: T[] = [];
-    const usedSlotIds = new Set<string>();
-
-    for (const targetRole of ['GK', 'CB', 'CB', 'CM', 'ST'] as const) {
-      const match = clubSlots.find(slot =>
-        !usedSlotIds.has(slot.id) && getFriendlySlotRole(slot.slot_position) === targetRole,
-      );
-      if (!match) continue;
-      picked.push(match);
-      usedSlotIds.add(match.id);
+  // Given 5 manager-picked players, map each to one of the 5 canonical 5v5
+  // coord indices (0=GK, 1=DEF, 2=DEF, 3=MID, 4=ATK) by their natural
+  // position group. If the 5 don't fit neatly, we spill to the nearest
+  // group rather than dropping players on the floor.
+  const assignPicksToCoordSlots = (
+    pickedIds: string[],
+    playerPosMap: Map<string, string | null | undefined>,
+  ): Array<string | null> => {
+    const remaining = [...pickedIds];
+    const byGroup: Record<GroupKey, string[]> = { GK: [], DEF: [], MID: [], ATK: [] };
+    for (const pid of remaining) {
+      const g = groupFromPos(playerPosMap.get(pid)) ?? 'MID';
+      byGroup[g].push(pid);
     }
-
-    return picked;
+    const out: Array<string | null> = [null, null, null, null, null];
+    for (let i = 0; i < COORD_GROUPS.length; i++) {
+      const g = COORD_GROUPS[i];
+      if (byGroup[g].length) { out[i] = byGroup[g].shift()!; }
+    }
+    // Fill leftover slots with leftover players (closest group first)
+    const leftover: string[] = [];
+    (['GK', 'DEF', 'MID', 'ATK'] as GroupKey[]).forEach(g => leftover.push(...byGroup[g]));
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] != null) continue;
+      if (leftover.length) { out[i] = leftover.shift()!; }
+    }
+    return out;
   };
 
   const parse3v3Message = (msg: string | null): { is3v3: boolean; playerIds: string[]; cleanMessage: string } => {
@@ -247,21 +251,30 @@ export default function ManagerChallengesPage() {
       }).select('id').single();
       if (matchError) throw matchError;
 
-      // Fetch player user mappings
+      // Fetch player user + natural position so we can drop each picked
+      // player onto the slot matching their role group (GK → GK coord,
+      // defender → one of the 2 DEF coords, etc.) instead of following
+      // the manager's selection order.
       const allPlayerIds = [...challengerPlayerIds, ...accepterPlayerIds];
-      const { data: players } = await supabase.from('player_profiles').select('id, user_id').in('id', allPlayerIds);
+      const { data: players } = await supabase.from('player_profiles').select('id, user_id, primary_position').in('id', allPlayerIds);
       const playerUserMap = new Map((players || []).map(p => [p.id, p.user_id]));
+      const playerPosMap = new Map((players || []).map(p => [p.id, p.primary_position]));
 
-      const homeParticipants = challengerPlayerIds.map((pid, i) => {
-        const coords = FRIENDLY_5V5_COORDS[i];
+      const homeAssigned = assignPicksToCoordSlots(challengerPlayerIds, playerPosMap);
+      const awayAssigned = assignPicksToCoordSlots(accepterPlayerIds, playerPosMap);
+
+      const homeParticipants = homeAssigned.map((pid, i) => {
+        if (!pid) return null;
+        const coord = coordForPickupIndex(i, true);
         const userId = playerUserMap.get(pid) || null;
-        return { match_id: match!.id, player_profile_id: pid, club_id: challenge.challenger_club_id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId, pos_x: coords.x, pos_y: coords.y };
-      });
-      const awayParticipants = accepterPlayerIds.map((pid, i) => {
-        const coords = FRIENDLY_5V5_COORDS[i];
+        return { match_id: match!.id, player_profile_id: pid, club_id: challenge.challenger_club_id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId, pos_x: coord.x, pos_y: coord.y };
+      }).filter(Boolean);
+      const awayParticipants = awayAssigned.map((pid, i) => {
+        if (!pid) return null;
+        const coord = coordForPickupIndex(i, false);
         const userId = playerUserMap.get(pid) || null;
-        return { match_id: match!.id, player_profile_id: pid, club_id: challenge.challenged_club_id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId, pos_x: 100 - coords.x, pos_y: coords.y };
-      });
+        return { match_id: match!.id, player_profile_id: pid, club_id: challenge.challenged_club_id, role_type: 'player', is_bot: !userId, is_ready: false, connected_user_id: userId, pos_x: coord.x, pos_y: coord.y };
+      }).filter(Boolean);
 
       await supabase.from('match_participants').insert([...homeParticipants, ...awayParticipants]);
 
@@ -434,9 +447,9 @@ export default function ManagerChallengesPage() {
       }).select('id').single();
       if (matchError || !match) throw matchError || new Error('Falha');
       const userId = (await supabase.auth.getUser()).data.user?.id;
-      // 5v5 test: GK + 2CB + CM + ST per team
-      const testHome = [{ x: 5, y: 50 }, { x: 22, y: 35 }, { x: 22, y: 65 }, { x: 38, y: 50 }, { x: 45, y: 50 }];
-      const testAway = testHome.map(p => ({ x: 100 - p.x, y: p.y }));
+      // 5v5 test: use the canonical 5v5 layout (GK + 2 DEF + 1 MID + 1 ATA)
+      const testHome = FIVE_V_FIVE_COORDS.map((_, i) => coordForPickupIndex(i, true));
+      const testAway = FIVE_V_FIVE_COORDS.map((_, i) => coordForPickupIndex(i, false));
       await supabase.from('match_participants').insert([
         ...testHome.map(p => ({ match_id: match.id, club_id: club.id, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),
         ...testAway.map(p => ({ match_id: match.id, club_id: opponentId, role_type: 'player', is_bot: true, is_ready: false, pos_x: p.x, pos_y: p.y })),

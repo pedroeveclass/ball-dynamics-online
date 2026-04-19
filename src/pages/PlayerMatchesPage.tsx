@@ -11,6 +11,13 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { ClubCrest } from '@/components/ClubCrest';
+import {
+  pickFiveFromLineup,
+  insertHumanByGroup,
+  coordForPickupIndex,
+  FIVE_V_FIVE_COORDS,
+  type PickupSlot,
+} from '@/lib/fivePickup';
 
 interface MatchEntry {
   match_id: string;
@@ -108,6 +115,61 @@ export default function PlayerMatchesPage() {
       const homeClubId = clubId || available.splice(Math.floor(Math.random() * available.length), 1)[0].id;
       const opponentId = available[Math.floor(Math.random() * available.length)].id;
 
+      // Pull each side's active lineup so we can seed the 5 outfield slots
+      // from the team's formation (1 GK + 2 DEF + 1 MID + 1 ATA). Fallback
+      // to an empty list if a side has no lineup — positions stay bot-only.
+      const [homeLineupRes, awayLineupRes] = await Promise.all([
+        supabase.from('lineups').select('id, formation').eq('club_id', homeClubId).eq('is_active', true).limit(1).maybeSingle(),
+        supabase.from('lineups').select('id, formation').eq('club_id', opponentId).eq('is_active', true).limit(1).maybeSingle(),
+      ]);
+      const homeLineupId = homeLineupRes.data?.id || null;
+      const awayLineupId = awayLineupRes.data?.id || null;
+
+      const lineupIds = [homeLineupId, awayLineupId].filter(Boolean) as string[];
+      const { data: allSlots } = lineupIds.length
+        ? await supabase.from('lineup_slots')
+          .select('id, lineup_id, player_profile_id, slot_position, role_type, sort_order')
+          .in('lineup_id', lineupIds)
+          .order('sort_order', { ascending: true })
+        : { data: [] };
+
+      const homeSlotsRaw = (allSlots || []).filter(s => s.lineup_id === homeLineupId);
+      const awaySlotsRaw = (allSlots || []).filter(s => s.lineup_id === awayLineupId);
+
+      const playerIds = (allSlots || []).filter(s => s.player_profile_id).map(s => s.player_profile_id!);
+      const { data: playerUsers } = playerIds.length
+        ? await supabase.from('player_profiles').select('id, user_id, primary_position').in('id', playerIds)
+        : { data: [] };
+      const playerUserMap = new Map((playerUsers || []).map(p => [p.id, p.user_id]));
+      const playerPosMap = new Map((playerUsers || []).map(p => [p.id, p.primary_position]));
+
+      // Normalize to PickupSlot[], preferring each player's natural
+      // primary_position over the lineup slot label (a CB slotted as LB
+      // in a 3-5-2 should still count as a defender). Starter/bench role
+      // is preserved so starters get picked first.
+      const toPickupSlot = (s: any): PickupSlot => ({
+        player_profile_id: s.player_profile_id ?? null,
+        slot_position: (s.player_profile_id && playerPosMap.get(s.player_profile_id)) || s.slot_position || null,
+        role_type: s.role_type ?? null,
+        lineup_slot_id: s.id ?? null,
+      });
+      const homeSlots = homeSlotsRaw.map(toPickupSlot);
+      const awaySlots = awaySlotsRaw.map(toPickupSlot);
+
+      let homePicks = pickFiveFromLineup(homeSlots);
+      const awayPicks = pickFiveFromLineup(awaySlots);
+
+      // Slot the human in by role group. If the player isn't in the
+      // home lineup at all (stray account without contract) we still
+      // drop them onto whichever group matches their primary_position.
+      const humanSlot: PickupSlot = {
+        player_profile_id: playerProfile.id,
+        slot_position: playerProfile.primary_position || null,
+        role_type: 'starter',
+        lineup_slot_id: null,
+      };
+      homePicks = insertHumanByGroup(homePicks, humanSlot);
+
       // Create the match (5v5 test — no lineup IDs, engine treats as test match)
       const { data: match, error: matchError } = await supabase.from('matches').insert({
         home_club_id: homeClubId,
@@ -119,57 +181,36 @@ export default function PlayerMatchesPage() {
       }).select('id').single();
       if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
 
-      // Create 5 home participants: the human player + 4 bots
-      const homeParticipants: any[] = [];
+      const participants: any[] = [];
+      const buildSideParticipants = (
+        picks: Array<PickupSlot | null>,
+        sideClubId: string,
+        isHome: boolean,
+      ) => {
+        for (let i = 0; i < FIVE_V_FIVE_COORDS.length; i++) {
+          const pick = picks[i];
+          const coord = coordForPickupIndex(i, isHome);
+          const profileId = pick?.player_profile_id ?? null;
+          const mappedUserId = profileId ? playerUserMap.get(profileId) : null;
+          const isHuman = profileId === playerProfile.id;
+          participants.push({
+            match_id: match.id,
+            player_profile_id: profileId,
+            lineup_slot_id: pick?.lineup_slot_id ?? null,
+            club_id: sideClubId,
+            role_type: 'player',
+            is_bot: !isHuman && !mappedUserId,
+            is_ready: false,
+            connected_user_id: isHuman ? user.id : (mappedUserId || null),
+            pos_x: coord.x,
+            pos_y: coord.y,
+          });
+        }
+      };
+      buildSideParticipants(homePicks, homeClubId, true);
+      buildSideParticipants(awayPicks, opponentId, false);
 
-      // The human player as participant
-      homeParticipants.push({
-        match_id: match.id,
-        player_profile_id: playerProfile.id,
-        club_id: homeClubId,
-        role_type: 'player',
-        is_bot: false,
-        is_ready: false,
-        connected_user_id: user.id,
-        pos_x: 5, pos_y: 50, // GK position or first position
-      });
-
-      // 4 bot teammates
-      const botPositions = [
-        { x: 25, y: 25 }, { x: 25, y: 75 },
-        { x: 40, y: 35 }, { x: 40, y: 65 },
-      ];
-      for (const pos of botPositions) {
-        homeParticipants.push({
-          match_id: match.id,
-          club_id: homeClubId,
-          role_type: 'player',
-          is_bot: true,
-          is_ready: false,
-          connected_user_id: null,
-          pos_x: pos.x, pos_y: pos.y,
-        });
-      }
-
-      // 5 away bots
-      const awayPositions = [
-        { x: 95, y: 50 },
-        { x: 75, y: 25 }, { x: 75, y: 75 },
-        { x: 60, y: 35 }, { x: 60, y: 65 },
-      ];
-      for (const pos of awayPositions) {
-        homeParticipants.push({
-          match_id: match.id,
-          club_id: opponentId,
-          role_type: 'player',
-          is_bot: true,
-          is_ready: false,
-          connected_user_id: null,
-          pos_x: pos.x, pos_y: pos.y,
-        });
-      }
-
-      await supabase.from('match_participants').insert(homeParticipants);
+      await supabase.from('match_participants').insert(participants);
 
       await supabase.from('match_event_logs').insert({
         match_id: match.id, event_type: 'system',
