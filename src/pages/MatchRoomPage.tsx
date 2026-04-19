@@ -5127,6 +5127,10 @@ export default function MatchRoomPage() {
                         no-move turn and on dead-ball restarts, so the visual disappears
                         exactly when the inertia bonus is actually gone. */}
                     {(() => {
+                      // Hide while the resolution animation is playing — the refs still
+                      // hold the PREVIOUS turn's data until animation end, which would
+                      // show a stale arrow on a player visibly moving a different way.
+                      if (animating) return null;
                       const prevDir = prevDirectionsRef.current[p.id];
                       if (!prevDir) return null;
                       // Convert field-% delta to SVG delta so the tip points the right way
