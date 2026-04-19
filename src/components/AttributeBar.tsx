@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { getAttributeTier } from '@/lib/attributes';
-import { Lock } from 'lucide-react';
+import { ArrowUp, Lock } from 'lucide-react';
 
 interface AttributeBarProps {
   label: string;
@@ -8,19 +8,33 @@ interface AttributeBarProps {
   max?: number;
   cap?: number;
   showTier?: boolean;
+  evo?: number;
+  showEvoSlot?: boolean;
 }
 
-export function AttributeBar({ label, value, max = 99, cap, showTier = false }: AttributeBarProps) {
+export function AttributeBar({ label, value, max = 99, cap, showTier = false, evo, showEvoSlot = false }: AttributeBarProps) {
   const pct = Math.min(100, (value / max) * 100);
   const color = value >= 80 ? 'bg-pitch' : value >= 60 ? 'bg-tactical' : value >= 40 ? 'bg-warning' : 'bg-destructive';
   const tier = getAttributeTier(value);
   const hasRestrictedCap = typeof cap === 'number' && cap < 99;
   const atCap = hasRestrictedCap && value >= cap;
   const capPct = hasRestrictedCap ? Math.min(100, (cap / max) * 100) : null;
+  const hasEvo = typeof evo === 'number' && evo > 0;
+  const showEvo = showEvoSlot || hasEvo;
 
   return (
     <div className="flex items-center gap-3">
       <span className="text-xs text-muted-foreground w-32 truncate">{label}</span>
+      {showEvo && (
+        <span className="flex items-center justify-start gap-0.5 w-14 shrink-0 text-xs font-display font-bold text-pitch">
+          {hasEvo && (
+            <>
+              <ArrowUp className="h-3 w-3" />
+              +{evo!.toFixed(2)}
+            </>
+          )}
+        </span>
+      )}
       <div className="relative flex-1 h-2 rounded-full bg-muted">
         <div className={cn('h-2 rounded-full transition-all', color)} style={{ width: `${pct}%` }} />
         {capPct != null && capPct < 100 && (

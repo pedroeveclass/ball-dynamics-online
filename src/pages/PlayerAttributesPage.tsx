@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
-import { Dumbbell, TrendingUp, History, ArrowUp, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap } from 'lucide-react';
+import { Dumbbell, TrendingUp, History, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap } from 'lucide-react';
 
 const ENERGY_COST = 25;
 
@@ -152,7 +152,9 @@ export default function PlayerAttributesPage() {
     }
   };
 
-  const renderSection = (title: string, keys: readonly string[]) => (
+  const renderSection = (title: string, keys: readonly string[]) => {
+    const sectionHasEvo = keys.some(k => (weeklyEvolution[k] || 0) > 0);
+    return (
     <div className="stat-card">
       <h2 className="font-display text-lg font-bold mb-4">{title}</h2>
       <div className="space-y-2">
@@ -173,17 +175,14 @@ export default function PlayerAttributesPage() {
             <Popover key={key}>
               <PopoverTrigger asChild>
                 <button className="w-full text-left hover:bg-muted/50 rounded-md p-1 transition-colors cursor-pointer" disabled={training === key}>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <AttributeBar label={ATTR_LABELS[key] || key} value={value} cap={cap} showTier />
-                    </div>
-                    {evo && evo > 0 && (
-                      <span className="flex items-center text-xs text-pitch font-display font-bold gap-0.5 shrink-0">
-                        <ArrowUp className="h-3 w-3" />
-                        +{evo.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
+                  <AttributeBar
+                    label={ATTR_LABELS[key] || key}
+                    value={value}
+                    cap={cap}
+                    showTier
+                    evo={evo}
+                    showEvoSlot={sectionHasEvo}
+                  />
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-72">
@@ -243,7 +242,8 @@ export default function PlayerAttributesPage() {
         })}
       </div>
     </div>
-  );
+    );
+  };
 
   const physicalKeys = ['velocidade','aceleracao','agilidade','forca','equilibrio','resistencia','pulo','stamina'] as const;
   const technicalKeys = ['drible','controle_bola','marcacao','desarme','um_toque','curva','passe_baixo','passe_alto'] as const;
