@@ -106,11 +106,12 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
 
         // Keyboard shortcut hint — matches the hotkeys in MatchRoomPage.
         const SHORTCUT_MAP: Record<string, string> = {
-          move: 'M', pass_low: 'P', pass_high: 'A', pass_launch: 'L',
-          shoot_controlled: 'C', shoot_power: 'F',
-          receive: 'D', receive_hard: 'T', block: 'B', no_action: 'N',
-          header_low: 'H→P', header_high: 'H→A',
-          header_controlled: 'H→C', header_power: 'H→F',
+          pass_low: 'Q', pass_high: 'W', pass_launch: 'E',
+          shoot_controlled: 'R', shoot_power: 'T',
+          header_low: 'A', header_high: 'S',
+          header_controlled: 'D', header_power: 'F',
+          move: 'X', receive: 'C', receive_hard: 'V', block: 'B',
+          no_action: 'Z',
         };
         const shortcut = SHORTCUT_MAP[a];
 

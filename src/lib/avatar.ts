@@ -198,6 +198,26 @@ export function seededAppearance(seed: string): PlayerAppearance {
   };
 }
 
+// Long-hair styles drape past the shoulders. Used by the full-body front
+// view to know when to extend the portrait clip so the hair doesn't get
+// chopped at the shirt line.
+const LONG_HAIR_IDS = new Set([
+  'straight01', 'straight02', 'straightAndStrand',
+  'longButNotTooLong', 'curly', 'curvy', 'miaWallace',
+  'bob', 'frida', 'bigHair', 'dreads',
+]);
+
+// Beards that hang past the chin and need extra vertical room.
+const BIG_BEARD_IDS = new Set(['beardMedium', 'beardMajestic']);
+
+export function isLongHair(hair: string | null | undefined): boolean {
+  return !!hair && LONG_HAIR_IDS.has(hair);
+}
+
+export function isBigBeard(facialHair: string | null | undefined): boolean {
+  return !!facialHair && BIG_BEARD_IDS.has(facialHair);
+}
+
 // Height tier → visual scale factor for the full-body view.
 export function heightScale(height: string | null | undefined): number {
   switch (height) {

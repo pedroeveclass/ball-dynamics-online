@@ -1,7 +1,7 @@
 import { useId, useMemo } from 'react';
 import { createAvatar } from '@dicebear/core';
 import { avataaars } from '@dicebear/collection';
-import { PlayerAppearance, DEFAULT_APPEARANCE, heightScale, readableForeground, firstName } from '@/lib/avatar';
+import { PlayerAppearance, DEFAULT_APPEARANCE, heightScale, readableForeground, firstName, isLongHair, isBigBeard } from '@/lib/avatar';
 
 export type AvatarVariant = 'face' | 'full-front' | 'full-back';
 
@@ -128,6 +128,8 @@ export function PlayerAvatar({
               crestUrl={clubCrestUrl}
               jerseyNumber={jerseyNumber}
               clipId={`avClip_${clipId}`}
+              hasLongHair={isLongHair(effective.hair)}
+              hasBigBeard={isBigBeard(effective.facialHair)}
             />
           )}
         </g>
@@ -195,6 +197,8 @@ function FrontBody({
   crestUrl,
   jerseyNumber,
   clipId,
+  hasLongHair,
+  hasBigBeard,
 }: {
   faceDataUri: string;
   primary: string;
@@ -204,6 +208,8 @@ function FrontBody({
   crestUrl: string | null | undefined;
   jerseyNumber: number | null | undefined;
   clipId: string;
+  hasLongHair: boolean;
+  hasBigBeard: boolean;
 }) {
   const skin = `#${skinTone}`;
 
@@ -248,15 +254,15 @@ function FrontBody({
 
       {/* ── Crest on left chest ── */}
       {crestUrl && crestUrl.startsWith('http') ? (
-        <image href={crestUrl} x="62" y="155" width="22" height="22" preserveAspectRatio="xMidYMid meet" />
+        <image href={crestUrl} x="70" y="140" width="25" height="25" preserveAspectRatio="xMidYMid meet" />
       ) : (
         <rect x="75" y="140" width="20" height="20" fill={secondary} opacity="0.55" rx="2" />
       )}
 
       {/* ── Jersey number on right chest ── */}
       {jerseyNumber != null && (
-        <text x="118" y="158" textAnchor="middle" fontFamily="Arial Black, sans-serif"
-              fontWeight="900" fontSize="20" fill={shirtText}>
+        <text x="116" y="158" textAnchor="middle" fontFamily="Arial Black, sans-serif"
+              fontWeight="900" fontSize="18" fill={shirtText}>
           {jerseyNumber}
         </text>
       )}
@@ -265,9 +271,22 @@ function FrontBody({
           wider DiceBear shirt never competes with our custom shoulders below.
           The transition from DiceBear's narrow neck to our custom torso at
           y=114 reads naturally as "neck widening into shoulders". ── */}
+      {/* Clip tightly to head+neck by default. For big beards we open a narrow
+          central window so the beard can hang below the collar without
+          covering the crest (y≥140) or jersey number (y≥146). For long hair
+          we open two side bands OUTSIDE the torso (torso x=58–142) so the
+          hair drapes over the shoulders without bleeding into the shirt
+          artwork. */}
       <defs>
         <clipPath id={clipId}>
           <rect x="0" y="0" width="200" height="116" />
+          {hasBigBeard && <rect x="80" y="116" width="40" height="18" />}
+          {hasLongHair && (
+            <>
+              <rect x="20" y="116" width="40" height="44" />
+              <rect x="140" y="116" width="40" height="44" />
+            </>
+          )}
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>

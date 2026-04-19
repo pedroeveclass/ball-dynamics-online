@@ -150,46 +150,66 @@ export function HelpModal({ open, onOpenChange, defaultTab = 'geral' }: HelpModa
           <TabsContent value="atalhos" className="mt-4 space-y-3 text-sm leading-relaxed">
             <p className="text-xs text-[hsl(45,20%,75%)]">
               Com o menu de ações aberto, aperte a letra correspondente pra escolher direto —
-              não precisa clicar no botão.
+              não precisa clicar no botão. As teclas ficam todas na mão esquerda, organizadas por linha:
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                ['Z / Esc', 'Cancelar ação e abrir menu'],
-                ['M', 'Mover'],
-                ['P', 'Passe rasteiro'],
-                ['A', 'Passe alto'],
-                ['L', 'Lançamento'],
-                ['C', 'Chute controlado'],
-                ['F', 'Chute forte'],
-                ['D', 'Dominar / Desarme / Agarrar'],
-                ['T', 'Carrinho (tackle forte)'],
-                ['B', 'Bloquear / Espalmar'],
-                ['N', 'Sem ação'],
-              ].map(([key, desc]) => (
-                <div key={key} className="flex items-center gap-2 bg-[hsl(220,15%,16%)] rounded px-3 py-1.5 border border-[hsl(220,10%,25%)]">
-                  <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[42px] text-center">
-                    {key}
-                  </span>
-                  <span className="text-xs text-[hsl(45,20%,80%)]">{desc}</span>
-                </div>
-              ))}
-            </div>
-            <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)] mt-3">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-1.5">
-                🤸 Cabeceios
+
+            <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
+                ⚽ Linha de cima — Passes e chutes (QWERT)
               </div>
-              <p className="text-xs text-[hsl(45,20%,75%)] mb-2">
-                Aperte <strong>H</strong> e, dentro de 1,5 segundo, a letra do tipo:
-              </p>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  ['H → P', 'Cabeceio baixo'],
-                  ['H → A', 'Cabeceio alto'],
-                  ['H → C', 'Cabeceio controlado'],
-                  ['H → F', 'Cabeceio forte'],
+                  ['Q', 'Passe rasteiro'],
+                  ['W', 'Passe alto'],
+                  ['E', 'Lançamento'],
+                  ['R', 'Chute controlado'],
+                  ['T', 'Chute forte'],
                 ].map(([key, desc]) => (
                   <div key={key} className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[48px] text-center">
+                    <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[32px] text-center">
+                      {key}
+                    </span>
+                    <span className="text-xs text-[hsl(45,20%,80%)]">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
+                🤸 Linha do meio — Cabeceios (ASDF)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['A', 'Cabeceio baixo'],
+                  ['S', 'Cabeceio alto'],
+                  ['D', 'Cabeceio controlado'],
+                  ['F', 'Cabeceio forte'],
+                ].map(([key, desc]) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[32px] text-center">
+                      {key}
+                    </span>
+                    <span className="text-xs text-[hsl(45,20%,80%)]">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
+                🛡️ Linha de baixo — Movimento e defesa (ZXCVB)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['Z', 'Sem ação / cancelar'],
+                  ['X', 'Mover'],
+                  ['C', 'Dominar / Desarme / Agarrar'],
+                  ['V', 'Carrinho (tackle forte)'],
+                  ['B', 'Bloquear / Espalmar'],
+                ].map(([key, desc]) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[32px] text-center">
                       {key}
                     </span>
                     <span className="text-xs text-[hsl(45,20%,80%)]">{desc}</span>

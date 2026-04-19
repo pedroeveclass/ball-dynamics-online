@@ -170,6 +170,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Realtime: keep playerProfile in sync with server-side updates
+  // (energy regen cron, train_attribute RPC, store purchases, etc.).
+  useEffect(() => {
+    const pid = playerProfile?.id;
+    if (!pid) return;
+
+    const channel = supabase
+      .channel(`player_profile:${pid}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'player_profiles', filter: `id=eq.${pid}` },
+        (payload: any) => {
+          const next = payload.new as Tables<'player_profiles'> | null;
+          if (next) stableSet(setPlayerProfile, next);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [playerProfile?.id]);
+
+  // Safety net: if the tab was in the background during a regen tick (or the
+  // realtime socket dropped), refetch on focus so the user never stares at
+  // stale energy.
+  useEffect(() => {
+    if (!user?.id) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshPlayerProfile();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     dataLoadedRef.current = false;

@@ -432,12 +432,27 @@ export default function MatchRoomPage() {
       id: `optimistic-${action.participant_id}-${action.match_turn_id}-${action.turn_phase || 'unknown'}-${Date.now()}`,
     };
 
+    // Mirror the server's submit_action DELETE: when a new move/receive/block or ball
+    // action is pushed, evict any prior row of the same category for this
+    // (participant, phase). Without this the UI briefly showed the old arrow alongside
+    // the new one (double-render) before the reconcile caught up.
+    const isMoveLike = optimisticAction.action_type === 'move'
+      || optimisticAction.action_type === 'receive'
+      || optimisticAction.action_type === 'block';
+    const isBallAction = isPassAction(optimisticAction.action_type)
+      || isShootAction(optimisticAction.action_type)
+      || isHeaderAction(optimisticAction.action_type);
+
     setTurnActionsState([
-      ...turnActionsRef.current.filter(existing => !(
-        existing.participant_id === optimisticAction.participant_id
-        && existing.turn_phase === optimisticAction.turn_phase
-        && String(existing.id).startsWith('optimistic-')
-      )),
+      ...turnActionsRef.current.filter(existing => {
+        const samePidPhase = existing.participant_id === optimisticAction.participant_id
+          && existing.turn_phase === optimisticAction.turn_phase;
+        if (!samePidPhase) return true;
+        if (String(existing.id).startsWith('optimistic-')) return false;
+        if (isMoveLike && (existing.action_type === 'move' || existing.action_type === 'receive' || existing.action_type === 'block')) return false;
+        if (isBallAction && (isPassAction(existing.action_type) || isShootAction(existing.action_type) || isHeaderAction(existing.action_type))) return false;
+        return true;
+      }),
       optimisticAction,
     ]);
   }, [setTurnActionsState]);
@@ -517,7 +532,13 @@ export default function MatchRoomPage() {
         turn_number: turnNumber,
       }));
 
-      setTurnActionsState(enrichedActions);
+      // Preserve in-flight optimistic rows across reconcile. Otherwise if a reconcile
+      // fires between the moment the user submits a replacement action and the server
+      // committing the DELETE+INSERT, the DB query returns the OLD row and the UI
+      // reverts to it for a frame before the realtime events catch up — visual flicker
+      // between the two moves. Dedupe picks the newer optimistic after this merge.
+      const pendingOptimistic = turnActionsRef.current.filter(a => String(a.id).startsWith('optimistic-'));
+      setTurnActionsState([...enrichedActions, ...pendingOptimistic]);
     } finally {
       turnActionsFetchInFlightRef.current = false;
       if (turnActionsFetchQueuedRef.current) {
@@ -1591,13 +1612,18 @@ export default function MatchRoomPage() {
     if (myParticipant.role_type !== 'player') return;
     if (submittedActions.has(myParticipant.id)) return;
     if (drawingAction) return; // don't override an in-progress draw
+    // Only my side's positioning phase — don't arm the cursor while the opposing team
+    // is positioning (no green circle, no auto-draw on my avatar).
+    if (!isMyPositioningPhase) return;
+    // The set-piece taker (ball holder) is anchored on the ball and cannot reposition.
+    if (myParticipant.id === activeTurn?.ball_holder_participant_id) return;
 
     setSelectedParticipantId(myParticipant.id);
     setDrawingAction({ type: 'move', fromParticipantId: myParticipant.id });
     if (myParticipant.field_x != null && myParticipant.field_y != null) {
       setMouseFieldPct({ x: myParticipant.field_x, y: myParticipant.field_y });
     }
-  }, [isPositioningTurn, activeTurn?.id, match?.status, isPhaseProcessing, myRole, myParticipant?.id, myParticipant?.is_sent_off, myParticipant?.role_type, submittedActions, drawingAction]);
+  }, [isPositioningTurn, isMyPositioningPhase, activeTurn?.id, activeTurn?.ball_holder_participant_id, match?.status, isPhaseProcessing, myRole, myParticipant?.id, myParticipant?.is_sent_off, myParticipant?.role_type, submittedActions, drawingAction]);
 
   // ── Z hotkey: cancel current action + reopen menu for a fresh choice ─────────
   // If the player never picks a new action from the menu, the submitted
@@ -1653,12 +1679,14 @@ export default function MatchRoomPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeTurn?.id, activeTurn?.phase, activeTurn?.ball_holder_participant_id, match?.status, match?.home_club_id, match?.away_club_id, myRole, myParticipant?.id, myClubId, selectedParticipantId, isPhaseProcessing, isPositioningTurn]);
 
-  // ── Action letter hotkeys (M/P/A/L/C/F/D/T/B/N + H prefix for headers) ───────
+  // ── Action letter hotkeys (mão esquerda, 3 linhas semânticas) ────────────────
   // Fires when the action menu is open. Maps a letter to the action if it's
-  // currently available for the selected player. H enters a 1.5s chord window:
-  // the next letter is treated as a header variant.
+  // currently available for the selected player.
+  //   Linha de cima (QWERT) → passes e chutes (pé)
+  //   Linha do meio (ASDF)  → cabeceios
+  //   Linha de baixo (XCVB) → movimento e defesa
+  // Z (global) continua como cancelar/no_action — tratado no handler acima.
   useEffect(() => {
-    const headerChordRef = { current: 0 as number };
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -1668,35 +1696,20 @@ export default function MatchRoomPage() {
       if (!showActionMenu) return; // hotkeys only active when menu is open
       const key = e.key.toLowerCase();
 
-      // H-chord: header variant. Pressing H alone sets the chord; next letter
-      // picks the header type within 1.5s.
-      const now = Date.now();
-      const inHeaderChord = now - headerChordRef.current < 1500;
-      if (key === 'h' && !inHeaderChord) {
-        headerChordRef.current = now;
-        e.preventDefault();
-        return;
-      }
-
-      const isHeader = inHeaderChord;
-      if (inHeaderChord) headerChordRef.current = 0;
-
-      const shortcutMap: Record<string, string> = isHeader ? {
-        p: 'header_low',
-        a: 'header_high',
-        c: 'header_controlled',
+      const shortcutMap: Record<string, string> = {
+        q: 'pass_low',
+        w: 'pass_high',
+        e: 'pass_launch',
+        r: 'shoot_controlled',
+        t: 'shoot_power',
+        a: 'header_low',
+        s: 'header_high',
+        d: 'header_controlled',
         f: 'header_power',
-      } : {
-        m: 'move',
-        p: 'pass_low',
-        a: 'pass_high',
-        l: 'pass_launch',
-        c: 'shoot_controlled',
-        f: 'shoot_power',
-        d: 'receive',
-        t: 'receive_hard',
+        x: 'move',
+        c: 'receive',
+        v: 'receive_hard',
         b: 'block',
-        n: 'no_action',
       };
       const actionType = shortcutMap[key];
       if (!actionType) return;
@@ -4341,23 +4354,17 @@ export default function MatchRoomPage() {
                 const fromPart = participants.find(p => p.id === action.participant_id);
                 if (!fromPart || fromPart.field_x == null || fromPart.field_y == null) return null;
 
-                // Hide all arrows during motion phase — let the animation speak for itself.
-                if (animating && activeTurn?.phase === 'resolution') return null;
+                // Hide all arrows during the entire motion phase — during the animation AND
+                // after it ends but before the next turn starts. Without the full-phase gate,
+                // arrows flashed back at full opacity after `animating` flipped to false but
+                // before `activeTurn.phase` advanced to the next turn's ball_holder.
+                if (activeTurn?.phase === 'resolution') return null;
 
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
 
                 // Hide positioning phase arrows once we've moved past positioning
                 if (!isPositioningTurn && (action.turn_phase === 'positioning_attack' || action.turn_phase === 'positioning_defense')) return null;
-
-                // Hide BH deferred move arrow when they have a ball action (pass/shoot/header)
-                if (action.action_type === 'move' && action.participant_id === activeTurn?.ball_holder_participant_id) {
-                  const hasBallAction = visibleActions.some(a =>
-                    a.participant_id === action.participant_id &&
-                    (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
-                  );
-                  if (hasBallAction) return null;
-                }
 
                 // Hide bot receive/block arrows that are clearly impossible
                 if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
@@ -4404,7 +4411,7 @@ export default function MatchRoomPage() {
                 const to = toSVG(action.target_x, action.target_y);
                 const { color, markerId, strokeW } = getActionArrowColor(action, fromPart, { x: fromX, y: fromY });
                 const controlLabel = action.controlled_by_type === 'bot' ? 'BOT' : action.controlled_by_type === 'manager' ? 'MGR' : 'PLR';
-                const opacity = animating && activeTurn?.phase === 'resolution' ? 0.45 : 0.8;
+                const opacity = 0.8;
                 const dashArray = action.controlled_by_type === 'bot' ? '4,3' : 'none';
 
                 // Multi-segment arrow rendering for height-based actions

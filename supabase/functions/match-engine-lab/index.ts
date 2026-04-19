@@ -5741,19 +5741,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             payload: bhAction.payload,
           }).eq('id', bhAction.id);
 
-          if (deviation.overGoal) {
-            const isOver = deviation.shotOutcome === 'over';
-            eventsToLog.push({
-              match_id, event_type: 'shot_over',
-              title: isOver ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
-              body: isOver ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo, pelo lado do gol.',
-              payload: {
-                shooter_participant_id: ballHolder.id,
-                shooter_name: (ballHolder as any)?._player_name ?? null,
-                shot_outcome: deviation.shotOutcome,
-              },
-            });
-          }
+          // No shot_over event here: the final outcome is emitted below as either
+          // 'goal' or 'shot_missed' (which already carries the "Chute por cima!" /
+          // "Chute para fora!" title when isOverGoal is true). Emitting shot_over
+          // here on top of that produced duplicate "por cima" entries in MatchFlow.
         } else {
           console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
         }
@@ -7687,7 +7678,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
       const bhAction = bhActionsFromCache[0];
-      if (bhAction && isBallActionType(bhAction.action_type) && bhAction.target_x != null && bhAction.target_y != null) {
+      // Guard against running deviation twice on the same action (double-tick at phase
+      // transition). Without this, repeated runs re-roll the random deviation and can
+      // produce contradictory event logs (e.g., shot_over twice, then a goal).
+      const alreadyDeviatedEarly = bhAction?.payload && typeof bhAction.payload === 'object' && (bhAction.payload as any).deviated;
+      if (bhAction && isBallActionType(bhAction.action_type) && bhAction.target_x != null && bhAction.target_y != null && !alreadyDeviatedEarly) {
         const raw = ballHolder.player_profile_id ? devAttrByProfile[ballHolder.player_profile_id] : null;
         const devAttrs: Record<string, number> = {
           passe_baixo: Number(raw?.passe_baixo ?? 40),
@@ -7733,19 +7728,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
         console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
 
-        if (deviation.overGoal) {
-          const isOver = deviation.shotOutcome === 'over';
-          await supabase.from('match_event_logs').insert({
-            match_id, event_type: 'shot_over',
-            title: isOver ? '💨 Chute por cima do gol!' : '💨 Chute para fora!',
-            body: isOver ? 'A bola foi por cima do gol.' : 'A bola saiu pela linha de fundo, pelo lado do gol.',
-            payload: {
-              shooter_participant_id: ballHolder.id,
-              shooter_name: (ballHolder as any)?._player_name ?? null,
-              shot_outcome: deviation.shotOutcome,
-            },
-          });
-        }
+        // No event log here on purpose: the final outcome (goal/shot_missed) is logged
+        // during resolution so the MatchFlow reads as "player shot → outcome". Emitting
+        // shot_over at phase transition caused a duplicate "Chute por cima" entry ahead
+        // of the resolution's own shot_missed log.
       }
     }
 
