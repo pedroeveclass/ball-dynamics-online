@@ -283,6 +283,28 @@ export default function SituationalTacticsPage() {
   const fieldRef = useRef<HTMLDivElement>(null);
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
+  // Seed the formation from the club's active lineup on mount, so the tactics page
+  // defaults to whatever the manager already set on the lineup screen.
+  useEffect(() => {
+    if (!club) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('lineups')
+        .select('formation')
+        .eq('club_id', club.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data?.formation && FORMATIONS[data.formation]) {
+        setFormation(data.formation);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [club?.id]);
+
   // ── Load / init from DB when club or formation changes ────
   useEffect(() => {
     let cancelled = false;
