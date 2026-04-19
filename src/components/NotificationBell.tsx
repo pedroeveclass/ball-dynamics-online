@@ -70,6 +70,14 @@ export function NotificationBell() {
     setUnreadCount(prev => Math.max(0, prev - 1));
   }
 
+  async function markAllAsRead(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!user || unreadCount === 0) return;
+    await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
+  }
+
   function timeAgo(dateStr: string) {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
@@ -99,15 +107,25 @@ export function NotificationBell() {
         <div
           className="fixed left-1/2 -translate-x-1/2 top-14 w-[min(calc(100vw-1rem),380px)] sm:absolute sm:translate-x-0 sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-80 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden"
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border gap-2">
             <span className="font-display font-bold text-sm">Notificações</span>
-            <Link
-              to="/notifications"
-              onClick={() => setOpen(false)}
-              className="text-xs text-tactical hover:underline"
-            >
-              Ver todas
-            </Link>
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Marcar lidas
+                </button>
+              )}
+              <Link
+                to="/notifications"
+                onClick={() => setOpen(false)}
+                className="text-xs text-tactical hover:underline"
+              >
+                Ver todas
+              </Link>
+            </div>
           </div>
 
           <div className="max-h-[70vh] sm:max-h-80 overflow-y-auto">
