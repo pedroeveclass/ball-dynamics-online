@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
 import { ClubCrest } from '@/components/ClubCrest';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
+import { seededAppearance } from '@/lib/avatar';
 
 const CREST_EMOJI_PRESETS = ['⚽', '🦁', '🦅', '🐺', '🐉', '🐻', '🐯', '🦈', '⭐', '🔥', '🛡️', '⚓', '👑', '🌪️', '🦊', '🐍'];
 
@@ -405,9 +407,20 @@ export default function ManagerClubPage() {
           <div className="stat-card space-y-3">
             <h3 className="font-display font-semibold text-sm">Identidade & Treinador</h3>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Manager</span>
-                <span className="font-bold">{managerProfile.full_name}</span>
+                <span className="font-bold flex items-center gap-2">
+                  <PlayerAvatar
+                    appearance={seededAppearance(managerProfile.id || managerProfile.full_name)}
+                    variant="face"
+                    clubPrimaryColor={club.primary_color}
+                    clubSecondaryColor={club.secondary_color}
+                    playerName={managerProfile.full_name}
+                    className="h-8 w-8 shrink-0"
+                    fallbackSeed={managerProfile.id || managerProfile.full_name}
+                  />
+                  {managerProfile.full_name}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tipo Coach</span>

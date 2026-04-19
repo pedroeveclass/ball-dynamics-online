@@ -19,8 +19,9 @@ import {
 import { toast } from 'sonner';
 import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
+import { seededAppearance } from '@/lib/avatar';
 import {
-  Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus,
+  Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus, Bot, User,
 } from 'lucide-react';
 
 const SQUAD_ROLES = [
@@ -178,7 +179,7 @@ export default function PublicClubPage() {
     if (club.manager_profile_id) {
       const { data: mgr } = await supabase
         .from('manager_profiles')
-        .select('full_name')
+        .select('id, full_name, user_id')
         .eq('id', club.manager_profile_id)
         .maybeSingle();
       setManager(mgr);
@@ -192,7 +193,7 @@ export default function PublicClubPage() {
 
       const { data: playerData } = await supabase
         .from('player_profiles')
-        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, height, appearance')
+        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, height, appearance, user_id')
         .in('id', playerIds)
         .order('overall', { ascending: false });
 
@@ -389,6 +390,17 @@ export default function PublicClubPage() {
                 <Users className="h-3 w-3 mr-1" />
                 {clubData.is_bot_managed ? 'Sem Treinador' : (manager?.full_name || 'Manager')}
               </Badge>
+              {!clubData.is_bot_managed && manager?.user_id && (
+                <PlayerAvatar
+                  appearance={seededAppearance(manager.id || manager.full_name || 'mgr')}
+                  variant="face"
+                  clubPrimaryColor={clubData.primary_color}
+                  clubSecondaryColor={clubData.secondary_color}
+                  playerName={manager.full_name}
+                  className="h-10 w-10 shrink-0"
+                  fallbackSeed={manager.id || manager.full_name || 'mgr'}
+                />
+              )}
               {stadium && (
                 <Badge variant="outline" className="text-xs">
                   <Building2 className="h-3 w-3 mr-1" />
@@ -440,6 +452,12 @@ export default function PublicClubPage() {
               <Users className="h-3.5 w-3.5" /> Elenco
             </div>
             <p className="font-display font-bold text-lg">{squad.length} jogadores</p>
+            {squad.filter((p: any) => p.user_id).length > 0 && (
+              <p className="text-xs text-pitch flex items-center gap-1 mt-0.5">
+                <User className="h-3 w-3" />
+                {squad.filter((p: any) => p.user_id).length} humano{squad.filter((p: any) => p.user_id).length > 1 ? 's' : ''}
+              </p>
+            )}
           </div>
         </div>
 
@@ -531,7 +549,7 @@ export default function PublicClubPage() {
                           clubPrimaryColor={clubData?.primary_color}
                           clubSecondaryColor={clubData?.secondary_color}
                           playerName={p.full_name}
-                          className="h-9 w-9"
+                          className="h-12 w-12"
                           fallbackSeed={p.id}
                         />
                       </td>
@@ -541,7 +559,16 @@ export default function PublicClubPage() {
                           {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                         </div>
                       </td>
-                      <td className="py-3 pr-3 font-display font-bold">{p.full_name}</td>
+                      <td className="py-3 pr-3 font-display font-bold">
+                        <div className="flex items-center gap-1.5">
+                          {p.user_id ? (
+                            <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label="Humano" />
+                          ) : (
+                            <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label="Bot" />
+                          )}
+                          <span>{p.full_name}</span>
+                        </div>
+                      </td>
                       <td className="py-3 pr-3">
                         <span className="font-display text-lg font-extrabold text-tactical">{p.overall}</span>
                       </td>

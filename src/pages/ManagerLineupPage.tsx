@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
-import { Save, UserPlus, X, Users, Target } from 'lucide-react';
+import { Save, UserPlus, X, Users, Target, User, Bot } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { sortPlayersByPosition, positionalPenaltyPercent } from '@/lib/positions';
@@ -745,6 +745,11 @@ export default function ManagerLineupPage() {
                       <div key={id} className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-muted/30">
                         <div className="flex items-center gap-2">
                           <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
+                          {p.user_id ? (
+                            <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
+                          ) : (
+                            <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
+                          )}
                           <span className="font-display font-bold text-xs">{p.full_name}</span>
                         </div>
                         <button onClick={() => removeFromBench(id)} className="text-muted-foreground hover:text-destructive">
@@ -769,7 +774,14 @@ export default function ManagerLineupPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
                         <div>
-                          <span className="font-display font-bold text-xs">{p.full_name}</span>
+                          <span className="font-display font-bold text-xs flex items-center gap-1">
+                            {p.user_id ? (
+                              <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
+                            ) : (
+                              <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
+                            )}
+                            {p.full_name}
+                          </span>
                           <div className="flex items-center gap-1 mt-0.5">
                             <PositionBadge position={p.primary_position} />
                             <span className="text-[10px] text-muted-foreground">{p.archetype}</span>

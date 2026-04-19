@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Users, MoreVertical, AlertTriangle, Loader2 } from 'lucide-react';
+import { Users, MoreVertical, AlertTriangle, Loader2, User, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { sortPlayersByPosition } from '@/lib/positions';
@@ -318,7 +318,18 @@ export default function ManagerSquadPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold">Elenco</h1>
-            <p className="text-sm text-muted-foreground">{players.length} jogadores • Folha semanal: {formatBRL(totalWages)}</p>
+            <p className="text-sm text-muted-foreground">
+              {players.length} jogadores • Folha semanal: {formatBRL(totalWages)}
+              {players.filter(p => p.user_id).length > 0 && (
+                <>
+                  {' • '}
+                  <span className="text-pitch inline-flex items-center gap-1 align-middle">
+                    <User className="h-3 w-3" />
+                    {players.filter(p => p.user_id).length} humano{players.filter(p => p.user_id).length > 1 ? 's' : ''}
+                  </span>
+                </>
+              )}
+            </p>
           </div>
         </div>
 
@@ -363,7 +374,7 @@ export default function ManagerSquadPage() {
                         clubPrimaryColor={club.primary_color}
                         clubSecondaryColor={club.secondary_color}
                         playerName={p.full_name}
-                        className="h-9 w-9"
+                        className="h-12 w-12"
                         fallbackSeed={p.id}
                       />
                     </td>
@@ -402,6 +413,11 @@ export default function ManagerSquadPage() {
                       onClick={() => setSelectedPlayerId(p.id)}
                     >
                       <div className="flex items-center gap-2">
+                        {p.user_id ? (
+                          <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label="Humano" />
+                        ) : (
+                          <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label="Bot" />
+                        )}
                         {p.full_name}
                         {p.pending_agreement_from === 'player' && (
                           <span className="inline-flex items-center rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-600">

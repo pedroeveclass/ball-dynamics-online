@@ -95,7 +95,7 @@ export function PlayerAvatar({
 
   if (variant === 'face') {
     return (
-      <div className={`relative overflow-hidden rounded-full ${className ?? ''}`} style={{ backgroundColor: primary }}>
+      <div className={`relative overflow-hidden rounded-full ${className ?? ''}`}>
         <img src={faceDataUri} alt={playerName ?? 'Jogador'} className="w-full h-full object-cover" draggable={false} />
       </div>
     );

@@ -20,10 +20,12 @@ import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
-  Shirt, Footprints, Crosshair, ShieldAlert, Pencil,
+  Shirt, Footprints, Crosshair, ShieldAlert, Pencil, User, Bot,
 } from 'lucide-react';
 import { LineupFieldView } from '@/components/LineupFieldView';
 import { ClubCrest } from '@/components/ClubCrest';
+import { PlayerAvatar } from '@/components/PlayerAvatar';
+import { seededAppearance } from '@/lib/avatar';
 import { formatBRL, formatDate } from '@/lib/formatting';
 
 // ── Types ──
@@ -40,8 +42,10 @@ interface ClubInfo {
 }
 
 interface ManagerInfo {
+  id: string;
   full_name: string;
   coach_type: string | null;
+  user_id: string | null;
 }
 
 interface ContractInfo {
@@ -57,6 +61,8 @@ interface Teammate {
   primary_position: string;
   overall: number;
   archetype: string;
+  user_id: string | null;
+  appearance: any;
 }
 
 interface UniformInfo {
@@ -307,7 +313,7 @@ export default function PlayerClubPage() {
         nextMatchRes,
         recentMatchesRes,
       ] = await Promise.all([
-        supabase.from('manager_profiles').select('full_name, coach_type').eq('id', club.manager_profile_id).single(),
+        supabase.from('manager_profiles').select('id, full_name, coach_type, user_id').eq('id', club.manager_profile_id).single(),
         supabase.from('contracts').select('weekly_salary, release_clause, start_date, end_date')
           .eq('player_profile_id', playerProfile.id).eq('status', 'active').maybeSingle(),
         supabase.from('contracts').select('player_profile_id').eq('club_id', clubId).eq('status', 'active'),
@@ -325,7 +331,7 @@ export default function PlayerClubPage() {
       ]);
 
       // Manager
-      setManagerInfo(managerRes.data ? { full_name: managerRes.data.full_name, coach_type: managerRes.data.coach_type } : null);
+      setManagerInfo(managerRes.data ? { id: managerRes.data.id, full_name: managerRes.data.full_name, coach_type: managerRes.data.coach_type, user_id: (managerRes.data as any).user_id ?? null } : null);
 
       // Contract
       setContract(contractRes.data);
@@ -344,10 +350,10 @@ export default function PlayerClubPage() {
       if (playerIds.length > 0) {
         const { data } = await supabase
           .from('player_profiles')
-          .select('id, full_name, primary_position, overall, archetype')
+          .select('id, full_name, primary_position, overall, archetype, user_id, appearance')
           .in('id', playerIds)
           .order('overall', { ascending: false });
-        setTeammates(sortPlayersByPosition(data || []));
+        setTeammates(sortPlayersByPosition((data || []) as any) as Teammate[]);
       }
 
       // Lineup slots
@@ -569,6 +575,17 @@ export default function PlayerClubPage() {
                 <CoachIcon className="mr-1 h-3 w-3" />
                 {managerInfo?.full_name || 'Desconhecido'}
               </Badge>
+              {managerInfo?.user_id && (
+                <PlayerAvatar
+                  appearance={seededAppearance(managerInfo.id || managerInfo.full_name)}
+                  variant="face"
+                  clubPrimaryColor={clubInfo.primary_color}
+                  clubSecondaryColor={clubInfo.secondary_color}
+                  playerName={managerInfo.full_name}
+                  className="h-10 w-10 shrink-0"
+                  fallbackSeed={managerInfo.id || managerInfo.full_name}
+                />
+              )}
               <Badge variant="outline" className="text-xs">
                 <CoachIcon className="mr-1 h-3 w-3 text-tactical" />
                 {getCoachBonusLabel(coachType)}
@@ -792,6 +809,12 @@ export default function PlayerClubPage() {
           <div className="mb-4 flex items-center gap-2">
             <Users className="h-4 w-4 text-tactical" />
             <span className="font-display text-sm font-semibold">Elenco ({teammates.length})</span>
+            {teammates.filter(t => t.user_id).length > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs text-pitch">
+                <User className="h-3 w-3" />
+                {teammates.filter(t => t.user_id).length} humano{teammates.filter(t => t.user_id).length > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
 
           {teammates.length === 0 ? (
@@ -808,12 +831,26 @@ export default function PlayerClubPage() {
                     className="w-full rounded-lg border border-border/60 bg-background/30 px-3 py-3 text-left transition-colors hover:border-tactical/50 hover:bg-tactical/10 focus-visible:border-tactical focus-visible:bg-tactical/10 focus-visible:outline-none"
                   >
                     <div className="flex items-center gap-3">
+                      <PlayerAvatar
+                        appearance={teammate.appearance}
+                        variant="face"
+                        clubPrimaryColor={clubInfo.primary_color}
+                        clubSecondaryColor={clubInfo.secondary_color}
+                        playerName={teammate.full_name}
+                        className="h-12 w-12 shrink-0"
+                        fallbackSeed={teammate.id}
+                      />
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-muted/60">
                         <span className="font-display text-lg font-extrabold text-tactical">{teammate.overall}</span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-display font-bold text-foreground">
-                          {teammate.full_name}
+                        <p className="truncate font-display font-bold text-foreground flex items-center gap-1.5">
+                          {teammate.user_id ? (
+                            <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label="Humano" />
+                          ) : (
+                            <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label="Bot" />
+                          )}
+                          <span className="truncate">{teammate.full_name}</span>
                           {teammate.id === playerProfile.id && <span className="ml-1 text-xs text-tactical">(voce)</span>}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">

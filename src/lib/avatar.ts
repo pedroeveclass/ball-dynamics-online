@@ -172,6 +172,32 @@ export const DEFAULT_APPEARANCE: PlayerAppearance = {
   gadgets: [],
 };
 
+// Deterministic appearance from a string seed (used when we want a
+// recognizable face per entity — e.g. managers — but have no persisted
+// appearance). Same seed → same face every render.
+export function seededAppearance(seed: string): PlayerAppearance {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const pick = <T,>(arr: T[], offset: number): T => arr[Math.abs((hash + offset * 31)) % arr.length];
+  const maybe = (offset: number) => (Math.abs((hash + offset * 17)) % 100) < 35; // ~35% chance
+  return {
+    skinTone: pick(SKIN_TONES, 1).id,
+    hair: pick(HAIR_STYLES, 2).id,
+    hairColor: pick(HAIR_COLORS, 3).id,
+    eyebrows: pick(EYEBROWS, 4).id,
+    eyes: pick(EYES, 5).id,
+    nose: 'default',
+    mouth: pick(MOUTHS, 6).id,
+    facialHair: maybe(7) ? pick(FACIAL_HAIR.filter(f => f.id !== 'none'), 8).id : null,
+    facialHairColor: null,
+    accessories: maybe(9) ? pick(ACCESSORIES.filter(a => a.id !== 'none'), 10).id : null,
+    gadgets: [],
+  };
+}
+
 // Height tier → visual scale factor for the full-body view.
 export function heightScale(height: string | null | undefined): number {
   switch (height) {
