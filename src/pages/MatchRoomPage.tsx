@@ -1084,6 +1084,40 @@ export default function MatchRoomPage() {
       range += Math.min(speed, maxSpeed / 10);
     }
 
+    // ── GK extra reach when ball action targets his own penalty area ──
+    // Penalty kick → 1.5×, ball-action trajectory into own PA → 2.0×, else 1.0×.
+    // Applied BEFORE BH/cooldown/inertia multipliers so they stack on top.
+    // MUST match supabase/functions/match-engine-lab/index.ts getGkAreaMultiplier.
+    {
+      const slotPos = (part?.slot_position || part?.field_pos || '').toString().replace(/[0-9]/g, '').toUpperCase();
+      const isGK = slotPos === 'GK' || slotPos === 'GOL';
+      if (isGK && part && match) {
+        let gkMult = 1.0;
+        const setPieceType = activeTurn?.set_piece_type;
+        if (setPieceType === 'penalty') {
+          gkMult = 1.5;
+        } else {
+          const bhId = activeTurn?.ball_holder_participant_id;
+          const bhAct = bhId
+            ? turnActions.find(a => a.participant_id === bhId
+                && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
+                && a.target_x != null && a.target_y != null)
+            : undefined;
+          if (bhAct && bhAct.target_x != null && bhAct.target_y != null) {
+            const isSecondHalf = (match.current_half ?? 1) >= 2;
+            const isHomeRaw = part.club_id === match.home_club_id;
+            const defendsLeft = isHomeRaw ? !isSecondHalf : isSecondHalf;
+            const tx = Number(bhAct.target_x);
+            const ty = Number(bhAct.target_y);
+            const yInArea = ty >= 20 && ty <= 80;
+            const xInOwnArea = defendsLeft ? tx <= 18 : tx >= 82;
+            if (yInArea && xInOwnArea) gkMult = 2.0;
+          }
+        }
+        if (gkMult !== 1.0) range *= gkMult;
+      }
+    }
+
     const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
     if (isBallHolder) {
       if (activeTurn?.phase === 'attacking_support') {
@@ -1148,7 +1182,7 @@ export default function MatchRoomPage() {
     }
 
     return range;
-  }, [playerAttrsMap, match?.current_turn_number, activeTurn?.ball_holder_participant_id, activeTurn?.phase, turnActions, participants, tackleMovementPenalty]);
+  }, [playerAttrsMap, match?.current_turn_number, match?.current_half, match?.home_club_id, activeTurn?.ball_holder_participant_id, activeTurn?.phase, activeTurn?.set_piece_type, turnActions, participants, tackleMovementPenalty]);
 
   // Apply ballSpeedFactor to a player's range based on current ball trajectory action.
   // Outfield players get reduced range (fast ball = less time to react).

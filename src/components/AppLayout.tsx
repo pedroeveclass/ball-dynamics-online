@@ -41,6 +41,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <Link to="/account/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
                 <UserAvatar
                   avatarUrl={(profile as any)?.avatar_url}
+                  charRef={(profile as any)?.avatar_char_ref}
                   username={profile?.username}
                 />
                 <span className="text-sm font-medium hidden sm:inline">{profile?.username || 'Jogador'}</span>

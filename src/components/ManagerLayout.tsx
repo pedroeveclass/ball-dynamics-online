@@ -37,6 +37,7 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
               <Link to="/account/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
                 <UserAvatar
                   avatarUrl={(profile as any)?.avatar_url}
+                  charRef={(profile as any)?.avatar_char_ref}
                   username={profile?.username}
                   bgClass="bg-tactical"
                   fgClass="text-tactical-foreground"

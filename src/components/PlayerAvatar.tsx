@@ -104,9 +104,14 @@ export function PlayerAvatar({
   const scale = heightScale(height);
   const isBack = variant === 'full-back';
 
+  // Back view crops out head + neck — viewBox starts at y=114 (shoulder line,
+  // ~28.5% from top of the full-body 0–400 canvas) so only the shirt and below
+  // render. Front view keeps the full 0 0 200 400 canvas.
+  const viewBox = isBack ? '0 114 200 286' : '0 0 200 400';
+
   return (
     <div className={`relative ${className ?? ''}`}>
-      <svg viewBox="0 0 200 400" xmlns="http://www.w3.org/2000/svg" className="w-full h-full" preserveAspectRatio="xMidYMax meet">
+      <svg viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="w-full h-full" preserveAspectRatio="xMidYMax meet">
         <g transform={`translate(100 400) scale(${scale}) translate(-100 -400)`}>
           {isBack ? (
             <BackBody
@@ -431,13 +436,10 @@ function BackBody({
       <ellipse cx="65" cy="56" rx="3" ry="6" fill={skin} />
       <ellipse cx="135" cy="56" rx="3" ry="6" fill={skin} />
 
-      {/* Full name floating above (back view keeps label like before) */}
-      {playerName && (
-        <text x="100" y="9" textAnchor="middle" fontFamily="Arial Black, sans-serif"
-              fontWeight="900" fontSize="11" fill="currentColor">
-          {playerName}
-        </text>
-      )}
+      {/* Floating name label intentionally removed: back view is cropped to
+          shirt-and-below (viewBox starts at y=114), so a label at y=9 would be
+          outside the visible canvas. The jersey back already shows the first
+          name, and callers render the full name in surrounding page UI. */}
     </>
   );
 }

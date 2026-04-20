@@ -2093,6 +2093,7 @@ export type Database = {
       profiles: {
         Row: {
           active_player_profile_id: string | null
+          avatar_char_ref: string | null
           avatar_url: string | null
           created_at: string
           id: string
@@ -2103,6 +2104,7 @@ export type Database = {
         }
         Insert: {
           active_player_profile_id?: string | null
+          avatar_char_ref?: string | null
           avatar_url?: string | null
           created_at?: string
           id: string
@@ -2113,6 +2115,7 @@ export type Database = {
         }
         Update: {
           active_player_profile_id?: string | null
+          avatar_char_ref?: string | null
           avatar_url?: string | null
           created_at?: string
           id?: string

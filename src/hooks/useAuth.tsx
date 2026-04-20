@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const currentUserIdRef = useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await (supabase.from('profiles').select('id, username, role_selected, created_at, updated_at, avatar_url, active_player_profile_id, is_admin').eq('id', userId).single() as any);
+    const { data } = await (supabase.from('profiles').select('id, username, role_selected, created_at, updated_at, avatar_url, avatar_char_ref, active_player_profile_id, is_admin').eq('id', userId).single() as any);
     stableSet(setProfile, data as any);
     return data;
   };

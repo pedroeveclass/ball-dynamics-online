@@ -1088,6 +1088,47 @@ function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; ag
   return totalDist;
 }
 
+// ─── GK extra reach when ball action targets his own penalty area ────
+// Rationale: goalkeepers use their hands, so when the ball comes their
+// way they get extra range. Outside of ball activity they move normally.
+//   - Penalty kick               → 1.5× base range
+//   - Ball trajectory ends in own PA → 2.0× base range
+//   - Everything else            → 1.0× (no change)
+// Penalty-area bounds mirror the in-engine constants used for foul-in-area
+// detection (see isHomeAttacking block ~line 6238): x≤18 or x≥82, y∈[20,80].
+// MUST match src/pages/MatchRoomPage.tsx getGkAreaMultiplier.
+function getGkAreaMultiplier(
+  participant: any,
+  match: { home_club_id: string; away_club_id: string; current_half?: number } | null | undefined,
+  bhActionType: string | null | undefined,
+  bhTargetX: number | null | undefined,
+  bhTargetY: number | null | undefined,
+  setPieceType: string | null | undefined,
+): number {
+  if (!participant || !match) return 1.0;
+  const slotPos = participant._slot_position || participant.slot_position || participant.primary_position || '';
+  if (!isGKPosition(slotPos)) return 1.0;
+  // Penalty: resolves first per spec.
+  if (setPieceType === 'penalty') return 1.5;
+  // Need a real ball-destined action with a target to evaluate the trajectory.
+  if (!bhActionType || bhTargetX == null || bhTargetY == null) return 1.0;
+  const isBallAction =
+    bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' ||
+    bhActionType === 'shoot_controlled' || bhActionType === 'shoot_power' ||
+    bhActionType === 'header_low' || bhActionType === 'header_high' ||
+    bhActionType === 'header_controlled' || bhActionType === 'header_power';
+  if (!isBallAction) return 1.0;
+  // GK's own-goal side: home defends LEFT (x≤18) in H1 and RIGHT (x≥82) in H2; away is the mirror.
+  const isSecondHalf = (match.current_half ?? 1) >= 2;
+  const isHomeRaw = participant.club_id === match.home_club_id;
+  const defendsLeft = isHomeRaw ? !isSecondHalf : isSecondHalf;
+  const tx = Number(bhTargetX);
+  const ty = Number(bhTargetY);
+  const yInArea = ty >= 20 && ty <= 80;
+  const xInOwnArea = defendsLeft ? tx <= 18 : tx >= 82;
+  return (yInArea && xInOwnArea) ? 2.0 : 1.0;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Situational tactics — manager-defined positioning per ball quadrant
 //
@@ -2530,6 +2571,10 @@ async function generateBotActions(
           forca: Number(botRaw?.forca ?? 40) * posMult,
         };
         let maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+        // GK extra reach when ball action aims at his own penalty area (or penalty kick).
+        // Must come BEFORE BH/cooldown penalties so they stack on top of the boosted base.
+        const gkMult = getGkAreaMultiplier(bot, match, bhActionType, bhTargetX, bhTargetY, setPieceType);
+        if (gkMult !== 1.0) maxRange *= gkMult;
         // Mirror engine's move-resolution penalties:
         // BH conducting (move, no ball action): × 0.85
         if (action.participant_id === ballHolderId && action.action_type === 'move' && !bhHasBallActionForClamp) {
@@ -3214,7 +3259,7 @@ function resolveDispute(
   return { winner, chance: attackerChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number, setPieceType?: string | null, tackleBlockedIds?: Set<string>): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number, setPieceType?: string | null, tackleBlockedIds?: Set<string>, match?: { home_club_id: string; away_club_id: string; current_half?: number }): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -3259,7 +3304,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
   const bhAttrs = getFullAttrs(bh);
   const bhActionType = _attacker.action_type || action;
-  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId, tackleBlockedIds);
+  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId, tackleBlockedIds, match);
 
   // ── DISPUTE DETECTION ──
   // If multiple interceptors from DIFFERENT teams target the same area (within 3 units),
@@ -3535,7 +3580,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>): Array<{ participant: any; progress: number; interceptX: number; interceptY: number; moveRatio: number }> {
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>, match?: { home_club_id: string; away_club_id: string; current_half?: number }): Array<{ participant: any; progress: number; interceptX: number; interceptY: number; moveRatio: number }> {
   if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
   if (!bh) return [];
@@ -3611,7 +3656,14 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             stamina: Number(pRaw?.stamina ?? 40) * posMult,
             forca: Number(pRaw?.forca ?? 40) * posMult,
           };
-          const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+          let maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+          // GK extra reach when the ball action targets his own penalty area (or penalty kick).
+          // Applied to base maxRange before ballSpeed scaling so the boost survives the reduction.
+          const gkAreaMult = getGkAreaMultiplier(
+            interceptor, match, bhActionType,
+            ballHolderAction.target_x, ballHolderAction.target_y, setPieceType,
+          );
+          if (gkAreaMult !== 1.0) maxRange *= gkAreaMult;
           // GK uses full range on shots, everyone else gets ballSpeed reduction
           const isInterceptorGK = isGKPosition(interceptor._slot_position || interceptor.primary_position || '');
           const isShot = bhActionType === 'shoot_controlled' || bhActionType === 'shoot_power' || bhActionType === 'header_controlled' || bhActionType === 'header_power';
@@ -5841,6 +5893,22 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // ── Apply physics movement limits ──
         const attrs = getAttrs(part);
         let maxRange = computeMaxMoveRange(attrs, match.current_turn_number ?? 1);
+        // GK extra reach when a ball action targets his own penalty area (or penalty kick).
+        // Applied BEFORE game-state multipliers so cooldown/inertia stack on top of the boost.
+        if (part) {
+          const bhBallAct = bhHasBallAction && ballHolder
+            ? allActions.find((act: any) => act.participant_id === ballHolder.id && isBallActionType(act.action_type))
+            : null;
+          const gkMult = getGkAreaMultiplier(
+            part,
+            match,
+            bhBallAct?.action_type ?? null,
+            bhBallAct?.target_x ?? null,
+            bhBallAct?.target_y ?? null,
+            activeTurn.set_piece_type,
+          );
+          if (gkMult !== 1.0) maxRange *= gkMult;
+        }
         // Ball holder conducting (move only, no pass/shoot) gets 15% penalty
         if (a.participant_id === ballHolder?.id && a.action_type === 'move' && !bhHasBallAction) {
           maxRange *= 0.85;
@@ -6037,7 +6105,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
-        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds);
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds, match);
 
         // Log GK save attempt if there was one
         if (result.gkSaveAttempt) {
@@ -8064,6 +8132,31 @@ Deno.serve(async (req) => {
       const isBallAction = ['pass_low','pass_high','pass_launch','shoot_controlled','shoot_power',
         'header_low','header_high','header_controlled','header_power'].includes(action_type);
       const isMoveLike = action_type === 'move' || action_type === 'receive' || action_type === 'block';
+
+      // ── BH-LOCK: once the ball holder has a committed ball action (pass/shoot/cross/header)
+      // from the ball_holder phase (manual OR bot), attack-phase moves on that same BH must NOT
+      // overwrite it. Resolution drops the bot action when a human action exists for the same
+      // participant (see dedup at "Filter out ALL bot actions for participants that have human
+      // actions") — so without this guard the user's move silently erases the bot's pass/shoot.
+      // Guard is scoped to move-like submissions on the current BH during attack-phase windows.
+      if (isMoveLike && participant_id === activeTurn.ball_holder_participant_id) {
+        const ballActionTypes = ['pass_low','pass_high','pass_launch','shoot_controlled','shoot_power',
+          'header_low','header_high','header_controlled','header_power'];
+        const { data: existingBallActions } = await supabase
+          .from('match_actions')
+          .select('id, action_type, controlled_by_type')
+          .eq('match_turn_id', activeTurn.id)
+          .eq('participant_id', participant_id)
+          .in('action_type', ballActionTypes)
+          .eq('status', 'pending')
+          .limit(1);
+        if (existingBallActions && existingBallActions.length > 0) {
+          const locked = existingBallActions[0];
+          console.warn(`[ENGINE] BH-lock: move submission rejected for match=${match_id} turn=${activeTurn.id} participant=${participant_id} — ball action already committed (type=${locked.action_type} by=${locked.controlled_by_type})`);
+          return jsonResponse({ ok: true, bh_locked: true, locked_action_type: locked.action_type });
+        }
+      }
+
       if (isMoveLike) {
         await supabase.from('match_actions').delete()
           .eq('match_turn_id', activeTurn.id)
