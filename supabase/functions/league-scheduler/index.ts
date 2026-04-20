@@ -52,6 +52,80 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Helper: resolve active (or most recent) lineup id for a club
+    async function resolveLineupId(clubId: string): Promise<string | null> {
+      const { data: active } = await supabase
+        .from('lineups').select('id').eq('club_id', clubId).eq('is_active', true).maybeSingle();
+      if (active?.id) return active.id;
+      const { data: recent } = await supabase
+        .from('lineups').select('id').eq('club_id', clubId).order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      return recent?.id || null;
+    }
+
+    // Helper: materialize a single league_match row into a real matches row (race-safe)
+    async function materializeLeagueMatch(lm: { id: string; home_club_id: string; away_club_id: string }, scheduledAt: string): Promise<{ matchId: string | null; warning?: string }> {
+      const [homeLineupId, awayLineupId] = await Promise.all([
+        resolveLineupId(lm.home_club_id),
+        resolveLineupId(lm.away_club_id),
+      ]);
+
+      const { data: match, error: insertErr } = await supabase.from('matches').insert({
+        home_club_id: lm.home_club_id,
+        away_club_id: lm.away_club_id,
+        scheduled_at: scheduledAt,
+        status: 'scheduled',
+        home_lineup_id: homeLineupId,
+        away_lineup_id: awayLineupId,
+        current_half: 1,
+        injury_time_turns: 0,
+      }).select('id').single();
+
+      if (insertErr || !match) {
+        return { matchId: null, warning: `insert_failed lm=${lm.id}: ${insertErr?.message || 'no row'}` };
+      }
+
+      // Race-safe link: only set if still null
+      const { data: linked, error: linkErr } = await supabase
+        .from('league_matches').update({ match_id: match.id })
+        .eq('id', lm.id).is('match_id', null).select('id');
+
+      if (linkErr || !linked || linked.length === 0) {
+        // Lost the race — another invocation already created a match. Delete ours.
+        await supabase.from('matches').delete().eq('id', match.id);
+        return { matchId: null, warning: `race_lost lm=${lm.id}` };
+      }
+
+      return { matchId: match.id };
+    }
+
+    // ─── Materialize upcoming matches (5 min before kickoff) ───
+    if (action === 'materialize_upcoming_matches') {
+      const nowIso = new Date().toISOString();
+      const cutoffIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+      const { data: pending } = await supabase
+        .from('league_matches')
+        .select('id, home_club_id, away_club_id, round_id, league_rounds!inner(id, scheduled_at, status)')
+        .is('match_id', null)
+        .lte('league_rounds.scheduled_at', cutoffIso)
+        .in('league_rounds.status', ['scheduled', 'live']);
+
+      const warnings: string[] = [];
+      let created = 0;
+
+      for (const lm of (pending || [])) {
+        const scheduledAt = (lm as any).league_rounds?.scheduled_at || nowIso;
+        const res = await materializeLeagueMatch(lm as any, scheduledAt);
+        if (res.matchId) created++;
+        if (res.warning) warnings.push(res.warning);
+      }
+
+      console.log(`[SCHEDULER] materialize_upcoming_matches: created=${created} warnings=${warnings.length}`);
+      return new Response(JSON.stringify({ created, warnings }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ─── Process due rounds: start matches for rounds whose time has arrived ───
     if (action === 'process_due_rounds' || !action) {
       const now = new Date().toISOString();
@@ -86,6 +160,14 @@ Deno.serve(async (req) => {
           .from('league_matches')
           .select('id, match_id, home_club_id, away_club_id')
           .eq('round_id', round.id);
+
+        // Safety net: materialize any row that hasn't been picked up by the 5-min cron yet
+        for (const lm of (leagueMatches || [])) {
+          if (lm.match_id) continue;
+          const res = await materializeLeagueMatch(lm as any, round.scheduled_at || now);
+          if (res.matchId) lm.match_id = res.matchId;
+          if (res.warning) console.warn(`[SCHEDULER] process_due_rounds fallback: ${res.warning}`);
+        }
 
         for (const lm of (leagueMatches || [])) {
           if (!lm.match_id) continue;
@@ -431,7 +513,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ error: 'Unknown action. Use: process_due_rounds, update_standings, apply_votes' }), {
+    return new Response(JSON.stringify({ error: 'Unknown action. Use: process_due_rounds, materialize_upcoming_matches, update_standings, recalculate_standings, apply_votes' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

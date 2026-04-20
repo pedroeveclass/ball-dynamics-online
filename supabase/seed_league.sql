@@ -481,14 +481,9 @@ BEGIN
         v_away_id  := v_match_id;  -- temp swap via v_match_id
       END IF;
 
-      -- Create match
-      INSERT INTO public.matches (home_club_id, away_club_id, scheduled_at, status)
-      VALUES (v_home_id, v_away_id, v_round_date, 'scheduled')
-      RETURNING id INTO v_match_id;
-
-      -- Link to league_matches
+      -- Match row materialized 5 min before kickoff by league-scheduler cron
       INSERT INTO public.league_matches (round_id, match_id, home_club_id, away_club_id)
-      VALUES (v_round_id, v_match_id, v_home_id, v_away_id);
+      VALUES (v_round_id, NULL, v_home_id, v_away_id);
     END LOOP; -- matches in round
 
     RAISE NOTICE '[SEED] Round % scheduled at % with 10 matches', v_round, v_round_date;

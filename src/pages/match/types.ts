@@ -39,6 +39,8 @@ export interface MatchTurn {
   possession_club_id: string | null; ball_holder_participant_id: string | null;
   started_at: string; ends_at: string; status: string;
   set_piece_type?: string | null;
+  ball_x?: number | null;
+  ball_y?: number | null;
 }
 
 export interface EventLog {

@@ -1,10 +1,87 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, Square, LogOut, User } from 'lucide-react';
-import type { ClubInfo } from './types';
-import { computeMatchMinute } from './constants';
+import { Square, LogOut, User } from 'lucide-react';
+import type { ClubInfo, EventLog } from './types';
+import { computeMatchMinute, HALF_DURATION_MS_CLIENT } from './constants';
 import { ClubCrest } from '@/components/ClubCrest';
+
+// Mirrors MatchSidebar.tsx eventMinute: approximates the match-minute at which
+// an event occurred from its created_at relative to the current half start.
+// For goals logged in a previous half, this becomes inaccurate once the next
+// half starts — acceptable since we have no turn_number in the event row.
+function goalMinute(event: EventLog, halfStartedAt: string | null, currentHalf: number): number | null {
+  if (!halfStartedAt) {
+    // Fallback: extract "Turno N" from body and approximate 1 turn ≈ 1 minute.
+    const m = /Turno\s+(\d+)/.exec(event.body || '');
+    if (m) {
+      const turn = Number(m[1]);
+      if (Number.isFinite(turn) && turn > 0) return Math.min(90, turn);
+    }
+    return null;
+  }
+  const halfStart = new Date(halfStartedAt).getTime();
+  const eventTs = new Date(event.created_at).getTime();
+  const elapsed = eventTs - halfStart;
+  if (!Number.isFinite(elapsed)) return null;
+  if (elapsed < 0) {
+    // Event is before the current half started → belongs to a previous half.
+    // Fallback to the body's "Turno N" if available.
+    const m = /Turno\s+(\d+)/.exec(event.body || '');
+    if (m) {
+      const turn = Number(m[1]);
+      if (Number.isFinite(turn) && turn > 0) return Math.min(90, turn);
+    }
+    return null;
+  }
+  const halfMinutes = Math.min(45, Math.floor((elapsed / HALF_DURATION_MS_CLIENT) * 45));
+  return currentHalf === 1 ? halfMinutes : 45 + halfMinutes;
+}
+
+interface ScorerEntry {
+  key: string;
+  name: string;
+  minutes: number[];
+}
+
+function collectGoalsForClub(events: EventLog[], clubId: string | undefined, halfStartedAt: string | null, currentHalf: number): ScorerEntry[] {
+  if (!clubId) return [];
+  const byKey = new Map<string, ScorerEntry>();
+  for (const ev of events) {
+    if (ev.event_type !== 'goal') continue;
+    const payload = (ev.payload || {}) as Record<string, any>;
+    if (payload.scorer_club_id !== clubId) continue;
+    const name = (payload.scorer_name as string | undefined)?.trim() || 'Jogador';
+    const key = (payload.scorer_profile_id as string | undefined)
+      || (payload.scorer_participant_id as string | undefined)
+      || name;
+    const minute = goalMinute(ev, halfStartedAt, currentHalf) ?? 0;
+    const existing = byKey.get(key);
+    if (existing) existing.minutes.push(minute);
+    else byKey.set(key, { key, name, minutes: [minute] });
+  }
+  return Array.from(byKey.values()).map(e => ({
+    ...e,
+    minutes: [...e.minutes].sort((a, b) => a - b),
+  }));
+}
+
+function GoalList({ entries, alignRight }: { entries: ScorerEntry[]; alignRight?: boolean }) {
+  if (!entries || entries.length === 0) return null;
+  return (
+    <div className={`flex flex-col gap-0.5 text-[10px] font-display text-white/80 leading-tight ${alignRight ? 'items-end text-right' : 'items-start text-left'}`}>
+      {entries.map(entry => {
+        const minutesLabel = entry.minutes.map(m => `${m}'`).join(', ');
+        const suffix = entry.minutes.length > 1 ? ` (${entry.minutes.length})` : '';
+        return (
+          <span key={entry.key} className="whitespace-nowrap truncate max-w-[140px]">
+            {minutesLabel} {entry.name}{suffix}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── ClubBadgeInline ──────────────────────────────────────────
 function ClubBadgeInline({ club, right, hasPossession }: { club: ClubInfo | null; right?: boolean; hasPossession?: boolean }) {
@@ -40,7 +117,7 @@ export interface MatchScoreboardProps {
   halfStartedAt: string | null; currentHalf: number;
   myRole: 'player' | 'manager' | 'spectator';
   isBenchPlayer: boolean;
-  isManager: boolean; isPlayer: boolean;
+  isManager: boolean;
   onFinishMatch: () => void; onExit: () => void;
   homeUniformNum: number; awayUniformNum: number;
   homeActiveUniform: { shirt_color: string; number_color: string };
@@ -48,6 +125,8 @@ export interface MatchScoreboardProps {
   onToggleUniform: (side: 'home' | 'away') => void;
   myClubId: string | null;
   possessionClubId: string | null;
+  leagueRoundNumber: number | null;
+  events: EventLog[];
 }
 
 export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboardProps) {
@@ -55,10 +134,25 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
     isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
     homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
     halfStartedAt, currentHalf,
-    myRole, isBenchPlayer, isManager, isPlayer, onFinishMatch, onExit,
+    myRole, isBenchPlayer, isManager, onFinishMatch, onExit,
     homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
-    possessionClubId,
+    possessionClubId, leagueRoundNumber, events,
   } = props;
+
+  const homeGoals = useMemo(
+    () => collectGoalsForClub(events, homeClub?.id, halfStartedAt, currentHalf),
+    [events, homeClub?.id, halfStartedAt, currentHalf],
+  );
+  const awayGoals = useMemo(
+    () => collectGoalsForClub(events, awayClub?.id, halfStartedAt, currentHalf),
+    [events, awayClub?.id, halfStartedAt, currentHalf],
+  );
+
+  const viewerRoleLabel = myRole === 'player' ? 'Jogador' : myRole === 'manager' ? 'Técnico' : 'Espectador';
+  const viewerRoleClass =
+    myRole === 'player' ? 'border-pitch/60 text-pitch' :
+    myRole === 'manager' ? 'border-tactical/60 text-tactical' :
+    'border-border text-muted-foreground';
 
   const homeHasBall = !!homeClub && possessionClubId === homeClub.id && !isLooseBall;
   const awayHasBall = !!awayClub && possessionClubId === awayClub.id && !isLooseBall;
@@ -75,10 +169,18 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
   return (
     <div className="bg-[hsl(220,15%,16%)] border-b border-[hsl(220,10%,25%)] px-4 py-1.5 flex items-center justify-between gap-2 shrink-0">
       <div className="flex items-center gap-2">
+        <Badge variant="outline" className={`font-display text-[10px] ${viewerRoleClass}`}>
+          {viewerRoleLabel}
+        </Badge>
         <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
           {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
           {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
         </Badge>
+        {leagueRoundNumber !== null && (
+          <Badge variant="outline" className="font-display text-[10px] border-border text-muted-foreground">
+            Rodada {leagueRoundNumber}
+          </Badge>
+        )}
         {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">5v5</Badge>}
         {isLooseBall && <Badge variant="secondary" className="text-[9px] font-display text-warning border-warning/40">BOLA SOLTA</Badge>}
         {isPhaseProcessing && <Badge variant="secondary" className="text-[9px] font-display animate-pulse">PROCESSANDO</Badge>}
@@ -86,18 +188,21 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1">
-          <ClubBadgeInline club={homeClub} hasPossession={homeHasBall} />
-          {isManager && isTestMatch && myClubId === homeClub?.id && (
-            <button
-              onClick={() => onToggleUniform('home')}
-              title={`Uniforme ${homeUniformNum}`}
-              className="w-5 h-5 rounded text-[8px] font-display font-bold border border-white/20 hover:border-white/50 transition-colors flex items-center justify-center"
-              style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
-            >
-              {homeUniformNum}
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          <GoalList entries={homeGoals} alignRight />
+          <div className="flex items-center gap-1">
+            <ClubBadgeInline club={homeClub} hasPossession={homeHasBall} />
+            {isManager && isTestMatch && myClubId === homeClub?.id && (
+              <button
+                onClick={() => onToggleUniform('home')}
+                title={`Uniforme ${homeUniformNum}`}
+                className="w-5 h-5 rounded text-[8px] font-display font-bold border border-white/20 hover:border-white/50 transition-colors flex items-center justify-center"
+                style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
+              >
+                {homeUniformNum}
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="font-display text-3xl font-extrabold tracking-widest text-white">
@@ -132,18 +237,21 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
             );
           })()}
         </div>
-        <div className="flex items-center gap-1">
-          {isManager && isTestMatch && myClubId === awayClub?.id && (
-            <button
-              onClick={() => onToggleUniform('away')}
-              title={`Uniforme ${awayUniformNum}`}
-              className="w-5 h-5 rounded text-[8px] font-display font-bold border border-white/20 hover:border-white/50 transition-colors flex items-center justify-center"
-              style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
-            >
-              {awayUniformNum}
-            </button>
-          )}
-          <ClubBadgeInline club={awayClub} right hasPossession={awayHasBall} />
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {isManager && isTestMatch && myClubId === awayClub?.id && (
+              <button
+                onClick={() => onToggleUniform('away')}
+                title={`Uniforme ${awayUniformNum}`}
+                className="w-5 h-5 rounded text-[8px] font-display font-bold border border-white/20 hover:border-white/50 transition-colors flex items-center justify-center"
+                style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
+              >
+                {awayUniformNum}
+              </button>
+            )}
+            <ClubBadgeInline club={awayClub} right hasPossession={awayHasBall} />
+          </div>
+          <GoalList entries={awayGoals} />
         </div>
       </div>
 
@@ -159,14 +267,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
             <Square className="h-3 w-3" /> Finalizar
           </button>
         )}
-        {myRole === 'spectator' && !isBenchPlayer && <Badge variant="secondary" className="text-[10px] font-display"><Eye className="h-3 w-3 mr-1" />Espectador</Badge>}
         {isBenchPlayer && <Badge className="bg-warning/20 text-warning text-[10px] border border-warning/40 font-display"><User className="h-3 w-3 mr-1" />No Banco</Badge>}
-        {isPlayer && <Badge className="bg-pitch/20 text-pitch text-[10px] border border-pitch/40 font-display"><User className="h-3 w-3 mr-1" />Jogador</Badge>}
-        {isManager && (
-          <Badge className="bg-tactical/20 text-tactical text-[10px] border border-tactical/40 font-display">
-            <User className="h-3 w-3 mr-1" />Manager
-          </Badge>
-        )}
       </div>
     </div>
   );

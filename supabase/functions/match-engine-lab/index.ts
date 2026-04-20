@@ -4052,8 +4052,16 @@ async function handleSetPiece(
       : (isSecondHalf ? 6 : 94);
     const gkY = Math.max(40, Math.min(60, oob.exitY));
 
-    // Prefer explicit GK; fall back to player closest to the team's own goal
-    let gk = teamPlayers.find((p: any) => isGKPosition(getSlotPos(p)));
+    // Prefer explicit GK by slot_position, then by player primary_position; only
+    // as a last resort snap the closest player to own goal. This fallback is
+    // gated by `oob.type === 'goal_kick'`, so loose-ball sequences never reach it.
+    let gk = teamPlayers.find((p: any) => isGKPosition(getSlotPos(p)) && !p.is_sent_off);
+    if (!gk) {
+      gk = teamPlayers.find((p: any) => isGKPosition(String(p._primary_position || p.primary_position || '')) && !p.is_sent_off);
+      if (gk) {
+        console.log(`[ENGINE] Goal kick: GK slot missing; matched by primary_position ${gk.id.slice(0,8)}`);
+      }
+    }
     if (!gk) {
       const ownGoalX = gkX;
       let closest = teamPlayers[0];
@@ -4066,7 +4074,7 @@ async function handleSetPiece(
         if (dist < minDist) { minDist = dist; closest = p; }
       }
       gk = closest;
-      console.log(`[ENGINE] Goal kick: no explicit GK, picked closest player ${gk.id.slice(0,8)} at dist=${minDist.toFixed(1)} from goal`);
+      console.warn(`[ENGINE] Goal kick: NO explicit GK found (slot+primary_position empty), picked closest player ${gk.id.slice(0,8)} at dist=${minDist.toFixed(1)} from goal — investigate lineup`);
     }
 
     await supabase.from('match_participants').update({ pos_x: gkX, pos_y: gkY }).eq('id', gk.id);
@@ -5849,7 +5857,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const otSpeedFactor =
             (originType === 'shoot_power' || originType === 'header_power') ? 0.25 :
             (originType === 'shoot_controlled' || originType === 'header_controlled') ? 0.35 :
-            originType === 'pass_launch' ? 0.5 :
+            originType === 'pass_launch' ? 1.0 :
             (originType === 'pass_high' || originType === 'header_high') ? 0.65 :
             1.0; // pass_low / header_low / move
           // Scale: ballSpeedFactor 1.0 → 50% range, 0.25 → 12.5% range
@@ -6661,7 +6669,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
       if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
         const bhAttrs = getAttrs(ballHolder);
-        let bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.35; // BH restricted move
+        let bhMaxRange = computeMaxMoveRange(bhAttrs, match.current_turn_number ?? 1) * 0.50; // BH restricted move
         // One-touch turn: movement scaled by ball speed
         const otAct = allActions.find((act: any) => act.payload && typeof act.payload === 'object' && (act.payload as any).one_touch_executed);
         if (otAct) {
@@ -6669,7 +6677,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const otSF =
             (oType === 'shoot_power' || oType === 'header_power') ? 0.25 :
             (oType === 'shoot_controlled' || oType === 'header_controlled') ? 0.35 :
-            oType === 'pass_launch' ? 0.5 :
+            oType === 'pass_launch' ? 1.0 :
             (oType === 'pass_high' || oType === 'header_high') ? 0.65 :
             1.0;
           bhMaxRange *= otSF * 0.5;
@@ -7560,6 +7568,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         home_score: homeScore, away_score: awayScore,
       }).eq('id', match_id);
 
+      // Persist authoritative ball position on every turn row so the client
+      // never has to infer loose-ball coords from event-log scans alone.
+      const nextBallHolderPart = nextBallHolderParticipantId
+        ? (participants || []).find((p: any) => p.id === nextBallHolderParticipantId)
+        : null;
+      const nextBallHolderMoveAct = nextBallHolderPart
+        ? allActions.find((a: any) => a.participant_id === nextBallHolderPart.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'))
+        : null;
+      const persistedBallPos = nextBallHolderPart
+        ? {
+            x: Number(nextBallHolderMoveAct?.target_x ?? nextBallHolderPart.pos_x ?? 50),
+            y: Number(nextBallHolderMoveAct?.target_y ?? nextBallHolderPart.pos_y ?? 50),
+          }
+        : (ballEndPos || { x: 50, y: 50 });
+
       const { data: insertedTurn } = await supabase.from('match_turns').insert({
         match_id, turn_number: newTurnNumber,
         phase: nextPhase,
@@ -7568,6 +7591,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         started_at: nextPhaseStart, ends_at: nextPhaseEnd,
         status: 'active',
         set_piece_type: nextSetPieceType || null,
+        ball_x: persistedBallPos.x,
+        ball_y: persistedBallPos.y,
       }).select('id').single();
 
       // ── One-touch auto-action (same approach as 11x11 engine) ──

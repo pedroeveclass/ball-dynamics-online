@@ -149,19 +149,50 @@ function resolveBallOutcome(
 // Single source of truth for resolving loose ball position from history.
 // Used by both the turn-transition useEffect and the render IIFE so both
 // paths agree on which position to surface when no canonical state exists.
-const HISTORY_EVENT_SCAN_LIMIT = 10;
+const HISTORY_EVENT_SCAN_LIMIT = 50;
+// Only events that actually establish a ball position — scanning chat / card /
+// sub events would return stale or irrelevant coordinates.
+const BALL_POSITION_EVENT_TYPES = new Set<string>([
+  'loose_ball', 'loose_ball_phase', 'ball_inertia',
+  'pass_complete', 'shot_missed', 'shot_over',
+  'goal_kick', 'corner', 'throw_in', 'free_kick', 'foul', 'penalty',
+  'intercepted', 'receive_success', 'tackle', 'blocked', 'block',
+  'saved', 'gk_save', 'offside', 'dispute',
+]);
 function resolveLooseBallFromHistory(
   events: EventLog[],
   turnActions: MatchAction[],
+  currentTurnNumber?: number | null,
 ): { x: number; y: number } | null {
-  for (let i = events.length - 1; i >= Math.max(0, events.length - HISTORY_EVENT_SCAN_LIMIT); i--) {
-    const payload = events[i]?.payload as any;
-    if (payload?.ball_x != null && payload?.ball_y != null) {
+  const extract = (payload: any): { x: number; y: number } | null => {
+    if (!payload) return null;
+    if (payload.ball_x != null && payload.ball_y != null) {
       return { x: Number(payload.ball_x), y: Number(payload.ball_y) };
     }
-    if (payload?.x != null && payload?.y != null) {
+    if (payload.x != null && payload.y != null) {
       return { x: Number(payload.x), y: Number(payload.y) };
     }
+    return null;
+  };
+  const start = events.length - 1;
+  const stop = Math.max(0, events.length - HISTORY_EVENT_SCAN_LIMIT);
+  // Pass 1: prefer events from the CURRENT turn if turn number is known.
+  if (currentTurnNumber != null) {
+    for (let i = start; i >= stop; i--) {
+      const ev = events[i];
+      if (!ev || !BALL_POSITION_EVENT_TYPES.has(ev.event_type)) continue;
+      const payload = ev.payload as any;
+      if (Number(payload?.turn_number) !== Number(currentTurnNumber)) continue;
+      const pos = extract(payload);
+      if (pos) return pos;
+    }
+  }
+  // Pass 2: most recent qualifying event across the scan window.
+  for (let i = start; i >= stop; i--) {
+    const ev = events[i];
+    if (!ev || !BALL_POSITION_EVENT_TYPES.has(ev.event_type)) continue;
+    const pos = extract(ev.payload);
+    if (pos) return pos;
   }
   const lastBallAction = turnActions.find(a =>
     (isAnyPassAction(a.action_type) || isAnyShootAction(a.action_type) || a.action_type === 'move') &&
@@ -190,6 +221,7 @@ export default function MatchRoomPage() {
   }, []);
   const [activeTurn, setActiveTurn] = useState<MatchTurn | null>(null);
   const [events, setEvents] = useState<EventLog[]>([]);
+  const [leagueRoundNumber, setLeagueRoundNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [myRole, setMyRole] = useState<'player' | 'manager' | 'spectator'>('spectator');
   const [myParticipant, setMyParticipant] = useState<Participant | null>(null);
@@ -662,6 +694,16 @@ export default function MatchRoomPage() {
         });
       });
 
+    // Lookup league round (if this match is linked via league_matches)
+    supabase.from('league_matches')
+      .select('league_rounds!inner(round_number)')
+      .eq('match_id', matchData.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const rn = (data as any)?.league_rounds?.round_number;
+        if (typeof rn === 'number') setLeagueRoundNumber(rn);
+      });
+
     // Load captain IDs from lineups
     if (matchData.home_lineup_id || matchData.away_lineup_id) {
       Promise.all([
@@ -911,6 +953,7 @@ export default function MatchRoomPage() {
     setAwayClub(null);
     setActiveTurn(null);
     setEvents([]);
+    setLeagueRoundNumber(null);
     setParticipants([]);
     setTurnActions([]);
     setPlayerAttrsMap({});
@@ -1044,7 +1087,7 @@ export default function MatchRoomPage() {
     const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
     if (isBallHolder) {
       if (activeTurn?.phase === 'attacking_support') {
-        range *= 0.35; // BH move while passing/shooting
+        range *= 0.50; // BH move while passing/shooting
       } else if (activeTurn?.phase === 'ball_holder') {
         range *= 0.85; // BH conducting ball — 15% penalty
       }
@@ -1068,7 +1111,7 @@ export default function MatchRoomPage() {
       const otSpeedFactor =
         (originType === 'shoot_power' || originType === 'header_power') ? 0.25 :
         (originType === 'shoot_controlled' || originType === 'header_controlled') ? 0.35 :
-        originType === 'pass_launch' ? 0.5 :
+        originType === 'pass_launch' ? 1.0 :
         (originType === 'pass_high' || originType === 'header_high') ? 0.65 :
         1.0;
       range *= otSpeedFactor * 0.5;
@@ -1274,10 +1317,15 @@ export default function MatchRoomPage() {
         }
         // If not consumed yet, keep ballInertiaDir alive for arrow/animation
       } else {
-        // Ball JUST became loose — canonical priority: final ball ref > final ball state > history resolver
+        // Ball JUST became loose — canonical priority: final ball ref > final ball state
+        // > history resolver (scoped to current turn) > authoritative match_turns.ball_x/_y.
+        const turnBall = (activeTurn as any)?.ball_x != null && (activeTurn as any)?.ball_y != null
+          ? { x: Number((activeTurn as any).ball_x), y: Number((activeTurn as any).ball_y) }
+          : null;
         const pos = finalBallPosRef.current
           ?? finalBallPos
-          ?? resolveLooseBallFromHistory(events, turnActions);
+          ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia)
+          ?? turnBall;
         if (pos) {
           setCarriedLooseBallPos(pos);
           inertiaConsumedRef.current = false;
@@ -2664,7 +2712,7 @@ export default function MatchRoomPage() {
         || candidate.action_type === 'shoot_controlled'
         || candidate.action_type === 'shoot_power'
       ));
-    const maxRange = computeMaxMoveRange(action.participant_id, undefined, hasDeferredBallAction ? 0.35 : undefined);
+    const maxRange = computeMaxMoveRange(action.participant_id, undefined, hasDeferredBallAction ? 0.50 : undefined);
     const dx = action.target_x - startX;
     const dy = action.target_y - startY;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -3704,7 +3752,13 @@ export default function MatchRoomPage() {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
     if (carriedLooseBallPos) return carriedLooseBallPos;
-    return resolveLooseBallFromHistory(events, turnActions);
+    const fromHistory = resolveLooseBallFromHistory(events, turnActions, currentTurnNumber);
+    if (fromHistory) return fromHistory;
+    // Authoritative server-persisted coord fallback.
+    const tx = (activeTurn as any)?.ball_x;
+    const ty = (activeTurn as any)?.ball_y;
+    if (tx != null && ty != null) return { x: Number(tx), y: Number(ty) };
+    return null;
   })();
 
 
@@ -4206,13 +4260,15 @@ export default function MatchRoomPage() {
         homeScore={match.home_score} awayScore={match.away_score}
         currentTurnNumber={match.current_turn_number} activeTurnPhase={activeTurn?.phase ?? null}
         halfStartedAt={match.half_started_at ?? null} currentHalf={match.current_half ?? 1}
-        myRole={myRole} isBenchPlayer={myRole === 'spectator' && myParticipant?.role_type === 'bench'} isManager={isManager} isPlayer={isPlayer}
+        myRole={myRole} isBenchPlayer={myRole === 'spectator' && myParticipant?.role_type === 'bench'} isManager={isManager}
         onFinishMatch={finishMatch} onExit={exitToDashboard}
         homeUniformNum={match.home_uniform ?? 1} awayUniformNum={match.away_uniform ?? 2}
         homeActiveUniform={homeActiveUniform} awayActiveUniform={awayActiveUniform}
         onToggleUniform={handleToggleUniform}
         myClubId={myClubId}
         possessionClubId={possClubId ?? null}
+        leagueRoundNumber={leagueRoundNumber}
+        events={events}
       />
 
       {/* ── Main layout ── */}

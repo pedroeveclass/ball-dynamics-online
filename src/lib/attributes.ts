@@ -369,7 +369,7 @@ const GK_ARCHETYPE_CAPS: Record<string, Partial<Record<string, CapTier>>> = {
   'Goleiro Completo': {},
   'Goleiro Felino': {
     defesa_aerea: 'hard', comando_area: 'hard',
-    pegada: 'soft',
+    pegada: 'soft', agilidade: 'soft',
   },
   'Goleiro Muralha': {
     reflexo: 'soft', um_contra_um: 'soft', tempo_reacao: 'soft',
@@ -401,20 +401,35 @@ function tierValue(t: CapTier | undefined | null): number {
 }
 
 // Public: computes the maximum value an attribute can reach for a given
-// archetype + height. Multiple restrictions stack (min wins).
+// archetype + height.
+//
+// Resolution rules:
+//   1. If the archetype defines an EXPLICIT tier for this attribute, that
+//      tier REPLACES the generic GK-blanket cap (i.e. a Felino with
+//      agilidade:'soft' resolves to 88, not min(70, 88)=70). This lets
+//      archetype design lift the GK blanket selectively.
+//   2. Otherwise, for GKs the blanket CAP_GK_FIELD (70) applies to the
+//      outfield-ish attrs in GK_CAPPED_FIELD_ATTRS; for field players no
+//      blanket applies.
+//   3. Height caps always stack with min() on top of the result.
 export function getAttrCap(archetype: string | null | undefined, height: string | null | undefined, attrKey: string): number {
   const isGK = archetype?.startsWith('Goleiro');
   let cap = CAP_DEFAULT;
 
+  // Archetype layer: explicit per-attribute tier REPLACES the GK blanket.
   if (isGK) {
-    if (GK_CAPPED_FIELD_ATTRS.has(attrKey)) cap = Math.min(cap, CAP_GK_FIELD);
     const gkTier = archetype ? GK_ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined;
-    cap = Math.min(cap, tierValue(gkTier));
+    if (gkTier) {
+      cap = Math.min(cap, tierValue(gkTier));
+    } else if (GK_CAPPED_FIELD_ATTRS.has(attrKey)) {
+      cap = Math.min(cap, CAP_GK_FIELD);
+    }
   } else {
     const fieldTier = archetype ? ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined;
     cap = Math.min(cap, tierValue(fieldTier));
   }
 
+  // Height always stacks (min wins).
   const heightTier = height ? HEIGHT_CAPS[height]?.[attrKey] : undefined;
   cap = Math.min(cap, tierValue(heightTier));
 

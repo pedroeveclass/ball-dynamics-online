@@ -484,26 +484,10 @@ Deno.serve(async (req) => {
 
         const matchFixtures = roundFixtures.get(roundNum) || [];
         for (const fixture of matchFixtures) {
-          // Fetch each club's active lineup ID
-          const [{ data: homeLineup }, { data: awayLineup }] = await Promise.all([
-            supabase.from('lineups').select('id').eq('club_id', fixture.home).eq('is_active', true).maybeSingle(),
-            supabase.from('lineups').select('id').eq('club_id', fixture.away).eq('is_active', true).maybeSingle(),
-          ]);
-
-          // Create the actual match with lineup references
-          const { data: match } = await supabase.from('matches').insert({
-            home_club_id: fixture.home,
-            away_club_id: fixture.away,
-            scheduled_at: roundDate.toISOString(),
-            status: 'scheduled',
-            home_lineup_id: homeLineup?.id || null,
-            away_lineup_id: awayLineup?.id || null,
-          }).select('id').single();
-
-          // Link to league_matches
+          // Match row will be materialized 5 min before kickoff by league-scheduler cron
           await supabase.from('league_matches').insert({
             round_id: round.id,
-            match_id: match?.id || null,
+            match_id: null,
             home_club_id: fixture.home,
             away_club_id: fixture.away,
           });
