@@ -5,7 +5,7 @@ import { PositionBadge } from '@/components/PositionBadge';
 import { EnergyBar } from '@/components/EnergyBar';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
-import { ATTR_LABELS } from '@/lib/attributes';
+import { ATTR_LABELS, ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
 
 interface PlayerCardDialogProps {
   playerId: string | null;
@@ -18,11 +18,11 @@ type PlayerProfileSummary = Pick<
   'id' | 'full_name' | 'age' | 'primary_position' | 'secondary_position' | 'archetype' | 'overall' | 'dominant_foot' | 'reputation' | 'energy_current' | 'energy_max'
 >;
 
-const physicalKeys = ['velocidade', 'aceleracao', 'agilidade', 'forca', 'equilibrio', 'resistencia', 'pulo', 'stamina'] as const;
-const technicalKeys = ['drible', 'controle_bola', 'marcacao', 'desarme', 'um_toque', 'curva', 'passe_baixo', 'passe_alto'] as const;
-const mentalKeys = ['visao_jogo', 'tomada_decisao', 'antecipacao', 'trabalho_equipe', 'coragem', 'posicionamento_ofensivo', 'posicionamento_defensivo'] as const;
-const shootingKeys = ['cabeceio', 'acuracia_chute', 'forca_chute'] as const;
-const gkKeys = ['reflexo', 'posicionamento_gol', 'defesa_aerea', 'pegada', 'saida_gol', 'um_contra_um', 'distribuicao_curta', 'distribuicao_longa', 'tempo_reacao', 'comando_area'] as const;
+const physicalKeys = ATTRIBUTE_CATEGORIES['Físico'];
+const technicalKeys = ATTRIBUTE_CATEGORIES['Técnico'];
+const mentalKeys = ATTRIBUTE_CATEGORIES['Mental'];
+const shootingKeys = ATTRIBUTE_CATEGORIES['Chute'];
+const gkKeys = ATTRIBUTE_CATEGORIES['Goleiro'];
 
 function formatDominantFoot(foot: string) {
   if (foot === 'right') return 'Direito';

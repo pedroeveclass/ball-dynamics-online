@@ -18,6 +18,17 @@ export const GK_ATTRS = [
 
 export const ALL_ATTRS = [...FIELD_ATTRS, ...GK_ATTRS] as const;
 
+// ── Attribute Categories (UI grouping) ──
+// Canonical category → attribute-keys map used by dashboards, cards, and the
+// onboarding point-distribution screen. Keep in sync with FIELD_ATTRS/GK_ATTRS.
+export const ATTRIBUTE_CATEGORIES: Record<string, string[]> = {
+  'Físico': ['velocidade', 'aceleracao', 'agilidade', 'forca', 'equilibrio', 'resistencia', 'pulo', 'stamina'],
+  'Técnico': ['drible', 'controle_bola', 'marcacao', 'desarme', 'um_toque', 'curva', 'passe_baixo', 'passe_alto'],
+  'Mental': ['visao_jogo', 'tomada_decisao', 'antecipacao', 'trabalho_equipe', 'coragem', 'posicionamento_ofensivo', 'posicionamento_defensivo'],
+  'Chute': ['cabeceio', 'acuracia_chute', 'forca_chute'],
+  'Goleiro': ['reflexo', 'posicionamento_gol', 'defesa_aerea', 'pegada', 'saida_gol', 'um_contra_um', 'distribuicao_curta', 'distribuicao_longa', 'tempo_reacao', 'comando_area'],
+};
+
 // ── Field Player Body Types ──
 export const BODY_TYPES = [
   { value: 'All Around', label: 'All Around', description: 'Equilibrado em todos os atributos. Um jogador versátil.' },
@@ -319,6 +330,20 @@ export const CAP_SOFT = 88;
 export const CAP_DEFAULT = 99;
 export const CAP_GK_FIELD = 70; // Every GK archetype is hard-capped at 70 on outfield attrs
 
+// ── Position-layer tiers ──
+// CORE        = 99 (no cap)            — missing entry in POSITION_CAPS
+// SUPPORTING  = 88 (reuses CAP_SOFT)   — position is OK at this, not elite
+// IRRELEVANT  = 75 (CAP_POS_HARD)      — position doesn't need this
+// WALL        = 70 (CAP_POS_WALL)      — GK on outfield attrs (same numeric
+//                                        as GK archetype blanket by design)
+//
+// Resolution: an archetype's EXPLICIT tier on an attribute REPLACES both
+// the GK blanket AND the position cap (same treatment introduced by the
+// felino-agilidade fix for the GK blanket). Only when archetype is silent
+// do the GK blanket and position cap bind. Height always stacks via min.
+export const CAP_POS_HARD = 75;
+export const CAP_POS_WALL = 70;
+
 type CapTier = 'hard' | 'soft';
 
 const ARCHETYPE_CAPS: Record<string, Partial<Record<string, CapTier>>> = {
@@ -400,40 +425,222 @@ function tierValue(t: CapTier | undefined | null): number {
   return CAP_DEFAULT;
 }
 
-// Public: computes the maximum value an attribute can reach for a given
-// archetype + height.
-//
-// Resolution rules:
-//   1. If the archetype defines an EXPLICIT tier for this attribute, that
-//      tier REPLACES the generic GK-blanket cap (i.e. a Felino with
-//      agilidade:'soft' resolves to 88, not min(70, 88)=70). This lets
-//      archetype design lift the GK blanket selectively.
-//   2. Otherwise, for GKs the blanket CAP_GK_FIELD (70) applies to the
-//      outfield-ish attrs in GK_CAPPED_FIELD_ATTRS; for field players no
-//      blanket applies.
-//   3. Height caps always stack with min() on top of the result.
-export function getAttrCap(archetype: string | null | undefined, height: string | null | undefined, attrKey: string): number {
-  const isGK = archetype?.startsWith('Goleiro');
-  let cap = CAP_DEFAULT;
+// ── Position-layer caps (matches SQL 20260420030000_caps_by_position.sql) ──
+// Tiers use string tags so the TS fit scoring can check 'pos_hard' / 'pos_wall'
+// directly. 88 (SUPPORTING) uses the existing 'soft' signal for fit purposes.
+type PosCapTier = 'pos_soft' | 'pos_hard' | 'pos_wall';
 
-  // Archetype layer: explicit per-attribute tier REPLACES the GK blanket.
-  if (isGK) {
-    const gkTier = archetype ? GK_ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined;
-    if (gkTier) {
-      cap = Math.min(cap, tierValue(gkTier));
-    } else if (GK_CAPPED_FIELD_ATTRS.has(attrKey)) {
-      cap = Math.min(cap, CAP_GK_FIELD);
-    }
+export const POSITION_CAPS: Record<string, Partial<Record<string, PosCapTier>>> = {
+  'GK': {
+    // GKs: every outfield attr is WALL (65). GK-specific attrs stay CORE.
+    velocidade: 'pos_wall', aceleracao: 'pos_wall', agilidade: 'pos_wall',
+    drible: 'pos_wall', controle_bola: 'pos_wall', marcacao: 'pos_wall', desarme: 'pos_wall',
+    um_toque: 'pos_wall', curva: 'pos_wall', passe_baixo: 'pos_wall', passe_alto: 'pos_wall',
+    posicionamento_ofensivo: 'pos_wall', posicionamento_defensivo: 'pos_wall',
+    cabeceio: 'pos_wall', acuracia_chute: 'pos_wall', forca_chute: 'pos_wall',
+  },
+  'CB': {
+    // Offense → IRRELEVANT (75 / pos_hard)
+    acuracia_chute: 'pos_hard', forca_chute: 'pos_hard',
+    um_toque: 'pos_hard', curva: 'pos_hard',
+    posicionamento_ofensivo: 'pos_hard', drible: 'pos_hard',
+    // Playmaking → SUPPORTING (88 / pos_soft)
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'LB': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    um_toque: 'pos_soft', curva: 'pos_soft',
+    posicionamento_ofensivo: 'pos_soft', drible: 'pos_soft',
+    cabeceio: 'pos_soft',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'RB': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    um_toque: 'pos_soft', curva: 'pos_soft',
+    posicionamento_ofensivo: 'pos_soft', drible: 'pos_soft',
+    cabeceio: 'pos_soft',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'LWB': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    um_toque: 'pos_soft', curva: 'pos_soft',
+    posicionamento_ofensivo: 'pos_soft', drible: 'pos_soft',
+    marcacao: 'pos_soft', desarme: 'pos_soft',
+    posicionamento_defensivo: 'pos_soft', coragem: 'pos_soft',
+    antecipacao: 'pos_soft', cabeceio: 'pos_soft',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'RWB': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    um_toque: 'pos_soft', curva: 'pos_soft',
+    posicionamento_ofensivo: 'pos_soft', drible: 'pos_soft',
+    marcacao: 'pos_soft', desarme: 'pos_soft',
+    posicionamento_defensivo: 'pos_soft', coragem: 'pos_soft',
+    antecipacao: 'pos_soft', cabeceio: 'pos_soft',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'DM': {
+    acuracia_chute: 'pos_hard', um_toque: 'pos_hard', curva: 'pos_hard',
+    forca_chute: 'pos_soft',
+    visao_jogo: 'pos_soft',
+  },
+  'CDM': {
+    acuracia_chute: 'pos_hard', um_toque: 'pos_hard', curva: 'pos_hard',
+    forca_chute: 'pos_soft',
+    visao_jogo: 'pos_soft',
+  },
+  'CM': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    um_toque: 'pos_soft', curva: 'pos_soft',
+    posicionamento_ofensivo: 'pos_soft', drible: 'pos_soft',
+    marcacao: 'pos_soft', desarme: 'pos_soft',
+    posicionamento_defensivo: 'pos_soft', coragem: 'pos_soft',
+    antecipacao: 'pos_soft', cabeceio: 'pos_soft',
+  },
+  'LM': {
+    acuracia_chute: 'pos_soft',
+    marcacao: 'pos_soft', desarme: 'pos_soft',
+    posicionamento_defensivo: 'pos_soft', coragem: 'pos_soft',
+    antecipacao: 'pos_soft', cabeceio: 'pos_soft',
+  },
+  'RM': {
+    acuracia_chute: 'pos_soft',
+    marcacao: 'pos_soft', desarme: 'pos_soft',
+    posicionamento_defensivo: 'pos_soft', coragem: 'pos_soft',
+    antecipacao: 'pos_soft', cabeceio: 'pos_soft',
+  },
+  'CAM': {
+    forca_chute: 'pos_soft',
+    marcacao: 'pos_hard', desarme: 'pos_hard',
+  },
+  'LW': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    marcacao: 'pos_hard', desarme: 'pos_hard',
+    posicionamento_defensivo: 'pos_hard',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'RW': {
+    acuracia_chute: 'pos_soft', forca_chute: 'pos_soft',
+    marcacao: 'pos_hard', desarme: 'pos_hard',
+    posicionamento_defensivo: 'pos_hard',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'CF': {
+    forca_chute: 'pos_soft',
+    marcacao: 'pos_hard', desarme: 'pos_hard',
+    posicionamento_defensivo: 'pos_hard', coragem: 'pos_hard',
+    antecipacao: 'pos_hard', cabeceio: 'pos_hard',
+    passe_baixo: 'pos_soft', passe_alto: 'pos_soft',
+    visao_jogo: 'pos_soft', tomada_decisao: 'pos_soft',
+    controle_bola: 'pos_soft',
+  },
+  'ST': {
+    marcacao: 'pos_hard', desarme: 'pos_hard',
+    posicionamento_defensivo: 'pos_hard', coragem: 'pos_hard',
+    antecipacao: 'pos_hard', cabeceio: 'pos_hard',
+    passe_alto: 'pos_hard', visao_jogo: 'pos_hard',
+  },
+};
+
+function posCapValue(t: 'pos_soft' | 'pos_hard' | 'pos_wall' | undefined | null): number {
+  if (t === 'pos_wall') return CAP_POS_WALL;
+  if (t === 'pos_hard') return CAP_POS_HARD;
+  if (t === 'pos_soft') return CAP_SOFT;
+  return CAP_DEFAULT;
+}
+
+export type AttrCapReason = 'archetype' | 'gk_blanket' | 'position' | 'height';
+
+export interface AttrCapResult {
+  cap: number;
+  reasons: AttrCapReason[];
+}
+
+// Public: computes the maximum value an attribute can reach for a given
+// archetype + height + primary position.
+//
+// Resolution rules (mirrors SQL public.get_attribute_cap, 4-arg):
+//   1. If the archetype defines an EXPLICIT tier for this attribute, that
+//      tier REPLACES both the GK blanket cap AND the position cap (a Felino
+//      with agilidade:'soft' resolves to 88, even though the GK blanket is
+//      70 and the GK position cap is WALL 70). This lets archetype design
+//      selectively lift the lower-layer caps.
+//   2. Otherwise, GK blanket (70) applies to GK-field attrs, AND the position
+//      cap (if any) also applies; the smaller of the two wins via min.
+//   3. Height caps always stack via min on top of the result.
+export function getAttrCap(
+  archetype: string | null | undefined,
+  height: string | null | undefined,
+  position: string | null | undefined,
+  attrKey: string,
+): number {
+  return getAttrCapWithReason(archetype, height, position, attrKey).cap;
+}
+
+export function getAttrCapWithReason(
+  archetype: string | null | undefined,
+  height: string | null | undefined,
+  position: string | null | undefined,
+  attrKey: string,
+): AttrCapResult {
+  const isGK = archetype?.startsWith('Goleiro');
+
+  // Candidate caps per source (99 = no contribution).
+  let archetypeCap: number | null = null;
+  let gkBlanketCap: number | null = null;
+  let positionCap: number | null = null;
+  let heightCap: number | null = null;
+
+  const archTier: CapTier | undefined = isGK
+    ? (archetype ? GK_ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined)
+    : (archetype ? ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined);
+
+  if (archTier) {
+    archetypeCap = tierValue(archTier);
   } else {
-    const fieldTier = archetype ? ARCHETYPE_CAPS[archetype]?.[attrKey] : undefined;
-    cap = Math.min(cap, tierValue(fieldTier));
+    // Archetype silent → both GK blanket and position cap can apply.
+    if (isGK && GK_CAPPED_FIELD_ATTRS.has(attrKey)) {
+      gkBlanketCap = CAP_GK_FIELD;
+    }
+    const posTier = position ? POSITION_CAPS[position]?.[attrKey] : undefined;
+    if (posTier) {
+      positionCap = posCapValue(posTier);
+    }
   }
 
-  // Height always stacks (min wins).
   const heightTier = height ? HEIGHT_CAPS[height]?.[attrKey] : undefined;
-  cap = Math.min(cap, tierValue(heightTier));
+  if (heightTier) {
+    heightCap = tierValue(heightTier);
+  }
 
-  return cap;
+  // Combine. Archetype (when present) REPLACES gk_blanket + position.
+  const preHeight = archetypeCap !== null
+    ? archetypeCap
+    : Math.min(gkBlanketCap ?? CAP_DEFAULT, positionCap ?? CAP_DEFAULT);
+  const cap = Math.min(preHeight, heightCap ?? CAP_DEFAULT);
+
+  // Report all sources that tie or undercut the final cap.
+  const reasons: AttrCapReason[] = [];
+  if (archetypeCap !== null && archetypeCap <= cap) reasons.push('archetype');
+  if (gkBlanketCap !== null && gkBlanketCap <= cap) reasons.push('gk_blanket');
+  if (positionCap !== null && positionCap <= cap) reasons.push('position');
+  if (heightCap !== null && heightCap <= cap) reasons.push('height');
+
+  return { cap, reasons };
 }
 
 // Positions
@@ -474,3 +681,128 @@ export const ATTR_LABELS: Record<string, string> = {
   distribuicao_curta: 'Distribuição Curta', distribuicao_longa: 'Distribuição Longa',
   tempo_reacao: 'Tempo de Reação', comando_area: 'Comando de Área',
 };
+
+// ══════════════════════════════════════════════════════════════
+// Training FIT multiplier
+//
+// A per-attribute "fit score" in [-2, +2] derived from the player's
+// archetype + height + primary position. Mirrors the SQL function
+// public.get_training_multiplier in 20260420030500_training_fit_multiplier.sql
+// byte-for-byte.
+//
+//   fit | ×    | label
+//   +2  | 1.50 | Treino FIT TOP
+//   +1  | 1.20 | Treino BOM
+//    0  | 1.00 | Treino NORMAL
+//   -1  | 0.60 | Treino RUIM
+//   -2  | 0.30 | Treino CONTRA
+// ══════════════════════════════════════════════════════════════
+
+export type TrainingFitScore = -2 | -1 | 0 | 1 | 2;
+export type TrainingFitTone = 'positive' | 'negative' | 'neutral';
+
+export interface TrainingFitBreakdown {
+  fit: TrainingFitScore;
+  archetype_fit: -2 | -1 | 0 | 1 | 2;
+  height_fit: -1 | 0 | 1;
+  position_fit: -1 | 0 | 1;
+  multiplier: number;
+  label: string;
+  tone: TrainingFitTone;
+}
+
+const FIT_TABLE: Record<TrainingFitScore, { multiplier: number; label: string; tone: TrainingFitTone }> = {
+  [2]:  { multiplier: 1.50, label: 'Treino FIT TOP', tone: 'positive' },
+  [1]:  { multiplier: 1.20, label: 'Treino BOM',     tone: 'positive' },
+  [0]:  { multiplier: 1.00, label: 'Treino NORMAL',  tone: 'neutral' },
+  [-1]: { multiplier: 0.60, label: 'Treino RUIM',    tone: 'negative' },
+  [-2]: { multiplier: 0.30, label: 'Treino CONTRA',  tone: 'negative' },
+};
+
+export function getTrainingFit(
+  archetype: string | null | undefined,
+  height: string | null | undefined,
+  position: string | null | undefined,
+  attrKey: string,
+): TrainingFitBreakdown {
+  // Null-safe no-op: missing inputs → neutral multiplier, log warn.
+  if (!archetype || !height || !position) {
+    if (typeof console !== 'undefined') {
+      console.warn('[getTrainingFit] missing input — using neutral multiplier', { archetype, height, position, attrKey });
+    }
+    return {
+      fit: 0,
+      archetype_fit: 0,
+      height_fit: 0,
+      position_fit: 0,
+      multiplier: 1.0,
+      label: FIT_TABLE[0].label,
+      tone: FIT_TABLE[0].tone,
+    };
+  }
+
+  const isGK = archetype.startsWith('Goleiro');
+
+  // ── archetype_fit ─────────────────────────────────────────
+  const bodyBoost = bodyTypeBoosts[archetype]?.[attrKey as keyof AttrKeys] ?? 0;
+
+  let archFit: -2 | -1 | 0 | 1 | 2 = 0;
+  if (bodyBoost >= 5) archFit = 2;
+  else if (bodyBoost >= 3) archFit = 1;
+
+  // Archetype cap tier (hard/soft) as negative signal.
+  const archTier: CapTier | undefined = isGK
+    ? GK_ARCHETYPE_CAPS[archetype]?.[attrKey]
+    : ARCHETYPE_CAPS[archetype]?.[attrKey];
+
+  if (archTier === 'hard') {
+    archFit = Math.min(archFit, -2) as typeof archFit;
+  } else if (archTier === 'soft') {
+    archFit = Math.min(archFit, -1) as typeof archFit;
+  } else if (isGK && !archTier && GK_CAPPED_FIELD_ATTRS.has(attrKey)) {
+    // GK playing outfield attr with no explicit archetype opinion → -2.
+    archFit = Math.min(archFit, -2) as typeof archFit;
+  }
+
+  // ── height_fit ────────────────────────────────────────────
+  const heightBoost = heightBoosts[height]?.[attrKey as keyof AttrKeys] ?? 0;
+  const heightTier = HEIGHT_CAPS[height]?.[attrKey];
+
+  let heightFit: -1 | 0 | 1 = 0;
+  if (heightBoost > 0) heightFit = 1;
+  if (heightTier === 'hard' || heightBoost < 0) heightFit = -1;
+
+  // ── position_fit ──────────────────────────────────────────
+  const posBonus = positionProfiles[position]?.[attrKey as keyof AttrKeys] ?? 0;
+  const posTier = POSITION_CAPS[position]?.[attrKey];
+
+  let positionFit: -1 | 0 | 1 = 0;
+  if (posBonus >= 6) positionFit = 1;
+  else if (posTier === 'pos_hard' || posTier === 'pos_wall') positionFit = -1;
+  else if (posBonus < 0) positionFit = -1;
+
+  // ── compose ───────────────────────────────────────────────
+  let fit = archFit + heightFit + positionFit;
+  if (fit > 2) fit = 2;
+  if (fit < -2) fit = -2;
+  const fitClamped = fit as TrainingFitScore;
+
+  return {
+    fit: fitClamped,
+    archetype_fit: archFit,
+    height_fit: heightFit,
+    position_fit: positionFit,
+    multiplier: FIT_TABLE[fitClamped].multiplier,
+    label: FIT_TABLE[fitClamped].label,
+    tone: FIT_TABLE[fitClamped].tone,
+  };
+}
+
+export function getTrainingFitMultiplier(
+  archetype: string | null | undefined,
+  height: string | null | undefined,
+  position: string | null | undefined,
+  attrKey: string,
+): number {
+  return getTrainingFit(archetype, height, position, attrKey).multiplier;
+}

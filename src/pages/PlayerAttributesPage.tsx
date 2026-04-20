@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS, getAttrCap } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS, getAttrCapWithReason, getTrainingFit } from '@/lib/attributes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -188,9 +188,15 @@ export default function PlayerAttributesPage() {
       await fetchHistory();
       await refreshPlayerProfile();
 
-      const result = data as { attribute: string; new_value: number; growth: number };
+      const result = data as { attribute: string; new_value: number; growth: number; fit_multiplier?: number };
       const tier = getAttributeTier(result.new_value);
-      toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${result.growth.toFixed(2)}! (${tier.label})`);
+      const fitMult = typeof result.fit_multiplier === 'number' ? result.fit_multiplier : 1;
+      let fitSuffix = '';
+      if (fitMult >= 1.5)      fitSuffix = ' — FIT TOP aplicado (+50% no ganho)';
+      else if (fitMult >= 1.2) fitSuffix = ' — FIT BOM aplicado (+20% no ganho)';
+      else if (fitMult <= 0.3) fitSuffix = ' — FIT CONTRA aplicado (−70% no ganho)';
+      else if (fitMult <= 0.6) fitSuffix = ' — FIT RUIM aplicado (−40% no ganho)';
+      toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${result.growth.toFixed(2)}! (${tier.label})${fitSuffix}`);
     } catch (err: any) {
       toast.error(err.message || 'Erro ao treinar.');
     } finally {
@@ -213,14 +219,39 @@ export default function PlayerAttributesPage() {
           const attrTcBonus = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
           const attrTrainerBonus = trainerBonus ? trainerBonus.value / 100 : 0;
           const bonusFactor = 1 + attrCoachBonus + attrTcBonus + attrTrainerBonus;
-          const effectiveGrowthMin = (growthRate * tierMult * bonusFactor).toFixed(2);
-          const effectiveGrowthMax = ((growthRate + 0.99) * tierMult * bonusFactor).toFixed(2);
-          const cap = getAttrCap(playerProfile.archetype, playerProfile.height, key);
+          const fitInfo = getTrainingFit(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, key);
+          const effectiveGrowthMin = (growthRate * tierMult * bonusFactor * fitInfo.multiplier).toFixed(2);
+          const effectiveGrowthMax = ((growthRate + 0.99) * tierMult * bonusFactor * fitInfo.multiplier).toFixed(2);
+          const capInfo = getAttrCapWithReason(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, key);
+          const cap = capInfo.cap;
+          const capLimitedByPosition = capInfo.reasons.includes('position');
           const atCap = value >= cap;
+
+          // Accent color per fit tone — tiny left border tint so the user can
+          // scan-pick good-fit attrs in the whole column at a glance.
+          const accentClass =
+            fitInfo.fit === 2  ? 'border-l-4 border-emerald-500'
+          : fitInfo.fit === 1  ? 'border-l-4 border-lime-500'
+          : fitInfo.fit === -1 ? 'border-l-4 border-orange-500'
+          : fitInfo.fit === -2 ? 'border-l-4 border-red-500'
+          :                      'border-l-4 border-transparent';
+
+          // Pill style per fit tone.
+          const fitPct = Math.round((fitInfo.multiplier - 1) * 100);
+          const fitPillText = fitInfo.fit === 0
+            ? fitInfo.label
+            : `${fitInfo.label} (${fitPct > 0 ? '+' : ''}${fitPct}%)`;
+          const fitPillClass =
+            fitInfo.fit === 2  ? 'bg-emerald-500/15 text-emerald-500'
+          : fitInfo.fit === 1  ? 'bg-lime-500/15 text-lime-500'
+          : fitInfo.fit === -1 ? 'bg-orange-500/15 text-orange-500'
+          : fitInfo.fit === -2 ? 'bg-red-500/15 text-red-500'
+          :                      'bg-muted text-muted-foreground';
+
           return (
             <Popover key={key}>
               <PopoverTrigger asChild>
-                <button className="w-full text-left hover:bg-muted/50 rounded-md p-1 transition-colors cursor-pointer" disabled={training === key}>
+                <button className={`w-full text-left hover:bg-muted/50 rounded-md p-1 pl-2 transition-colors cursor-pointer ${accentClass}`} disabled={training === key}>
                   <AttributeBar
                     label={ATTR_LABELS[key] || key}
                     value={value}
@@ -237,9 +268,12 @@ export default function PlayerAttributesPage() {
                     <Dumbbell className="h-4 w-4 text-tactical" />
                     <span className="font-display font-bold text-sm">Treinar {ATTR_LABELS[key] || key}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${tier.bgColor} ${tier.color}`}>
                       {tier.label}
+                    </span>
+                    <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${fitPillClass}`}>
+                      {fitPillText}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -248,6 +282,11 @@ export default function PlayerAttributesPage() {
                   <p className="text-xs text-muted-foreground">
                     Limite do seu tipo ({playerProfile.archetype} / {playerProfile.height}): <span className="font-bold text-foreground">{cap}</span>
                   </p>
+                  {capLimitedByPosition && (
+                    <p className="text-xs text-amber-400" title="Limitado pela posição">
+                      Limitado pela posição ({playerProfile.primary_position})
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">Custo: {ENERGY_COST} energia</p>
                   {atCap && (
                     <p className="text-xs text-destructive">⚠ Atributo no limite do seu tipo. Não evolui mais com treino.</p>
@@ -291,11 +330,11 @@ export default function PlayerAttributesPage() {
     );
   };
 
-  const physicalKeys = ['velocidade','aceleracao','agilidade','forca','equilibrio','resistencia','pulo','stamina'] as const;
-  const technicalKeys = ['drible','controle_bola','marcacao','desarme','um_toque','curva','passe_baixo','passe_alto'] as const;
-  const mentalKeys = ['visao_jogo','tomada_decisao','antecipacao','trabalho_equipe','coragem','posicionamento_ofensivo','posicionamento_defensivo'] as const;
-  const shootingKeys = ['cabeceio','acuracia_chute','forca_chute'] as const;
-  const gkKeys = ['reflexo','posicionamento_gol','defesa_aerea','pegada','saida_gol','um_contra_um','distribuicao_curta','distribuicao_longa','tempo_reacao','comando_area'] as const;
+  const physicalKeys = ATTRIBUTE_CATEGORIES['Físico'];
+  const technicalKeys = ATTRIBUTE_CATEGORIES['Técnico'];
+  const mentalKeys = ATTRIBUTE_CATEGORIES['Mental'];
+  const shootingKeys = ATTRIBUTE_CATEGORIES['Chute'];
+  const gkKeys = ATTRIBUTE_CATEGORIES['Goleiro'];
 
   return (
     <AppLayout>

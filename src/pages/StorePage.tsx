@@ -175,6 +175,10 @@ export default function StorePage() {
   }
 
   function isOwned(itemId: string): boolean {
+    // Consumables are stackable per day — keep the Buy button visible; the RPC
+    // enforces the per-item daily purchase limit.
+    const item = items.find(i => i.id === itemId);
+    if (item?.category === 'consumable') return false;
     return purchases.some(p => p.store_item_id === itemId && (p.status === 'active' || p.status === 'inventory' || p.status === 'cancelling'));
   }
 

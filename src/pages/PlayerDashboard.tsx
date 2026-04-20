@@ -15,6 +15,7 @@ import type { Tables } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { formatBRL } from '@/lib/formatting';
+import { ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
 
 const STATUS_INFO: Record<string, { label: string; className: string }> = {
   scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
@@ -250,13 +251,11 @@ export default function PlayerDashboard() {
 
         {/* Quick Attributes — category averages */}
         {attributes && (() => {
-          // Categories match src/pages/PlayerAttributesPage.tsx:294-298 (and
-          // PlayerCardDialog.tsx / PlayerClubPage.tsx / OnboardingPlayerPage.tsx).
-          const physicalKeys = ['velocidade','aceleracao','agilidade','forca','equilibrio','resistencia','pulo','stamina'] as const;
-          const technicalKeys = ['drible','controle_bola','marcacao','desarme','um_toque','curva','passe_baixo','passe_alto'] as const;
-          const mentalKeys = ['visao_jogo','tomada_decisao','antecipacao','trabalho_equipe','coragem','posicionamento_ofensivo','posicionamento_defensivo'] as const;
-          const shootingKeys = ['cabeceio','acuracia_chute','forca_chute'] as const;
-          const gkKeys = ['reflexo','posicionamento_gol','defesa_aerea','pegada','saida_gol','um_contra_um','distribuicao_curta','distribuicao_longa','tempo_reacao','comando_area'] as const;
+          const physicalKeys = ATTRIBUTE_CATEGORIES['Físico'];
+          const technicalKeys = ATTRIBUTE_CATEGORIES['Técnico'];
+          const mentalKeys = ATTRIBUTE_CATEGORIES['Mental'];
+          const shootingKeys = ATTRIBUTE_CATEGORIES['Chute'];
+          const gkKeys = ATTRIBUTE_CATEGORIES['Goleiro'];
 
           const avg = (keys: readonly string[]) => {
             const vals = keys.map(k => Number((attributes as any)[k]) || 0);

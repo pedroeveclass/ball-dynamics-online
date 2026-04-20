@@ -12,6 +12,7 @@ import {
   getAttrCap,
   getCoachBonus,
   getTrainingCenterBonus,
+  getTrainingFit,
   getTrainingGrowthRate,
   getTrainingTierMultiplier,
 } from '@/lib/attributes';
@@ -185,7 +186,7 @@ export default function PlayerTrainingPlanPage() {
     // Drop attrs already at cap — training them would be a no-op.
     return keys.filter(k => {
       const v = Number((attrs as any)[k] ?? 0);
-      const cap = getAttrCap(playerProfile.archetype, playerProfile.height, k);
+      const cap = getAttrCap(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, k);
       return v < cap;
     });
   }, [playerProfile, attrs]);
@@ -194,7 +195,7 @@ export default function PlayerTrainingPlanPage() {
   const growthRangeFor = (attrKey: string): [number, number] | null => {
     if (!playerProfile || !attrs) return null;
     const value = Number((attrs as any)[attrKey] ?? 0);
-    const cap = getAttrCap(playerProfile.archetype, playerProfile.height, attrKey);
+    const cap = getAttrCap(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, attrKey);
     if (value >= cap) return null;
     const growthRate = getTrainingGrowthRate(playerProfile.age);
     const tierMult = getTrainingTierMultiplier(value);
@@ -202,9 +203,19 @@ export default function PlayerTrainingPlanPage() {
     const tcBonus = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
     const trainerBonusPct = trainerBonus / 100;
     const bonus = 1 + coachBonus + tcBonus + trainerBonusPct;
-    const min = growthRate * tierMult * bonus;
-    const max = (growthRate + 0.99) * tierMult * bonus;
+    const fitMult = getTrainingFit(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, attrKey).multiplier;
+    const min = growthRate * tierMult * bonus * fitMult;
+    const max = (growthRate + 0.99) * tierMult * bonus * fitMult;
     return [min, max];
+  };
+
+  // ── Fit pill classes (same palette as the Atributos page) ──
+  const fitPillClasses = (fit: number): string => {
+    if (fit === 2)  return 'bg-emerald-500/15 text-emerald-500';
+    if (fit === 1)  return 'bg-lime-500/15 text-lime-500';
+    if (fit === -1) return 'bg-orange-500/15 text-orange-500';
+    if (fit === -2) return 'bg-red-500/15 text-red-500';
+    return 'bg-muted text-muted-foreground';
   };
 
   // ── Week-long energy + training projection. Shows the manager what will happen ──
@@ -446,6 +457,18 @@ export default function PlayerTrainingPlanPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {slot.attribute_key && (() => {
+                          const fitInfo = getTrainingFit(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, slot.attribute_key);
+                          const pct = Math.round((fitInfo.multiplier - 1) * 100);
+                          const pillText = fitInfo.fit === 0
+                            ? fitInfo.label
+                            : `${fitInfo.label} (${pct > 0 ? '+' : ''}${pct}%)`;
+                          return (
+                            <span className={`inline-flex items-center text-[9px] font-display font-semibold px-1.5 py-0.5 rounded-full ${fitPillClasses(fitInfo.fit)}`}>
+                              {pillText}
+                            </span>
+                          );
+                        })()}
                         {slot.attribute_key && range && (
                           <div className="text-[10px] text-muted-foreground">
                             Ganho ~<span className="text-pitch font-bold">+{range[0].toFixed(2)}</span>
