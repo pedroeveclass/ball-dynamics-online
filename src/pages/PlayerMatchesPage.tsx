@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw, FlaskConical, Loader2 } from 'lucide-react';
+import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw, FlaskConical, Loader2, Trophy } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -18,6 +18,7 @@ import {
   FIVE_V_FIVE_COORDS,
   type PickupSlot,
 } from '@/lib/fivePickup';
+import { formatBRTDateTime, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
 
 interface MatchEntry {
   match_id: string;
@@ -44,6 +45,9 @@ export default function PlayerMatchesPage() {
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating5v5, setCreating5v5] = useState(false);
+  // Next league fixture for the player's club — displayed even when the
+  // match row has not been materialized yet (5 min pre-kickoff window).
+  const [nextLeagueMatch, setNextLeagueMatch] = useState<NextClubMatch | null>(null);
 
   const loadMatches = useCallback(async () => {
     if (!user) return;
@@ -86,6 +90,17 @@ export default function PlayerMatchesPage() {
   }, [user, playerProfile]);
 
   useEffect(() => { loadMatches(); }, [loadMatches]);
+
+  // Fetch the player's club's next league fixture so the "Próxima rodada
+  // da liga" card can render above the match list even if the `matches`
+  // row hasn't been materialized yet.
+  useEffect(() => {
+    let cancelled = false;
+    const clubId = playerProfile?.club_id;
+    if (!clubId) { setNextLeagueMatch(null); return; }
+    getNextClubMatch(clubId).then(res => { if (!cancelled) setNextLeagueMatch(res); });
+    return () => { cancelled = true; };
+  }, [playerProfile?.club_id]);
 
   const now = Date.now();
   const oneHour = 60 * 60 * 1000;
@@ -242,6 +257,51 @@ export default function PlayerMatchesPage() {
             {creating5v5 ? 'Criando...' : 'Teste 5v5'}
           </Button>
         </div>
+
+        {/* Próxima rodada da liga — shows the fixture even before the
+            materialized `matches` row exists. */}
+        {nextLeagueMatch && (
+          <div className="stat-card border-tactical/40 bg-tactical/5">
+            <div className="flex items-center gap-2 mb-2">
+              <Trophy className="h-4 w-4 text-amber-400" />
+              <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
+                Próxima rodada da liga — Rodada {nextLeagueMatch.round_number}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <ClubCrest
+                  crestUrl={nextLeagueMatch.opponent_crest_url}
+                  primaryColor={nextLeagueMatch.opponent_primary_color}
+                  secondaryColor={nextLeagueMatch.opponent_secondary_color}
+                  shortName={nextLeagueMatch.opponent_short_name}
+                  className="h-9 w-9 rounded text-[9px] shrink-0"
+                />
+                <div>
+                  <p className="font-display font-bold text-sm">
+                    {nextLeagueMatch.is_home ? 'Casa' : 'Fora'} — vs {nextLeagueMatch.opponent_name}
+                  </p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <CalendarClock className="h-3 w-3" />
+                    {formatBRTDateTime(nextLeagueMatch.scheduled_at)}
+                  </div>
+                </div>
+              </div>
+              {nextLeagueMatch.match_id ? (
+                <Link to={`/match/${nextLeagueMatch.match_id}`}>
+                  <Button size="sm" className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs">
+                    <Play className="h-3 w-3 mr-1" />
+                    Entrar na Partida
+                  </Button>
+                </Link>
+              ) : (
+                <span className="text-[11px] text-muted-foreground italic">
+                  Link disponível 5 min antes do jogo
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {matches.length === 0 && (
           <div className="stat-card text-center py-12">

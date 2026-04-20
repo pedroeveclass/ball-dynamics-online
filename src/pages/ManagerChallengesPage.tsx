@@ -24,6 +24,7 @@ import {
   type GroupKey,
 } from '@/lib/fivePickup';
 import { ptBR } from 'date-fns/locale';
+import { formatBRTDateTime, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
 
 interface Challenge {
   id: string;
@@ -81,6 +82,9 @@ export default function ManagerChallengesPage() {
   // League matches
   const [leagueMatches, setLeagueMatches] = useState<any[]>([]);
   const [leagueFilter, setLeagueFilter] = useState<'upcoming' | 'finished' | 'all'>('upcoming');
+  // Next league fixture from league_matches/league_rounds — this survives
+  // even when the `matches` row hasn't been materialized yet (5 min pre-kickoff).
+  const [nextLeagueMatch, setNextLeagueMatch] = useState<NextClubMatch | null>(null);
 
   const loadLeagueMatches = useCallback(async () => {
     if (!club) return;
@@ -117,6 +121,15 @@ export default function ManagerChallengesPage() {
   }, [club]);
 
   useEffect(() => { loadChallenges(); loadLeagueMatches(); }, [loadChallenges, loadLeagueMatches]);
+
+  // Resolve the next upcoming league fixture for this club (independent of
+  // whether the `matches` row exists yet). Refreshes on club change.
+  useEffect(() => {
+    let cancelled = false;
+    if (!club?.id) { setNextLeagueMatch(null); return; }
+    getNextClubMatch(club.id).then(res => { if (!cancelled) setNextLeagueMatch(res); });
+    return () => { cancelled = true; };
+  }, [club?.id]);
 
   const fetchClubPlayers = async (clubId: string) => {
     const { data: contracts } = await supabase.from('contracts').select('player_profile_id').eq('club_id', clubId).eq('status', 'active');
@@ -604,6 +617,51 @@ export default function ManagerChallengesPage() {
             </Button>
           </div>
         </div>
+
+        {/* Próxima rodada da liga — surfaces the upcoming league fixture
+            even when the materialized `matches` row doesn't exist yet
+            (the scheduler creates it ~5 min before kickoff). */}
+        {nextLeagueMatch && (
+          <div className="stat-card border-tactical/40 bg-tactical/5">
+            <div className="flex items-center gap-2 mb-2">
+              <Trophy className="h-4 w-4 text-amber-400" />
+              <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
+                Próxima rodada da liga — Rodada {nextLeagueMatch.round_number}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <ClubCrest
+                  crestUrl={nextLeagueMatch.opponent_crest_url}
+                  primaryColor={nextLeagueMatch.opponent_primary_color}
+                  secondaryColor={nextLeagueMatch.opponent_secondary_color}
+                  shortName={nextLeagueMatch.opponent_short_name}
+                  className="h-9 w-9 rounded text-[9px] shrink-0"
+                />
+                <div>
+                  <p className="font-display font-bold text-sm">
+                    {nextLeagueMatch.is_home ? 'Casa' : 'Fora'} — vs {nextLeagueMatch.opponent_name}
+                  </p>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <CalendarClock className="h-3 w-3" />
+                    {formatBRTDateTime(nextLeagueMatch.scheduled_at)}
+                  </div>
+                </div>
+              </div>
+              {nextLeagueMatch.match_id ? (
+                <Link to={`/match/${nextLeagueMatch.match_id}`}>
+                  <Button size="sm" className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs">
+                    Entrar na Partida
+                  </Button>
+                </Link>
+              ) : (
+                <span className="text-[11px] text-muted-foreground italic">
+                  Link disponível 5 min antes do jogo
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* League Matches Section */}
         {leagueMatches.length > 0 && (

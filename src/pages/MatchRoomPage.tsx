@@ -1135,8 +1135,13 @@ export default function MatchRoomPage() {
 
     if (overrideMultiplier != null) range *= overrideMultiplier;
 
-    // One-touch turn: movement scaled by ball speed (faster ball = less reaction time)
+    // One-touch turn: movement scaled by ball speed (faster ball = less reaction time).
+    // ONLY applied to the participant actually executing the one-touch action (the intended
+    // receiver). Other teammates must be free to reposition at full base range — otherwise
+    // a cross (pass_launch) compounds penalties and teammates can't reach the ball.
+    // Must match supabase/functions/match-engine-lab/index.ts attacking_support resolution.
     const oneTouchAct = turnActions.find(a =>
+      a.participant_id === participantId &&
       a.payload && typeof a.payload === 'object' &&
       ((a.payload as any).one_touch_executed === true || (a.payload as any).one_touch === true)
     );
@@ -2512,14 +2517,22 @@ export default function MatchRoomPage() {
         }
       }
       
-      // Check if clicking during loose ball — if player can reach ball (purple circle), ANY click opens intercept
+      // Check if clicking during loose ball — if player can reach ball (purple circle), ANY click opens intercept.
+      // Reach formula MUST match the purple-circle render at the bottom of the SVG (search
+      // "Loose-ball scenario: no trajectory, just a ball at a fixed point"). Previously this
+      // used raw Euclidean distance with no tolerance while the render used Y-scaled distance
+      // plus a +1.5 pad — so on a "parada" (stopped loose ball) the circle showed purple but
+      // the click fell through to the plain-move branch, silently skipping the dominate menu.
       if (isLooseBall && looseBallPos) {
         const dp = participantsRef.current.find(p => p.id === drawingAction.fromParticipantId);
         if (dp && dp.field_x != null && dp.field_y != null) {
-          const distPlayerToBall = Math.sqrt((dp.field_x - looseBallPos.x) ** 2 + (dp.field_y - looseBallPos.y) ** 2);
+          const FIELD_Y_SCALE = INNER_H / INNER_W;
+          const dxP = dp.field_x - looseBallPos.x;
+          const dyP = (dp.field_y - looseBallPos.y) * FIELD_Y_SCALE;
+          const distPlayerToBall = Math.sqrt(dxP * dxP + dyP * dyP);
           const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          // If player can reach the ball (circle is purple), clicking anywhere opens intercept menu
-          if (distPlayerToBall <= maxRange) {
+          // Match the render's tolerance (+1.5) so click accepts everywhere the purple circle shows.
+          if (distPlayerToBall <= maxRange + 1.5) {
             setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
             setShowActionMenu(drawingAction.fromParticipantId);
             setDrawingAction(null);

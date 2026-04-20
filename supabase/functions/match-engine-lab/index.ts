@@ -380,6 +380,31 @@ async function persistMatchPlayerStats(
   awayClubId: string,
 ): Promise<void> {
   try {
+    // Only aggregate stats for competitive matches:
+    //   1. League matches (row in league_matches with this match_id)
+    //   2. Team-vs-team friendlies (row in match_challenges with this match_id;
+    //      both clubs are human-managed since the table has
+    //      challenger_manager_profile_id and challenged_manager_profile_id).
+    // Bot-only matches, 5v5 test matches and training matches are skipped.
+    const { data: leagueMatch } = await supabase
+      .from('league_matches').select('round_id').eq('match_id', matchId).maybeSingle();
+    const isLeagueMatch = leagueMatch !== null;
+
+    let isFriendlyTvT = false;
+    if (!isLeagueMatch) {
+      const { data: challenge } = await supabase
+        .from('match_challenges')
+        .select('id')
+        .eq('match_id', matchId)
+        .maybeSingle();
+      isFriendlyTvT = challenge !== null;
+    }
+
+    if (!isLeagueMatch && !isFriendlyTvT) {
+      console.log(`[STATS] Skipping match ${matchId.slice(0,8)} — not league or team-vs-team friendly`);
+      return;
+    }
+
     // Load participants (prefer cached, fallback to DB).
     let parts: any[] = (cachedParticipants || []).filter((p: any) =>
       p.role_type === 'player' && p.player_profile_id
@@ -397,8 +422,6 @@ async function persistMatchPlayerStats(
 
     // Season (league match only; null for friendlies).
     let seasonId: string | null = null;
-    const { data: leagueMatch } = await supabase
-      .from('league_matches').select('round_id').eq('match_id', matchId).maybeSingle();
     if (leagueMatch?.round_id) {
       const { data: round } = await supabase
         .from('league_rounds').select('season_id').eq('id', leagueMatch.round_id).maybeSingle();
@@ -5784,8 +5807,48 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
+    // ── BH-lock at resolution time ──
+    // The submit-time BH-lock (see jsonResponse(bh_locked) below) only fires when the
+    // bot's ball action is ALREADY in the DB at the moment the human submits. Under
+    // race conditions (bot decision emitted mid-ball_holder phase, user submits
+    // attack-phase move before bot persists) the guard misses and the bot's pass
+    // lands after the user's move. Without this extra guard, Step 2 would then
+    // discard the bot action entirely (human "controls" the BH) and the turn would
+    // resolve as a plain dribble — silently overwriting the committed pass/shoot.
+    //
+    // Rule: if the BH has BOTH a bot ball-action AND ONLY-move human actions for this
+    // turn, KEEP the bot ball-action and DROP the human move(s). The move was submitted
+    // in the attack phase after the BH already committed to passing/shooting; it's not
+    // a valid override.
+    const bhParticipantId = activeTurn.ball_holder_participant_id;
+    const bhLockedBotActionIds = new Set<string>();
+    const bhLockedDropHumanMoveIds = new Set<string>();
+    if (bhParticipantId) {
+      const bhBotBallActions = (rawActions || []).filter((a: any) =>
+        a.participant_id === bhParticipantId
+        && a.controlled_by_type === 'bot'
+        && isBallActionType(a.action_type)
+      );
+      const bhHumanActions = (rawActions || []).filter((a: any) =>
+        a.participant_id === bhParticipantId
+        && (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager')
+      );
+      const bhHumanHasBallAction = bhHumanActions.some((a: any) => isBallActionType(a.action_type));
+      const bhHumanMoveLike = bhHumanActions.filter((a: any) =>
+        a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'
+      );
+      if (bhBotBallActions.length > 0 && !bhHumanHasBallAction && bhHumanMoveLike.length === bhHumanActions.length && bhHumanMoveLike.length > 0) {
+        for (const a of bhBotBallActions) bhLockedBotActionIds.add(a.id);
+        for (const a of bhHumanMoveLike) bhLockedDropHumanMoveIds.add(a.id);
+        console.warn(`[ENGINE] BH-lock (resolution): kept bot ball-action for BH ${bhParticipantId} (${bhBotBallActions.length} action(s)), dropped ${bhHumanMoveLike.length} human move(s). Bot action landed after human move submission.`);
+      }
+    }
+
     // Step 2: Filter out ALL bot actions for participants that have human actions
+    //         EXCEPT when BH-lock applies (bot ball-action wins over human move).
     const filteredRaw = (rawActions || []).filter((a: any) => {
+      if (bhLockedDropHumanMoveIds.has(a.id)) return false; // Drop the overridden human move
+      if (bhLockedBotActionIds.has(a.id)) return true;      // Keep the bot ball-action
       if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
         return false; // Human controls this participant — discard bot action entirely
       }
@@ -6074,8 +6137,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         if (tacklePenaltyMult != null) {
           maxRange *= tacklePenaltyMult;
         }
-        // One-touch turn: movement scaled by ball speed (faster ball = less reaction time)
-        const oneTouchAction = allActions.find((act: any) => act.payload && typeof act.payload === 'object' && (act.payload as any).one_touch_executed);
+        // One-touch turn: movement scaled by ball speed (faster ball = less reaction time).
+        // ONLY applied to the participant actually executing the one-touch action (the intended
+        // receiver). Other teammates must be free to reposition at their full base range —
+        // otherwise a cross (pass_launch, ~30-70u flight) compounds with the interception
+        // penalty and teammates are stuck at ~0.4u, unable to reach the ball.
+        const oneTouchAction = allActions.find((act: any) =>
+          act.participant_id === a.participant_id &&
+          act.payload && typeof act.payload === 'object' && (act.payload as any).one_touch_executed,
+        );
         if (oneTouchAction) {
           const originType = (oneTouchAction.payload as any).origin_action_type || 'pass_low';
           const otSpeedFactor =

@@ -104,39 +104,56 @@ export function PlayerAvatar({
   const scale = heightScale(height);
   const isBack = variant === 'full-back';
 
-  // Back view crops out head + neck — viewBox starts at y=114 (shoulder line,
-  // ~28.5% from top of the full-body 0–400 canvas) so only the shirt and below
-  // render. Front view keeps the full 0 0 200 400 canvas.
+  // Back view crops out head + neck. Viewbox starts at y=114 so the shirt
+  // fills the container, AND a clipPath at y>=114 is applied AFTER the
+  // height-scale transform so that short players (scale<1, which pushes the
+  // head down) and long-haired players (whose hair back extends below y=114
+  // in source coords) never leak their head/hair into the cropped region.
+  // Without the post-scale clip, a "Muito Baixo" player's head bottom would
+  // land at y≈127 and be visible inside the 0:114:200:286 viewBox, and long
+  // hair would drape down to y≈146 in normal height — both bugs that the
+  // viewBox-swap alone could not catch.
   const viewBox = isBack ? '0 114 200 286' : '0 0 200 400';
+  const backCropId = `avBackCrop_${clipId}`;
 
   return (
     <div className={`relative ${className ?? ''}`}>
       <svg viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="w-full h-full" preserveAspectRatio="xMidYMax meet">
-        <g transform={`translate(100 400) scale(${scale}) translate(-100 -400)`}>
-          {isBack ? (
-            <BackBody
-              appearance={effective}
-              primary={primary}
-              secondary={secondary}
-              shirtText={shirtText}
-              playerName={playerName}
-              jerseyNumber={jerseyNumber}
-              crestUrl={clubCrestUrl}
-            />
-          ) : (
-            <FrontBody
-              faceDataUri={faceDataUri}
-              primary={primary}
-              secondary={secondary}
-              skinTone={effective.skinTone}
-              shirtText={shirtText}
-              crestUrl={clubCrestUrl}
-              jerseyNumber={jerseyNumber}
-              clipId={`avClip_${clipId}`}
-              hasLongHair={isLongHair(effective.hair)}
-              hasBigBeard={isBigBeard(effective.facialHair)}
-            />
-          )}
+        {isBack && (
+          <defs>
+            <clipPath id={backCropId}>
+              {/* In user-space (post-transform) coords: keep only y >= 114. */}
+              <rect x="0" y="114" width="200" height="286" />
+            </clipPath>
+          </defs>
+        )}
+        <g clipPath={isBack ? `url(#${backCropId})` : undefined}>
+          <g transform={`translate(100 400) scale(${scale}) translate(-100 -400)`}>
+            {isBack ? (
+              <BackBody
+                appearance={effective}
+                primary={primary}
+                secondary={secondary}
+                shirtText={shirtText}
+                playerName={playerName}
+                jerseyNumber={jerseyNumber}
+                crestUrl={clubCrestUrl}
+              />
+            ) : (
+              <FrontBody
+                faceDataUri={faceDataUri}
+                primary={primary}
+                secondary={secondary}
+                skinTone={effective.skinTone}
+                shirtText={shirtText}
+                crestUrl={clubCrestUrl}
+                jerseyNumber={jerseyNumber}
+                clipId={`avClip_${clipId}`}
+                hasLongHair={isLongHair(effective.hair)}
+                hasBigBeard={isBigBeard(effective.facialHair)}
+              />
+            )}
+          </g>
         </g>
       </svg>
     </div>

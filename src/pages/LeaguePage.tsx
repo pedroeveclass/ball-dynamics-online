@@ -4,9 +4,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
-import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft } from 'lucide-react';
+import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft, Clock } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
+import { formatBRTDateTime, formatBRTTimeOnly, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -92,9 +93,14 @@ const PRESET_COLORS = [
 ];
 
 export default function LeaguePage() {
-  const { user, managerProfile, club, refreshManagerProfile } = useAuth();
+  const { user, managerProfile, playerProfile, club, refreshManagerProfile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  // The viewer's next league fixture — used both for the "Próximo Jogo"
+  // highlight on the rounds list and to auto-scroll to that round.
+  const [nextMatch, setNextMatch] = useState<NextClubMatch | null>(null);
+  // Viewer's club ID: managers get it from `club`, players from their profile.
+  const viewerClubId = club?.id || playerProfile?.club_id || null;
   const [leagueName, setLeagueName] = useState('');
   const [seasonNumber, setSeasonNumber] = useState(0);
   const [standings, setStandings] = useState<Standing[]>([]);
@@ -127,6 +133,17 @@ export default function LeaguePage() {
     fetchLeagueData();
     if (isManagerWithoutClub) fetchAvailableClubs();
   }, [managerProfile, club]);
+
+  // Look up the viewer's next league match so we can highlight it
+  // inside the rounds list and optionally auto-select that round.
+  useEffect(() => {
+    let cancelled = false;
+    if (!viewerClubId) { setNextMatch(null); return; }
+    getNextClubMatch(viewerClubId).then(res => {
+      if (!cancelled) setNextMatch(res);
+    });
+    return () => { cancelled = true; };
+  }, [viewerClubId]);
 
   async function fetchLeagueData() {
     try {
@@ -594,29 +611,82 @@ export default function LeaguePage() {
 
           {/* Rodadas tab */}
           <TabsContent value="rounds" className="space-y-4">
+            {/* Próximo Jogo highlight — only shown when the viewer has
+                a club context AND there's a future fixture we could find. */}
+            {nextMatch && (
+              <div className="stat-card border-tactical/40 bg-tactical/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy className="h-4 w-4 text-tactical" />
+                  <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
+                    Próximo Jogo — Rodada {nextMatch.round_number}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <ClubCrest
+                      crestUrl={nextMatch.opponent_crest_url}
+                      primaryColor={nextMatch.opponent_primary_color}
+                      secondaryColor={nextMatch.opponent_secondary_color}
+                      shortName={nextMatch.opponent_short_name}
+                      className="h-7 w-7 rounded text-[9px] shrink-0"
+                    />
+                    <div>
+                      <p className="font-display font-bold text-sm">
+                        {nextMatch.is_home ? 'Casa' : 'Fora'} — vs {nextMatch.opponent_name}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {formatBRTDateTime(nextMatch.scheduled_at)}
+                      </div>
+                    </div>
+                  </div>
+                  {nextMatch.match_id ? (
+                    <Link
+                      to={`/match/${nextMatch.match_id}`}
+                      className="text-xs font-display font-bold text-pitch hover:text-pitch/80 transition-colors"
+                    >
+                      Entrar na Partida →
+                    </Link>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground italic">
+                      Link disponível 5 min antes do jogo
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Round selector */}
             <div className="overflow-x-auto pb-2" ref={roundsRef}>
               <div className="flex gap-2 min-w-max">
-                {rounds.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => setSelectedRound(r.id)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
-                      selectedRound === r.id
-                        ? 'bg-tactical text-white'
-                        : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                    }`}
-                  >
-                    Rodada {r.round_number}
-                  </button>
-                ))}
+                {rounds.map((r) => {
+                  // Mark the round that contains the viewer's next fixture
+                  // so it's visually distinguishable from the rest.
+                  const isViewerNext = !!nextMatch && r.round_number === nextMatch.round_number;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => setSelectedRound(r.id)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                        selectedRound === r.id
+                          ? 'bg-tactical text-white'
+                          : isViewerNext
+                          ? 'bg-tactical/20 text-tactical hover:bg-tactical/30'
+                          : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                      }`}
+                    >
+                      Rodada {r.round_number}
+                      {isViewerNext && selectedRound !== r.id && ' •'}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* Selected round details */}
             {activeRound && (
               <div className="stat-card space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="font-display font-semibold">
@@ -624,8 +694,10 @@ export default function LeaguePage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Show the São Paulo kickoff time (e.g. "Dom 20/04 21:00 BRT")
+                        so the viewer doesn't have to translate UTC. */}
                     <span className="text-sm text-muted-foreground">
-                      {new Date(activeRound.scheduled_at).toLocaleDateString('pt-BR')}
+                      {formatBRTDateTime(activeRound.scheduled_at)}
                     </span>
                     {getStatusBadge(activeRound.status)}
                   </div>
@@ -670,11 +742,21 @@ export default function LeaguePage() {
                               )}
                             </>
                           ) : lm.match_id ? (
-                            <Link to={`/match/${lm.match_id}`} className="text-muted-foreground text-sm hover:text-pitch transition-colors">
-                              Entrar
-                            </Link>
+                            <>
+                              <Link to={`/match/${lm.match_id}`} className="text-muted-foreground text-sm hover:text-pitch transition-colors">
+                                Entrar
+                              </Link>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                                {formatBRTTimeOnly(activeRound.scheduled_at)} BRT
+                              </span>
+                            </>
                           ) : (
-                            <span className="text-muted-foreground text-sm">vs</span>
+                            <>
+                              <span className="text-muted-foreground text-sm">vs</span>
+                              <span className="text-[10px] text-muted-foreground mt-0.5">
+                                {formatBRTTimeOnly(activeRound.scheduled_at)} BRT
+                              </span>
+                            </>
                           )}
                         </div>
 

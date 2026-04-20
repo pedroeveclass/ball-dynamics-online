@@ -17,7 +17,8 @@ import {
   getTrainingTierMultiplier,
 } from '@/lib/attributes';
 import type { Tables } from '@/integrations/supabase/types';
-import { Save, Trash2, Battery, Swords, Dumbbell } from 'lucide-react';
+import { Save, Trash2, Battery, Swords, Dumbbell, Trophy } from 'lucide-react';
+import { formatBRTTimeOnly, isoDowInSaoPaulo } from '@/lib/upcomingMatches';
 
 const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const SLOTS_PER_DAY = 4;
@@ -69,6 +70,16 @@ export default function PlayerTrainingPlanPage() {
 
   // Match days for this week — set of isoDayOfWeek values (0..6).
   const [matchDayDows, setMatchDayDows] = useState<Set<number>>(new Set());
+  // Detailed per-day fixture info (first match of the day, keyed by isoDayOfWeek)
+  // used to surface kickoff time + opponent inline on the planner.
+  interface DayMatchInfo {
+    scheduled_at: string;
+    opponent_name: string;
+    opponent_short_name: string;
+    is_home: boolean;
+    source: 'league' | 'friendly';
+  }
+  const [matchInfoByDow, setMatchInfoByDow] = useState<Record<number, DayMatchInfo>>({});
 
   // Determines the display date per column (the current Mon–Sun week).
   const weekStart = useMemo(() => startOfIsoWeek(new Date()), []);
@@ -157,25 +168,74 @@ export default function PlayerTrainingPlanPage() {
   };
 
   const loadMatches = async () => {
-    if (!playerProfile?.club_id) { setMatchDayDows(new Set()); return; }
+    if (!playerProfile?.club_id) { setMatchDayDows(new Set()); setMatchInfoByDow({}); return; }
     const clubId = playerProfile.club_id;
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
-    const { data } = await supabase
+    // 1) Materialized matches (friendlies + already-created league games).
+    const { data: materialized } = await supabase
       .from('matches')
-      .select('scheduled_at, home_club_id, away_club_id, status')
+      .select('scheduled_at, home_club_id, away_club_id, status, home_club:clubs!matches_home_club_id_fkey(name, short_name), away_club:clubs!matches_away_club_id_fkey(name, short_name)')
       .or(`home_club_id.eq.${clubId},away_club_id.eq.${clubId}`)
       .gte('scheduled_at', weekStart.toISOString())
       .lt('scheduled_at', weekEnd.toISOString())
       .in('status', ['scheduled', 'live']);
 
+    // 2) Upcoming league fixtures for this week — may not have a `matches`
+    //    row yet (created 5 min before kickoff). We pull these from
+    //    league_rounds/league_matches so the planner can still show
+    //    opponent + kickoff hour on the correct day column.
+    const { data: leagueRows } = await supabase
+      .from('league_matches')
+      .select(`
+        home_club_id,
+        away_club_id,
+        league_rounds!inner(scheduled_at),
+        home_club:clubs!league_matches_home_club_id_fkey(name, short_name),
+        away_club:clubs!league_matches_away_club_id_fkey(name, short_name)
+      `)
+      .or(`home_club_id.eq.${clubId},away_club_id.eq.${clubId}`)
+      .gte('league_rounds.scheduled_at', weekStart.toISOString())
+      .lt('league_rounds.scheduled_at', weekEnd.toISOString());
+
     const dows = new Set<number>();
-    for (const row of (data || [])) {
-      const at = new Date((row as any).scheduled_at);
-      dows.add(isoDayOfWeek(at));
+    const info: Record<number, DayMatchInfo> = {};
+
+    // Helper: pick the earliest match of the day to display.
+    const record = (scheduledAt: string, isHome: boolean, opponentName: string, opponentShort: string, source: 'league' | 'friendly') => {
+      const dow = isoDowInSaoPaulo(scheduledAt);
+      dows.add(dow);
+      const existing = info[dow];
+      if (!existing || new Date(scheduledAt).getTime() < new Date(existing.scheduled_at).getTime()) {
+        info[dow] = {
+          scheduled_at: scheduledAt,
+          opponent_name: opponentName,
+          opponent_short_name: opponentShort,
+          is_home: isHome,
+          source,
+        };
+      }
+    };
+
+    for (const row of (materialized || [])) {
+      const r = row as any;
+      const isHome = r.home_club_id === clubId;
+      const opp = isHome ? r.away_club : r.home_club;
+      record(r.scheduled_at, isHome, opp?.name ?? 'Adversário', opp?.short_name ?? '?', 'friendly');
     }
+
+    for (const row of (leagueRows || [])) {
+      const r = row as any;
+      const isHome = r.home_club_id === clubId;
+      const opp = isHome ? r.away_club : r.home_club;
+      const scheduledAt = r.league_rounds?.scheduled_at;
+      if (!scheduledAt) continue;
+      record(scheduledAt, isHome, opp?.name ?? 'Adversário', opp?.short_name ?? '?', 'league');
+    }
+
     setMatchDayDows(dows);
+    setMatchInfoByDow(info);
   };
 
   // ── Derived: set of attrs the player is allowed to plan (respects position + caps) ──
@@ -416,12 +476,30 @@ export default function PlayerTrainingPlanPage() {
                   </button>
                 </div>
 
-                {isMatchDay && (
-                  <div className="flex items-center gap-1.5 text-[11px] font-display font-bold px-2 py-1 rounded bg-destructive/15 text-destructive">
-                    <Swords className="h-3 w-3" />
-                    Dia de jogo — guarde energia!
-                  </div>
-                )}
+                {isMatchDay && (() => {
+                  // Show the kickoff hour + opponent inline so the player
+                  // can see which match is blocking their training. Works
+                  // for league fixtures whose `matches` row isn't created
+                  // yet (league_rounds.scheduled_at drives everything).
+                  const mi = matchInfoByDow[dayIdx];
+                  const isLeague = mi?.source === 'league';
+                  return (
+                    <div className="flex flex-col gap-1 px-2 py-1.5 rounded bg-destructive/15 text-destructive">
+                      <div className="flex items-center gap-1.5 text-[11px] font-display font-bold">
+                        {isLeague ? <Trophy className="h-3 w-3" /> : <Swords className="h-3 w-3" />}
+                        DIA DE JOGO{mi ? ` — ${formatBRTTimeOnly(mi.scheduled_at)} BRT` : ''}
+                      </div>
+                      {mi && (
+                        <div className="text-[10px] leading-tight">
+                          vs {mi.opponent_name} ({mi.is_home ? 'Casa' : 'Fora'})
+                        </div>
+                      )}
+                      <div className="text-[10px] leading-tight italic opacity-80">
+                        Guarde energia!
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Energy header */}
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
