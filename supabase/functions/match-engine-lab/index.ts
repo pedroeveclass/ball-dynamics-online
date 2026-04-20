@@ -354,6 +354,152 @@ async function persistLeagueMatchDiscipline(supabase: any, matchId: string, cach
   }
 }
 
+// ─── Per-player per-match stat aggregation ────────────────────────
+// Reads this match's match_event_logs, produces one player_match_stats row
+// per participant, and upserts by (match_id, participant_id). Called on
+// full-time, alongside persistLeagueMatchDiscipline.
+//
+// Ambiguity resolutions:
+//  - If a turn fires multiple events for the same actor (e.g. a pass that is
+//    intercepted then the interceptor fouls), each stat is counted at its
+//    own event: the passer gets `passes_attempted` + `pass_failed`, the
+//    interceptor gets `interceptions` (via possession_change cause=interception)
+//    AND `fouls_committed` (via the foul event's fouler_participant_id).
+//  - A successful tackle is counted via `tackle` event only (not also as an
+//    interception), so tackles and interceptions do not double-count.
+//  - `shots` = shot_missed + goal scored; `shots_on_target` currently only
+//    counts goals (saves are not credited to a specific shooter in the event
+//    payload yet — same as the backfill).
+async function persistMatchPlayerStats(
+  supabase: any,
+  matchId: string,
+  cachedParticipants: any[],
+  homeScore: number,
+  awayScore: number,
+  homeClubId: string,
+  awayClubId: string,
+): Promise<void> {
+  try {
+    // Load participants (prefer cached, fallback to DB).
+    let parts: any[] = (cachedParticipants || []).filter((p: any) =>
+      p.role_type === 'player' && p.player_profile_id
+    );
+    if (parts.length === 0) {
+      const { data: dbParts } = await supabase
+        .from('match_participants')
+        .select('id, club_id, player_profile_id, role_type, yellow_cards, is_sent_off')
+        .eq('match_id', matchId)
+        .eq('role_type', 'player')
+        .not('player_profile_id', 'is', null);
+      parts = (dbParts || []);
+    }
+    if (parts.length === 0) return;
+
+    // Season (league match only; null for friendlies).
+    let seasonId: string | null = null;
+    const { data: leagueMatch } = await supabase
+      .from('league_matches').select('round_id').eq('match_id', matchId).maybeSingle();
+    if (leagueMatch?.round_id) {
+      const { data: round } = await supabase
+        .from('league_rounds').select('season_id').eq('id', leagueMatch.round_id).maybeSingle();
+      seasonId = round?.season_id ?? null;
+    }
+
+    // Load position per player_profile.
+    const profileIds = [...new Set(parts.map((p: any) => p.player_profile_id).filter(Boolean))];
+    const positionByProfile = new Map<string, string | null>();
+    if (profileIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('player_profiles')
+        .select('id, primary_position')
+        .in('id', profileIds);
+      for (const pr of (profiles || [])) {
+        positionByProfile.set(pr.id, pr.primary_position ?? null);
+      }
+    }
+
+    // Load all events for this match once.
+    const { data: events } = await supabase
+      .from('match_event_logs')
+      .select('event_type, payload')
+      .eq('match_id', matchId);
+    const allEvents: any[] = events || [];
+
+    // Helper: count events where payload[key] == participantId.
+    const countBy = (eventType: string | string[], key: string, participantId: string, extra?: (p: any) => boolean): number => {
+      const types = Array.isArray(eventType) ? eventType : [eventType];
+      return allEvents.filter(e => types.includes(e.event_type)
+        && e.payload && typeof e.payload === 'object'
+        && (e.payload as any)[key] === participantId
+        && (!extra || extra(e.payload))
+      ).length;
+    };
+
+    const rows = parts.map((p: any) => {
+      const pid = p.id as string;
+      const position = positionByProfile.get(p.player_profile_id) ?? null;
+      const goals = countBy('goal', 'scorer_participant_id', pid);
+      const assists = countBy('goal', 'assister_participant_id', pid);
+      const shotsMissed = countBy('shot_missed', 'shooter_participant_id', pid);
+      const shots_on_target = goals; // only goals have a known shooter attribution today
+      const shots = shotsMissed + goals;
+      const passes_completed = countBy('pass_complete', 'passer_participant_id', pid);
+      const passes_failed = countBy('pass_failed', 'passer_participant_id', pid);
+      const passes_attempted = passes_completed + passes_failed;
+      const tackles = countBy('tackle', 'tackler_participant_id', pid);
+      const interceptions = countBy('possession_change', 'new_ball_holder_participant_id', pid,
+        (pl: any) => pl?.cause === 'interception');
+      const fouls_committed = countBy(['foul', 'penalty'], 'fouler_participant_id', pid);
+      const offsides = countBy('offside', 'caught_participant_id', pid);
+      const yellow_cards = countBy('yellow_card', 'player_participant_id', pid);
+      const red_cards = countBy('red_card', 'player_participant_id', pid);
+      const gk_saves = countBy('gk_save', 'gk_participant_id', pid);
+
+      // goals_conceded + clean_sheet from final score
+      const isHome = p.club_id === homeClubId;
+      const isAway = p.club_id === awayClubId;
+      const goals_conceded = isHome ? awayScore : isAway ? homeScore : 0;
+      const clean_sheet = (isHome && awayScore === 0) || (isAway && homeScore === 0);
+
+      return {
+        match_id: matchId,
+        participant_id: pid,
+        player_profile_id: p.player_profile_id,
+        club_id: p.club_id,
+        season_id: seasonId,
+        position,
+        minutes_played: 0,
+        goals,
+        assists,
+        shots,
+        shots_on_target,
+        passes_completed,
+        passes_attempted,
+        tackles,
+        interceptions,
+        fouls_committed,
+        offsides,
+        yellow_cards,
+        red_cards,
+        gk_saves,
+        gk_penalties_saved: 0,
+        goals_conceded,
+        clean_sheet,
+      };
+    });
+
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from('player_match_stats')
+        .upsert(rows, { onConflict: 'match_id,participant_id' });
+      if (error) console.error('[ENGINE] persistMatchPlayerStats upsert error:', error);
+    }
+    console.log(`[ENGINE] Persisted player_match_stats for match=${matchId.slice(0,8)} (${rows.length} rows)`);
+  } catch (e) {
+    console.error(`[ENGINE] Failed to persist player_match_stats for ${matchId}:`, e);
+  }
+}
+
 // ─── Match minute calculation (real-time clock) ─────────────
 function computeMatchMinute(match: any): number {
   if (!match.half_started_at) return 0;
@@ -6273,6 +6419,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               deflect_to_y: result.looseBallPos.y,
             },
           });
+
+          // ── pass_failed companion event (blocked pass) ──
+          {
+            const bhAct = ballHolderAction?.action_type;
+            if (bhAct && (isPassType(bhAct) || isHeaderPassType(bhAct))) {
+              eventsToLog.push({
+                match_id, event_type: 'pass_failed',
+                title: '❌ Passe bloqueado',
+                body: result.description,
+                payload: {
+                  passer_participant_id: ballHolder.id,
+                  passer_name: (ballHolder as any)?._player_name ?? null,
+                  intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
+                  failure_reason: 'blocked',
+                },
+              });
+            }
+          }
         } else if (result.newBallHolderId) {
           nextBallHolderParticipantId = result.newBallHolderId;
           newPossessionClubId = result.newPossessionClubId || possClubId;
@@ -6294,6 +6458,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               resolvedPayload.new_ball_holder_name = (newHolder as any)?._player_name ?? null;
               resolvedPayload.previous_ball_holder_participant_id = ballHolder.id;
               resolvedPayload.previous_ball_holder_name = (ballHolder as any)?._player_name ?? null;
+              // Cause: if the ball holder was passing and lost it here, it's an interception.
+              // Otherwise (move → intercepted on the carry), it's a bad touch.
+              const bhActForCause = ballHolderAction?.action_type;
+              const wasPass = bhActForCause && (isPassType(bhActForCause) || isHeaderPassType(bhActForCause));
+              resolvedPayload.cause = wasPass ? 'interception' : 'bad_touch';
             } else {
               // pass_complete
               resolvedPayload.passer_participant_id = ballHolder.id;
@@ -6307,6 +6476,29 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               body: result.description,
               payload: resolvedPayload,
             });
+
+            // ── pass_failed companion event ──
+            // When the resolved ball-holder action was a pass and it did NOT end up as a
+            // pass_complete, emit a pass_failed event so pass accuracy per passer can be
+            // tracked. Failure reasons covered here: intercepted (opponent), or receive_failed
+            // (ball ended as a teammate dominating in possession_change path).
+            const bhAct = ballHolderAction?.action_type;
+            if (bhAct && (isPassType(bhAct) || isHeaderPassType(bhAct)) && resolvedEventType !== 'pass_complete') {
+              let failureReason: string = 'intercepted';
+              if (resolvedEventType === 'tackle') failureReason = 'intercepted';
+              else if (resolvedEventType === 'possession_change') failureReason = 'intercepted';
+              eventsToLog.push({
+                match_id, event_type: 'pass_failed',
+                title: '❌ Passe falhou',
+                body: result.description,
+                payload: {
+                  passer_participant_id: ballHolder.id,
+                  passer_name: (ballHolder as any)?._player_name ?? null,
+                  intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
+                  failure_reason: failureReason,
+                },
+              });
+            }
           }
         } else if (result.foul && result.foulPosition) {
           // Check if foul is inside penalty area
@@ -6495,6 +6687,19 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const looseDest = { x: Number(ballHolderAction.target_x ?? 50), y: Number(ballHolderAction.target_y ?? 50) };
             ballEndPos = looseDest;
             eventsToLog.push({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: `Ninguém dominou a bola.`, payload: { x: looseDest.x, y: looseDest.y } });
+
+            // ── pass_failed companion event (nobody received) ──
+            eventsToLog.push({
+              match_id, event_type: 'pass_failed',
+              title: '❌ Passe não recebido',
+              body: 'Ninguém dominou a bola.',
+              payload: {
+                passer_participant_id: ballHolder.id,
+                passer_name: (ballHolder as any)?._player_name ?? null,
+                intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
+                failure_reason: 'receive_failed',
+              },
+            });
           }
         } else if (ballHolderAction.action_type === 'move') {
           nextBallHolderParticipantId = ballHolder.id;
@@ -6539,6 +6744,19 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 passer_name: (ballHolder as any)?._player_name ?? null,
               },
             });
+
+            // ── pass_failed companion event (offside) ──
+            eventsToLog.push({
+              match_id, event_type: 'pass_failed',
+              title: '❌ Passe em impedimento',
+              body: 'Passe para jogador em posição irregular.',
+              payload: {
+                passer_participant_id: ballHolder.id,
+                passer_name: (ballHolder as any)?._player_name ?? null,
+                intended_receiver_participant_id: receiver.id,
+                failure_reason: 'offside',
+              },
+            });
           }
         }
       }
@@ -6569,11 +6787,19 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         nextBallHolderParticipantId = looseBallClaimer.id;
         newPossessionClubId = looseBallClaimer.club_id;
 
+        const lbcIsOpponent = looseBallClaimer.club_id !== possClubId;
         eventsToLog.push({
           match_id,
-          event_type: looseBallClaimer.club_id === possClubId ? 'loose_ball_recovered' : 'possession_change',
-          title: looseBallClaimer.club_id === possClubId ? '🤲 Bola recuperada!' : '🔄 Bola roubada!',
+          event_type: lbcIsOpponent ? 'possession_change' : 'loose_ball_recovered',
+          title: lbcIsOpponent ? '🔄 Bola roubada!' : '🤲 Bola recuperada!',
           body: 'Quem chegou primeiro na bola solta ficou com a posse.',
+          payload: lbcIsOpponent
+            ? {
+                new_ball_holder_participant_id: looseBallClaimer.id,
+                new_ball_holder_name: (looseBallClaimer as any)?._player_name ?? null,
+                cause: 'other',
+              }
+            : undefined,
         });
       } else {
         nextBallHolderParticipantId = null;
@@ -7348,6 +7574,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       // ── Persist cards into player_discipline + create suspensions (LEAGUE only) ──
       await persistLeagueMatchDiscipline(supabase, match_id, participants || []);
 
+      // ── Persist per-player per-match stat aggregates (league + friendlies) ──
+      await persistMatchPlayerStats(
+        supabase,
+        match_id,
+        participants || [],
+        homeScore,
+        awayScore,
+        match.home_club_id,
+        match.away_club_id,
+      );
+
       // ── Notify all human players and managers about match result ──
       try {
         const { data: homeClubData } = await supabase.from('clubs').select('name, manager_profile_id').eq('id', match.home_club_id).maybeSingle();
@@ -7925,6 +8162,17 @@ Deno.serve(async (req) => {
 
       // ── Persist cards into player_discipline + create suspensions (LEAGUE only) ──
       await persistLeagueMatchDiscipline(supabase, match_id, []);
+
+      // ── Persist per-player per-match stat aggregates ──
+      await persistMatchPlayerStats(
+        supabase,
+        match_id,
+        [],
+        Number(match.home_score ?? 0),
+        Number(match.away_score ?? 0),
+        match.home_club_id,
+        match.away_club_id,
+      );
 
       // ── Update league standings inline ──
       try {

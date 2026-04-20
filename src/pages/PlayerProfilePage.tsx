@@ -18,12 +18,13 @@ import {
 } from '@/components/ui/select';
 import {
   User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
-  ShieldAlert, Goal, Loader2, AlertTriangle, TrendingUp, Calendar,
+  ShieldAlert, Loader2, AlertTriangle, TrendingUp, Calendar,
   Repeat, Plus, UserCircle, Copy, Trash2,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { positionToPT } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
+import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 
 // ── Attribute category definitions (same keys as PublicClubPage) ──
 
@@ -98,16 +99,6 @@ function ovrColor(ovr: number) {
   return 'text-destructive';
 }
 
-// ── Career stats type ──
-
-interface CareerStats {
-  matches: number;
-  goals: number;
-  assists: number;
-  yellowCards: number;
-  redCards: number;
-}
-
 interface TrainingRecord {
   id: string;
   attribute_key: string;
@@ -139,8 +130,6 @@ export default function PlayerProfilePage() {
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
-  const [stats, setStats] = useState<CareerStats>({ matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
-  const [statsLoading, setStatsLoading] = useState(true);
   const [trainingHistory, setTrainingHistory] = useState<TrainingRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
 
@@ -195,61 +184,6 @@ export default function PlayerProfilePage() {
         .maybeSingle();
       setAttrs(data);
       setAttrsLoading(false);
-    })();
-  }, [p?.id]);
-
-  // ── Fetch career stats ──
-  useEffect(() => {
-    if (!p) return;
-    setStatsLoading(true);
-    (async () => {
-      try {
-        // 1. Get all match_participants for this player
-        const { data: participants } = await supabase
-          .from('match_participants')
-          .select('id, match_id')
-          .eq('player_profile_id', p.id);
-
-        if (!participants || participants.length === 0) {
-          setStats({ matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
-          setStatsLoading(false);
-          return;
-        }
-
-        const participantIds = new Set(participants.map(mp => mp.id));
-        const matchIds = [...new Set(participants.map(mp => mp.match_id))];
-        const matchCount = matchIds.length;
-
-        // 2. Fetch events for those matches (goals + cards)
-        const { data: events } = await supabase
-          .from('match_event_logs')
-          .select('event_type, payload')
-          .in('match_id', matchIds)
-          .in('event_type', ['goal', 'yellow_card', 'red_card']);
-
-        const allEvents = events || [];
-
-        const goals = allEvents.filter(
-          e => e.event_type === 'goal' && participantIds.has((e.payload as any)?.scorer_participant_id)
-        ).length;
-
-        const assists = allEvents.filter(
-          e => e.event_type === 'goal' && participantIds.has((e.payload as any)?.assister_participant_id)
-        ).length;
-
-        const yellowCards = allEvents.filter(
-          e => e.event_type === 'yellow_card' && participantIds.has((e.payload as any)?.player_participant_id)
-        ).length;
-
-        const redCards = allEvents.filter(
-          e => e.event_type === 'red_card' && participantIds.has((e.payload as any)?.player_participant_id)
-        ).length;
-
-        setStats({ matches: matchCount, goals, assists, yellowCards, redCards });
-      } catch {
-        // silently fail
-      }
-      setStatsLoading(false);
     })();
   }, [p?.id]);
 
@@ -604,25 +538,8 @@ export default function PlayerProfilePage() {
           </div>
         )}
 
-        {/* ── Career Statistics ── */}
-        <div className="stat-card space-y-3">
-          <h2 className="font-display font-semibold text-sm flex items-center gap-2">
-            <Goal className="h-4 w-4 text-tactical" /> Estatísticas de Carreira
-          </h2>
-          {statsLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <StatCard label="Partidas" value={stats.matches} icon={<Shield className="h-4 w-4" />} />
-              <StatCard label="Gols" value={stats.goals} icon={<Goal className="h-4 w-4" />} color="text-pitch" />
-              <StatCard label="Assistências" value={stats.assists} icon={<TrendingUp className="h-4 w-4" />} color="text-blue-400" />
-              <StatCard label="Amarelos" value={stats.yellowCards} icon={<div className="w-3 h-4 rounded-sm bg-yellow-400" />} color="text-yellow-500" />
-              <StatCard label="Vermelhos" value={stats.redCards} icon={<div className="w-3 h-4 rounded-sm bg-red-500" />} color="text-destructive" />
-            </div>
-          )}
-        </div>
+        {/* ── Career Statistics (position-specific block) ── */}
+        <CareerStatsBlock playerProfileId={p.id} position={p.primary_position} />
 
         {/* ── Attribute Overview ── */}
         <div className="stat-card space-y-3">
@@ -1005,16 +922,3 @@ export default function PlayerProfilePage() {
   );
 }
 
-// ── Small stat card component ──
-
-function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color?: string }) {
-  return (
-    <div className="bg-muted/30 rounded-lg p-3 text-center space-y-1">
-      <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
-        {icon}
-        <span className="text-[10px] uppercase tracking-wider">{label}</span>
-      </div>
-      <p className={`font-display text-2xl font-extrabold ${color || ''}`}>{value}</p>
-    </div>
-  );
-}
