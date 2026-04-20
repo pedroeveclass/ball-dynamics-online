@@ -14,6 +14,7 @@ import {
   ShieldAlert, Goal, Loader2, ArrowLeft, UserPlus, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 
 interface AttrRow { label: string; key: string }
 
@@ -268,6 +269,9 @@ export default function PublicPlayerPage() {
             </div>
           </div>
         )}
+
+        {/* Career Statistics (position-specific block) */}
+        <CareerStatsBlock playerProfileId={player.id} position={player.primary_position} />
 
         {/* Attributes */}
         {attrs && (
