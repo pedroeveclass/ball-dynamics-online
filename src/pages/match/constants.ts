@@ -33,6 +33,27 @@ export const ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK =
 export const INTERCEPT_RADIUS = 0.6; // visual zone shown to player (more restrictive than engine's 1.0)
 export const GOAL_LINE_OVERFLOW_PCT = 0.12; // makes the shot arrow/ball slightly cross the goal line
 
+// ─── Goal mouth (vertical/Y-axis span in field percent, 0..100) ─────
+// Goal was originally 24 units (38..62); shrunk 25% to 18 units (41..59).
+// MUST match the engine constants in supabase/functions/match-engine-lab/index.ts.
+export const GOAL_Y_CENTER = 50;
+export const GOAL_HALF_WIDTH = 9;
+export const GOAL_Y_MIN = GOAL_Y_CENTER - GOAL_HALF_WIDTH; // 41
+export const GOAL_Y_MAX = GOAL_Y_CENTER + GOAL_HALF_WIDTH; // 59
+
+// ─── Goal rendering fractions for PitchSVG (fraction of INNER_H) ────
+// Top of goal = GOAL_Y_MIN/100 = 0.41. Height = (GOAL_Y_MAX - GOAL_Y_MIN)/100 = 0.18.
+export const GOAL_MOUTH_FRACTION_TOP = GOAL_Y_MIN / 100;    // 0.41
+export const GOAL_MOUTH_FRACTION_HEIGHT = (GOAL_Y_MAX - GOAL_Y_MIN) / 100; // 0.18
+
+// ─── Set-piece exclusion zone radius (field percent) ─────────────────
+// Engine uses 10 units for throw-in, corner, and free-kick exclusion.
+export const SET_PIECE_EXCLUSION_RADIUS = 10;
+
+// ─── Penalty spot (distance from each goal line, in field percent) ──
+// Standard 11m from goal line on a 100-unit-long field ≈ 13%.
+export const PENALTY_SPOT_DIST_PCT = 13;
+
 export const ACTION_PHASE_ORDER: Record<string, number> = {
   positioning_attack: -2,
   positioning_defense: -1,

@@ -603,18 +603,24 @@ export default function MatchReplayPage() {
                 <path d={`M ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 0 ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.62}`} />
               </g>
 
-              {/* Goals */}
+              {/* Penalty spots (11m from each goal line) */}
+              <g fill="rgba(255,255,255,0.6)">
+                <circle cx={PAD + INNER_W * 0.13} cy={PAD + INNER_H / 2} r={3} />
+                <circle cx={PAD + INNER_W - INNER_W * 0.13} cy={PAD + INNER_H / 2} r={3} />
+              </g>
+
+              {/* Goals (25% smaller: y 0.41..0.59, height 0.18) */}
               <g stroke="rgba(255,255,255,0.7)" strokeWidth="2" fill="rgba(255,255,255,0.08)">
-                <rect x={PAD - 8} y={PAD + INNER_H * 0.38} width={10} height={INNER_H * 0.24} rx="1" />
-                <rect x={PAD + INNER_W - 2} y={PAD + INNER_H * 0.38} width={10} height={INNER_H * 0.24} rx="1" />
+                <rect x={PAD - 8} y={PAD + INNER_H * 0.41} width={10} height={INNER_H * 0.18} rx="1" />
+                <rect x={PAD + INNER_W - 2} y={PAD + INNER_H * 0.41} width={10} height={INNER_H * 0.18} rx="1" />
               </g>
 
               {/* Goal nets */}
               <g stroke="rgba(255,255,255,0.15)" strokeWidth="0.5">
                 {[0, 1, 2, 3].map(i => (
                   <g key={`net-${i}`}>
-                    <line x1={PAD - 8 + i * 3} y1={PAD + INNER_H * 0.38} x2={PAD - 8 + i * 3} y2={PAD + INNER_H * 0.62} />
-                    <line x1={PAD + INNER_W - 2 + i * 3} y1={PAD + INNER_H * 0.38} x2={PAD + INNER_W - 2 + i * 3} y2={PAD + INNER_H * 0.62} />
+                    <line x1={PAD - 8 + i * 3} y1={PAD + INNER_H * 0.41} x2={PAD - 8 + i * 3} y2={PAD + INNER_H * 0.59} />
+                    <line x1={PAD + INNER_W - 2 + i * 3} y1={PAD + INNER_H * 0.41} x2={PAD + INNER_W - 2 + i * 3} y2={PAD + INNER_H * 0.59} />
                   </g>
                 ))}
               </g>

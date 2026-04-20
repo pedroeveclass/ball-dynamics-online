@@ -7,6 +7,16 @@ export const PAD = 20;
 export const INNER_W = FIELD_W - PAD * 2;
 export const INNER_H = FIELD_H - PAD * 2;
 
+// ─── Goal mouth (fraction of INNER_H) ────────────────────────────────
+// Goal was 0.38..0.62 (height 0.24); shrunk 25% → 0.41..0.59 (height 0.18).
+// MUST match GOAL_Y_MIN/GOAL_Y_MAX in src/pages/match/constants.ts and the engine.
+export const GOAL_MOUTH_FRACTION_TOP = 0.41;
+export const GOAL_MOUTH_FRACTION_HEIGHT = 0.18;
+
+// ─── Penalty spot distance (fraction of INNER_W from each goal line) ─
+// Standard 11m on a 100-unit-long field ≈ 13%.
+export const PENALTY_SPOT_FRACTION = 0.13;
+
 // ─── Types ───────────────────────────────────────────────────────────
 export interface StadiumStyle {
   pitch_pattern: string;
@@ -192,6 +202,21 @@ function renderNetPattern(netPattern: string): React.ReactNode {
   );
 }
 
+// ─── Penalty spots ───────────────────────────────────────────────────
+// Mirrors the center-spot treatment on the field lines group (filled white circle,
+// same radius). Drawn as a small solid circle at 11m from each goal line.
+function renderPenaltySpots(): React.ReactNode {
+  const leftX = PAD + INNER_W * PENALTY_SPOT_FRACTION;
+  const rightX = PAD + INNER_W - INNER_W * PENALTY_SPOT_FRACTION;
+  const y = PAD + INNER_H / 2;
+  return (
+    <g>
+      <circle cx={leftX} cy={y} r={3} fill="rgba(255,255,255,0.6)" />
+      <circle cx={rightX} cy={y} r={3} fill="rgba(255,255,255,0.6)" />
+    </g>
+  );
+}
+
 // ─── Corner flags ────────────────────────────────────────────────────
 function renderCornerFlags(): React.ReactNode {
   const corners = [
@@ -228,9 +253,9 @@ function renderCornerFlags(): React.ReactNode {
 
 // ─── Goal nets rendering (top-down 3D perspective) ───────────────────
 function renderGoals(netStyle: string): React.ReactNode {
-  // Goal mouth position on the field line
-  const goalMouthTop = PAD + INNER_H * 0.38;
-  const goalMouthH = INNER_H * 0.24;
+  // Goal mouth position on the field line (25% smaller than original)
+  const goalMouthTop = PAD + INNER_H * GOAL_MOUTH_FRACTION_TOP;
+  const goalMouthH = INNER_H * GOAL_MOUTH_FRACTION_HEIGHT;
   const netDepth = 22; // how far the net extends behind the goal line
   const postWidth = 2.5;
 
@@ -426,6 +451,9 @@ export function PitchSVG({
         <rect x={PAD + INNER_W - INNER_W * 0.06 - 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
         <path d={`M ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 0 ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.62}`} />
       </g>
+
+      {/* Penalty spots (11m from each goal line) */}
+      {renderPenaltySpots()}
 
       {/* Goals with net pattern */}
       {renderGoals(s.net_style)}

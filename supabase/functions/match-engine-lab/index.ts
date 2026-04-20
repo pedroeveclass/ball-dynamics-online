@@ -19,6 +19,16 @@ const HALFTIME_DURATION_MS = 5 * 60 * 1000;    // 5 min halftime break
 const MAX_INJURY_TIME_TURNS = 3;               // 1-3 extra turns after time is up
 const MAX_TURNS_SAFETY = 200;                  // absolute safety cap to prevent infinite games
 
+// ─── Goal mouth constants (source of truth for goal width) ──
+// Field Y is 0..100 (full width axis), goal is centered at 50.
+// Goal was originally 24 units wide (38..62); shrunk 25% to 18 units (41..59).
+// Each post moved inward by 3 units (12.5% of the original 24).
+// MUST match PitchSVG.tsx (GOAL_MOUTH_FRACTION_TOP / GOAL_MOUTH_FRACTION_HEIGHT).
+const GOAL_Y_CENTER = 50;
+const GOAL_HALF_WIDTH = 9;                     // half of 18 (25% smaller than original 24)
+const GOAL_Y_MIN = GOAL_Y_CENTER - GOAL_HALF_WIDTH; // 41
+const GOAL_Y_MAX = GOAL_Y_CENTER + GOAL_HALF_WIDTH; // 59
+
 // ─── Positional penalty: attribute multiplier for out-of-position players ──
 // Mirror of src/lib/positions.ts (inline because edge functions can't import).
 const POSITION_GROUP: Record<string, number> = {
@@ -1899,7 +1909,7 @@ async function generateBotActions(
     // ── Ball Holder Decision ──
     if (isBH && phase === 'ball_holder') {
       const goalX = isHome ? 100 : 0;
-      const goalY = 40 + Math.random() * 20;
+      const goalY = GOAL_Y_MIN + Math.random() * (GOAL_Y_MAX - GOAL_Y_MIN);
       const distToGoal = Math.sqrt((posX - goalX) ** 2 + (posY - 50) ** 2);
 
       // ── Dead ball (kickoff, free kick, etc): BH MUST pass, never move ──
@@ -2775,7 +2785,7 @@ function computeDeviation(
     // Determine shot outcome (only for power shots; controlled shots don't go "over")
     const isPowerShot = actionType === 'shoot_power' || actionType === 'header_power';
     if (isPowerShot) {
-      const landedInGoal = actualY >= 38 && actualY <= 62;
+      const landedInGoal = actualY >= GOAL_Y_MIN && actualY <= GOAL_Y_MAX;
       if (landedInGoal) {
         shotOutcome = 'on_target';
       } else {
@@ -6173,7 +6183,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           // Check if the shot is actually on target
           const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
           const shotTargetY = Number(ballHolderAction.target_y ?? 50);
-          const isOnTarget = shotTargetY >= 38 && shotTargetY <= 62 && !isOverGoal;
+          const isOnTarget = shotTargetY >= GOAL_Y_MIN && shotTargetY <= GOAL_Y_MAX && !isOverGoal;
 
           if (isOnTarget) {
             if (possClubId === match.home_club_id) homeScore++;
@@ -6687,8 +6697,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // still carry it across the goal line (rebound goal). Credit the original
         // shooter and treat it as a normal goal so the match doesn't end up with the
         // ball "inside" the goal waiting to be picked up.
-        const crossedLeftGoal = inertiaBallX <= 0.5 && inertiaBallY >= 38 && inertiaBallY <= 62;
-        const crossedRightGoal = inertiaBallX >= 99.5 && inertiaBallY >= 38 && inertiaBallY <= 62;
+        const crossedLeftGoal = inertiaBallX <= 0.5 && inertiaBallY >= GOAL_Y_MIN && inertiaBallY <= GOAL_Y_MAX;
+        const crossedRightGoal = inertiaBallX >= 99.5 && inertiaBallY >= GOAL_Y_MIN && inertiaBallY <= GOAL_Y_MAX;
         let scoredOnRebound = false;
         if ((crossedLeftGoal || crossedRightGoal) && deflectShooter) {
           // Confirm the goal is on the side the shooter was attacking (sanity check
@@ -6825,7 +6835,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
 
-      const trajectoryInGoal = crossingY !== null && crossingY >= 38 && crossingY <= 62;
+      const trajectoryInGoal = crossingY !== null && crossingY >= GOAL_Y_MIN && crossingY <= GOAL_Y_MAX;
       const inHomeGoal = crossingSide === 'home' && trajectoryInGoal;
       const inAwayGoal = crossingSide === 'away' && trajectoryInGoal;
 
@@ -6897,8 +6907,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (bhMoveAct?.target_x != null && bhMoveAct?.target_y != null) {
         const moveEndX = Number(bhMoveAct.target_x);
         const moveEndY = Number(bhMoveAct.target_y);
-        const inHomeGoal = moveEndX <= 2 && moveEndY >= 38 && moveEndY <= 62;
-        const inAwayGoal = moveEndX >= 98 && moveEndY >= 38 && moveEndY <= 62;
+        const inHomeGoal = moveEndX <= 2 && moveEndY >= GOAL_Y_MIN && moveEndY <= GOAL_Y_MAX;
+        const inAwayGoal = moveEndX >= 98 && moveEndY >= GOAL_Y_MIN && moveEndY <= GOAL_Y_MAX;
         if (inHomeGoal || inAwayGoal) {
           const isSecondHalfGoal2 = (match.current_half ?? 1) >= 2;
           const rightScorer2 = isSecondHalfGoal2 ? 'away' : 'home';

@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState } from './match/types';
-import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor } from './match/constants';
+import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, GOAL_Y_MIN, GOAL_Y_MAX, SET_PIECE_EXCLUSION_RADIUS, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
@@ -2368,7 +2368,7 @@ export default function MatchRoomPage() {
           ? (() => { const s = participants.find(p => p.id === drawingAction.fromParticipantId); return s ? getShootTarget(s).x : pctX; })()
           : pctX,
         next_target_y: isAnyShootAction(drawingAction.type)
-          ? clamp(pctY, 38, 62)
+          ? clamp(pctY, GOAL_Y_MIN, GOAL_Y_MAX)
           : pctY,
         next_target_participant_id: nearPlayer?.id || null,
       };
@@ -2381,7 +2381,7 @@ export default function MatchRoomPage() {
       const shooter = participants.find(p => p.id === drawingAction.fromParticipantId);
       if (!shooter) return;
       const goalTarget = getShootTarget(shooter);
-      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, 38, 62));
+      submitAction(drawingAction.type, drawingAction.fromParticipantId, goalTarget.x, clamp(pctY, GOAL_Y_MIN, GOAL_Y_MAX));
     } else if (isAnyPassAction(drawingAction.type)) {
       // Apply pass distance clamping
       const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
@@ -4396,6 +4396,28 @@ export default function MatchRoomPage() {
                 );
               })()}
 
+              {/* ── Throw-in / corner / goal-kick exclusion zone ──
+                  Defending players must stay outside this circle (engine enforces
+                  10 field-units around the ball; see SET_PIECE_EXCLUSION_RADIUS). */}
+              {isPositioningTurn
+                && (activeTurn?.set_piece_type === 'throw_in'
+                  || activeTurn?.set_piece_type === 'corner'
+                  || activeTurn?.set_piece_type === 'goal_kick') && (() => {
+                const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+                if (!bh || bh.field_x == null || bh.field_y == null) return null;
+                const ballSvg = toSVG(bh.field_x, bh.field_y);
+                const exclusionRadiusSvg = (SET_PIECE_EXCLUSION_RADIUS / 100) * INNER_W;
+                return (
+                  <circle
+                    cx={ballSvg.x} cy={ballSvg.y} r={exclusionRadiusSvg}
+                    fill="rgba(239,68,68,0.06)"
+                    stroke="rgba(239,68,68,0.4)"
+                    strokeWidth="1.5"
+                    strokeDasharray="6,4"
+                  />
+                );
+              })()}
+
               {/* ── Loose ball intercept zone (circle around loose ball) ── */}
               {isLooseBall && looseBallPos && !animating &&
                 (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
@@ -4666,7 +4688,7 @@ export default function MatchRoomPage() {
                   if (isAnyShootAction(drawingAction.type)) {
                     const goalTarget = getShootTarget(drawingFrom);
                     targetFieldX = goalTarget.x;
-                    targetFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
+                    targetFieldY = Math.max(GOAL_Y_MIN, Math.min(GOAL_Y_MAX, mouseFieldPct.y));
                   } else {
                     targetFieldX = mouseFieldPct.x;
                     targetFieldY = mouseFieldPct.y;
@@ -4705,7 +4727,7 @@ export default function MatchRoomPage() {
                 if (isAnyShootAction(drawingAction.type)) {
                   const goalTarget = getShootTarget(drawingFrom);
                   toFieldX = goalTarget.x;
-                  toFieldY = Math.max(38, Math.min(62, mouseFieldPct.y));
+                  toFieldY = Math.max(GOAL_Y_MIN, Math.min(GOAL_Y_MAX, mouseFieldPct.y));
                   to = toSVG(toFieldX, toFieldY);
                 } else {
                   toFieldX = mouseFieldPct.x;
