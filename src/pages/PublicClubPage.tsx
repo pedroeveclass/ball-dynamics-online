@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
 import { seededAppearance } from '@/lib/avatar';
+import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 import {
   Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus, Bot, User,
 } from 'lucide-react';
@@ -133,7 +134,7 @@ export default function PublicClubPage() {
   const [standing, setStanding] = useState<any>(null);
   const [squad, setSquad] = useState<any[]>([]);
   const [recentResults, setRecentResults] = useState<any[]>([]);
-  const [nextMatch, setNextMatch] = useState<any>(null);
+  const [nextMatch, setNextMatch] = useState<NextClubMatch | null>(null);
   const [teamOverall, setTeamOverall] = useState<number | null>(null);
 
   // Player detail dialog
@@ -264,25 +265,10 @@ export default function PublicClubPage() {
       setRecentResults([]);
     }
 
-    // Next match
-    const { data: nextMatches } = await supabase
-      .from('matches')
-      .select('id, home_club_id, away_club_id, scheduled_at, status')
-      .or(`home_club_id.eq.${id},away_club_id.eq.${id}`)
-      .eq('status', 'scheduled')
-      .order('scheduled_at', { ascending: true })
-      .limit(1);
-
-    if (nextMatches && nextMatches.length > 0) {
-      const nm = nextMatches[0];
-      const oppId = nm.home_club_id === id ? nm.away_club_id : nm.home_club_id;
-      const { data: oppClub } = await supabase
-        .from('clubs')
-        .select('name, short_name, primary_color, secondary_color, crest_url')
-        .eq('id', oppId)
-        .maybeSingle();
-      setNextMatch({ ...nm, opponent: oppClub, isHome: nm.home_club_id === id });
-    }
+    // Next league fixture — uses league_matches + league_rounds (publicly
+    // readable), since the `matches` row isn't materialized until ~5 min
+    // before kickoff.
+    setNextMatch(await getNextClubMatch(id));
 
     setLoading(false);
   }
@@ -414,27 +400,29 @@ export default function PublicClubPage() {
             </div>
           </div>
 
-          {/* Manager avatar — prominent right-side block */}
+          {/* Manager avatar — prominent right-side block (full body) */}
           <div className="shrink-0 flex flex-col items-center text-center">
             {clubData.is_bot_managed ? (
               <>
-                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
-                  <Bot className="h-7 w-7 text-muted-foreground" />
+                <div className="w-20 h-40 flex items-center justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
+                  <Bot className="h-9 w-9 text-muted-foreground" />
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1.5">Sem Treinador</p>
               </>
             ) : manager ? (
               <>
-                <PlayerAvatar
-                  appearance={manager.appearance ?? seededAppearance(manager.id || manager.full_name || 'mgr')}
-                  variant="face"
-                  clubPrimaryColor={clubData.primary_color}
-                  clubSecondaryColor={clubData.secondary_color}
-                  playerName={manager.full_name}
-                  className="h-16 w-16 shrink-0"
-                  fallbackSeed={manager.id || manager.full_name || 'mgr'}
-                  outfit="coach"
-                />
+                <div className="w-20 h-40 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg overflow-hidden">
+                  <PlayerAvatar
+                    appearance={manager.appearance ?? seededAppearance(manager.id || manager.full_name || 'mgr')}
+                    variant="full-front"
+                    clubPrimaryColor={clubData.primary_color}
+                    clubSecondaryColor={clubData.secondary_color}
+                    playerName={manager.full_name}
+                    className="w-full h-full"
+                    fallbackSeed={manager.id || manager.full_name || 'mgr'}
+                    outfit="coach"
+                  />
+                </div>
                 <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
                 <p className="text-xs font-semibold max-w-[120px] truncate">{manager.full_name}</p>
               </>
@@ -506,31 +494,29 @@ export default function PublicClubPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Next match */}
           <div className="stat-card space-y-3">
-            <h3 className="font-display font-semibold text-sm">Próximo Jogo</h3>
+            <h3 className="font-display font-semibold text-sm">
+              Próximo Jogo {nextMatch && <span className="text-xs font-normal text-muted-foreground">— Rodada {nextMatch.round_number}</span>}
+            </h3>
             {nextMatch ? (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-bold">
-                      {nextMatch.isHome ? 'Casa' : 'Fora'} vs {nextMatch.opponent?.name || 'TBD'}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate">
+                      {nextMatch.is_home ? 'Casa' : 'Fora'} vs {nextMatch.opponent_name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(nextMatch.scheduled_at).toLocaleDateString('pt-BR', {
-                        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                      })}
+                      {formatBRTDateTime(nextMatch.scheduled_at)}
                     </p>
                   </div>
                 </div>
-                {nextMatch.opponent && (
-                  <ClubCrest
-                    crestUrl={nextMatch.opponent.crest_url}
-                    primaryColor={nextMatch.opponent.primary_color}
-                    secondaryColor={nextMatch.opponent.secondary_color}
-                    shortName={nextMatch.opponent.short_name}
-                    className="w-8 h-8 rounded text-[8px]"
-                  />
-                )}
+                <ClubCrest
+                  crestUrl={nextMatch.opponent_crest_url}
+                  primaryColor={nextMatch.opponent_primary_color}
+                  secondaryColor={nextMatch.opponent_secondary_color}
+                  shortName={nextMatch.opponent_short_name}
+                  className="w-8 h-8 rounded text-[8px] shrink-0"
+                />
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">Nenhum jogo agendado.</p>
