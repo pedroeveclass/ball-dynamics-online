@@ -3458,6 +3458,11 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   blocker_participant_id?: string;
   blocker_club_id?: string;
   block_chance?: string;
+  // Progress (0..1) along the BH trajectory at which the play was interrupted by
+  // a successful interception/tackle/block/save/foul. Absent when play completed
+  // (dribble success, pass_complete, goal, loose ball). Used by the movement loop
+  // to clamp everyone's moves to the point where the turn effectively stopped.
+  interruptProgress?: number;
 } {
   let _disputeInfo: { winner: 'attacker' | 'defender'; zone: string } | undefined;
   let gkSaveAttempt: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean } | undefined;
@@ -3645,7 +3650,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
 
     if (success) {
       if (context.type === 'tackle') {
-        return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+        return { success: false, event: 'tackle', description: `🦵 Desarme bem-sucedido! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, interruptProgress: candidate.progress };
       }
       if (context.type === 'block' || context.type === 'block_shot') {
         // Block: ball deflects — GK can choose direction (with high deviation), outfield is random
@@ -3703,13 +3708,14 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
           blocker_participant_id: candidate.participant.id,
           blocker_club_id: candidate.participant.club_id,
           block_chance: chancePct,
+          interruptProgress: candidate.progress,
           ...(isGKBlockCtx ? { gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } } : {}),
         };
       }
       if (context.type === 'gk_save') {
-        return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } };
+        return { success: false, event: 'saved', description: `🧤 Defesa do goleiro! (${chancePct})`, possession_change: true, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true }, interruptProgress: candidate.progress };
       }
-      return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id };
+      return { success: false, event: 'intercepted', description: `🤲 Bola dominada! (${chancePct})`, possession_change: candidate.participant.club_id !== possClubId, goal: false, newBallHolderId: candidate.participant.id, newPossessionClubId: candidate.participant.club_id, interruptProgress: candidate.progress };
     }
 
     if (context.type === 'tackle') {
@@ -3724,6 +3730,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
           failedContestParticipantId: candidate.participant.id,
           failedContestLog: `🟡 Falta cometida! (${tackleLabel} ${chancePct})`,
           card,
+          interruptProgress: candidate.progress,
         };
       }
       return {
@@ -5547,6 +5554,32 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             exclusionUpdates.push({ id: p.id, pos_x: pushX, pos_y: py });
           }
         }
+      } else if (setPiece === 'goal_kick') {
+        // Goal kick: FIFA rule — the opposing team must be OUTSIDE the penalty area
+        // until the ball is played. The PA is on the goal-kicking team's defending side.
+        const isSecondHalfNow = (match.current_half ?? 1) >= 2;
+        const isPossHome = possClubId === match.home_club_id;
+        // `possClubId` here is the team TAKING the goal kick (they defend).
+        const defendsLeft = isPossHome ? !isSecondHalfNow : isSecondHalfNow;
+        const paMinX = defendsLeft ? 0 : 82;
+        const paMaxX = defendsLeft ? 18 : 100;
+        const PA_Y_MIN = 20;
+        const PA_Y_MAX = 80;
+        const pushOutX = defendsLeft ? paMaxX + 2 : paMinX - 2; // x = 20 or 80
+        const defClubId = isPossHome ? match.away_club_id : match.home_club_id;
+        for (const p of (allParts || [])) {
+          if (p.club_id !== defClubId || p.is_sent_off) continue;
+          const px = Number(p.pos_x ?? 50);
+          const py = Number(p.pos_y ?? 50);
+          const inBox = px >= paMinX && px <= paMaxX && py >= PA_Y_MIN && py <= PA_Y_MAX;
+          if (inBox) {
+            exclusionUpdates.push({
+              id: p.id,
+              pos_x: Math.max(1, Math.min(99, pushOutX)),
+              pos_y: Math.max(1, Math.min(99, py)),
+            });
+          }
+        }
       } else if (setPiece && setPiece !== 'kickoff') {
         // Free kick / corner / throw-in: defending team must stay 10 units from ball
         const EXCLUSION_R = 10;
@@ -6289,9 +6322,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
-    if (resolutionMoveBatch.length > 0) {
-      await supabase.rpc('batch_update_participant_positions', { p_updates: resolutionMoveBatch });
-    }
+    // NOTE: resolutionMoveBatch flush is DEFERRED to after BH ball resolution so we
+    // can clamp every mover by the interception progress (see `bhResolveResult.interruptProgress`
+    // usage below). Flushing here would commit full-distance moves and then we'd need a
+    // second round-trip to correct them.
+
+    // Outer-scope ref so the post-BH scaling step can read the BH ball action's outcome.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let bhResolveResult: any = null;
 
     if (ballHolder) {
       // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
@@ -6337,6 +6375,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
 
         const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds, match);
+        bhResolveResult = result;
 
         // Log GK save attempt if there was one
         if (result.gkSaveAttempt) {
@@ -7044,6 +7083,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
 
     // ── Apply deferred ball holder move (after ball resolution) ──
+    // Tracked separately from the generic deferredPositionUpdates pile so the
+    // interruption-scaling step can clamp just this entry — the other deferred
+    // pushes (penalty spot, free-kick taker, exclusion shoves) are absolute
+    // placements that must NOT be scaled.
+    let bhDeferredMove: { id: string; pos_x: number; pos_y: number } | null = null;
     if (bhHasBallAction && ballHolder) {
       const bhMoveAction = allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move');
       if (bhMoveAction?.target_x != null && bhMoveAction?.target_y != null) {
@@ -7073,9 +7117,73 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           bhFinalX = bhStartX + bhDx * scale;
           bhFinalY = bhStartY + bhDy * scale;
         }
-        deferredPositionUpdates.push({ id: ballHolder.id, pos_x: bhFinalX, pos_y: bhFinalY });
+        bhDeferredMove = { id: ballHolder.id, pos_x: bhFinalX, pos_y: bhFinalY };
         console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
       }
+    }
+
+    // ── Interruption scaling ─────────────────────────────────────────────────
+    // If the ball holder's action was stopped by a successful interception/tackle/
+    // block/save/foul at progress T (0..1) of the trajectory, the play ends at T.
+    // Every planned movement (teammates repositioning + BH's own mini-move after a
+    // pass) is clamped to the time window that actually elapsed.
+    //
+    // Formula: each player arrives at their target at `arrivalFraction` of the turn;
+    // if T < arrivalFraction they only covered T/arrivalFraction of the distance.
+    // MAX_RANGE_APPROX mirrors the client animator constant (see MatchRoomPage).
+    //
+    // Note: set-piece placements (penalty spot, free-kick taker, exclusion shoves)
+    // are absolute positions already in `deferredPositionUpdates` — we never scale
+    // those. The BH's post-pass mini-move is the only planned move routed through
+    // that array, tracked separately as `bhDeferredMove`.
+    const interruptT: number | null = typeof bhResolveResult?.interruptProgress === 'number'
+      ? bhResolveResult.interruptProgress
+      : null;
+    if (interruptT != null && interruptT < 1 && ballHolder) {
+      const MAX_RANGE_APPROX = 6;
+      const scalePosition = (startX: number, startY: number, fx: number, fy: number) => {
+        const dx = fx - startX;
+        const dy = fy - startY;
+        const moveDist = Math.sqrt(dx * dx + dy * dy);
+        if (moveDist < 0.01) return { x: fx, y: fy };
+        const arrivalFraction = Math.max(0.15, Math.min(1, moveDist / MAX_RANGE_APPROX));
+        const timeScale = Math.min(1, interruptT / arrivalFraction);
+        return { x: startX + dx * timeScale, y: startY + dy * timeScale };
+      };
+
+      for (const m of resolutionMoveBatch) {
+        const part = (participants || []).find((pp: any) => pp.id === m.id);
+        if (!part) continue;
+        const startX = Number(part.pos_x ?? 50);
+        const startY = Number(part.pos_y ?? 50);
+        const scaled = scalePosition(startX, startY, m.x, m.y);
+        m.x = scaled.x;
+        m.y = scaled.y;
+      }
+
+      if (bhDeferredMove) {
+        const bhStartX = Number(ballHolder.pos_x ?? 50);
+        const bhStartY = Number(ballHolder.pos_y ?? 50);
+        const scaled = scalePosition(bhStartX, bhStartY, bhDeferredMove.pos_x, bhDeferredMove.pos_y);
+        bhDeferredMove.pos_x = scaled.x;
+        bhDeferredMove.pos_y = scaled.y;
+      }
+
+      // Emit event so the client animator can clamp the preview to the same T.
+      eventsToLog.push({
+        match_id, event_type: 'turn_interrupted',
+        title: '', body: '',
+        payload: { progress: interruptT, turn_number: match.current_turn_number },
+      });
+      console.log(`[ENGINE] Interruption at T=${interruptT.toFixed(2)}: scaled ${resolutionMoveBatch.length} moves + BH deferred=${bhDeferredMove ? 'yes' : 'no'}`);
+    }
+
+    if (bhDeferredMove) {
+      deferredPositionUpdates.push(bhDeferredMove);
+    }
+
+    if (resolutionMoveBatch.length > 0) {
+      await supabase.rpc('batch_update_participant_positions', { p_updates: resolutionMoveBatch });
     }
 
     const allRawIds = (rawActions || []).map((a: any) => a.id);

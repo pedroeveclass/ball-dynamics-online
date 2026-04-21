@@ -491,7 +491,7 @@ export default function MatchRoomPage() {
 
   const appendEventLog = useCallback((event: EventLog) => {
     // Track resolution-relevant events so animation can incorporate actual results
-    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball', 'dispute', 'shot_over', 'shot_missed', 'offside'];
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball', 'dispute', 'shot_over', 'shot_missed', 'offside', 'turn_interrupted'];
     if (resolutionEventTypes.includes(event.event_type)) {
       resolutionEventsRef.current = [...resolutionEventsRef.current, event];
     }
@@ -2120,6 +2120,9 @@ export default function MatchRoomPage() {
         // Context-aware label: 'receive' becomes DESARME when tackling,
         // AGARRAR when GK catches a shot, etc.
         let toastLabel = ACTION_LABELS[actionType] || actionType;
+        if (actionType === 'move' && payload && (payload as any).no_action) {
+          toastLabel = ACTION_LABELS.no_action;
+        }
         if (actionType === 'receive') {
           const bhId = activeTurnRef.current?.ball_holder_participant_id;
           const bhPart = bhId ? participantsRef.current.find(pp => pp.id === bhId) : null;
@@ -2257,7 +2260,7 @@ export default function MatchRoomPage() {
   const handleActionMenuSelect = (actionType: string, participantId: string) => {
     if (actionType === 'no_action') {
       const p = participants.find(x => x.id === participantId);
-      submitAction('move', participantId, p?.field_x, p?.field_y);
+      submitAction('move', participantId, p?.field_x, p?.field_y, undefined, { no_action: true });
       setShowActionMenu(null);
       setPendingInterceptChoice(null);
       return;
@@ -2854,6 +2857,21 @@ export default function MatchRoomPage() {
       setAnimProgress(0);
       animProgressRef.current = 0;
 
+      // Read the interruption progress emitted by the engine (turn_interrupted event).
+      // When the play was cut short at T% of the trajectory, every planned move caps
+      // at the same T in animation time — mirrors the engine's position scaling so
+      // the final animated pose matches the DB state without any tail-end teleport.
+      let interruptT: number | null = null;
+      for (const ev of resolutionEventsRef.current) {
+        if (ev.event_type === 'turn_interrupted') {
+          const p = (ev.payload ?? {}) as Record<string, any>;
+          if (typeof p.progress === 'number' && p.progress >= 0 && p.progress <= 1) {
+            interruptT = p.progress;
+          }
+        }
+      }
+      interruptProgressRef.current = interruptT;
+
       // Helper: compute eased position for a participant during animation
       const computeAnimPos = (pId: string, raw: number, actionsSnap: MatchAction[]) => {
         const startPos = snapshot[pId];
@@ -2871,7 +2889,11 @@ export default function MatchRoomPage() {
         const moveDist = getFieldMoveDist(targetX - startPos.x, targetY - startPos.y);
         const MAX_RANGE_APPROX = 6;
         const arrivalFraction = Math.max(0.15, Math.min(1, moveDist / MAX_RANGE_APPROX));
-        const scaledRaw = Math.min(1, raw / arrivalFraction);
+        // Clamp the time axis to the point where the play was interrupted. A player
+        // whose arrivalFraction ≤ interruptT still finishes (timing constraint already
+        // ensures the tackler / interceptor covers their distance within T).
+        const cappedRaw = interruptT != null ? Math.min(raw, interruptT) : raw;
+        const scaledRaw = Math.min(1, cappedRaw / arrivalFraction);
 
         let t: number;
         if (scaledRaw < 0.3) {
@@ -3099,14 +3121,30 @@ export default function MatchRoomPage() {
             if (action && action.target_x != null && action.target_y != null) {
               const effectiveTarget = getEffectiveActionTarget(action, snapshot[p.id], latestActions);
               if (effectiveTarget) {
-                finals[p.id] = effectiveTarget;
+                // Clamp final pose to the interruption point so the animator doesn't
+                // rest at a different spot than the engine wrote to the DB.
+                const startPos = snapshot[p.id];
+                if (interruptT != null && interruptT < 1 && startPos) {
+                  const dx = effectiveTarget.x - startPos.x;
+                  const dy = effectiveTarget.y - startPos.y;
+                  const moveDist = getFieldMoveDist(dx, dy);
+                  const MAX_RANGE_APPROX = 6;
+                  const arrivalFraction = Math.max(0.15, Math.min(1, moveDist / MAX_RANGE_APPROX));
+                  const timeScale = Math.min(1, interruptT / arrivalFraction);
+                  finals[p.id] = {
+                    x: startPos.x + dx * timeScale,
+                    y: startPos.y + dy * timeScale,
+                  };
+                } else {
+                  finals[p.id] = effectiveTarget;
+                }
               }
             } else {
               const startPos = snapshot[p.id];
               if (startPos) finals[p.id] = startPos;
             }
           }
-          
+
           setFinalPositions(finals);
 
           // Store movement directions for inertia system.
@@ -3305,6 +3343,8 @@ export default function MatchRoomPage() {
 
           // Release the interceptor snapshot — next render uses the live memo again.
           animationInterceptorSnapshotRef.current = null;
+          // Release the interruption clamp; subsequent turns start from a clean slate.
+          interruptProgressRef.current = null;
 
           // Clear the ball's RAF-managed `transform` attribute. React doesn't set
           // `transform` on the ball group in JSX, so if we leave it dirty the next
@@ -3389,7 +3429,10 @@ export default function MatchRoomPage() {
 
     // Scale animation: player arrives at (moveFraction * 100%) of the animation timeline
     // e.g., if player moves 50% of max range, they arrive at 50% of the animation
-    const raw = animProgressRef.current;
+    const rawProgress = animProgressRef.current;
+    // Clamp to interruption T — the play ended early, so planned moves do too.
+    const interruptT = interruptProgressRef.current;
+    const raw = interruptT != null ? Math.min(rawProgress, interruptT) : rawProgress;
     const arrivalTime = Math.max(0.1, moveFraction); // at least 10% of animation
     const scaledRaw = Math.min(1, raw / arrivalTime); // 0→1 within the arrival window
 
@@ -3481,6 +3524,10 @@ export default function MatchRoomPage() {
   // Stays frozen through the animation so late-arriving events cannot teleport the ball mid-flight.
   // Cleared when animation ends (and refreshed at next animation start).
   const animationInterceptorSnapshotRef = useRef<MatchAction | null>(null);
+  // Interruption progress (0..1) from the engine's `turn_interrupted` event, or null
+  // when the play completed cleanly. Read by both the animation loop and the React
+  // render helper (`getAnimatedPos`) so previews + static renders agree on the clamp.
+  const interruptProgressRef = useRef<number | null>(null);
   // Resolves which interceptor to use. During animation: the locked snapshot.
   // Outside animation: the live memoised value (needed for post-animation static render).
   const getLockedInterceptor = (): MatchAction | null => {
@@ -3612,11 +3659,14 @@ export default function MatchRoomPage() {
     const isGKFacingShot = isGK && trajType2 && isAnyShootAction(trajType2);
     const canOneTouch = receiveActions.includes('receive') && !isTackle && !isGKFacingShot;
 
-    // Tackle cooldown: if this player failed a tackle last turn, they cannot tackle again
-    // Remove the 'receive' option when the scenario is a tackle (ball holder is dribbling)
+    // Tackle cooldown: if this player failed a desarme OR carrinho last turn, they
+    // cannot tackle again — remove BOTH variants from the tackle menu (engine also
+    // enforces this in findInterceptorCandidates for submissions that slip through).
     if (isTackle && tackleBlockedIds.has(participantId)) {
-      const idx = receiveActions.indexOf('receive');
-      if (idx >= 0) receiveActions.splice(idx, 1);
+      for (const opt of ['receive', 'receive_hard']) {
+        const idx = receiveActions.indexOf(opt);
+        if (idx >= 0) receiveActions.splice(idx, 1);
+      }
     }
 
     // One-touch actions: in yellow zone, offer BOTH header and foot actions
@@ -4445,13 +4495,10 @@ export default function MatchRoomPage() {
                 );
               })()}
 
-              {/* ── Throw-in / corner / goal-kick exclusion zone ──
-                  Defending players must stay outside this circle (engine enforces
-                  10 field-units around the ball; see SET_PIECE_EXCLUSION_RADIUS). */}
+              {/* ── Throw-in / corner exclusion zone (10-unit circle around ball) ── */}
               {isPositioningTurn
                 && (activeTurn?.set_piece_type === 'throw_in'
-                  || activeTurn?.set_piece_type === 'corner'
-                  || activeTurn?.set_piece_type === 'goal_kick') && (() => {
+                  || activeTurn?.set_piece_type === 'corner') && (() => {
                 const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
                 if (!bh || bh.field_x == null || bh.field_y == null) return null;
                 const ballSvg = toSVG(bh.field_x, bh.field_y);
@@ -4461,6 +4508,32 @@ export default function MatchRoomPage() {
                     cx={ballSvg.x} cy={ballSvg.y} r={exclusionRadiusSvg}
                     fill="rgba(239,68,68,0.06)"
                     stroke="rgba(239,68,68,0.4)"
+                    strokeWidth="1.5"
+                    strokeDasharray="6,4"
+                  />
+                );
+              })()}
+
+              {/* ── Goal-kick exclusion: opposing team must stay outside the PA ──
+                  FIFA rule — mirrors engine enforcement that pushes opponents out of
+                  the kicking team's penalty area (see match-engine-lab `goal_kick` branch). */}
+              {isPositioningTurn && activeTurn?.set_piece_type === 'goal_kick' && (() => {
+                const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
+                if (!bh) return null;
+                const isSecondHalf = (match?.current_half ?? 1) >= 2;
+                const isPossHome = bh.club_id === match?.home_club_id;
+                const defendsLeft = isPossHome ? !isSecondHalf : isSecondHalf;
+                const paMinX = defendsLeft ? 0 : 82;
+                const paMaxX = defendsLeft ? 18 : 100;
+                const PA_Y_MIN = 20;
+                const PA_Y_MAX = 80;
+                const tl = toSVG(paMinX, PA_Y_MIN);
+                const br = toSVG(paMaxX, PA_Y_MAX);
+                return (
+                  <rect
+                    x={tl.x} y={tl.y} width={br.x - tl.x} height={br.y - tl.y}
+                    fill="rgba(239,68,68,0.08)"
+                    stroke="rgba(239,68,68,0.45)"
                     strokeWidth="1.5"
                     strokeDasharray="6,4"
                   />
@@ -4714,6 +4787,13 @@ export default function MatchRoomPage() {
                       fontFamily="'Barlow Condensed', sans-serif"
                     >
                       {controlLabel} {(() => {
+                        // `no_action` is submitted as a zero-length 'move' with payload.no_action;
+                        // render the correct label so the field popup doesn't show "MOVER".
+                        if (action.action_type === 'move'
+                          && action.payload && typeof action.payload === 'object'
+                          && (action.payload as any).no_action) {
+                          return ACTION_LABELS.no_action;
+                        }
                         if (action.action_type === 'receive') {
                           // If BH is doing a move (dribble) and this player is opponent → "DESARME"
                           const bhAction = visibleActions.find(a => a.participant_id === activeTurn?.ball_holder_participant_id && (a.action_type === 'move'));
