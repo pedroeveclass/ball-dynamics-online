@@ -124,71 +124,10 @@ const positionProfiles: Record<string, Partial<Record<keyof AttrKeys, number>>> 
   'CF': { acuracia_chute: 6, forca_chute: 4, posicionamento_ofensivo: 8, passe_baixo: 4, drible: 4, um_toque: 4, visao_jogo: 3 },
 };
 
-// Age experience bonus
-export function getAgeExperienceBonus(age: number): number {
-  if (age <= 18) return 0;
-  if (age === 19) return 2;
-  if (age === 20) return 4;
-  if (age === 21) return 6;
-  if (age === 22) return 8;
-  return 0;
-}
-
-export function generateBaseAttributes(position: string, bodyType: string, age: number, height: string = 'Médio'): Record<string, number> {
-  const isGK = position === 'GK';
-  const base = 35;
-  const gkBase = isGK ? 35 : 12;
-
-  const attrs: Record<string, number> = {};
-
-  // Deterministic base — no ±1 jitter so the onboarding preview matches what
-  // the server will actually persist (the RPC has the same fixed base).
-  for (const key of FIELD_ATTRS) {
-    attrs[key] = base;
-  }
-  for (const key of GK_ATTRS) {
-    attrs[key] = gkBase;
-  }
-
-  // Apply position profile
-  const posProfile = positionProfiles[position];
-  if (posProfile) {
-    for (const [key, bonus] of Object.entries(posProfile)) {
-      attrs[key] = Math.max(10, Math.min(65, (attrs[key] || 30) + bonus));
-    }
-  }
-
-  // Apply body type boosts
-  const boosts = bodyTypeBoosts[bodyType];
-  if (boosts) {
-    for (const [key, bonus] of Object.entries(boosts)) {
-      attrs[key] = Math.max(10, Math.min(65, (attrs[key] || 30) + (bonus || 0)));
-    }
-  }
-
-  // Apply height boosts
-  const hBoosts = heightBoosts[height];
-  if (hBoosts) {
-    for (const [key, bonus] of Object.entries(hBoosts)) {
-      attrs[key] = Math.max(10, Math.min(65, (attrs[key] || 30) + (bonus || 0)));
-    }
-  }
-
-  // Apply age experience bonus
-  const ageBonus = getAgeExperienceBonus(age);
-  if (ageBonus > 0) {
-    for (const key of Object.keys(attrs)) {
-      attrs[key] = Math.min(65, attrs[key] + ageBonus);
-    }
-  }
-
-  // Clamp all
-  for (const key of Object.keys(attrs)) {
-    attrs[key] = Math.max(10, Math.min(70, attrs[key]));
-  }
-
-  return attrs;
-}
+// Onboarding base attributes are computed server-side via the
+// `get_onboarding_preview` RPC (see 20260421060000 migration). Do not
+// reintroduce a client-side generator — that re-creates the drift the
+// 2026-04-13 and 2026-04-21 migrations existed to kill.
 
 export function calculateOverall(attrs: Record<string, number>, position: string): number {
   const isGK = position === 'GK';

@@ -12,6 +12,7 @@ import { PositionBadge } from '@/components/PositionBadge';
 import { Search, UserPlus, Users } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
 import { toast } from 'sonner';
+import { ClubDemandEditor } from '@/components/ClubDemandEditor';
 
 interface FreeAgent {
   id: string;
@@ -134,6 +135,10 @@ export default function ManagerMarketPage() {
         <div>
           <h1 className="font-display text-2xl font-bold">Mercado de Agentes Livres</h1>
           <p className="text-sm text-muted-foreground">Encontre jogadores sem clube e envie propostas de contrato.</p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-4">
+          <ClubDemandEditor />
         </div>
 
         <div className="flex flex-wrap gap-3">

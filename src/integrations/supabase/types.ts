@@ -13,6 +13,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       app_config: {
@@ -109,6 +134,44 @@ export type Database = {
           },
         ]
       }
+      club_position_demand: {
+        Row: {
+          club_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          position: string
+          priority: number
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          position: string
+          priority?: number
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          position?: string
+          priority?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_position_demand_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_settings: {
         Row: {
           club_id: string
@@ -190,8 +253,10 @@ export type Database = {
       }
       clubs: {
         Row: {
+          assistant_manager_id: string | null
           city: string | null
           created_at: string
+          crest_url: string | null
           id: string
           is_bot_managed: boolean
           league_id: string | null
@@ -204,8 +269,10 @@ export type Database = {
           status: string
         }
         Insert: {
+          assistant_manager_id?: string | null
           city?: string | null
           created_at?: string
+          crest_url?: string | null
           id?: string
           is_bot_managed?: boolean
           league_id?: string | null
@@ -218,8 +285,10 @@ export type Database = {
           status?: string
         }
         Update: {
+          assistant_manager_id?: string | null
           city?: string | null
           created_at?: string
+          crest_url?: string | null
           id?: string
           is_bot_managed?: boolean
           league_id?: string | null
@@ -232,6 +301,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "clubs_assistant_manager_id_fkey"
+            columns: ["assistant_manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "clubs_league_id_fkey"
             columns: ["league_id"]
@@ -1101,6 +1177,7 @@ export type Database = {
       }
       manager_profiles: {
         Row: {
+          appearance: Json | null
           coach_type: string | null
           created_at: string
           full_name: string
@@ -1111,6 +1188,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          appearance?: Json | null
           coach_type?: string | null
           created_at?: string
           full_name: string
@@ -1121,6 +1199,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          appearance?: Json | null
           coach_type?: string | null
           created_at?: string
           full_name?: string
@@ -1481,6 +1560,8 @@ export type Database = {
       match_turns: {
         Row: {
           ball_holder_participant_id: string | null
+          ball_x: number | null
+          ball_y: number | null
           created_at: string
           ends_at: string
           id: string
@@ -1497,6 +1578,8 @@ export type Database = {
         }
         Insert: {
           ball_holder_participant_id?: string | null
+          ball_x?: number | null
+          ball_y?: number | null
           created_at?: string
           ends_at?: string
           id?: string
@@ -1513,6 +1596,8 @@ export type Database = {
         }
         Update: {
           ball_holder_participant_id?: string | null
+          ball_x?: number | null
+          ball_y?: number | null
           created_at?: string
           ends_at?: string
           id?: string
@@ -1877,9 +1962,116 @@ export type Database = {
           },
         ]
       }
+      player_match_stats: {
+        Row: {
+          assists: number
+          clean_sheet: boolean
+          club_id: string | null
+          created_at: string
+          fouls_committed: number
+          gk_penalties_saved: number
+          gk_saves: number
+          goals: number
+          goals_conceded: number
+          id: string
+          interceptions: number
+          match_id: string
+          minutes_played: number
+          offsides: number
+          participant_id: string | null
+          passes_attempted: number
+          passes_completed: number
+          player_profile_id: string
+          position: string | null
+          red_cards: number
+          season_id: string | null
+          shots: number
+          shots_on_target: number
+          tackles: number
+          yellow_cards: number
+        }
+        Insert: {
+          assists?: number
+          clean_sheet?: boolean
+          club_id?: string | null
+          created_at?: string
+          fouls_committed?: number
+          gk_penalties_saved?: number
+          gk_saves?: number
+          goals?: number
+          goals_conceded?: number
+          id?: string
+          interceptions?: number
+          match_id: string
+          minutes_played?: number
+          offsides?: number
+          participant_id?: string | null
+          passes_attempted?: number
+          passes_completed?: number
+          player_profile_id: string
+          position?: string | null
+          red_cards?: number
+          season_id?: string | null
+          shots?: number
+          shots_on_target?: number
+          tackles?: number
+          yellow_cards?: number
+        }
+        Update: {
+          assists?: number
+          clean_sheet?: boolean
+          club_id?: string | null
+          created_at?: string
+          fouls_committed?: number
+          gk_penalties_saved?: number
+          gk_saves?: number
+          goals?: number
+          goals_conceded?: number
+          id?: string
+          interceptions?: number
+          match_id?: string
+          minutes_played?: number
+          offsides?: number
+          participant_id?: string | null
+          passes_attempted?: number
+          passes_completed?: number
+          player_profile_id?: string
+          position?: string | null
+          red_cards?: number
+          season_id?: string | null
+          shots?: number
+          shots_on_target?: number
+          tackles?: number
+          yellow_cards?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_match_stats_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_match_stats_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "match_participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_match_stats_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_profiles: {
         Row: {
           age: number
+          appearance: Json | null
           archetype: string
           club_id: string | null
           created_at: string
@@ -1890,6 +2082,7 @@ export type Database = {
           height: string
           id: string
           jersey_number: number | null
+          last_auto_trained_date: string | null
           last_match_at: string | null
           last_trained_at: string | null
           money: number
@@ -1904,6 +2097,7 @@ export type Database = {
         }
         Insert: {
           age: number
+          appearance?: Json | null
           archetype: string
           club_id?: string | null
           created_at?: string
@@ -1914,6 +2108,7 @@ export type Database = {
           height?: string
           id?: string
           jersey_number?: number | null
+          last_auto_trained_date?: string | null
           last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
@@ -1928,6 +2123,7 @@ export type Database = {
         }
         Update: {
           age?: number
+          appearance?: Json | null
           archetype?: string
           club_id?: string | null
           created_at?: string
@@ -1938,6 +2134,7 @@ export type Database = {
           height?: string
           id?: string
           jersey_number?: number | null
+          last_auto_trained_date?: string | null
           last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
@@ -2134,6 +2331,53 @@ export type Database = {
           },
         ]
       }
+      situational_tactics: {
+        Row: {
+          attack_type: string
+          club_id: string
+          created_at: string
+          formation: string
+          id: string
+          inclination: string
+          phase: string
+          positioning: string
+          positions: Json
+          updated_at: string
+        }
+        Insert: {
+          attack_type?: string
+          club_id: string
+          created_at?: string
+          formation: string
+          id?: string
+          inclination?: string
+          phase: string
+          positioning?: string
+          positions?: Json
+          updated_at?: string
+        }
+        Update: {
+          attack_type?: string
+          club_id?: string
+          created_at?: string
+          formation?: string
+          id?: string
+          inclination?: string
+          phase?: string
+          positioning?: string
+          positions?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "situational_tactics_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stadium_sectors: {
         Row: {
           capacity: number
@@ -2275,6 +2519,7 @@ export type Database = {
           bonus_value: number | null
           category: string
           created_at: string
+          daily_purchase_limit: number | null
           description: string | null
           duration: string | null
           id: string
@@ -2292,6 +2537,7 @@ export type Database = {
           bonus_value?: number | null
           category: string
           created_at?: string
+          daily_purchase_limit?: number | null
           description?: string | null
           duration?: string | null
           id?: string
@@ -2309,6 +2555,7 @@ export type Database = {
           bonus_value?: number | null
           category?: string
           created_at?: string
+          daily_purchase_limit?: number | null
           description?: string | null
           duration?: string | null
           id?: string
@@ -2412,6 +2659,44 @@ export type Database = {
           },
         ]
       }
+      training_plans: {
+        Row: {
+          attribute_key: string
+          created_at: string
+          day_of_week: number
+          id: string
+          player_profile_id: string
+          slot_index: number
+          updated_at: string
+        }
+        Insert: {
+          attribute_key: string
+          created_at?: string
+          day_of_week: number
+          id?: string
+          player_profile_id: string
+          slot_index: number
+          updated_at?: string
+        }
+        Update: {
+          attribute_key?: string
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          player_profile_id?: string
+          slot_index?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_plans_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -2426,6 +2711,10 @@ export type Database = {
         Returns: undefined
       }
       apply_league_schedule_votes: { Args: never; Returns: undefined }
+      auto_train_attribute: {
+        Args: { p_attribute_key: string; p_player_profile_id: string }
+        Returns: Json
+      }
       batch_update_participant_positions: {
         Args: { p_updates: Json }
         Returns: undefined
@@ -2458,6 +2747,8 @@ export type Database = {
         }
         Returns: {
           ball_holder_participant_id: string | null
+          ball_x: number | null
+          ball_y: number | null
           created_at: string
           ends_at: string
           id: string
@@ -2480,6 +2771,15 @@ export type Database = {
         }
       }
       cleanup_old_snapshots: { Args: never; Returns: undefined }
+      compute_onboarding_base_attrs: {
+        Args: {
+          p_body_type: string
+          p_height: string
+          p_primary_position: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       create_player_profile: {
         Args: {
           p_body_type: string
@@ -2492,10 +2792,22 @@ export type Database = {
         Returns: string
       }
       current_user_active_club_id_uuid: { Args: never; Returns: string }
+      current_user_can_edit_club: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
+      current_user_is_club_member: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
       current_user_managed_club_id: { Args: never; Returns: string }
       current_user_manager_profile_id: { Args: never; Returns: string }
       current_user_player_profile_id: { Args: never; Returns: string }
       current_user_player_profile_ids: { Args: never; Returns: string[] }
+      delete_player_profile: {
+        Args: { p_player_id: string }
+        Returns: undefined
+      }
       equip_store_item: { Args: { p_purchase_id: string }; Returns: Json }
       fire_player: {
         Args: { p_club_id: string; p_fine_amount?: number; p_player_id: string }
@@ -2504,6 +2816,15 @@ export type Database = {
       fire_player_just_cause: {
         Args: { p_club_id: string; p_player_id: string }
         Returns: boolean
+      }
+      get_attribute_cap: {
+        Args: {
+          p_archetype: string
+          p_attribute_key: string
+          p_height: string
+          p_position: string
+        }
+        Returns: number
       }
       get_bankruptcy_status: {
         Args: { p_club_id: string }
@@ -2535,12 +2856,54 @@ export type Database = {
         Args: { p_current_level: number }
         Returns: number
       }
+      get_human_counts_by_position: {
+        Args: never
+        Returns: {
+          human_count: number
+          pos: string
+        }[]
+      }
+      get_my_club_demand: {
+        Args: never
+        Returns: {
+          pos: string
+          priority: number
+        }[]
+      }
       get_next_window_month: { Args: never; Returns: string }
+      get_onboarding_preview: {
+        Args: {
+          p_body_type: string
+          p_height: string
+          p_primary_position: string
+        }
+        Returns: Json
+      }
+      get_position_demand_counts: {
+        Args: never
+        Returns: {
+          demand_count: number
+          pos: string
+        }[]
+      }
+      get_training_multiplier: {
+        Args: {
+          p_archetype: string
+          p_attribute_key: string
+          p_height: string
+          p_position: string
+        }
+        Returns: number
+      }
       is_same_active_club_as_current_user: {
         Args: { _player_profile_id: string }
         Returns: boolean
       }
       is_transfer_window_open: { Args: never; Returns: boolean }
+      merge_match_action_payload: {
+        Args: { p_action_id: string; p_patch: Json }
+        Returns: undefined
+      }
       payoff_loan: {
         Args: { p_entity_id: string; p_entity_type: string; p_loan_id: string }
         Returns: undefined
@@ -2564,9 +2927,14 @@ export type Database = {
       purchase_store_item: {
         Args: {
           p_buyer_type?: string
+          p_confirm_replace?: boolean
           p_player_profile_id: string
           p_store_item_id: string
         }
+        Returns: Json
+      }
+      reactivate_store_subscription: {
+        Args: { p_purchase_id: string }
         Returns: Json
       }
       release_match_turn_processing: {
@@ -2588,6 +2956,18 @@ export type Database = {
       resolve_stale_active_turns: {
         Args: { p_match_id: string }
         Returns: number
+      }
+      set_club_assistant_manager: {
+        Args: { p_assistant_user_id: string; p_club_id: string }
+        Returns: undefined
+      }
+      set_player_jersey_number: {
+        Args: { p_jersey_number: number; p_player_id: string }
+        Returns: undefined
+      }
+      toggle_club_position_demand: {
+        Args: { p_position: string }
+        Returns: boolean
       }
       toggle_forum_reaction: {
         Args: { p_reaction: string; p_target_id: string; p_target_type: string }
@@ -2754,6 +3134,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

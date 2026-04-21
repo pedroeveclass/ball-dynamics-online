@@ -1,16 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { generateBaseAttributes, calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
-// Note: generateBaseAttributes and calculateOverall still used for client-side preview
+import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
-import { positionToPT } from '@/lib/positions';
+import { PositionFieldSelector } from '@/components/PositionFieldSelector';
 
 const STEPS = ['Identidade', 'Posição', 'Tamanho', 'Tipo Físico', 'Atributos', 'Revisão'];
 const STEP_ICONS = [User, MapPin, Ruler, Shield, Dumbbell, Eye];
@@ -34,9 +33,33 @@ export default function OnboardingPlayerPage() {
   const isGK = primaryPosition === 'GK';
   const availableBodyTypes = isGK ? GK_BODY_TYPES : BODY_TYPES;
 
-  const baseAttrs = useMemo(() => {
-    if (!primaryPosition || !bodyType) return null;
-    return generateBaseAttributes(primaryPosition, bodyType, 18, height);
+  const [baseAttrs, setBaseAttrs] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    if (!primaryPosition || !bodyType) {
+      setBaseAttrs(null);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .rpc('get_onboarding_preview', {
+        p_primary_position: primaryPosition,
+        p_height: height,
+        p_body_type: bodyType,
+      })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          toast.error(error.message || 'Erro ao calcular atributos iniciais');
+          setBaseAttrs(null);
+        } else {
+          const raw = (data ?? {}) as Record<string, number | string>;
+          const normalized: Record<string, number> = {};
+          for (const [k, v] of Object.entries(raw)) normalized[k] = Number(v);
+          setBaseAttrs(normalized);
+        }
+      });
+    return () => { cancelled = true; };
   }, [primaryPosition, bodyType, height]);
 
   const spentPoints = Object.values(extraPoints).reduce((a, b) => a + b, 0);
@@ -176,49 +199,25 @@ export default function OnboardingPlayerPage() {
           )}
 
           {/* Step 1: Position */}
-          {step === 1 && (() => {
-            const CATEGORY_LABELS: Record<string, string> = {
-              GK: 'Goleiro',
-              DEF: 'Defesa',
-              MID: 'Meio-Campo',
-              FWD: 'Ataque',
-            };
-            const categories = ['GK', 'DEF', 'MID', 'FWD'] as const;
-            return (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Posição Principal</Label>
-                  <p className="text-xs text-muted-foreground">Posição secundária pode ser desbloqueada com créditos do jogo.</p>
-                  {categories.map(cat => {
-                    const items = POSITIONS.filter(p => p.category === cat);
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={cat} className="space-y-1.5">
-                        <h3 className="font-display text-[11px] font-bold text-muted-foreground uppercase tracking-wider pt-2">{CATEGORY_LABELS[cat]}</h3>
-                        <div className="grid grid-cols-2 gap-2">
-                          {items.map(pos => (
-                            <button
-                              key={pos.value}
-                              onClick={() => { setPrimaryPosition(pos.value); setBodyType(''); setExtraPoints({}); }}
-                              className={`px-3 py-2.5 rounded-md text-sm font-display font-semibold border transition-colors text-left ${
-                                primaryPosition === pos.value
-                                  ? 'border-tactical bg-tactical/10 text-tactical'
-                                  : 'border-border text-muted-foreground hover:border-tactical/40'
-                              }`}
-                            >
-                              <span className="text-[10px] text-muted-foreground">{positionToPT(pos.value)}</span>
-                              <br />
-                              <span className="text-[13px]">{pos.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label>Posição Principal</Label>
+                <p className="text-xs text-muted-foreground">
+                  Escolha sua posição no campo. O número mostra quantos <span className="text-foreground font-semibold">jogadores humanos</span> já existem ali — posições com menos de 5 jogadores aparecem destacadas.
+                </p>
+                <p className="text-[11px] text-muted-foreground">Posição secundária pode ser desbloqueada com créditos do jogo.</p>
               </div>
-            );
-          })()}
+              <PositionFieldSelector
+                value={primaryPosition}
+                onChange={(pos) => {
+                  setPrimaryPosition(pos);
+                  setBodyType('');
+                  setExtraPoints({});
+                }}
+              />
+            </div>
+          )}
 
           {/* Step 2: Height */}
           {step === 2 && (
