@@ -46,6 +46,7 @@ interface ManagerInfo {
   full_name: string;
   coach_type: string | null;
   user_id: string | null;
+  appearance: any | null;
 }
 
 interface ContractInfo {
@@ -313,7 +314,7 @@ export default function PlayerClubPage() {
         nextMatchRes,
         recentMatchesRes,
       ] = await Promise.all([
-        supabase.from('manager_profiles').select('id, full_name, coach_type, user_id').eq('id', club.manager_profile_id).single(),
+        supabase.from('manager_profiles').select('id, full_name, coach_type, user_id, appearance' as any).eq('id', club.manager_profile_id).single(),
         supabase.from('contracts').select('weekly_salary, release_clause, start_date, end_date')
           .eq('player_profile_id', playerProfile.id).eq('status', 'active').maybeSingle(),
         supabase.from('contracts').select('player_profile_id').eq('club_id', clubId).eq('status', 'active'),
@@ -331,7 +332,7 @@ export default function PlayerClubPage() {
       ]);
 
       // Manager
-      setManagerInfo(managerRes.data ? { id: managerRes.data.id, full_name: managerRes.data.full_name, coach_type: managerRes.data.coach_type, user_id: (managerRes.data as any).user_id ?? null } : null);
+      setManagerInfo(managerRes.data ? { id: managerRes.data.id, full_name: managerRes.data.full_name, coach_type: managerRes.data.coach_type, user_id: (managerRes.data as any).user_id ?? null, appearance: (managerRes.data as any).appearance ?? null } : null);
 
       // Contract
       setContract(contractRes.data);
@@ -577,13 +578,14 @@ export default function PlayerClubPage() {
               </Badge>
               {managerInfo?.user_id && (
                 <PlayerAvatar
-                  appearance={seededAppearance(managerInfo.id || managerInfo.full_name)}
+                  appearance={managerInfo.appearance ?? seededAppearance(managerInfo.id || managerInfo.full_name)}
                   variant="face"
                   clubPrimaryColor={clubInfo.primary_color}
                   clubSecondaryColor={clubInfo.secondary_color}
                   playerName={managerInfo.full_name}
                   className="h-10 w-10 shrink-0"
                   fallbackSeed={managerInfo.id || managerInfo.full_name}
+                  outfit="coach"
                 />
               )}
               <Badge variant="outline" className="text-xs">

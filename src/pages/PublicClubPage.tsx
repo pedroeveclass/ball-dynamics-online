@@ -179,7 +179,7 @@ export default function PublicClubPage() {
     if (club.manager_profile_id) {
       const { data: mgr } = await supabase
         .from('manager_profiles')
-        .select('id, full_name, user_id')
+        .select('id, full_name, user_id, appearance' as any)
         .eq('id', club.manager_profile_id)
         .maybeSingle();
       setManager(mgr);
@@ -392,13 +392,14 @@ export default function PublicClubPage() {
               </Badge>
               {!clubData.is_bot_managed && manager?.user_id && (
                 <PlayerAvatar
-                  appearance={seededAppearance(manager.id || manager.full_name || 'mgr')}
+                  appearance={manager.appearance ?? seededAppearance(manager.id || manager.full_name || 'mgr')}
                   variant="face"
                   clubPrimaryColor={clubData.primary_color}
                   clubSecondaryColor={clubData.secondary_color}
                   playerName={manager.full_name}
                   className="h-10 w-10 shrink-0"
                   fallbackSeed={manager.id || manager.full_name || 'mgr'}
+                  outfit="coach"
                 />
               )}
               {stadium && (

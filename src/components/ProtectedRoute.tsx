@@ -35,6 +35,9 @@ export function ManagerRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (!managerProfile) return <Navigate to="/onboarding/manager" replace />;
+  // One-shot forced avatar creation — any manager without a saved visual
+  // must customize before entering the app. Editing later is not allowed.
+  if ((managerProfile as any).appearance == null) return <Navigate to="/manager/avatar/create" replace />;
   // Manager without club is allowed — dashboard shows "no team" state
   return <>{children}</>;
 }

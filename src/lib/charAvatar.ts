@@ -29,6 +29,9 @@ export interface ResolvedCharAvatar {
   id: string;
   fullName: string;
   appearance: PlayerAppearance;
+  // True when the manager hasn't customized yet and we fell back to a seeded
+  // face. The `ManagerRoute` uses this path to redirect to /manager/avatar/create.
+  isManagerSeededFallback?: boolean;
   clubPrimaryColor: string | null;
   clubSecondaryColor: string | null;
 }
@@ -94,10 +97,12 @@ async function doResolve(parsed: ParsedCharRef): Promise<ResolvedCharAvatar | nu
       clubSecondaryColor: secondary,
     };
   }
-  // Manager: no persisted appearance — derived from id via seededAppearance().
+  // Manager: prefer the stored appearance (customized in the coach avatar
+  // creator). Fall back to seeded only for managers who never went through
+  // the creator — e.g. bot-generated rivals — so the UI never renders blank.
   const { data: mgr } = await supabase
     .from('manager_profiles')
-    .select('id, full_name')
+    .select('id, full_name, appearance' as any)
     .eq('id', parsed.id)
     .maybeSingle();
   if (!mgr) return null;
@@ -109,11 +114,13 @@ async function doResolve(parsed: ParsedCharRef): Promise<ResolvedCharAvatar | nu
     .select('primary_color, secondary_color')
     .eq('manager_profile_id', m.id)
     .maybeSingle();
+  const stored = m.appearance as PlayerAppearance | null;
   return {
     kind: 'manager',
     id: m.id,
     fullName: m.full_name ?? 'Treinador',
-    appearance: seededAppearance(m.id || m.full_name || 'manager'),
+    appearance: stored ?? seededAppearance(m.id || m.full_name || 'manager'),
+    isManagerSeededFallback: stored == null,
     clubPrimaryColor: (club as any)?.primary_color ?? null,
     clubSecondaryColor: (club as any)?.secondary_color ?? null,
   };

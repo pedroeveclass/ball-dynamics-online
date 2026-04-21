@@ -70,7 +70,7 @@ export default function AccountProfilePage() {
           .order('created_at', { ascending: true }),
         supabase
           .from('manager_profiles')
-          .select('id, full_name')
+          .select('id, full_name, appearance' as any)
           .eq('user_id', user.id)
           .order('created_at', { ascending: true }),
       ]);
@@ -127,7 +127,7 @@ export default function AccountProfilePage() {
           kind: 'manager' as const,
           id: m.id,
           name: m.full_name ?? 'Treinador',
-          appearance: seededAppearance(m.id || m.full_name || 'manager'),
+          appearance: (m.appearance as PlayerAppearance) ?? seededAppearance(m.id || m.full_name || 'manager'),
           clubPrimaryColor: clubColors?.primary ?? null,
           clubSecondaryColor: clubColors?.secondary ?? null,
         };
@@ -303,6 +303,7 @@ export default function AccountProfilePage() {
                   clubSecondaryColor={activeChar.clubSecondaryColor}
                   playerName={activeChar.name}
                   fallbackSeed={activeChar.id}
+                  outfit={activeChar.kind === 'manager' ? 'coach' : 'player'}
                   className="h-full w-full"
                 />
               ) : hasCharAvatar ? (
@@ -503,6 +504,7 @@ export default function AccountProfilePage() {
                       clubSecondaryColor={c.clubSecondaryColor}
                       playerName={c.name}
                       fallbackSeed={c.id}
+                      outfit={c.kind === 'manager' ? 'coach' : 'player'}
                       className="h-full w-full"
                     />
                   </div>

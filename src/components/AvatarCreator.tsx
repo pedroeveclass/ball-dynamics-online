@@ -11,7 +11,7 @@ import {
   FACIAL_HAIR,
   Option,
 } from '@/lib/avatar';
-import { PlayerAvatar } from './PlayerAvatar';
+import { PlayerAvatar, type AvatarOutfit } from './PlayerAvatar';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
@@ -26,6 +26,7 @@ interface AvatarCreatorProps {
   onConfirm: (appearance: PlayerAppearance) => void;
   confirmLabel?: string;
   submitting?: boolean;
+  outfit?: AvatarOutfit;
 }
 
 // Accessories are intentionally NOT shown here — they'll become purchasable
@@ -61,6 +62,7 @@ export function AvatarCreator({
   onConfirm,
   confirmLabel = 'Salvar Avatar',
   submitting,
+  outfit = 'player',
 }: AvatarCreatorProps) {
   const [app, setApp] = useState<PlayerAppearance>(initial ?? DEFAULT_APPEARANCE);
   const [activeSection, setActiveSection] = useState<Section['key']>('skinTone');
@@ -86,6 +88,7 @@ export function AvatarCreator({
             clubCrestUrl={clubCrestUrl}
             playerName={playerName}
             jerseyNumber={jerseyNumber}
+            outfit={outfit}
             className="w-full h-full"
           />
         </div>

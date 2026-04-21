@@ -24,6 +24,7 @@ const PlayerContractPage = lazy(() => import("./pages/PlayerContractPage"));
 const PlayerOffersPage = lazy(() => import("./pages/PlayerOffersPage"));
 const PlayerClubPage = lazy(() => import("./pages/PlayerClubPage"));
 const AvatarCreatePage = lazy(() => import("./pages/AvatarCreatePage"));
+const ManagerAvatarCreatePage = lazy(() => import("./pages/ManagerAvatarCreatePage"));
 const ManagerDashboard = lazy(() => import("./pages/ManagerDashboard"));
 const ManagerClubPage = lazy(() => import("./pages/ManagerClubPage"));
 const ManagerFinancePage = lazy(() => import("./pages/ManagerFinancePage"));
@@ -106,6 +107,7 @@ const App = () => (
             <Route path="/onboarding/player" element={<ProtectedRoute><OnboardingPlayerPage /></ProtectedRoute>} />
             <Route path="/onboarding/manager" element={<ProtectedRoute><OnboardingManagerPage /></ProtectedRoute>} />
             <Route path="/player/avatar/create" element={<ProtectedRoute><AvatarCreatePage /></ProtectedRoute>} />
+            <Route path="/manager/avatar/create" element={<ProtectedRoute><ManagerAvatarCreatePage /></ProtectedRoute>} />
             <Route path="/player" element={<PlayerRoute><PlayerDashboard /></PlayerRoute>} />
             <Route path="/player/attributes" element={<PlayerRoute><PlayerAttributesPage /></PlayerRoute>} />
             <Route path="/player/training-plan" element={<PlayerRoute><PlayerTrainingPlanPage /></PlayerRoute>} />

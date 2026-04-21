@@ -61,6 +61,7 @@ export function UserAvatar({ avatarUrl, charRef, username, size = 'sm', classNam
           clubSecondaryColor={resolved.clubSecondaryColor}
           playerName={resolved.fullName}
           fallbackSeed={resolved.id}
+          outfit={resolved.kind === 'manager' ? 'coach' : 'player'}
           className="h-full w-full"
         />
       </div>

@@ -404,47 +404,50 @@ export default function ManagerClubPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Manager & Identity */}
-          <div className="stat-card space-y-3">
-            <h3 className="font-display font-semibold text-sm">Identidade & Treinador</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Manager</span>
-                <span className="font-bold flex items-center gap-2">
-                  <PlayerAvatar
-                    appearance={seededAppearance(managerProfile.id || managerProfile.full_name)}
-                    variant="face"
-                    clubPrimaryColor={club.primary_color}
-                    clubSecondaryColor={club.secondary_color}
-                    playerName={managerProfile.full_name}
-                    className="h-8 w-8 shrink-0"
-                    fallbackSeed={managerProfile.id || managerProfile.full_name}
-                  />
-                  {managerProfile.full_name}
-                </span>
+          <div className="stat-card">
+            <h3 className="font-display font-semibold text-sm mb-3">Identidade & Treinador</h3>
+            <div className="grid grid-cols-[auto_1fr] gap-4">
+              {/* Full-body coach avatar on the left */}
+              <div className="w-28 h-56 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
+                <PlayerAvatar
+                  appearance={(managerProfile as any).appearance ?? seededAppearance(managerProfile.id || managerProfile.full_name)}
+                  variant="full-front"
+                  playerName={managerProfile.full_name}
+                  fallbackSeed={managerProfile.id || managerProfile.full_name}
+                  outfit="coach"
+                  className="w-full h-full"
+                />
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Tipo Coach</span>
-                <span className="font-bold flex items-center gap-1">
-                  <CoachIcon className="h-3.5 w-3.5 text-tactical" /> {coachInfo.label}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Rep. Manager</span>
-                <span className="font-display font-bold">{managerProfile.reputation}/100</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Rep. Clube</span>
-                <span className="font-display font-bold text-tactical">{club.reputation}/100</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Formação</span>
-                <span className="font-display font-bold">{formation}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Cores</span>
-                <div className="flex gap-2">
-                  <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: club.primary_color }} />
-                  <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: club.secondary_color }} />
+
+              <div className="space-y-2 text-sm min-w-0">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Manager</p>
+                  <p className="font-display font-bold truncate">{managerProfile.full_name}</p>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tipo Coach</span>
+                  <span className="font-bold flex items-center gap-1">
+                    <CoachIcon className="h-3.5 w-3.5 text-tactical" /> {coachInfo.label}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rep. Manager</span>
+                  <span className="font-display font-bold">{managerProfile.reputation}/100</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rep. Clube</span>
+                  <span className="font-display font-bold text-tactical">{club.reputation}/100</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Formação</span>
+                  <span className="font-display font-bold">{formation}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Cores</span>
+                  <div className="flex gap-2">
+                    <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: club.primary_color }} />
+                    <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: club.secondary_color }} />
+                  </div>
                 </div>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { avataaars } from '@dicebear/collection';
 import { PlayerAppearance, DEFAULT_APPEARANCE, heightScale, readableForeground, firstName, isLongHair, isBigBeard } from '@/lib/avatar';
 
 export type AvatarVariant = 'face' | 'full-front' | 'full-back';
+export type AvatarOutfit = 'player' | 'coach';
 
 interface PlayerAvatarProps {
   appearance: PlayerAppearance | null | undefined;
@@ -16,17 +17,30 @@ interface PlayerAvatarProps {
   jerseyNumber?: number | null;
   className?: string;
   fallbackSeed?: string;
+  outfit?: AvatarOutfit;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
 const DEFAULT_SECONDARY = '#ffffff';
 
+// Coach formal attire palette — hardcoded black dress shirt, black pants,
+// black dress shoes. Shared across every coach regardless of the club
+// they manage so the role reads unambiguously on the pitch sidelines.
+const COACH_SHIRT = '#111111';
+const COACH_SHIRT_DETAIL = '#2a2a2a';
+const COACH_PANTS = '#0d0d0d';
+const COACH_SHOE = '#050505';
+
 // Build avataaars options from PlayerAppearance. IDs must match DiceBear
 // avataaars v9 schema exactly; probabilities must be forced to 100 when the
 // player picked a specific option (schema defaults are 10 for accessories
 // and facialHair, which is why those were invisible before).
-function buildAvataaarsOptions(a: PlayerAppearance, clubPrimaryHex: string, seed: string) {
-  const shirtHex = clubPrimaryHex.replace('#', '');
+function buildAvataaarsOptions(a: PlayerAppearance, clubPrimaryHex: string, seed: string, outfit: AvatarOutfit) {
+  // Coach: black dress shirt (DiceBear blazerAndShirt gives a formal collar
+  // hint at the neck, which is the only slice of DiceBear clothing our clip
+  // leaves visible). Player: regular crew-neck sport jersey in club color.
+  const isCoach = outfit === 'coach';
+  const shirtHex = isCoach ? '111111' : clubPrimaryHex.replace('#', '');
   const isBald = a.hair === 'noHair';
   const hasFacialHair = a.facialHair && a.facialHair !== 'none';
   const hasAccessory = a.accessories && a.accessories !== 'none';
@@ -39,7 +53,7 @@ function buildAvataaarsOptions(a: PlayerAppearance, clubPrimaryHex: string, seed
     eyes: [a.eyes],
     mouth: [a.mouth],
     nose: [a.nose || 'default'],
-    clothing: ['shirtCrewNeck'],
+    clothing: [isCoach ? 'blazerAndShirt' : 'shirtCrewNeck'],
     clothesColor: [shirtHex],
     backgroundColor: ['transparent'],
   };
@@ -80,18 +94,22 @@ export function PlayerAvatar({
   jerseyNumber,
   className,
   fallbackSeed,
+  outfit = 'player',
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
-  const primary = clubPrimaryColor || DEFAULT_PRIMARY;
-  const secondary = clubSecondaryColor || DEFAULT_SECONDARY;
+  const isCoach = outfit === 'coach';
+  // Coach outfit is hardcoded black regardless of the club the coach manages,
+  // so ignore the incoming club colors for clothing purposes.
+  const primary = isCoach ? COACH_SHIRT : (clubPrimaryColor || DEFAULT_PRIMARY);
+  const secondary = isCoach ? COACH_SHIRT_DETAIL : (clubSecondaryColor || DEFAULT_SECONDARY);
   const shirtText = readableForeground(primary);
   const seed = fallbackSeed ?? 'player';
   const clipId = useId().replace(/:/g, '_');
 
   const faceDataUri = useMemo(() => {
-    const avatar = createAvatar(avataaars, buildAvataaarsOptions(effective, primary, seed));
+    const avatar = createAvatar(avataaars, buildAvataaarsOptions(effective, primary, seed, outfit));
     return avatar.toDataUri();
-  }, [effective, primary, seed]);
+  }, [effective, primary, seed, outfit]);
 
   if (variant === 'face') {
     return (
@@ -138,6 +156,7 @@ export function PlayerAvatar({
                 playerName={playerName}
                 jerseyNumber={jerseyNumber}
                 crestUrl={clubCrestUrl}
+                outfit={outfit}
               />
             ) : (
               <FrontBody
@@ -151,6 +170,7 @@ export function PlayerAvatar({
                 clipId={`avClip_${clipId}`}
                 hasLongHair={isLongHair(effective.hair)}
                 hasBigBeard={isBigBeard(effective.facialHair)}
+                outfit={outfit}
               />
             )}
           </g>
@@ -182,6 +202,39 @@ function Cleat({ primary, secondary, mirror = false }: { primary: string; second
       <ellipse cx="80" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
       <ellipse cx="87" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
       <ellipse cx="93" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
+    </g>
+  );
+}
+
+// ── Coach dress shoe — plain black oxford with rounded toe, no studs/stripes.
+function DressShoe({ mirror = false }: { mirror?: boolean }) {
+  return (
+    <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
+      {/* Sole */}
+      <path d="M 66 388 Q 66 384 70 384 L 98 384 Q 102 384 102 388 L 100 392 Q 100 394 96 394 L 70 394 Q 66 394 66 390 Z" fill={COACH_SHOE} />
+      {/* Upper */}
+      <path d="M 70 384 Q 70 380 74 380 L 94 380 Q 100 380 100 384 L 100 388 L 70 388 Z" fill={COACH_SHIRT} />
+      {/* Toe cap highlight */}
+      <path d="M 88 381 L 96 381 Q 100 381 100 384 L 100 386 L 88 386 Z" fill={COACH_SHIRT_DETAIL} opacity="0.7" />
+      {/* Heel seam */}
+      <line x1="72" y1="383" x2="86" y2="383" stroke="#333" strokeWidth="0.4" opacity="0.7" />
+    </g>
+  );
+}
+
+// ── Coach long sleeve — black blazer arm from shoulder to wrist, skin hand.
+function CoachArm({ skin, mirror = false }: { skin: string; mirror?: boolean }) {
+  return (
+    <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
+      {/* Full blazer sleeve from shoulder (y=114) to cuff (y=234). */}
+      <path d="M 40 118 Q 36 124 36 136 L 38 232 Q 38 236 42 236 L 58 236 Q 62 236 62 232 L 60 124 Q 60 116 52 114 Q 44 114 40 118 Z"
+            fill={COACH_SHIRT} />
+      {/* Sleeve side shadow for a bit of form */}
+      <path d="M 38 150 L 42 150 L 41 228 L 38 228 Z" fill="#000" opacity="0.25" />
+      {/* Cuff */}
+      <rect x="39" y="230" width="22" height="3" fill={COACH_SHIRT_DETAIL} />
+      {/* Skin hand peeking out of the cuff */}
+      <path d="M 42 236 L 58 236 Q 60 240 58 246 Q 56 252 50 252 Q 44 252 42 246 Q 40 240 42 236 Z" fill={skin} />
     </g>
   );
 }
@@ -221,6 +274,7 @@ function FrontBody({
   clipId,
   hasLongHair,
   hasBigBeard,
+  outfit,
 }: {
   faceDataUri: string;
   primary: string;
@@ -232,35 +286,79 @@ function FrontBody({
   clipId: string;
   hasLongHair: boolean;
   hasBigBeard: boolean;
+  outfit: AvatarOutfit;
 }) {
   const skin = `#${skinTone}`;
+  const isCoach = outfit === 'coach';
 
   return (
     <>
-      {/* ── Feet first: cleats ── */}
-      <Cleat primary={primary} secondary={secondary} />
-      <Cleat primary={primary} secondary={secondary} mirror />
+      {/* ── Feet: dress shoes for coach, cleats for player ── */}
+      {isCoach ? (
+        <>
+          <DressShoe />
+          <DressShoe mirror />
+        </>
+      ) : (
+        <>
+          <Cleat primary={primary} secondary={secondary} />
+          <Cleat primary={primary} secondary={secondary} mirror />
+        </>
+      )}
 
-      {/* ── Socks (shorter and slightly narrower) ── */}
-      <rect x="73" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
-      <rect x="109" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
-      <line x1="72" y1="366" x2="90" y2="366" stroke={primary} strokeWidth="1" opacity="0.5" />
-      <line x1="110" y1="366" x2="128" y2="366" stroke={primary} strokeWidth="1" opacity="0.5" />
+      {/* ── Socks — player only (coach's pants cover this region) ── */}
+      {!isCoach && (
+        <>
+          <rect x="73" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <rect x="109" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <line x1="72" y1="366" x2="90" y2="366" stroke={primary} strokeWidth="1" opacity="0.5" />
+          <line x1="110" y1="366" x2="128" y2="366" stroke={primary} strokeWidth="1" opacity="0.5" />
+        </>
+      )}
 
-      {/* ── Legs (tapered, athletic) ── */}
-      <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
-      <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
-      <ellipse cx="82" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
-      <ellipse cx="118" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
+      {/* ── Legs: skin (player) or black trouser legs (coach) ── */}
+      {isCoach ? (
+        <>
+          {/* Left trouser leg — extends slightly past the shoe line */}
+          <path d="M 70 235 L 95 235 L 93 384 L 72 384 Z" fill={COACH_PANTS} />
+          {/* Right trouser leg */}
+          <path d="M 105 235 L 130 235 L 128 384 L 107 384 Z" fill={COACH_PANTS} />
+          {/* Center seam for separation */}
+          <line x1="100" y1="235" x2="100" y2="380" stroke="#000" strokeWidth="1" opacity="0.55" />
+          {/* Subtle side highlights to avoid a flat silhouette */}
+          <path d="M 71 240 L 74 240 L 73 380 L 72 380 Z" fill="#333" opacity="0.4" />
+          <path d="M 126 240 L 129 240 L 128 380 L 127 380 Z" fill="#333" opacity="0.4" />
+        </>
+      ) : (
+        <>
+          <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
+          <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
+          <ellipse cx="82" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
+          <ellipse cx="118" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
+        </>
+      )}
 
-      {/* ── Shorts ── */}
-      <path d="M 65 235 L 133 235 Q 137 235 137 240 L 135 290 L 100 287 L 65 290 L 63 240 Q 63 235 67 235 Z"
-            fill={secondary} stroke={primary} strokeWidth="1.5" />
-      <line x1="100" y1="235" x2="100" y2="288" stroke={primary} strokeWidth="1.5" opacity="0.55" />
+      {/* ── Shorts — player only (coach wears trousers above) ── */}
+      {!isCoach && (
+        <>
+          <path d="M 65 235 L 133 235 Q 137 235 137 240 L 135 290 L 100 287 L 65 290 L 63 240 Q 63 235 67 235 Z"
+                fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <line x1="100" y1="235" x2="100" y2="288" stroke={primary} strokeWidth="1.5" opacity="0.55" />
+        </>
+      )}
 
-      {/* ── Arms hanging at sides (shoulders at y ≈ 130 matching torso top) ── */}
-      <Arm primary={primary} secondary={secondary} skin={skin} />
-      <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+      {/* ── Arms ── */}
+      {isCoach ? (
+        <>
+          <CoachArm skin={skin} />
+          <CoachArm skin={skin} mirror />
+        </>
+      ) : (
+        <>
+          <Arm primary={primary} secondary={secondary} skin={skin} />
+          <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+        </>
+      )}
 
       {/* ── Torso: athletic V-taper. Top sits at the new shoulder line (y=114)
           and is narrower so it blends cleanly with DiceBear's neck/collar
@@ -270,19 +368,33 @@ function FrontBody({
       <path d="M 64 118 L 70 118 L 72 232 L 66 232 Z" fill="#000" opacity="0.14" />
       <path d="M 130 118 L 136 118 L 134 232 L 128 232 Z" fill="#000" opacity="0.14" />
       {/* Chest centerline shadow (subtle) */}
-      <path d="M 99 132 L 101 132 L 101 230 L 99 230 Z" fill="#000" opacity="0.07" />
+      <path d="M 99 132 L 101 132 L 101 230 L 99 230 Z" fill="#000" opacity={isCoach ? 0.35 : 0.07} />
       {/* Shirt hem */}
       <line x1="62" y1="234" x2="138" y2="234" stroke="#000" strokeWidth="1" opacity="0.18" />
 
-      {/* ── Crest on left chest ── */}
-      {crestUrl && crestUrl.startsWith('http') ? (
-        <image href={crestUrl} x="70" y="140" width="25" height="25" preserveAspectRatio="xMidYMid meet" />
-      ) : (
-        <rect x="75" y="140" width="20" height="20" fill={secondary} opacity="0.55" rx="2" />
+      {/* ── Coach-only lapels hinting at a blazer silhouette ── */}
+      {isCoach && (
+        <>
+          {/* Left lapel */}
+          <path d="M 90 116 L 100 128 L 96 150 L 82 124 Z" fill={COACH_SHIRT_DETAIL} opacity="0.9" />
+          {/* Right lapel (mirrored) */}
+          <path d="M 110 116 L 100 128 L 104 150 L 118 124 Z" fill={COACH_SHIRT_DETAIL} opacity="0.9" />
+          {/* Dress shirt triangle peeking between lapels */}
+          <path d="M 96 128 L 104 128 L 102 142 L 98 142 Z" fill="#f5f5f5" />
+          {/* Subtle button */}
+          <circle cx="100" cy="190" r="1.2" fill="#333" />
+          <circle cx="100" cy="210" r="1.2" fill="#333" />
+        </>
       )}
 
-      {/* ── Jersey number on right chest ── */}
-      {jerseyNumber != null && (
+      {/* ── Crest + jersey number — player only ── */}
+      {!isCoach && (crestUrl && crestUrl.startsWith('http') ? (
+        <image href={crestUrl} x="70" y="140" width="25" height="25" preserveAspectRatio="xMidYMid meet" />
+      ) : (
+        !isCoach && <rect x="75" y="140" width="20" height="20" fill={secondary} opacity="0.55" rx="2" />
+      ))}
+
+      {!isCoach && jerseyNumber != null && (
         <text x="116" y="158" textAnchor="middle" fontFamily="Arial Black, sans-serif"
               fontWeight="900" fontSize="18" fill={shirtText}>
           {jerseyNumber}
@@ -328,6 +440,7 @@ function BackBody({
   playerName,
   jerseyNumber,
   crestUrl,
+  outfit,
 }: {
   appearance: PlayerAppearance;
   primary: string;
@@ -336,10 +449,12 @@ function BackBody({
   playerName: string | null | undefined;
   jerseyNumber: number | null | undefined;
   crestUrl: string | null | undefined;
+  outfit: AvatarOutfit;
 }) {
   const skin = `#${appearance.skinTone}`;
   const hair = `#${appearance.hairColor}`;
   const isBald = appearance.hair === 'noHair';
+  const isCoach = outfit === 'coach';
   const isLong = appearance.hair.startsWith('straight')
     || appearance.hair === 'longButNotTooLong'
     || appearance.hair === 'curly'
@@ -353,25 +468,61 @@ function BackBody({
   return (
     <>
       {/* ── Feet ── */}
-      <Cleat primary={primary} secondary={secondary} mirror />
-      <Cleat primary={primary} secondary={secondary} />
+      {isCoach ? (
+        <>
+          <DressShoe mirror />
+          <DressShoe />
+        </>
+      ) : (
+        <>
+          <Cleat primary={primary} secondary={secondary} mirror />
+          <Cleat primary={primary} secondary={secondary} />
+        </>
+      )}
 
-      {/* ── Socks (same as front) ── */}
-      <rect x="73" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
-      <rect x="109" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+      {/* ── Socks — player only ── */}
+      {!isCoach && (
+        <>
+          <rect x="73" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <rect x="109" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+        </>
+      )}
 
-      {/* ── Legs (same as front) ── */}
-      <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
-      <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
+      {/* ── Legs / trousers ── */}
+      {isCoach ? (
+        <>
+          <path d="M 70 235 L 95 235 L 93 384 L 72 384 Z" fill={COACH_PANTS} />
+          <path d="M 105 235 L 130 235 L 128 384 L 107 384 Z" fill={COACH_PANTS} />
+          <line x1="100" y1="235" x2="100" y2="380" stroke="#000" strokeWidth="1" opacity="0.55" />
+        </>
+      ) : (
+        <>
+          <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
+          <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
+        </>
+      )}
 
-      {/* ── Shorts (same as front) ── */}
-      <path d="M 65 235 L 133 235 Q 137 235 137 240 L 135 290 L 100 287 L 65 290 L 63 240 Q 63 235 67 235 Z"
-            fill={secondary} stroke={primary} strokeWidth="1.5" />
-      <line x1="100" y1="235" x2="100" y2="288" stroke={primary} strokeWidth="1.5" opacity="0.55" />
+      {/* ── Shorts — player only ── */}
+      {!isCoach && (
+        <>
+          <path d="M 65 235 L 133 235 Q 137 235 137 240 L 135 290 L 100 287 L 65 290 L 63 240 Q 63 235 67 235 Z"
+                fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <line x1="100" y1="235" x2="100" y2="288" stroke={primary} strokeWidth="1.5" opacity="0.55" />
+        </>
+      )}
 
       {/* ── Arms ── */}
-      <Arm primary={primary} secondary={secondary} skin={skin} />
-      <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+      {isCoach ? (
+        <>
+          <CoachArm skin={skin} />
+          <CoachArm skin={skin} mirror />
+        </>
+      ) : (
+        <>
+          <Arm primary={primary} secondary={secondary} skin={skin} />
+          <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+        </>
+      )}
 
       {/* ── Torso (same as front so toggling reads coherent) ── */}
       <path d="M 58 116 Q 58 114 62 114 L 138 114 Q 142 114 142 116 L 136 235 L 64 235 Z" fill={primary} />
@@ -379,9 +530,11 @@ function BackBody({
       <path d="M 130 118 L 136 118 L 134 232 L 128 232 Z" fill="#000" opacity="0.14" />
       {/* Collar/yoke shadow line on the back */}
       <path d="M 80 114 Q 100 122 120 114 L 118 118 Q 100 126 82 118 Z" fill="#000" opacity="0.22" />
+      {/* Coach-only back center seam */}
+      {isCoach && <line x1="100" y1="116" x2="100" y2="234" stroke="#000" strokeWidth="0.8" opacity="0.35" />}
 
-      {/* ── First name across the top of the shirt back ── */}
-      {shirtBackName && (
+      {/* ── First name + jersey number + crest — player only ── */}
+      {!isCoach && shirtBackName && (
         <text
           x="100"
           y="138"
@@ -398,16 +551,14 @@ function BackBody({
         </text>
       )}
 
-      {/* ── Big jersey number centered on the back ── */}
-      {jerseyNumber != null && (
+      {!isCoach && jerseyNumber != null && (
         <text x="100" y="190" textAnchor="middle" fontFamily="Arial Black, sans-serif"
               fontWeight="900" fontSize="42" fill={shirtText}>
           {jerseyNumber}
         </text>
       )}
 
-      {/* ── Small crest on the upper-right back ── */}
-      {crestUrl && crestUrl.startsWith('http') && (
+      {!isCoach && crestUrl && crestUrl.startsWith('http') && (
         <image href={crestUrl} x="128" y="132" width="14" height="14" preserveAspectRatio="xMidYMid meet" />
       )}
 
