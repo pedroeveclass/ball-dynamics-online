@@ -5254,6 +5254,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   // Use the claimed turn data (most up-to-date)
   activeTurn = claimedTurns[0];
 
+  // ── Perf instrumentation: measure time spent in each phase of the tick.
+  // Marks are relative to tickStart; the final log is emitted in `finally`
+  // so it prints regardless of which `return` path exits the function.
+  const tickStart = performance.now();
+  const perfMarks: Array<{ label: string; ms: number }> = [];
+  const mark = (label: string) => perfMarks.push({ label, ms: Math.round(performance.now() - tickStart) });
+  let tickExitStatus = 'unknown';
+
   try {
 
   // ── Self-heal: resolve any duplicate active turns for this match ───────
@@ -5274,6 +5282,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ec.coachBonuses) tickCache.coachBonuses = ec.coachBonuses;
     if (ec.situationalTactics) tickCache.situationalTactics = ec.situationalTactics;
   }
+  mark('hydrate');
 
   // ── Compute loose ball position if ball is loose (parallel with next phase queries) ──
   let looseBallPos: { x: number; y: number } | null = null;
@@ -5349,6 +5358,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       tickCache.enrichedParticipants = participants;
     }
     const rawActions = actionsResult.data;
+    mark('pos_participants');
 
     const possClubId = activeTurn.possession_club_id;
     const isAttackPhase = activeTurn.phase === 'positioning_attack';
@@ -5386,6 +5396,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       activeTurn.set_piece_type,
       looseBallPos,
     );
+    mark('pos_bots');
 
     const bh = bhId ? (participants || []).find((p: any) => p.id === bhId) : null;
     const isKickoff = bh && Math.abs(Number(bh.pos_x ?? 50) - 50) < 5 && Math.abs(Number(bh.pos_y ?? 50) - 50) < 5;
@@ -5624,6 +5635,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .select('id');
     if (!posResolvedRows || posResolvedRows.length === 0) {
       console.log(`[ENGINE] Token stolen on positioning for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      tickExitStatus = 'skipped:positioning_token_stolen';
       return { status: 'skipped' };
     }
 
@@ -5645,6 +5657,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         body: isAttackPhase ? 'Agora a defesa posiciona seus jogadores.' : 'A partida continua!',
       }),
     ]);
+    mark('pos_persist');
+    tickExitStatus = `advanced:${activeTurn.phase}`;
 
     return { status: 'advanced' };
   }
@@ -5696,6 +5710,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       tickCache.enrichedParticipants = participants;
     }
   }
+  mark('participants');
 
   const possClubId = activeTurn.possession_club_id;
   const possPlayers = (participants || []).filter(p => p.club_id === possClubId);
@@ -5765,6 +5780,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const { data: refreshedActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
       nonResolutionActions = refreshedActions || [];
     }
+    mark('bots_nonres');
   }
 
   // ── RESOLUTION ──
@@ -5815,6 +5831,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
     }
+    mark('res_bots');
 
     // Load actions + player attributes in parallel
     const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
@@ -5825,6 +5842,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         ? supabase.from('player_attributes').select('*').in('player_profile_id', profileIds)
         : Promise.resolve({ data: null }),
     ]);
+    mark('res_load');
     // Pre-fill attr cache from parallel load
     if (!tickCache.attrByProfile && attrLoadResult?.data) {
       const attrMap: Record<string, any> = {};
@@ -7428,6 +7446,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
+    mark('res_resolve');
     // ── Batch: flush deferred position updates + event logs ──
     const batchOps: Promise<any>[] = [];
     if (deferredPositionUpdates.length > 0) {
@@ -7438,6 +7457,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       batchOps.push(supabase.from('match_event_logs').insert(eventsToLog));
     }
     if (batchOps.length > 0) await Promise.all(batchOps);
+    mark('res_persist');
 
     // ── Energy drain: compute and apply for all players ──
     {
@@ -8275,6 +8295,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .select('id');
     if (!resolvedRows || resolvedRows.length === 0) {
       console.log(`[ENGINE] Token stolen on phase advance for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      tickExitStatus = 'skipped:phase_token_stolen';
       return { status: 'skipped' };
     }
 
@@ -8290,6 +8311,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       set_piece_type: activeTurn.set_piece_type ?? null,
     });
   }
+  mark('advance_persist');
+  tickExitStatus = `advanced:${activeTurn.phase}`;
 
   return { status: 'advanced' };
 
@@ -8301,6 +8324,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         p_processing_token: processingToken,
       });
     } catch (_e) { /* best-effort release; stale lock auto-expires after 15s */ }
+
+    // ── Perf log: emit a single structured line per tick with phase breakdown.
+    // Reads as: total time + delta between each mark. Grep with:
+    //   supabase functions logs match-engine-lab | grep '\[TICK-PERF\]'
+    const totalMs = Math.round(performance.now() - tickStart);
+    let prevMs = 0;
+    const breakdown = perfMarks.map(m => {
+      const delta = m.ms - prevMs;
+      prevMs = m.ms;
+      return `${m.label}=${delta}ms`;
+    }).join(' ');
+    console.log(`[TICK-PERF] match=${match_id.slice(0,8)} turn=${activeTurn?.turn_number ?? '?'} phase=${activeTurn?.phase ?? '?'} exit=${tickExitStatus} total=${totalMs}ms ${breakdown}`);
   }
 }
 
