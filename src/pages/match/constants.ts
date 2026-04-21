@@ -140,7 +140,6 @@ export function getBallSpeedFactor(actionType: string): number {
     case 'header_controlled':
       return 0.35;
     case 'pass_launch':
-      return 0.5;
     case 'pass_high':
     case 'header_high':
       return 0.65;

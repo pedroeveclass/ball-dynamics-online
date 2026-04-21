@@ -4283,8 +4283,9 @@ export default function MatchRoomPage() {
 
     const baseRange = computeMaxMoveRange(participantId);
     const isGK = player.field_pos === 'GK' || player.slot_position === 'GK';
-    const isShot = isAnyShootAction(bta.action_type);
-    const effectiveActionType = (isGK && isShot) ? 'move' : bta.action_type;
+    // GK skips ballSpeedFactor reduction (see applyBallSpeedFactor): force action type to
+    // 'move' so canReachTrajectoryPoint uses a factor of 1.0 for the GK.
+    const effectiveActionType = isGK ? 'move' : bta.action_type;
     const reaches = canReachTrajectoryPoint(
       { x: player.field_x, y: player.field_y },
       { x: bfx, y: bfy }, { x: btx, y: bty },
@@ -5104,15 +5105,15 @@ export default function MatchRoomPage() {
                   const moveDist = getFieldMoveDist(mdx, mdy);
                   let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, moveDist > 0.1 ? { x: mdx, y: mdy } : undefined);
 
-                  // Apply ball speed factor to match engine behavior
+                  // Apply ball speed factor to match engine behavior. GK skips this: their
+                  // bonus comes from getGkAreaMultiplier (already applied inside computeMaxMoveRange).
                   const previewActionType = ballTrajectoryAction.action_type;
                   const previewIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
-                  const previewIsShot = previewActionType === 'shoot_controlled' || previewActionType === 'shoot_power' || previewActionType === 'header_controlled' || previewActionType === 'header_power';
-                  if (!(previewIsGK && previewIsShot)) {
+                  if (!previewIsGK) {
                     const previewBallSpeedFactor =
                       (previewActionType === 'shoot_power' || previewActionType === 'header_power') ? 0.25 :
                       (previewActionType === 'shoot_controlled' || previewActionType === 'header_controlled') ? 0.35 :
-                      previewActionType === 'pass_launch' ? 0.5 :
+                      previewActionType === 'pass_launch' ? 0.65 :
                       (previewActionType === 'pass_high' || previewActionType === 'header_high') ? 0.65 :
                       1.0;
                     maxRange *= previewBallSpeedFactor;
