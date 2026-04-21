@@ -1072,9 +1072,9 @@ export default function MatchRoomPage() {
     const accel = Number(attrs?.aceleracao ?? 40) * posMult;
     const stam = Number(attrs?.stamina ?? 40) * posMult;
     const accelFactor = 0.3 + normalizeAttr(accel) * 0.5;
-    // Halved from the original 10+n*6 after feedback from the first human league round.
-    // 40 → ~6u, 70 → ~7u, 90 → ~7.5u, 99 → ~8u per turn.
-    const maxSpeed = 5 + normalizeAttr(vel) * 3;
+    // Halved from the original 10+n*6 after feedback from the first human league round,
+    // then bumped 1.2× — 40 → ~7.2u, 70 → ~8.4u, 90 → ~9u, 99 → ~9.6u per turn.
+    const maxSpeed = (5 + normalizeAttr(vel) * 3) * 1.2;
     const staminaDecay = 1.0 - (Math.max(0, turnNum - 20) / 40) * (1 - normalizeAttr(stam)) * 0.2;
     let range = 0;
     let speed = 0;
@@ -1103,15 +1103,21 @@ export default function MatchRoomPage() {
                 && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
                 && a.target_x != null && a.target_y != null)
             : undefined;
-          if (bhAct && bhAct.target_x != null && bhAct.target_y != null) {
-            const isSecondHalf = (match.current_half ?? 1) >= 2;
-            const isHomeRaw = part.club_id === match.home_club_id;
-            const defendsLeft = isHomeRaw ? !isSecondHalf : isSecondHalf;
-            const tx = Number(bhAct.target_x);
-            const ty = Number(bhAct.target_y);
-            const yInArea = ty >= 20 && ty <= 80;
-            const xInOwnArea = defendsLeft ? tx <= 18 : tx >= 82;
-            if (yInArea && xInOwnArea) gkMult = 2.0;
+          if (bhAct) {
+            const at = bhAct.action_type;
+            const isShot = at === 'shoot_controlled' || at === 'shoot_power' || at === 'header_controlled' || at === 'header_power';
+            if (isShot) {
+              gkMult = 2.0;
+            } else if (bhAct.target_x != null && bhAct.target_y != null) {
+              const isSecondHalf = (match.current_half ?? 1) >= 2;
+              const isHomeRaw = part.club_id === match.home_club_id;
+              const defendsLeft = isHomeRaw ? !isSecondHalf : isSecondHalf;
+              const tx = Number(bhAct.target_x);
+              const ty = Number(bhAct.target_y);
+              const yInArea = ty >= 20 && ty <= 80;
+              const xInOwnArea = defendsLeft ? tx <= 18 : tx >= 82;
+              if (yInArea && xInOwnArea) gkMult = 2.0;
+            }
           }
         }
         if (gkMult !== 1.0) range *= gkMult;
@@ -1191,17 +1197,18 @@ export default function MatchRoomPage() {
 
   // Apply ballSpeedFactor to a player's range based on current ball trajectory action.
   // Outfield players get reduced range (fast ball = less time to react).
-  // GK gets full range on shots (can always try to save).
+  // GK is handled by getGkAreaMultiplier (applied earlier in computeMaxMoveRange): ×2.0 on
+  // any shot or on passes/headers into the penalty area, ×1.5 on penalty, else ×1.0.
+  // We skip ballSpeedFactor for GK so it doesn't stack on top of that bonus.
   const applyBallSpeedFactor = useCallback((baseRange: number, participantId: string, trajectoryActionType: string | null | undefined): number => {
     if (!trajectoryActionType) return baseRange;
     const player = participantsRef.current.find(p => p.id === participantId);
     const isGK = player?.field_pos === 'GK' || (player as any)?.slot_position === 'GK';
-    const isShot = trajectoryActionType === 'shoot_controlled' || trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_controlled' || trajectoryActionType === 'header_power';
-    if (isGK && isShot) return baseRange;
+    if (isGK) return baseRange;
     const factor =
       (trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_power') ? 0.25 :
       (trajectoryActionType === 'shoot_controlled' || trajectoryActionType === 'header_controlled') ? 0.35 :
-      trajectoryActionType === 'pass_launch' ? 0.5 :
+      trajectoryActionType === 'pass_launch' ? 0.65 :
       (trajectoryActionType === 'pass_high' || trajectoryActionType === 'header_high') ? 0.65 :
       1.0;
     return baseRange * factor;
@@ -2438,12 +2445,18 @@ export default function MatchRoomPage() {
         // render which also uses effectiveHolder.field_x/y directly. The old +1.2/-1.2
         // offset shifted the trajectory line enough to make canReach fail on click
         // even when the purple circle was visible.
+        // Use mouseFieldPct (what the render saw when it decided purple/green) instead
+        // of pctX/pctY so the menu-open decision is provably identical to the rendered
+        // circle color — eliminates a class of bugs where the cursor moved a hair between
+        // the last mousemove frame and the click event.
+        const decideX = mouseFieldPct?.x ?? pctX;
+        const decideY = mouseFieldPct?.y ?? pctY;
         const _bhOriginX = ballHolderNow.field_x;
         const _bhOriginY = ballHolderNow.field_y;
         const _tdx = ballPathAction.target_x - _bhOriginX;
         const _tdy = ballPathAction.target_y - _bhOriginY;
         const _tlen2 = _tdx * _tdx + _tdy * _tdy;
-        const _t = _tlen2 > 0 ? clamp(((pctX - _bhOriginX) * _tdx + (pctY - _bhOriginY) * _tdy) / _tlen2, 0, 1) : 0;
+        const _t = _tlen2 > 0 ? clamp(((decideX - _bhOriginX) * _tdx + (decideY - _bhOriginY) * _tdy) / _tlen2, 0, 1) : 0;
         const isRedZone = (ballPathAction.action_type === 'pass_high' && _t > 0.2 && _t < 0.8) ||
                           (ballPathAction.action_type === 'pass_launch' && _t > 0.35 && _t < 0.65);
         
@@ -2467,8 +2480,6 @@ export default function MatchRoomPage() {
           // Intercept check uses BASE range (no inertia direction) to match the engine:
           // findInterceptorCandidates calls computeMaxMoveRange without targetDirection,
           // so applying inertia here would make the client stricter than the server.
-          const mdx = pctX - drawingParticipant.field_x;
-          const mdy = pctY - drawingParticipant.field_y;
           const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
           const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
           const clickActionType = ballPathAction.action_type;
@@ -2477,7 +2488,8 @@ export default function MatchRoomPage() {
           const effectiveActionType = (clickIsGK && clickIsShot) ? 'move' : clickActionType;
 
           // Physical reach: defender start → projection point within t × range × factor.
-          // Larger tolerance (1.5) to absorb float rounding + any small inertia variance.
+          // Tolerance 0.5 matches the engine's TIMING_TOLERANCE — see match-engine-lab/index.ts
+          // (was 1.5; trimmed so the purple circle never lies about what the server will accept).
           const reachesTrajPoint = canReachTrajectoryPoint(
             { x: drawingParticipant.field_x, y: drawingParticipant.field_y },
             { x: bfx, y: bfy },
@@ -2485,22 +2497,30 @@ export default function MatchRoomPage() {
             _t,
             baseRange,
             effectiveActionType,
-            1.5,
+            0.5,
           );
 
           // Cursor must be near the trajectory line itself (otherwise they clicked way off).
-          const distToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
-          const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
+          // Use the same mouseFieldPct the render evaluated against, so a one-frame jitter
+          // between mousemove and click can't disagree about purple-vs-green.
+          // Threshold 1.0 matches the engine's INTERCEPT_THRESHOLD on submitted-target distance.
+          const distToTraj = pointToSegmentDistance(decideX, decideY, bfx, bfy, btx, bty);
+          const cursorNearTraj = distToTraj <= 1.0;
 
           canReach = reachesTrajPoint && cursorNearTraj;
           if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
+            const mdx = decideX - drawingParticipant.field_x;
+            const mdy = decideY - drawingParticipant.field_y;
             console.log('[REACH][click]', { _t: _t.toFixed(2), d: Math.hypot(mdx, mdy).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj });
           }
 
           // When accepted but the click itself was slightly off the line, snap to the line.
-          if (canReach && distToTraj > INTERCEPT_RADIUS) {
-            interceptTargetX = projX;
-            interceptTargetY = projY;
+          if (canReach) {
+            const distClickToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
+            if (distClickToTraj > INTERCEPT_RADIUS) {
+              interceptTargetX = projX;
+              interceptTargetY = projY;
+            }
           }
         }
         
@@ -2519,10 +2539,10 @@ export default function MatchRoomPage() {
       
       // Check if clicking during loose ball — if player can reach ball (purple circle), ANY click opens intercept.
       // Reach formula MUST match the purple-circle render at the bottom of the SVG (search
-      // "Loose-ball scenario: no trajectory, just a ball at a fixed point"). Previously this
-      // used raw Euclidean distance with no tolerance while the render used Y-scaled distance
-      // plus a +1.5 pad — so on a "parada" (stopped loose ball) the circle showed purple but
-      // the click fell through to the plain-move branch, silently skipping the dominate menu.
+      // "Loose-ball scenario: no trajectory, just a ball at a fixed point"). Both the
+      // player-range check AND the cursor-on-ball check must mirror the render, otherwise
+      // the click can fire dominate when the user only sees the green circle (e.g. cursor
+      // far from the ball) — that's the "dominei sem chegar perto" bug.
       if (isLooseBall && looseBallPos) {
         const dp = participantsRef.current.find(p => p.id === drawingAction.fromParticipantId);
         if (dp && dp.field_x != null && dp.field_y != null) {
@@ -2531,8 +2551,17 @@ export default function MatchRoomPage() {
           const dyP = (dp.field_y - looseBallPos.y) * FIELD_Y_SCALE;
           const distPlayerToBall = Math.sqrt(dxP * dxP + dyP * dyP);
           const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          // Match the render's tolerance (+1.5) so click accepts everywhere the purple circle shows.
-          if (distPlayerToBall <= maxRange + 1.5) {
+          // Use the same cursor position the render evaluated against (mouseFieldPct),
+          // so click and purple-circle decisions can never disagree about "is the cursor on the ball".
+          const decideX = mouseFieldPct?.x ?? pctX;
+          const decideY = mouseFieldPct?.y ?? pctY;
+          const cxP = decideX - looseBallPos.x;
+          const cyP = (decideY - looseBallPos.y) * FIELD_Y_SCALE;
+          const distCursorToBall = Math.sqrt(cxP * cxP + cyP * cyP);
+          const circleRadiusField = 9 / INNER_W * 100;
+          // Range tolerance 0.5 matches the engine's findLooseBallClaimer (`dist > maxRange + 0.5`).
+          if (distPlayerToBall <= maxRange + 0.5
+              && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
             setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
             setShowActionMenu(drawingAction.fromParticipantId);
             setDrawingAction(null);
@@ -4247,9 +4276,10 @@ export default function MatchRoomPage() {
     const projX = bfx + tdx * t;
     const projY = bfy + tdy * t;
     const distToTraj = Math.sqrt((player.field_x - projX) ** 2 + (player.field_y - projY) ** 2);
-    const circleRadiusField = 9 / INNER_W * 100;
 
-    if (distToTraj > circleRadiusField + INTERCEPT_RADIUS + 1) return;
+    // Aligned with engine: INTERCEPT_THRESHOLD = 1.0 on perpendicular distance,
+    // TIMING_TOLERANCE = 0.5 on the reach formula.
+    if (distToTraj > 1.0) return;
 
     const baseRange = computeMaxMoveRange(participantId);
     const isGK = player.field_pos === 'GK' || player.slot_position === 'GK';
@@ -4258,7 +4288,7 @@ export default function MatchRoomPage() {
     const reaches = canReachTrajectoryPoint(
       { x: player.field_x, y: player.field_y },
       { x: bfx, y: bfy }, { x: btx, y: bty },
-      t, baseRange, effectiveActionType, 1.5,
+      t, baseRange, effectiveActionType, 0.5,
     );
     if (!reaches) return;
 
@@ -4489,6 +4519,11 @@ export default function MatchRoomPage() {
                 // arrows flashed back at full opacity after `animating` flipped to false but
                 // before `activeTurn.phase` advanced to the next turn's ball_holder.
                 if (activeTurn?.phase === 'resolution') return null;
+                // Drop stale actions that belong to a previous turn. After resolution ends and
+                // activeTurn flips to the next turn, turnActions briefly still holds the prior
+                // turn's rows (refetch races the phase change) — without this guard, the old
+                // pass arrow flashes for one frame before the new turn's actions arrive.
+                if (activeTurn?.id && action.match_turn_id && action.match_turn_id !== activeTurn.id) return null;
 
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
@@ -4966,7 +5001,8 @@ export default function MatchRoomPage() {
                     const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
                     const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
 
-                    // Physical reach with larger tolerance (1.5) to absorb float/inertia variance.
+                    // Tolerance 0.5 + proximity 1.0 mirror the engine's TIMING_TOLERANCE
+                    // and INTERCEPT_THRESHOLD — purple shows iff the server would accept.
                     const reachesTrajPoint = canReachTrajectoryPoint(
                       { x: drawingFrom.field_x!, y: drawingFrom.field_y! },
                       { x: bfx, y: bfy },
@@ -4974,9 +5010,9 @@ export default function MatchRoomPage() {
                       tCursor,
                       baseRange,
                       effectiveActionType,
-                      1.5,
+                      0.5,
                     );
-                    const cursorNearTraj = distToTraj <= (circleRadiusField + INTERCEPT_RADIUS + 1);
+                    const cursorNearTraj = distToTraj <= 1.0;
                     canReachBall = !isRedZone && reachesTrajPoint && cursorNearTraj;
                     if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
                       const dxDbg = mouseFieldPct.x - drawingFrom.field_x!;
@@ -5012,7 +5048,8 @@ export default function MatchRoomPage() {
                   const circleRadiusField = 9 / INNER_W * 100;
                   // Player can reach the ball AND cursor is close enough to "pick up"
                   // (visually the move circle overlaps the ball).
-                  if (distPlayerToBall <= looseBallRange + 1.5
+                  // Range tolerance 0.5 matches engine's findLooseBallClaimer.
+                  if (distPlayerToBall <= looseBallRange + 0.5
                       && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
                     canReachBall = true;
                   }

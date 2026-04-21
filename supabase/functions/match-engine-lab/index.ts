@@ -1251,10 +1251,9 @@ function getDirectionalMultiplier(
 function computeMaxMoveRange(attrs: { velocidade: number; aceleracao: number; agilidade: number; stamina: number; forca: number }, turnNumber: number): number {
   const accelFactor = 0.3 + normalizeAttr(attrs.aceleracao) * 0.5;
   // Halved from the original 10+n*6 after feedback from the first human league
-  // round — players covered too much ground per turn, reducing tactical depth.
-  // 40 → ~6u, 70 → ~7u, 90 → ~7.5u, 99 → ~8u per turn.
+  // round, then bumped 1.2× — 40 → ~7.2u, 70 → ~8.4u, 90 → ~9u, 99 → ~9.6u per turn.
   // MUST match src/pages/MatchRoomPage.tsx computeMaxMoveRange.
-  const maxSpeed = 5 + normalizeAttr(attrs.velocidade) * 3;
+  const maxSpeed = (5 + normalizeAttr(attrs.velocidade) * 3) * 1.2;
   // Stamina decay: after turn 20, players with low stamina lose up to 20% range
   const staminaDecay = 1.0 - (Math.max(0, turnNumber - 20) / 40) * (1 - normalizeAttr(attrs.stamina)) * 0.2;
   let totalDist = 0;
@@ -1289,13 +1288,17 @@ function getGkAreaMultiplier(
   if (!isGKPosition(slotPos)) return 1.0;
   // Penalty: resolves first per spec.
   if (setPieceType === 'penalty') return 1.5;
-  // Need a real ball-destined action with a target to evaluate the trajectory.
-  if (!bhActionType || bhTargetX == null || bhTargetY == null) return 1.0;
+  if (!bhActionType) return 1.0;
+  // Any shot → 2.0× regardless of destination (deviated shots can land outside the area).
+  const isShot =
+    bhActionType === 'shoot_controlled' || bhActionType === 'shoot_power' ||
+    bhActionType === 'header_controlled' || bhActionType === 'header_power';
+  if (isShot) return 2.0;
+  // Passes/low headers need a target to check penalty-area membership.
+  if (bhTargetX == null || bhTargetY == null) return 1.0;
   const isBallAction =
     bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' ||
-    bhActionType === 'shoot_controlled' || bhActionType === 'shoot_power' ||
-    bhActionType === 'header_low' || bhActionType === 'header_high' ||
-    bhActionType === 'header_controlled' || bhActionType === 'header_power';
+    bhActionType === 'header_low' || bhActionType === 'header_high';
   if (!isBallAction) return 1.0;
   // GK's own-goal side: home defends LEFT (x≤18) in H1 and RIGHT (x≥82) in H2; away is the mirror.
   const isSecondHalf = (match.current_half ?? 1) >= 2;
@@ -1987,7 +1990,7 @@ async function generateBotActions(
   // Ball speed factor for intercept range (bot AI should match engine validation)
   const bhBallSpeedFactor = bhActionType === 'shoot_power' ? 0.25
     : bhActionType === 'shoot_controlled' ? 0.35
-    : bhActionType === 'pass_launch' ? 0.5
+    : bhActionType === 'pass_launch' ? 0.65
     : bhActionType === 'pass_high' ? 0.65
     : 1.0;
 
@@ -3775,7 +3778,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
   const ballSpeedFactor =
     (bhActionType === 'shoot_power' || bhActionType === 'header_power') ? 0.25 :
     (bhActionType === 'shoot_controlled' || bhActionType === 'header_controlled') ? 0.35 :
-    bhActionType === 'pass_launch' ? 0.5 :
+    bhActionType === 'pass_launch' ? 0.65 :
     (bhActionType === 'pass_high' || bhActionType === 'header_high') ? 0.65 :
     1.0; // pass_low / header_low / move = normal speed
 
@@ -4086,11 +4089,13 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     const participant = participants.find((p: any) => p.id === action.participant_id);
     if (!participant) continue;
 
-    // If we know ball position, reject receives that are too far from the ball
+    // If we know ball position, reject receives that are too far from the ball.
+    // Threshold 2.65 mirrors the client's purple-circle proximity check
+    // (circleRadiusField + INTERCEPT_RADIUS + 1) so "what I see is what happens".
     if (ballPos) {
       const distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
-      if (distToBall > 15) { // receive target must be within 15 units of ball
-        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball (${distToBall.toFixed(1)} > 15)`);
+      if (distToBall > 2.65) {
+        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball (${distToBall.toFixed(2)} > 2.65)`);
         continue;
       }
     }
