@@ -591,7 +591,6 @@ export const POSITIONS = [
   { value: 'LWB', label: 'Ala Esquerdo', category: 'DEF' },
   { value: 'RWB', label: 'Ala Direito', category: 'DEF' },
   { value: 'DM', label: 'Volante', category: 'MID' },
-  { value: 'CDM', label: 'Volante Defensivo', category: 'MID' },
   { value: 'CM', label: 'Meio-Campista', category: 'MID' },
   { value: 'LM', label: 'Meia Esquerda', category: 'MID' },
   { value: 'RM', label: 'Meia Direita', category: 'MID' },

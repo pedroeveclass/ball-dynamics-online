@@ -25,7 +25,7 @@ interface FreeAgent {
   reputation: number;
 }
 
-const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'];
+const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'];
 const ARCHETYPES = ['All Around', 'Condutor', 'Chutador', 'Velocista', 'Torre', 'Cão de Guarda'];
 const SQUAD_ROLES = [
   { value: 'starter', label: 'Titular' },
