@@ -27,6 +27,7 @@ import { ClubCrest } from '@/components/ClubCrest';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { seededAppearance } from '@/lib/avatar';
 import { formatBRL, formatDate } from '@/lib/formatting';
+import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 
 // ── Types ──
 
@@ -87,13 +88,6 @@ interface StandingInfo {
   goals_for: number;
   goals_against: number;
   total: number;
-}
-
-interface NextMatchInfo {
-  id: string;
-  scheduled_at: string;
-  isHome: boolean;
-  opponent: { name: string; short_name: string; primary_color: string; secondary_color: string } | null;
 }
 
 interface RecentResultInfo {
@@ -260,7 +254,7 @@ export default function PlayerClubPage() {
   const [standing, setStanding] = useState<StandingInfo | null>(null);
   const [formation, setFormation] = useState<string>('4-4-2');
   const [lineup, setLineup] = useState<LineupInfo | null>(null);
-  const [nextMatch, setNextMatch] = useState<NextMatchInfo | null>(null);
+  const [nextMatch, setNextMatch] = useState<NextClubMatch | null>(null);
   const [recentResults, setRecentResults] = useState<RecentResultInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -313,7 +307,7 @@ export default function PlayerClubPage() {
         settingsRes,
         lineupRes,
         seasonRes,
-        nextMatchRes,
+        nextMatchData,
         recentMatchesRes,
       ] = await Promise.all([
         supabase.from('manager_profiles').select('id, full_name, coach_type, user_id, appearance' as any).eq('id', club.manager_profile_id).single(),
@@ -325,9 +319,10 @@ export default function PlayerClubPage() {
         supabase.from('club_settings').select('default_formation').eq('club_id', clubId).maybeSingle(),
         supabase.from('lineups').select('id, formation, name').eq('club_id', clubId).eq('is_active', true).maybeSingle(),
         supabase.from('league_seasons').select('id').eq('status', 'active').order('season_number', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('matches').select('id, home_club_id, away_club_id, scheduled_at, status')
-          .or(`home_club_id.eq.${clubId},away_club_id.eq.${clubId}`)
-          .eq('status', 'scheduled').order('scheduled_at', { ascending: true }).limit(1),
+        // Uses league_matches + league_rounds — the `matches` row isn't
+        // materialized until ~5 min before kickoff, so querying it directly
+        // would return nothing for upcoming fixtures.
+        getNextClubMatch(clubId),
         supabase.from('matches').select('id, home_club_id, away_club_id, home_score, away_score, status')
           .or(`home_club_id.eq.${clubId},away_club_id.eq.${clubId}`)
           .eq('status', 'finished').order('finished_at', { ascending: false }).limit(5),
@@ -425,13 +420,8 @@ export default function PlayerClubPage() {
         }
       }
 
-      // Next match
-      if (nextMatchRes.data && nextMatchRes.data.length > 0) {
-        const nm = nextMatchRes.data[0];
-        const oppId = nm.home_club_id === clubId ? nm.away_club_id : nm.home_club_id;
-        const { data: oppClub } = await supabase.from('clubs').select('name, short_name, primary_color, secondary_color, crest_url').eq('id', oppId).maybeSingle();
-        setNextMatch({ id: nm.id, scheduled_at: nm.scheduled_at, isHome: nm.home_club_id === clubId, opponent: oppClub });
-      }
+      // Next league fixture (from league_matches join — publicly readable).
+      setNextMatch(nextMatchData);
 
       // Recent results — enrich with opponent club so each row can link
       // straight to the replay and show the crest/name.
@@ -668,14 +658,15 @@ export default function PlayerClubPage() {
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
               <Calendar className="h-3.5 w-3.5" /> Proximo Jogo
+              {nextMatch && <span className="text-[10px] text-muted-foreground/80">R{nextMatch.round_number}</span>}
             </div>
             {nextMatch ? (
               <>
                 <p className="truncate font-display text-sm font-bold">
-                  {nextMatch.isHome ? 'Casa' : 'Fora'} vs {nextMatch.opponent?.name || 'TBD'}
+                  {nextMatch.is_home ? 'Casa' : 'Fora'} vs {nextMatch.opponent_name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(nextMatch.scheduled_at).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {formatBRTDateTime(nextMatch.scheduled_at)}
                 </p>
               </>
             ) : (
