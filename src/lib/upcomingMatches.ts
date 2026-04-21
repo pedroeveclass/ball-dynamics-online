@@ -17,6 +17,7 @@ export interface NextClubMatch {
   opponent_crest_url: string | null;
   is_home: boolean;
   match_id: string | null;
+  league_match_id: string;
 }
 
 /**
@@ -38,6 +39,7 @@ export async function getNextClubMatch(clubId: string): Promise<NextClubMatch | 
   const { data, error } = await supabase
     .from('league_matches')
     .select(`
+      id,
       match_id,
       home_club_id,
       away_club_id,
@@ -78,6 +80,7 @@ export async function getNextClubMatch(clubId: string): Promise<NextClubMatch | 
     opponent_crest_url: opponent.crest_url ?? null,
     is_home: isHome,
     match_id: row.match_id ?? null,
+    league_match_id: row.id,
   };
 }
 

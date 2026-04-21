@@ -1288,6 +1288,39 @@ export type Database = {
           },
         ]
       }
+      match_availability: {
+        Row: {
+          confirmed_at: string
+          league_match_id: string
+          player_profile_id: string
+        }
+        Insert: {
+          confirmed_at?: string
+          league_match_id: string
+          player_profile_id: string
+        }
+        Update: {
+          confirmed_at?: string
+          league_match_id?: string
+          player_profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_availability_league_match_id_fkey"
+            columns: ["league_match_id"]
+            isOneToOne: false
+            referencedRelation: "league_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_availability_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       match_challenges: {
         Row: {
           challenged_club_id: string

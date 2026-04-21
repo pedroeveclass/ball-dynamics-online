@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw, FlaskConical, Loader2, Trophy } from 'lucide-react';
+import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw, FlaskConical, Loader2, Trophy, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -48,6 +48,10 @@ export default function PlayerMatchesPage() {
   // Next league fixture for the player's club — displayed even when the
   // match row has not been materialized yet (5 min pre-kickoff window).
   const [nextLeagueMatch, setNextLeagueMatch] = useState<NextClubMatch | null>(null);
+  // Whether the player confirmed presence for the next league fixture.
+  // Row exists = confirmed; absence = not confirmed. Visual only.
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [togglingAvailability, setTogglingAvailability] = useState(false);
 
   const loadMatches = useCallback(async () => {
     if (!user) return;
@@ -101,6 +105,52 @@ export default function PlayerMatchesPage() {
     getNextClubMatch(clubId).then(res => { if (!cancelled) setNextLeagueMatch(res); });
     return () => { cancelled = true; };
   }, [playerProfile?.club_id]);
+
+  // Check whether the player already confirmed presence for the next league fixture.
+  useEffect(() => {
+    let cancelled = false;
+    const leagueMatchId = nextLeagueMatch?.league_match_id;
+    const playerProfileId = playerProfile?.id;
+    if (!leagueMatchId || !playerProfileId) { setIsAvailable(false); return; }
+    supabase
+      .from('match_availability')
+      .select('player_profile_id')
+      .eq('league_match_id', leagueMatchId)
+      .eq('player_profile_id', playerProfileId)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) setIsAvailable(!!data); });
+    return () => { cancelled = true; };
+  }, [nextLeagueMatch?.league_match_id, playerProfile?.id]);
+
+  const toggleAvailability = async () => {
+    const leagueMatchId = nextLeagueMatch?.league_match_id;
+    const playerProfileId = playerProfile?.id;
+    if (!leagueMatchId || !playerProfileId || togglingAvailability) return;
+    setTogglingAvailability(true);
+    const previous = isAvailable;
+    // Optimistic flip — revert on error.
+    setIsAvailable(!previous);
+    try {
+      if (previous) {
+        const { error } = await supabase
+          .from('match_availability')
+          .delete()
+          .eq('league_match_id', leagueMatchId)
+          .eq('player_profile_id', playerProfileId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('match_availability')
+          .insert({ league_match_id: leagueMatchId, player_profile_id: playerProfileId });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      setIsAvailable(previous);
+      toast.error(err.message || 'Erro ao atualizar presença');
+    } finally {
+      setTogglingAvailability(false);
+    }
+  };
 
   const now = Date.now();
   const oneHour = 60 * 60 * 1000;
@@ -299,6 +349,31 @@ export default function PlayerMatchesPage() {
                   Link disponível 5 min antes do jogo
                 </span>
               )}
+            </div>
+            {/* Presence check — informative only. The coach sees who marked. */}
+            <div className="mt-3 pt-3 border-t border-tactical/20">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={toggleAvailability}
+                disabled={togglingAvailability}
+                className={`font-display text-xs w-full sm:w-auto ${
+                  isAvailable
+                    ? 'bg-pitch/15 border-pitch/50 text-pitch hover:bg-pitch/25'
+                    : 'border-muted-foreground/40 text-muted-foreground hover:bg-muted/40'
+                }`}
+                aria-pressed={isAvailable}
+              >
+                {togglingAvailability ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Check className={`h-3 w-3 mr-1 ${isAvailable ? '' : 'opacity-40'}`} />
+                )}
+                {isAvailable ? 'Presença confirmada' : 'Confirmar presença'}
+              </Button>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Apenas informativo — o técnico verá se você marcou presença.
+              </p>
             </div>
           </div>
         )}

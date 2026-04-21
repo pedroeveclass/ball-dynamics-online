@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
 import { PlayerHoverStats } from '@/components/PlayerHoverStats';
-import { Save, UserPlus, X, Users, Target, User, Bot } from 'lucide-react';
+import { Save, UserPlus, X, Users, Target, User, Bot, Check, CalendarClock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { sortPlayersByPosition, positionalPenaltyPercent } from '@/lib/positions';
+import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 import type { Tables } from '@/integrations/supabase/types';
 
 interface SquadPlayer {
@@ -246,12 +247,43 @@ export default function ManagerLineupPage() {
   const [suspendedPlayerIds, setSuspendedPlayerIds] = useState<Set<string>>(new Set());
   const [suspensionReasonByPlayer, setSuspensionReasonByPlayer] = useState<Record<string, 'yellow_accumulation' | 'red_card'>>({});
 
+  // Next league fixture + which human-managed players confirmed presence for it.
+  // Purely informative — the lineup/engine doesn't react to this.
+  const [nextFixture, setNextFixture] = useState<NextClubMatch | null>(null);
+  const [confirmedPlayerIds, setConfirmedPlayerIds] = useState<Set<string>>(new Set());
+
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
   useEffect(() => {
     if (!club) return;
     loadData();
   }, [club]);
+
+  // Fetch next league fixture once per club change.
+  useEffect(() => {
+    let cancelled = false;
+    if (!club?.id) { setNextFixture(null); return; }
+    getNextClubMatch(club.id).then(f => { if (!cancelled) setNextFixture(f); });
+    return () => { cancelled = true; };
+  }, [club?.id]);
+
+  // Load confirmed-presence player IDs once fixture + squad are known.
+  useEffect(() => {
+    let cancelled = false;
+    const leagueMatchId = nextFixture?.league_match_id;
+    if (!leagueMatchId || squad.length === 0) { setConfirmedPlayerIds(new Set()); return; }
+    const squadIds = squad.map(p => p.id);
+    supabase
+      .from('match_availability')
+      .select('player_profile_id')
+      .eq('league_match_id', leagueMatchId)
+      .in('player_profile_id', squadIds)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setConfirmedPlayerIds(new Set((data || []).map((r: any) => r.player_profile_id)));
+      });
+    return () => { cancelled = true; };
+  }, [nextFixture?.league_match_id, squad]);
 
   const loadData = async () => {
     if (!club) return;
@@ -824,6 +856,75 @@ export default function ManagerLineupPage() {
             </div>
           </div>
         </div>
+
+        {/* Convocação — Próximo Jogo (presença confirmada pelos jogadores).
+            Puramente visual: nada no motor/escalação reage a isso. Somente
+            jogadores humanos (user_id != null) conseguem marcar. */}
+        {nextFixture && (() => {
+          const humans = squad.filter(p => p.user_id);
+          const confirmedCount = humans.filter(p => confirmedPlayerIds.has(p.id)).length;
+          return (
+            <div className="space-y-4">
+              <h2 className="font-display text-xl font-bold">Convocação — Próximo Jogo</h2>
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="font-display font-bold text-sm">
+                        Rodada {nextFixture.round_number} — {nextFixture.is_home ? 'Casa' : 'Fora'} vs {nextFixture.opponent_name}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                        <CalendarClock className="h-3 w-3" />
+                        {formatBRTDateTime(nextFixture.scheduled_at)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-display text-lg font-extrabold text-pitch leading-none">
+                        {confirmedCount}/{humans.length}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">confirmados</p>
+                    </div>
+                  </div>
+                  {humans.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      Nenhum jogador humano no elenco.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {humans.map(p => {
+                        const confirmed = confirmedPlayerIds.has(p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className={`flex items-center gap-2 p-1.5 rounded border text-sm ${
+                              confirmed
+                                ? 'bg-pitch/10 border-pitch/30'
+                                : 'bg-muted/20 border-border/50'
+                            }`}
+                          >
+                            <span
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 ${
+                                confirmed ? 'bg-pitch text-pitch-foreground' : 'bg-muted text-muted-foreground'
+                              }`}
+                              aria-label={confirmed ? 'Confirmou' : 'Não marcou'}
+                            >
+                              {confirmed ? <Check className="h-3 w-3" /> : null}
+                            </span>
+                            <span className="font-display font-bold text-xs truncate flex-1">{p.full_name}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">{p.primary_position}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground italic">
+                    Informativo: os jogadores confirmam presença na tela "Minhas Partidas". Não afeta a escalação.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
 
         {/* Funções Táticas */}
         <div className="space-y-4">
