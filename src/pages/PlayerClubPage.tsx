@@ -101,6 +101,8 @@ interface RecentResultInfo {
   result: 'V' | 'E' | 'D';
   myScore: number;
   oppScore: number;
+  isHome: boolean;
+  opponent: { id: string; name: string; short_name: string; primary_color: string; secondary_color: string; crest_url: string | null } | null;
 }
 
 interface LineupSlotInfo {
@@ -431,14 +433,32 @@ export default function PlayerClubPage() {
         setNextMatch({ id: nm.id, scheduled_at: nm.scheduled_at, isHome: nm.home_club_id === clubId, opponent: oppClub });
       }
 
-      // Recent results
-      if (recentMatchesRes.data) {
+      // Recent results — enrich with opponent club so each row can link
+      // straight to the replay and show the crest/name.
+      if (recentMatchesRes.data && recentMatchesRes.data.length > 0) {
+        const oppIds = Array.from(new Set(recentMatchesRes.data.map((m: any) =>
+          m.home_club_id === clubId ? m.away_club_id : m.home_club_id
+        )));
+        const { data: oppClubs } = await supabase
+          .from('clubs')
+          .select('id, name, short_name, primary_color, secondary_color, crest_url')
+          .in('id', oppIds);
+        const oppMap = new Map((oppClubs || []).map((c: any) => [c.id, c]));
+
         setRecentResults(recentMatchesRes.data.map((m: any) => {
           const isHome = m.home_club_id === clubId;
           const myScore = isHome ? m.home_score : m.away_score;
           const oppScore = isHome ? m.away_score : m.home_score;
+          const oppId = isHome ? m.away_club_id : m.home_club_id;
           const result = myScore > oppScore ? 'V' : myScore < oppScore ? 'D' : 'E';
-          return { id: m.id, result: result as 'V' | 'E' | 'D', myScore, oppScore };
+          return {
+            id: m.id,
+            result: result as 'V' | 'E' | 'D',
+            myScore,
+            oppScore,
+            isHome,
+            opponent: oppMap.get(oppId) ?? null,
+          };
         }));
       }
 
@@ -553,12 +573,23 @@ export default function PlayerClubPage() {
   const tcBonus = TRAINING_CENTER_BONUS[tcLevel] ?? 0;
   const isGK = selectedPlayer?.primary_position === 'GK';
 
+  // Team overall: average of the active lineup's starters (derived from
+  // already-fetched lineup state). Falls back to null when no lineup yet.
+  const teamOverall: number | null = (() => {
+    if (!lineup) return null;
+    const starters = lineup.slots.filter(s => s.role_type === 'starter' && s.player);
+    if (starters.length === 0) return null;
+    const sum = starters.reduce((acc, s) => acc + (s.player?.overall ?? 0), 0);
+    return Math.round(sum / starters.length);
+  })();
+
   return (
     <AppLayout>
       <div className="max-w-4xl space-y-6">
 
         {/* ── Header ── */}
-        <div className="flex items-center gap-5">
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex items-center gap-5 min-w-0">
           <ClubCrest
             crestUrl={(clubInfo as any).crest_url}
             primaryColor={clubInfo.primary_color}
@@ -566,38 +597,60 @@ export default function PlayerClubPage() {
             shortName={clubInfo.short_name}
             className="h-20 w-20 shrink-0 rounded-xl text-2xl shadow-lg"
           />
-          <div>
-            <h1 className="font-display text-3xl font-bold">{clubInfo.name}</h1>
+          <div className="min-w-0">
+            <h1 className="font-display text-3xl font-bold truncate">{clubInfo.name}</h1>
             <p className="text-sm text-muted-foreground">
               {clubInfo.short_name} {clubInfo.city && `\u2022 ${clubInfo.city}`}
             </p>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                <CoachIcon className="mr-1 h-3 w-3" />
-                {managerInfo?.full_name || 'Desconhecido'}
-              </Badge>
-              {managerInfo?.user_id && (
-                <PlayerAvatar
-                  appearance={managerInfo.appearance ?? seededAppearance(managerInfo.id || managerInfo.full_name)}
-                  variant="face"
-                  clubPrimaryColor={clubInfo.primary_color}
-                  clubSecondaryColor={clubInfo.secondary_color}
-                  playerName={managerInfo.full_name}
-                  className="h-10 w-10 shrink-0"
-                  fallbackSeed={managerInfo.id || managerInfo.full_name}
-                  outfit="coach"
-                />
-              )}
               <Badge variant="outline" className="text-xs">
                 <CoachIcon className="mr-1 h-3 w-3 text-tactical" />
                 {getCoachBonusLabel(coachType)}
               </Badge>
             </div>
           </div>
+          </div>
+
+          {/* Manager avatar - full-body block on the right */}
+          <div className="shrink-0 flex flex-col items-center text-center">
+            {managerInfo ? (
+              <>
+                <div className="w-20 h-40 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg overflow-hidden">
+                  <PlayerAvatar
+                    appearance={managerInfo.appearance ?? seededAppearance(managerInfo.id || managerInfo.full_name)}
+                    variant="full-front"
+                    clubPrimaryColor={clubInfo.primary_color}
+                    clubSecondaryColor={clubInfo.secondary_color}
+                    playerName={managerInfo.full_name}
+                    className="w-full h-full"
+                    fallbackSeed={managerInfo.id || managerInfo.full_name}
+                    outfit="coach"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
+                <p className="text-xs font-semibold max-w-[120px] truncate">{managerInfo.full_name}</p>
+              </>
+            ) : (
+              <div className="w-20 h-40 flex items-center justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
+                <Bot className="h-9 w-9 text-muted-foreground" />
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* ── Stats Row (4 cards) ── */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {/* ── Stats Row ── */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {/* Team Overall */}
+          <div className="stat-card">
+            <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <Star className="h-3.5 w-3.5" /> OVR do Time
+            </div>
+            <p className="font-display text-3xl font-extrabold text-tactical leading-none">
+              {teamOverall ?? '—'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Media do titular</p>
+          </div>
+
           {/* Liga Position */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -786,19 +839,39 @@ export default function PlayerClubPage() {
         <div className="stat-card space-y-3">
           <h3 className="font-display text-sm font-semibold">Ultimos Resultados</h3>
           {recentResults.length > 0 ? (
-            <div className="flex gap-2">
+            <div className="space-y-1.5">
               {recentResults.map((r) => (
-                <div
+                <Link
                   key={r.id}
-                  className={`flex-1 rounded p-2 text-center text-xs font-display font-bold ${
+                  to={`/match/${r.id}/replay`}
+                  className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 transition-colors group"
+                >
+                  <span className={`w-6 h-6 flex items-center justify-center rounded text-[11px] font-display font-bold shrink-0 ${
                     r.result === 'V' ? 'bg-pitch/15 text-pitch' :
                     r.result === 'D' ? 'bg-destructive/15 text-destructive' :
                     'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  <div className="text-lg">{r.result}</div>
-                  <div className="text-[10px] opacity-70">{r.myScore}-{r.oppScore}</div>
-                </div>
+                  }`}>
+                    {r.result}
+                  </span>
+                  {r.opponent && (
+                    <ClubCrest
+                      crestUrl={r.opponent.crest_url}
+                      primaryColor={r.opponent.primary_color}
+                      secondaryColor={r.opponent.secondary_color}
+                      shortName={r.opponent.short_name}
+                      className="w-5 h-5 rounded text-[7px] shrink-0"
+                    />
+                  )}
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {r.isHome ? 'vs' : '@'}
+                  </span>
+                  <span className="text-xs font-medium truncate group-hover:text-tactical transition-colors">
+                    {r.opponent?.name || 'Adversario'}
+                  </span>
+                  <span className="ml-auto text-xs font-display font-bold tabular-nums shrink-0">
+                    {r.myScore}–{r.oppScore}
+                  </span>
+                </Link>
               ))}
             </div>
           ) : (
