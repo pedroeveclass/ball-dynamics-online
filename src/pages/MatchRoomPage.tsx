@@ -3865,22 +3865,27 @@ export default function MatchRoomPage() {
       // Use START position to compute direction (not interpolated pos, which flips near target)
       const startPos = resolutionStartPositions[ballHolder.id] ?? { x: ballHolder.field_x ?? 50, y: ballHolder.field_y ?? 50 };
 
-      // If BH has a move action, ball is IN FRONT of movement direction
-      const moveAction = turnActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move' && a.target_x != null);
-      if (moveAction?.target_x != null && moveAction?.target_y != null) {
-        const dx = moveAction.target_x - startPos.x;
-        const dy = moveAction.target_y - startPos.y;
+      // Pass/shoot/header takes priority over move for ball offset: when the BH committed
+      // a ball-action in the ball_holder phase (e.g. bot's shoot_controlled) AND the user
+      // also submitted a move in the attack phase, the BH-lock at resolution drops the
+      // move and keeps the shot. Matching that priority here avoids the visual glitch where
+      // during the attack phase the ball briefly offsets toward the soon-to-be-dropped move
+      // target, then snaps to the shot trajectory when resolution starts.
+      const ballAction = turnActions.find(a => a.participant_id === ballHolder.id && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
+      if (ballAction?.target_x != null && ballAction?.target_y != null) {
+        const dx = ballAction.target_x - startPos.x;
+        const dy = ballAction.target_y - startPos.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len > 0.5) {
           return { x: playerPos.x + (dx / len) * BALL_DIST, y: playerPos.y + (dy / len) * BALL_DIST };
         }
       }
 
-      // If BH has a pass/shoot action, ball is between player and target
-      const ballAction = turnActions.find(a => a.participant_id === ballHolder.id && (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type)));
-      if (ballAction?.target_x != null && ballAction?.target_y != null) {
-        const dx = ballAction.target_x - startPos.x;
-        const dy = ballAction.target_y - startPos.y;
+      // If BH has a move action (and no ball-action), ball is IN FRONT of movement direction
+      const moveAction = turnActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move' && a.target_x != null);
+      if (moveAction?.target_x != null && moveAction?.target_y != null) {
+        const dx = moveAction.target_x - startPos.x;
+        const dy = moveAction.target_y - startPos.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len > 0.5) {
           return { x: playerPos.x + (dx / len) * BALL_DIST, y: playerPos.y + (dy / len) * BALL_DIST };
