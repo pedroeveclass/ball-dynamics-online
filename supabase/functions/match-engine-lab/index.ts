@@ -5834,13 +5834,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         && (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager')
       );
       const bhHumanHasBallAction = bhHumanActions.some((a: any) => isBallActionType(a.action_type));
-      const bhHumanMoveLike = bhHumanActions.filter((a: any) =>
-        a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'
-      );
-      if (bhBotBallActions.length > 0 && !bhHumanHasBallAction && bhHumanMoveLike.length === bhHumanActions.length && bhHumanMoveLike.length > 0) {
+      // If the human didn't submit a ball-action on the BH, whatever else they sent
+      // (move / receive / block / no_action / tackle attempt) is not a valid override
+      // of the bot's pre-committed pass/shoot. Drop ALL human actions on the BH.
+      if (bhBotBallActions.length > 0 && !bhHumanHasBallAction && bhHumanActions.length > 0) {
         for (const a of bhBotBallActions) bhLockedBotActionIds.add(a.id);
-        for (const a of bhHumanMoveLike) bhLockedDropHumanMoveIds.add(a.id);
-        console.warn(`[ENGINE] BH-lock (resolution): kept bot ball-action for BH ${bhParticipantId} (${bhBotBallActions.length} action(s)), dropped ${bhHumanMoveLike.length} human move(s). Bot action landed after human move submission.`);
+        for (const a of bhHumanActions) bhLockedDropHumanMoveIds.add(a.id);
+        console.warn(`[ENGINE] BH-lock (resolution): kept bot ball-action for BH ${bhParticipantId} (${bhBotBallActions.length} action(s)), dropped ${bhHumanActions.length} human action(s): [${bhHumanActions.map((a: any) => a.action_type).join(',')}]`);
       }
     }
 
