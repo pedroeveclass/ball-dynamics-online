@@ -134,6 +134,7 @@ export default function PublicClubPage() {
   const [squad, setSquad] = useState<any[]>([]);
   const [recentResults, setRecentResults] = useState<any[]>([]);
   const [nextMatch, setNextMatch] = useState<any>(null);
+  const [teamOverall, setTeamOverall] = useState<number | null>(null);
 
   // Player detail dialog
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
@@ -228,23 +229,39 @@ export default function PublicClubPage() {
       }
     }
 
+    // Team overall (avg of starting XI from active lineup)
+    const { data: ovr } = await supabase.rpc('get_club_starting_overall' as any, { p_club_id: id });
+    setTeamOverall(typeof ovr === 'number' ? ovr : null);
+
     // Recent results (last 5 finished matches)
     const { data: recentMatches } = await supabase
       .from('matches')
-      .select('id, home_club_id, away_club_id, home_score, away_score, status')
+      .select('id, home_club_id, away_club_id, home_score, away_score, status, finished_at')
       .or(`home_club_id.eq.${id},away_club_id.eq.${id}`)
       .eq('status', 'finished')
       .order('finished_at', { ascending: false })
       .limit(5);
 
-    if (recentMatches) {
+    if (recentMatches && recentMatches.length > 0) {
+      const oppIds = Array.from(new Set(recentMatches.map((m: any) =>
+        m.home_club_id === id ? m.away_club_id : m.home_club_id
+      )));
+      const { data: oppClubs } = await supabase
+        .from('clubs')
+        .select('id, name, short_name, primary_color, secondary_color, crest_url')
+        .in('id', oppIds);
+      const oppMap = new Map((oppClubs || []).map((c: any) => [c.id, c]));
+
       setRecentResults(recentMatches.map((m: any) => {
         const isHome = m.home_club_id === id;
         const myScore = isHome ? m.home_score : m.away_score;
         const oppScore = isHome ? m.away_score : m.home_score;
+        const oppId = isHome ? m.away_club_id : m.home_club_id;
         const result = myScore > oppScore ? 'V' : myScore < oppScore ? 'D' : 'E';
-        return { ...m, result, myScore, oppScore };
+        return { ...m, result, myScore, oppScore, isHome, opponent: oppMap.get(oppId) };
       }));
+    } else {
+      setRecentResults([]);
     }
 
     // Next match
@@ -369,51 +386,75 @@ export default function PublicClubPage() {
     <ClubLayout>
       <div className="space-y-6">
         {/* ── Header ── */}
-        <div className="flex items-start gap-5">
-          <ClubCrest
-            crestUrl={clubData.crest_url}
-            primaryColor={clubData.primary_color}
-            secondaryColor={clubData.secondary_color}
-            shortName={clubData.short_name}
-            className="w-20 h-20 rounded-xl text-2xl shadow-lg shrink-0"
-          />
-          <div>
-            <h1 className="font-display text-3xl font-bold">{clubData.name}</h1>
-            <p className="text-muted-foreground text-sm">
-              {clubData.short_name} {clubData.city && `• ${clubData.city}`}
-            </p>
-            <div className="flex flex-wrap items-center gap-2 mt-1.5">
-              <Badge variant="outline" className="text-xs">
-                <Star className="h-3 w-3 mr-1" /> Rep. {clubData.reputation}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                <Users className="h-3 w-3 mr-1" />
-                {clubData.is_bot_managed ? 'Sem Treinador' : (manager?.full_name || 'Manager')}
-              </Badge>
-              {!clubData.is_bot_managed && manager?.user_id && (
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex items-start gap-5 min-w-0">
+            <ClubCrest
+              crestUrl={clubData.crest_url}
+              primaryColor={clubData.primary_color}
+              secondaryColor={clubData.secondary_color}
+              shortName={clubData.short_name}
+              className="w-20 h-20 rounded-xl text-2xl shadow-lg shrink-0"
+            />
+            <div className="min-w-0">
+              <h1 className="font-display text-3xl font-bold truncate">{clubData.name}</h1>
+              <p className="text-muted-foreground text-sm">
+                {clubData.short_name} {clubData.city && `• ${clubData.city}`}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <Badge variant="outline" className="text-xs">
+                  <Star className="h-3 w-3 mr-1" /> Rep. {clubData.reputation}
+                </Badge>
+                {stadium && (
+                  <Badge variant="outline" className="text-xs">
+                    <Building2 className="h-3 w-3 mr-1" />
+                    {stadium.name} ({stadium.capacity?.toLocaleString()})
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Manager avatar — prominent right-side block */}
+          <div className="shrink-0 flex flex-col items-center text-center">
+            {clubData.is_bot_managed ? (
+              <>
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
+                  <Bot className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5">Sem Treinador</p>
+              </>
+            ) : manager ? (
+              <>
                 <PlayerAvatar
                   appearance={manager.appearance ?? seededAppearance(manager.id || manager.full_name || 'mgr')}
                   variant="face"
                   clubPrimaryColor={clubData.primary_color}
                   clubSecondaryColor={clubData.secondary_color}
                   playerName={manager.full_name}
-                  className="h-10 w-10 shrink-0"
+                  className="h-16 w-16 shrink-0"
                   fallbackSeed={manager.id || manager.full_name || 'mgr'}
                   outfit="coach"
                 />
-              )}
-              {stadium && (
-                <Badge variant="outline" className="text-xs">
-                  <Building2 className="h-3 w-3 mr-1" />
-                  {stadium.name} ({stadium.capacity?.toLocaleString()})
-                </Badge>
-              )}
-            </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
+                <p className="text-xs font-semibold max-w-[120px] truncate">{manager.full_name}</p>
+              </>
+            ) : null}
           </div>
         </div>
 
         {/* ── Top stats row ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Team Overall */}
+          <div className="stat-card">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Star className="h-3.5 w-3.5" /> OVR do Time
+            </div>
+            <p className="font-display font-extrabold text-3xl text-tactical leading-none">
+              {teamOverall ?? '—'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Média do time titular</p>
+          </div>
+
           {/* League standing */}
           <div className="stat-card">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
@@ -500,19 +541,39 @@ export default function PublicClubPage() {
           <div className="stat-card space-y-3">
             <h3 className="font-display font-semibold text-sm">Últimos Resultados</h3>
             {recentResults.length > 0 ? (
-              <div className="flex gap-2">
+              <div className="space-y-1.5">
                 {recentResults.map((r: any) => (
-                  <div
+                  <Link
                     key={r.id}
-                    className={`flex-1 text-center p-2 rounded text-xs font-display font-bold ${
+                    to={`/match/${r.id}/replay`}
+                    className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 transition-colors group"
+                  >
+                    <span className={`w-6 h-6 flex items-center justify-center rounded text-[11px] font-display font-bold shrink-0 ${
                       r.result === 'V' ? 'bg-pitch/15 text-pitch' :
                       r.result === 'D' ? 'bg-destructive/15 text-destructive' :
                       'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    <div className="text-lg">{r.result}</div>
-                    <div className="text-[10px] opacity-70">{r.myScore}-{r.oppScore}</div>
-                  </div>
+                    }`}>
+                      {r.result}
+                    </span>
+                    {r.opponent && (
+                      <ClubCrest
+                        crestUrl={r.opponent.crest_url}
+                        primaryColor={r.opponent.primary_color}
+                        secondaryColor={r.opponent.secondary_color}
+                        shortName={r.opponent.short_name}
+                        className="w-5 h-5 rounded text-[7px] shrink-0"
+                      />
+                    )}
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {r.isHome ? 'vs' : '@'}
+                    </span>
+                    <span className="text-xs font-medium truncate group-hover:text-tactical transition-colors">
+                      {r.opponent?.name || 'Adversário'}
+                    </span>
+                    <span className="ml-auto text-xs font-display font-bold tabular-nums shrink-0">
+                      {r.myScore}–{r.oppScore}
+                    </span>
+                  </Link>
                 ))}
               </div>
             ) : (
