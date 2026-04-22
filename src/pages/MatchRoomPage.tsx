@@ -6,7 +6,7 @@ import { getInitialMatchEngineFunction, invokeConfiguredMatchEngine } from '@/li
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
-import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState } from './match/types';
+import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState, ResolutionScript } from './match/types';
 import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, GOAL_Y_MIN, GOAL_Y_MAX, SET_PIECE_EXCLUSION_RADIUS, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { positionalMultiplier } from '@/lib/positions';
@@ -362,6 +362,13 @@ export default function MatchRoomPage() {
   const oneTouchPendingForRef = useRef<string | null>(null);
   // Track resolution event logs so the animation end-state can incorporate actual results
   const resolutionEventsRef = useRef<EventLog[]>([]);
+  // Server-authoritative resolution script for the current resolution turn.
+  // Populated from the Realtime UPDATE on match_turns that flips status→resolved.
+  // When present it IS the truth: events, final positions, interrupt progress,
+  // animation duration — all pre-computed. The animator uses it to kick off
+  // without polling for individual event logs.
+  const resolutionScriptRef = useRef<ResolutionScript | null>(null);
+  const resolutionScriptTurnIdRef = useRef<string | null>(null);
   // Players who failed a tackle in the previous turn — cannot tackle again this turn
   const [tackleBlockedIds, setTackleBlockedIds] = useState<Set<string>>(new Set());
   // Multiplier applied to max move range this turn for players who failed a tackle last turn.
@@ -1349,38 +1356,36 @@ export default function MatchRoomPage() {
     setTackleBlockedIds(prevTurnFailed);
     setTackleMovementPenalty(prevTurnPenalty);
     resolutionEventsRef.current = [];
+    resolutionScriptRef.current = null;
+    resolutionScriptTurnIdRef.current = null;
 
     const currentTurnNumberForInertia = activeTurn?.turn_number ?? null;
     const alreadySeededForThisTurn = currentTurnNumberForInertia != null
       && inertiaAppliedForTurnRef.current === currentTurnNumberForInertia;
 
     if (activeTurn?.ball_holder_participant_id == null) {
-      if (carriedLooseBallPos) {
-        // Ball was ALREADY loose — check if inertia was consumed
-        if (inertiaConsumedRef.current) {
-          // Inertia already applied last turn — clear it, ball stays put
-          setBallInertiaDir(null);
-        }
-        // If not consumed yet, keep ballInertiaDir alive for arrow/animation
-      } else {
-        // Ball JUST became loose — canonical priority: final ball ref > final ball state
-        // > history resolver (scoped to current turn) > authoritative match_turns.ball_x/_y.
-        const turnBall = (activeTurn as any)?.ball_x != null && (activeTurn as any)?.ball_y != null
-          ? { x: Number((activeTurn as any).ball_x), y: Number((activeTurn as any).ball_y) }
-          : null;
-        const pos = finalBallPosRef.current
-          ?? finalBallPos
-          ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia)
-          ?? turnBall;
-        if (pos) {
-          setCarriedLooseBallPos(pos);
-          inertiaConsumedRef.current = false;
-          // Seed inertia exactly once per turn_number — avoids the 0x/2x race where
-          // this effect re-runs and either re-applies a stale direction or skips it.
-          if (!alreadySeededForThisTurn && lastBallDirRef.current) {
-            setBallInertiaDir(lastBallDirRef.current);
-            inertiaAppliedForTurnRef.current = currentTurnNumberForInertia;
-          }
+      // Ball loose — always re-seed from server events (loose_ball / ball_inertia).
+      // The engine applies 0.15 decay on the first loose turn and 0.08 on every
+      // subsequent one; short-circuiting on the "already loose" case left the
+      // cached position stuck at the first-turn prediction while the server kept
+      // rolling the ball, causing the client-displayed ball to be in a different
+      // place than where the engine thought it was — players targeting the visible
+      // ball ended up >2.65 units from the server position and were rejected.
+      const turnBall = (activeTurn as any)?.ball_x != null && (activeTurn as any)?.ball_y != null
+        ? { x: Number((activeTurn as any).ball_x), y: Number((activeTurn as any).ball_y) }
+        : null;
+      const pos = finalBallPosRef.current
+        ?? finalBallPos
+        ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia)
+        ?? turnBall;
+      if (pos) {
+        setCarriedLooseBallPos(pos);
+        // Seed ball direction for the animation. Done every loose turn (not just
+        // the first) so subsequent turns can still animate the server's continuing
+        // decay — lastBallDirRef is kept alive for exactly this purpose.
+        if (!alreadySeededForThisTurn && lastBallDirRef.current) {
+          setBallInertiaDir(lastBallDirRef.current);
+          inertiaAppliedForTurnRef.current = currentTurnNumberForInertia;
         }
       }
     } else {
@@ -1862,6 +1867,44 @@ export default function MatchRoomPage() {
             phase: nextTurn?.phase ?? previousTurn?.phase ?? null,
             turn_number: nextTurn?.turn_number ?? previousTurn?.turn_number ?? null,
           });
+        }
+
+        // ── Resolution script arrival ──
+        // The engine writes resolution_script on the current resolution turn
+        // at the end of its tick, together with status→'resolved'. That UPDATE
+        // is the signal the client uses to kick off the animation with fully
+        // pre-computed truth: events, final positions, interrupt progress,
+        // animation duration. Capture BEFORE the status!='active' branch below
+        // nulls out activeTurn.
+        if (nextTurn && nextTurn.phase === 'resolution' && (nextTurn as any).resolution_script) {
+          const script = (nextTurn as any).resolution_script as ResolutionScript;
+          if (resolutionScriptTurnIdRef.current !== nextTurn.id) {
+            resolutionScriptRef.current = script;
+            resolutionScriptTurnIdRef.current = nextTurn.id;
+            // Seed the event buffer the existing animator reads from so
+            // resolveBallOutcome and the RAF loop light up without needing
+            // individual event-log inserts to arrive first.
+            const nowIso = new Date().toISOString();
+            const scriptEvents: EventLog[] = (script.events || []).map((ev, idx) => ({
+              id: `script-${nextTurn.id}-${idx}`,
+              event_type: ev.event_type,
+              title: ev.title ?? '',
+              body: ev.body ?? '',
+              payload: (ev.payload ?? null) as Record<string, any> | null,
+              created_at: nowIso,
+            }));
+            // Merge with whatever arrived via Realtime inserts already, then
+            // dedupe by event_type + payload-identity to avoid double counts
+            // if events also arrive via match_event_logs realtime.
+            const existing = resolutionEventsRef.current;
+            const merged = [...scriptEvents];
+            for (const ev of existing) {
+              const dup = merged.some(m => m.event_type === ev.event_type
+                && JSON.stringify(m.payload ?? null) === JSON.stringify(ev.payload ?? null));
+              if (!dup) merged.push(ev);
+            }
+            resolutionEventsRef.current = merged;
+          }
         }
 
         if (nextTurn?.status === 'active') {
@@ -2921,7 +2964,8 @@ export default function MatchRoomPage() {
         if (!bhPart) {
           // Loose ball with inertia
           if (ballInertiaDir && carriedLooseBallPos) {
-            const INERTIA_DISPLAY = 0.15;
+            // Mirror engine decay: 0.15 first loose turn, 0.08 subsequent.
+            const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
             // Don't clamp — let the ball go out of bounds visually (straight line)
             const endX = carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
             const endY = carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
@@ -3328,17 +3372,18 @@ export default function MatchRoomPage() {
                 }
               }
             } else if (!bhId && carriedLooseBallPos && ballInertiaDir) {
-              // Loose ball with inertia: move ball to post-inertia position (no clamp — can go OOB)
-              const INERTIA_DISPLAY = 0.15;
+              // Loose ball with inertia: mirror the engine's decay (0.15 first
+              // turn, 0.08 subsequent) so the animation's end-of-frame matches
+              // the position the server persists in ball_inertia. Keeping
+              // lastBallDirRef alive lets the next loose turn animate too.
+              const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
               const newX = carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
               const newY = carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
               const newPos = { x: newX, y: newY };
               setCarriedLooseBallPos(newPos);
               finalBallPosRef.current = newPos;
               setFinalBallPos(newPos);
-              // Mark inertia as consumed — ball will stop next turn
               inertiaConsumedRef.current = true;
-              lastBallDirRef.current = null;
             }
 
           // Release the interceptor snapshot — next render uses the live memo again.
@@ -3871,16 +3916,19 @@ export default function MatchRoomPage() {
 
   // interceptorAction is declared above the early return (Rules of Hooks)
 
-  // Loose ball position: persist across turns until someone regains possession.
-  // Canonical priority: finalBallPos (current turn end) > carriedLooseBallPos (across turns)
-  // > shared history resolver (race safety during turn transition).
+  // Loose ball position: server events are the source of truth. carriedLooseBallPos
+  // is just a local cache that can drift across consecutive loose turns because the
+  // engine applies 0.15 then 0.08 decay — any divergence between what the client
+  // predicted and what the engine stored would make players target a spot that the
+  // engine no longer considers "near the ball" (>2.65 units → rejected).
+  // Priority: finalBallPos (locked post-animation) > latest server event >
+  // local cache > match_turns.ball_x/_y.
   const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
-    if (carriedLooseBallPos) return carriedLooseBallPos;
     const fromHistory = resolveLooseBallFromHistory(events, turnActions, currentTurnNumber);
     if (fromHistory) return fromHistory;
-    // Authoritative server-persisted coord fallback.
+    if (carriedLooseBallPos) return carriedLooseBallPos;
     const tx = (activeTurn as any)?.ball_x;
     const ty = (activeTurn as any)?.ball_y;
     if (tx != null && ty != null) return { x: Number(tx), y: Number(ty) };
@@ -3916,7 +3964,8 @@ export default function MatchRoomPage() {
     if (!ballHolder) {
       // During resolution, animate loose ball along inertia trajectory
       if (animating && activeTurn?.phase === 'resolution' && ballInertiaDir && carriedLooseBallPos) {
-        const INERTIA_DISPLAY = 0.15;
+        // Mirror engine decay: 0.15 first loose turn, 0.08 subsequent.
+        const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
         const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
         const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
         const raw = animProgressRef.current;
@@ -4265,7 +4314,8 @@ export default function MatchRoomPage() {
       if (isLooseBall && looseBallPos && ballInertiaDir) {
         const inertiaLen = Math.sqrt(ballInertiaDir.dx * ballInertiaDir.dx + ballInertiaDir.dy * ballInertiaDir.dy);
         if (inertiaLen >= 0.5) {
-          const INERTIA_DISPLAY = 0.15;
+          // Mirror engine decay: 0.15 first loose turn, 0.08 subsequent.
+          const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
           // Don't clamp — let inertia arrow point outside field if that's where the ball goes
           const endX = looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
           const endY = looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
