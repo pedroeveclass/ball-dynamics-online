@@ -4597,7 +4597,11 @@ export default function MatchRoomPage() {
                 // activeTurn flips to the next turn, turnActions briefly still holds the prior
                 // turn's rows (refetch races the phase change) — without this guard, the old
                 // pass arrow flashes for one frame before the new turn's actions arrive.
-                if (activeTurn?.id && action.match_turn_id && action.match_turn_id !== activeTurn.id) return null;
+                // Compare by turn_number (not match_turn_id): each phase within a turn inserts
+                // its own match_turns row, so filtering by id would hide arrows submitted in
+                // an earlier phase of the same turn (e.g. a pass drawn in ball_holder vanished
+                // when the phase advanced to attacking_support).
+                if (activeTurn?.turn_number != null && action.turn_number != null && action.turn_number !== activeTurn.turn_number) return null;
 
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
