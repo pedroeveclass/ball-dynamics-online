@@ -530,25 +530,31 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
             if (homeClub) clubById.set(homeClub.id, homeClub);
             if (awayClub) clubById.set(awayClub.id, awayClub);
 
-            // Suppress receive_failed events whose participant ended up receiving the ball
-            // (engine logs every attempt; if the same player eventually succeeded or is now
-            // the ball holder, we hide the failure entry to avoid confusing the log).
-            const succeededReceivers = new Set<string>();
+            // Suppress receive_failed only when the SAME player succeeded in the
+            // SAME turn resolution (same created_at batch). Matching across the whole
+            // match was too broad: a player who failed at T25 and later became the
+            // ball holder at T27 via an unrelated event had their T25 failure hidden,
+            // making the Match Flow look like "pass → nobody tried → loose ball"
+            // when in reality multiple teammates attempted the domination and missed.
+            const succeededByBatch = new Map<string, Set<string>>();
             for (const e of events) {
+              let pid: string | undefined;
               if (e.event_type === 'receive_success') {
-                const pid = (e.payload as any)?.participant_id;
-                if (pid) succeededReceivers.add(pid);
-              }
-              if (e.event_type === 'pass_complete' || e.event_type === 'possession_change') {
-                const pid = (e.payload as any)?.new_ball_holder_participant_id
+                pid = (e.payload as any)?.participant_id;
+              } else if (e.event_type === 'pass_complete' || e.event_type === 'possession_change') {
+                pid = (e.payload as any)?.new_ball_holder_participant_id
                   ?? (e.payload as any)?.receiver_participant_id;
-                if (pid) succeededReceivers.add(pid);
               }
+              if (!pid || !e.created_at) continue;
+              const bucket = succeededByBatch.get(e.created_at) ?? new Set<string>();
+              bucket.add(pid);
+              succeededByBatch.set(e.created_at, bucket);
             }
             const filteredEvents = events.filter(e => {
               if (e.event_type !== 'receive_failed') return true;
               const pid = (e.payload as any)?.participant_id;
-              return !(pid && succeededReceivers.has(pid));
+              if (!pid || !e.created_at) return true;
+              return !succeededByBatch.get(e.created_at)?.has(pid);
             });
 
             return filteredEvents.slice(-30).map(e => {
