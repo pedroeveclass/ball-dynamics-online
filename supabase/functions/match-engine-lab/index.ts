@@ -5288,11 +5288,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   let looseBallPos: { x: number; y: number } | null = null;
   const isLooseBallTurn = !activeTurn.ball_holder_participant_id;
   // Fire loose ball query early (will be awaited later)
+  // Only include event types that actually CARRY the ball position. Including types
+  // with null/empty payloads (e.g. loose_ball_phase, loose_ball_recovered,
+  // possession_change) and LIMIT 1 caused the engine to pick the most recent
+  // coord-less event and fall back to the stale original pass target — making the
+  // ball visibly teleport back to where the pass started on the second consecutive
+  // loose turn.
   const looseBallEventsPromise = isLooseBallTurn
     ? supabase.from('match_event_logs')
         .select('event_type, payload, body')
         .eq('match_id', match_id)
-        .in('event_type', ['loose_ball', 'block', 'shot_missed', 'blocked', 'loose_ball_phase', 'ball_inertia', 'ball_stopped', 'loose_ball_recovered', 'possession_change'])
+        .in('event_type', ['loose_ball', 'ball_inertia', 'block', 'blocked', 'shot_missed'])
         .order('created_at', { ascending: false })
         .limit(1)
     : null;
