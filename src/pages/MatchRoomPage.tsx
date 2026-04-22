@@ -2856,19 +2856,25 @@ export default function MatchRoomPage() {
     if (animatedResolutionIdRef.current === activeTurn.id) return;
 
     // ── Wait for engine to finish resolving BEFORE starting animation ──
-    // The animation must reflect what actually happened, not what was submitted.
-    // We poll for resolution events (blocked, intercepted, saved, tackle, goal, etc.)
-    // or resolved_at on the current turn. Falls back to 2s timeout if nothing arrives.
+    // Primary signal: a resolution_script arrived on this turn via Realtime
+    // (the engine emits it at the end of the defense processing). When that
+    // lands, we kick off immediately — no MIN_WAIT_MS gate, no event-log
+    // polling. Legacy fallback: any resolution event in the buffer still
+    // triggers an animation (for builds without the script). MAX_WAIT_MS
+    // caps the wait so a missing signal never hangs the UI.
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     const pollStartTime = Date.now();
     const MAX_WAIT_MS = 2500;
     const MIN_WAIT_MS = 250;
 
+    const scriptReadyForTurn = () =>
+      resolutionScriptRef.current != null
+      && resolutionScriptTurnIdRef.current === activeTurn.id;
+
     const hasResolutionSignal = () => {
+      if (scriptReadyForTurn()) return true;
       const resEvents = resolutionEventsRef.current;
-      // Any resolution event means engine has started emitting results
       if (resEvents.length > 0) return true;
-      // Or the next turn arrived (activeTurn would have changed by now, but check ref)
       return false;
     };
 
@@ -2878,7 +2884,10 @@ export default function MatchRoomPage() {
         return;
       }
       const elapsed = Date.now() - pollStartTime;
-      const ready = hasResolutionSignal() && elapsed >= MIN_WAIT_MS;
+      const scriptReady = scriptReadyForTurn();
+      // Script is authoritative — start immediately. Otherwise fall back to
+      // the event-buffer gate with a MIN_WAIT_MS debounce.
+      const ready = scriptReady || (hasResolutionSignal() && elapsed >= MIN_WAIT_MS);
       const timedOut = elapsed >= MAX_WAIT_MS;
       if (!ready && !timedOut) return;
 

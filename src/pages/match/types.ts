@@ -41,6 +41,34 @@ export interface MatchTurn {
   set_piece_type?: string | null;
   ball_x?: number | null;
   ball_y?: number | null;
+  resolution_script?: ResolutionScript | null;
+}
+
+// Server-authoritative payload describing the full outcome of a resolution
+// turn. The engine writes this atomically with the turn's status transition
+// so the client animator can replay a deterministic script instead of
+// polling individual event logs.
+export interface ResolutionScript {
+  version: 1;
+  turn_number: number;
+  duration_ms: number;
+  interrupt_progress: number | null;
+  initial_positions: Record<string, { x: number; y: number }>;
+  final_positions: Record<string, { x: number; y: number }>;
+  events: Array<{
+    event_type: string;
+    title?: string;
+    body?: string;
+    payload?: Record<string, any> | null;
+  }>;
+  ball_end_pos: { x: number; y: number } | null;
+  next_turn: {
+    phase: string;
+    possession_club_id: string | null;
+    ball_holder_participant_id: string | null;
+    set_piece_type: string | null;
+  };
+  scores: { home: number; away: number };
 }
 
 export interface EventLog {

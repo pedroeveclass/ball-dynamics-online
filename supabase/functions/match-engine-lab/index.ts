@@ -5794,8 +5794,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   const eventsToLog: any[] = [];
   const deferredPositionUpdates: Array<{id: string, pos_x: number, pos_y: number}> = [];
 
+  // Captured once per resolution so the resolution_script can describe where
+  // each player/ball *started* the turn (before any movement or snap) and the
+  // client animator interpolates from those same coordinates. Outside the
+  // isResolution branch this stays empty and is not serialized.
+  const initialPositions: Record<string, { x: number; y: number }> = {};
+  let initialBallPos: { x: number; y: number } | null = null;
+
   if (isResolution) {
     console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
+    for (const p of (participants || [])) {
+      if (p.pos_x == null || p.pos_y == null) continue;
+      initialPositions[p.id] = { x: Number(p.pos_x), y: Number(p.pos_y) };
+    }
+    if (ballHolder && ballHolder.pos_x != null && ballHolder.pos_y != null) {
+      initialBallPos = { x: Number(ballHolder.pos_x), y: Number(ballHolder.pos_y) };
+    } else if (activeTurn.ball_x != null && activeTurn.ball_y != null) {
+      initialBallPos = { x: Number(activeTurn.ball_x), y: Number(activeTurn.ball_y) };
+    }
     const turnRows = turnRowsResult?.data;
 
     const allTurnIds = (turnRows || []).map((t: any) => t.id);
@@ -7559,9 +7575,88 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     const newTurnNumber = match.current_turn_number + 1;
 
+    // ── Build the resolution_script ────────────────────────────────────────
+    // Single server-authoritative payload describing exactly what the client
+    // animator should replay. Consolidates: events (already inserted above),
+    // initial/final positions, ball outcome, interruption timing, next-turn
+    // state, and the animation duration so the client never has to predict
+    // or poll for event logs to know when / how to animate.
+    const finalPositionsScript: Record<string, { x: number; y: number }> = {};
+    // Start from current (pre-mutation) positions so players who did not move
+    // still appear in the map.
+    for (const pid of Object.keys(initialPositions)) {
+      finalPositionsScript[pid] = { ...initialPositions[pid] };
+    }
+    // Apply resolution moves (already post-interrupt-scaled in place).
+    for (const m of resolutionMoveBatch) {
+      finalPositionsScript[m.id] = { x: Number(m.x), y: Number(m.y) };
+    }
+    // deferredPositionUpdates always wins (set-piece placements, post-pass BH
+    // mini-move). deferredPositionUpdates stores pos_x/pos_y shape.
+    for (const u of deferredPositionUpdates) {
+      finalPositionsScript[u.id] = { x: Number(u.pos_x), y: Number(u.pos_y) };
+    }
+
+    // Mirror the client animator's duration curve (MatchRoomPage.tsx) so the
+    // client and engine agree on how long the animation lasts when the engine
+    // pre-computes it. Kept in sync manually — update both sides if tweaked.
+    let scriptDurationMs = 900;
+    {
+      const bhDurAction = ballHolder
+        ? allActions.find((a: any) => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
+        : null;
+      const bhStart = ballHolder && ballHolder.pos_x != null && ballHolder.pos_y != null
+        ? { x: Number(ballHolder.pos_x), y: Number(ballHolder.pos_y) }
+        : { x: 50, y: 50 };
+      const ballDist = bhDurAction?.target_x != null && bhDurAction?.target_y != null
+        ? Math.sqrt(Math.pow(Number(bhDurAction.target_x) - bhStart.x, 2) + Math.pow(Number(bhDurAction.target_y) - bhStart.y, 2))
+        : 30;
+      const bhActionType = bhDurAction?.action_type || 'move';
+      let d: number;
+      switch (bhActionType) {
+        case 'pass_low': case 'header_low': d = Math.round(420 + ballDist * 16); break;
+        case 'pass_high': case 'header_high': d = Math.round(620 + ballDist * 18); break;
+        case 'pass_launch': d = Math.round(760 + ballDist * 19); break;
+        case 'shoot_controlled': case 'header_controlled': d = Math.round(380 + ballDist * 11); break;
+        case 'shoot_power': case 'header_power': d = Math.round(260 + ballDist * 7); break;
+        default: d = Math.round(500 + ballDist * 14); break;
+      }
+      scriptDurationMs = Math.max(400, Math.min(d, 2500));
+    }
+
+    const resolutionScript = {
+      version: 1 as const,
+      turn_number: match.current_turn_number,
+      duration_ms: scriptDurationMs,
+      interrupt_progress: (typeof interruptT === 'number' ? interruptT : null),
+      initial_positions: initialPositions,
+      final_positions: finalPositionsScript,
+      events: eventsToLog.map(ev => ({
+        event_type: ev.event_type,
+        title: ev.title ?? '',
+        body: ev.body ?? '',
+        payload: ev.payload ?? null,
+      })),
+      ball_end_pos: ballEndPos,
+      initial_ball_pos: initialBallPos,
+      next_turn: {
+        phase: (nextBallHolderParticipantId === null
+          ? 'attacking_support'
+          : (nextSetPieceType ? 'positioning_attack' : 'ball_holder')),
+        possession_club_id: newPossessionClubId,
+        ball_holder_participant_id: nextBallHolderParticipantId,
+        set_piece_type: nextSetPieceType,
+      },
+      scores: { home: homeScore, away: awayScore },
+    };
+
     // Token-guarded resolve: bail if claim was stolen during long resolution.
     const { data: resResolvedRows } = await supabase.from('match_turns')
-      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .update({
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        resolution_script: resolutionScript,
+      })
       .eq('id', activeTurn.id)
       .eq('processing_token', processingToken)
       .select('id');
@@ -8310,6 +8405,28 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       status: 'active',
       set_piece_type: activeTurn.set_piece_type ?? null,
     });
+
+    // ── Immediate resolution chaining ──
+    // When we just advanced from defending_response into resolution, run the
+    // resolution tick synchronously in the same HTTP round-trip. The
+    // resolution phase's timer (RESOLUTION_PHASE_DURATION_MS) becomes a pure
+    // animation window driven by the client's resolution_script consumer —
+    // the server no longer waits for it to expire before computing the
+    // outcome. Guarded so a recursion loop can't happen (resolution only
+    // chains from defending_response).
+    if (nextPhase === 'resolution' && activeTurn.phase === 'defending_response') {
+      mark('advance_persist');
+      try {
+        console.log(`[ENGINE] Chaining immediate resolution tick for match=${match_id.slice(0,8)} turn=${activeTurn.turn_number}`);
+        const chainedResult = await executeTickForMatch(supabase, match_id, true);
+        console.log(`[ENGINE] Chained resolution tick result: ${JSON.stringify(chainedResult)}`);
+        tickExitStatus = `advanced:${activeTurn.phase}+chained_resolution`;
+      } catch (chainErr) {
+        console.error('[ENGINE] Chained resolution tick failed:', chainErr);
+        tickExitStatus = `advanced:${activeTurn.phase}+chain_failed`;
+      }
+      return { status: 'advanced' };
+    }
   }
   mark('advance_persist');
   tickExitStatus = `advanced:${activeTurn.phase}`;
