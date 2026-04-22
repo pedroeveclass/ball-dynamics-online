@@ -6804,10 +6804,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           // RULE: resolveAction already processed interceptions from opponents.
           // Here we only match SAME-TEAM receivers (teammates trying to receive the pass).
           // Opponent 'receive' actions were already contested inside resolveAction.
+          // Players who failed their domination roll inside resolveAction cannot be
+          // awarded the pass here by spatial proximity — the "Falhou o domínio"
+          // event already fired for them, so giving them the ball would contradict
+          // what the match flow told the user.
+          const failedReceiverIds = new Set(
+            (result.failedReceiveAttempts ?? []).map(f => f.participantId),
+          );
           const teammateReceivers = allActions.filter((a: any) => {
             if (a.participant_id === ballHolder.id) return false;
             if (a.action_type !== 'receive') return false;
             if (a.target_x == null || a.target_y == null) return false;
+            if (failedReceiverIds.has(a.participant_id)) return false;
             const p = (participants || []).find((pp: any) => pp.id === a.participant_id);
             return p && p.club_id === possClubId; // Only same-team receivers
           });
