@@ -2593,20 +2593,59 @@ export default function MatchRoomPage() {
         const dp = participantsRef.current.find(p => p.id === drawingAction.fromParticipantId);
         if (dp && dp.field_x != null && dp.field_y != null) {
           const FIELD_Y_SCALE = INNER_H / INNER_W;
+          const decideX = mouseFieldPct?.x ?? pctX;
+          const decideY = mouseFieldPct?.y ?? pctY;
+          const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
+          const circleRadiusField = 9 / INNER_W * 100;
+
+          // Path A — cursor on the inertia arrow (ball rolling). Aligns with the
+          // purple-circle render's trajectory branch. The engine's
+          // findLooseBallClaimer now checks distance to the full ball-rolling
+          // segment, so we can submit the projection point as target and the
+          // server will accept it.
+          if (ballInertiaDir) {
+            const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
+            const bfx = looseBallPos.x;
+            const bfy = looseBallPos.y;
+            const btx = looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
+            const bty = looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
+            const tdx = btx - bfx;
+            const tdy = bty - bfy;
+            const tlen2 = tdx * tdx + tdy * tdy;
+            if (tlen2 > 0.01) {
+              const t = clamp(((decideX - bfx) * tdx + (decideY - bfy) * tdy) / tlen2, 0, 1);
+              const projX = bfx + tdx * t;
+              const projY = bfy + tdy * t;
+              const distToTraj = pointToSegmentDistance(decideX, decideY, bfx, bfy, btx, bty);
+              const reachesTrajPoint = canReachTrajectoryPoint(
+                { x: dp.field_x, y: dp.field_y },
+                { x: bfx, y: bfy }, { x: btx, y: bty },
+                t, baseRange, 'pass_low', 0.5,
+              );
+              if (distToTraj <= 1.0 && reachesTrajPoint) {
+                setPendingInterceptChoice({
+                  participantId: drawingAction.fromParticipantId,
+                  targetX: projX,
+                  targetY: projY,
+                });
+                setShowActionMenu(drawingAction.fromParticipantId);
+                setDrawingAction(null);
+                setMouseFieldPct(null);
+                return;
+              }
+            }
+          }
+
+          // Path B — cursor directly on the ball (no inertia or ball already stopped).
+          // Mirrors the render's fixed-point branch + engine's findLooseBallClaimer
+          // point check when ballEndPos isn't passed.
           const dxP = dp.field_x - looseBallPos.x;
           const dyP = (dp.field_y - looseBallPos.y) * FIELD_Y_SCALE;
           const distPlayerToBall = Math.sqrt(dxP * dxP + dyP * dyP);
-          const maxRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          // Use the same cursor position the render evaluated against (mouseFieldPct),
-          // so click and purple-circle decisions can never disagree about "is the cursor on the ball".
-          const decideX = mouseFieldPct?.x ?? pctX;
-          const decideY = mouseFieldPct?.y ?? pctY;
           const cxP = decideX - looseBallPos.x;
           const cyP = (decideY - looseBallPos.y) * FIELD_Y_SCALE;
           const distCursorToBall = Math.sqrt(cxP * cxP + cyP * cyP);
-          const circleRadiusField = 9 / INNER_W * 100;
-          // Range tolerance 0.5 matches the engine's findLooseBallClaimer (`dist > maxRange + 0.5`).
-          if (distPlayerToBall <= maxRange + 0.5
+          if (distPlayerToBall <= baseRange + 0.5
               && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
             setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
             setShowActionMenu(drawingAction.fromParticipantId);

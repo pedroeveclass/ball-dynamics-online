@@ -4088,7 +4088,7 @@ function computeBallControlDifficulty(
   return Math.max(0.1, Math.min(1.0, chance));
 }
 
-function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number, ballPos?: { x: number; y: number } | null): any | null {
+function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number, ballPos?: { x: number; y: number } | null, ballEndPos?: { x: number; y: number } | null): any | null {
   const receiveActions = allActions.filter((a) => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
 
@@ -4099,10 +4099,29 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     // If we know ball position, reject receives that are too far from the ball.
     // Threshold 2.65 mirrors the client's purple-circle proximity check
     // (circleRadiusField + INTERCEPT_RADIUS + 1) so "what I see is what happens".
+    // When ballEndPos is provided (the position the ball will roll to under this
+    // turn's inertia), we check distance to the full segment ballPos → ballEndPos
+    // so a player can legitimately intercept anywhere along the rolling path.
     if (ballPos) {
-      const distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
+      let distToBall: number;
+      if (ballEndPos) {
+        const ax = ballPos.x, ay = ballPos.y;
+        const bx = ballEndPos.x, by = ballEndPos.y;
+        const dx = bx - ax, dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        let t = 0;
+        if (lenSq > 1e-6) {
+          t = ((action.target_x - ax) * dx + (action.target_y - ay) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+        }
+        const projX = ax + dx * t;
+        const projY = ay + dy * t;
+        distToBall = Math.sqrt((action.target_x - projX) ** 2 + (action.target_y - projY) ** 2);
+      } else {
+        distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
+      }
       if (distToBall > 2.65) {
-        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball (${distToBall.toFixed(2)} > 2.65)`);
+        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball path (${distToBall.toFixed(2)} > 2.65)`);
         continue;
       }
     }
@@ -6942,8 +6961,136 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         .maybeSingle();
 
       const wasAlreadyLoose = prevTurnData && prevTurnData.ball_holder_participant_id === null && match.current_turn_number > 1;
+      const prevTurnNumber = match.current_turn_number - 1;
 
-      const looseBallClaimer = findLooseBallClaimer(allActions, participants || [], attrByProfile, match.current_turn_number ?? 1, ballEndPos as { x: number; y: number } | null);
+      // ── Compute the ball's path for this turn BEFORE the claim check ──
+      // The ball rolls from its current position toward the inertia endpoint.
+      // We need both endpoints so findLooseBallClaimer can match players who
+      // targeted ANYWHERE along the rolling path — not just the start. Without
+      // this, clicks on the inertia arrow's tip were rejected server-side
+      // even though the client's purple-circle render accepted them.
+      let prevBhAction = allActions.find(a => isBallActionType(a.action_type));
+      let bhStartPos = ballHolder ? { x: Number(ballHolder.pos_x ?? 50), y: Number(ballHolder.pos_y ?? 50) } : null;
+
+      // Check if the previous turn had a block/save event (GK espalmou or outfield blocked)
+      // If so, the inertia should follow the DEFLECT direction, not the original shot direction.
+      let deflectOverride: { fromX: number; fromY: number; toX: number; toY: number } | null = null;
+      // Shooter context (needed to credit a goal if inertia pushes the loose ball
+      // across the goal line after a GK save).
+      let deflectShooter: { id: string; clubId: string; name: string | null; shotTargetX: number } | null = null;
+      if (prevTurnNumber >= 1) {
+        const { data: prevDeflectEvent } = await supabase
+          .from('match_event_logs')
+          .select('payload')
+          .eq('match_id', match_id)
+          .in('event_type', ['blocked', 'saved', 'block'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (prevDeflectEvent && prevDeflectEvent.length > 0) {
+          const p = prevDeflectEvent[0].payload as any;
+          if (p && typeof p.deflect_from_x === 'number' && typeof p.deflect_to_x === 'number') {
+            deflectOverride = { fromX: p.deflect_from_x, fromY: p.deflect_from_y, toX: p.deflect_to_x, toY: p.deflect_to_y };
+          }
+        }
+        // Fetch the shooter from the previous turn (used only if inertia crosses goal).
+        if (deflectOverride) {
+          const { data: prevTurnRowsD } = await supabase
+            .from('match_turns')
+            .select('id')
+            .eq('match_id', match_id)
+            .eq('turn_number', prevTurnNumber)
+            .order('created_at', { ascending: false });
+          const prevTurnIdsD = (prevTurnRowsD || []).map((t: any) => t.id);
+          if (prevTurnIdsD.length > 0) {
+            const { data: prevShotRows } = await supabase
+              .from('match_actions')
+              .select('participant_id, target_x')
+              .in('match_turn_id', prevTurnIdsD)
+              .in('action_type', ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'])
+              .order('created_at', { ascending: false })
+              .limit(1);
+            if (prevShotRows && prevShotRows.length > 0) {
+              const shooterId = prevShotRows[0].participant_id;
+              const shooter = (participants || []).find((pp: any) => pp.id === shooterId);
+              if (shooter) {
+                deflectShooter = {
+                  id: shooter.id,
+                  clubId: shooter.club_id,
+                  name: (shooter as any)._player_name ?? null,
+                  shotTargetX: Number(prevShotRows[0].target_x ?? 50),
+                };
+              }
+            }
+          }
+        }
+      }
+
+      if (!prevBhAction && !deflectOverride) {
+        // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
+        if (prevTurnNumber >= 1) {
+          const { data: prevTurnRows } = await supabase
+            .from('match_turns')
+            .select('id')
+            .eq('match_id', match_id)
+            .eq('turn_number', prevTurnNumber)
+            .order('created_at', { ascending: false });
+          const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+          if (prevTurnIds.length > 0) {
+            const { data: prevActions } = await supabase
+              .from('match_actions')
+              .select('action_type, target_x, target_y, participant_id')
+              .in('match_turn_id', prevTurnIds)
+              .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
+              .order('created_at', { ascending: false })
+              .limit(1);
+            if (prevActions && prevActions.length > 0) {
+              prevBhAction = prevActions[0];
+              // Use the PASSER's position (not current ball pos) as origin for direction
+              const passer = (participants || []).find((p: any) => p.id === prevActions[0].participant_id);
+              bhStartPos = passer
+                ? { x: Number(passer.pos_x ?? 50), y: Number(passer.pos_y ?? 50) }
+                : ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
+            }
+          }
+        }
+      }
+
+      // Ball start = where the ball sits at turn start.
+      const ballStartPos: { x: number; y: number } = ballEndPos
+        ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y }
+        : { x: 50, y: 50 };
+      // Decay factor: 1st loose turn = 15%, 2nd+ = 8% (ball slowing down)
+      const inertiaFactor = wasAlreadyLoose ? 0.08 : 0.15;
+
+      // Compute direction: deflect (block/save) takes priority over original shot direction
+      let dirX = 0, dirY = 0;
+      if (deflectOverride) {
+        dirX = deflectOverride.toX - deflectOverride.fromX;
+        dirY = deflectOverride.toY - deflectOverride.fromY;
+      } else if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
+        dirX = Number(prevBhAction.target_x) - bhStartPos.x;
+        dirY = Number(prevBhAction.target_y) - bhStartPos.y;
+      }
+      const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+      let inertiaBallX = ballStartPos.x;
+      let inertiaBallY = ballStartPos.y;
+      if (dirLen > 0.1) {
+        const normDirX = dirX / dirLen;
+        const normDirY = dirY / dirLen;
+        const inertiaDistance = dirLen * inertiaFactor;
+        inertiaBallX = ballStartPos.x + normDirX * inertiaDistance;
+        inertiaBallY = ballStartPos.y + normDirY * inertiaDistance;
+        if (deflectOverride) console.log(`[ENGINE] Inertia from DEFLECT: ${dirLen.toFixed(1)} * ${inertiaFactor} = ${inertiaDistance.toFixed(1)} in direction (${normDirX.toFixed(2)},${normDirY.toFixed(2)})`);
+      }
+      const inertiaEndPos = { x: inertiaBallX, y: inertiaBallY };
+
+      // Claim check now uses the full rolling segment so the client's purple
+      // circle (which extends along the arrow) agrees with what the server
+      // will accept.
+      const looseBallClaimer = findLooseBallClaimer(
+        allActions, participants || [], attrByProfile, match.current_turn_number ?? 1,
+        ballStartPos, inertiaEndPos,
+      );
 
       if (looseBallClaimer) {
         nextBallHolderParticipantId = looseBallClaimer.id;
@@ -6965,120 +7112,6 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         });
       } else {
         nextBallHolderParticipantId = null;
-
-        // Apply inertia (decayed on consecutive loose turns)
-        // First try current turn's ball action, then look at previous turn's actions
-        let prevBhAction = allActions.find(a => isBallActionType(a.action_type));
-        let bhStartPos = ballHolder ? { x: Number(ballHolder.pos_x ?? 50), y: Number(ballHolder.pos_y ?? 50) } : null;
-
-        // Check if the previous turn had a block/save event (GK espalmou or outfield blocked)
-        // If so, the inertia should follow the DEFLECT direction, not the original shot direction.
-        let deflectOverride: { fromX: number; fromY: number; toX: number; toY: number } | null = null;
-        // Shooter context (needed to credit a goal if inertia pushes the loose ball
-        // across the goal line after a GK save).
-        let deflectShooter: { id: string; clubId: string; name: string | null; shotTargetX: number } | null = null;
-        const prevTurnNumber = match.current_turn_number - 1;
-        if (prevTurnNumber >= 1) {
-          const { data: prevDeflectEvent } = await supabase
-            .from('match_event_logs')
-            .select('payload')
-            .eq('match_id', match_id)
-            .in('event_type', ['blocked', 'saved', 'block'])
-            .order('created_at', { ascending: false })
-            .limit(1);
-          if (prevDeflectEvent && prevDeflectEvent.length > 0) {
-            const p = prevDeflectEvent[0].payload as any;
-            if (p && typeof p.deflect_from_x === 'number' && typeof p.deflect_to_x === 'number') {
-              deflectOverride = { fromX: p.deflect_from_x, fromY: p.deflect_from_y, toX: p.deflect_to_x, toY: p.deflect_to_y };
-            }
-          }
-          // Fetch the shooter from the previous turn (used only if inertia crosses goal).
-          if (deflectOverride) {
-            const { data: prevTurnRowsD } = await supabase
-              .from('match_turns')
-              .select('id')
-              .eq('match_id', match_id)
-              .eq('turn_number', prevTurnNumber)
-              .order('created_at', { ascending: false });
-            const prevTurnIdsD = (prevTurnRowsD || []).map((t: any) => t.id);
-            if (prevTurnIdsD.length > 0) {
-              const { data: prevShotRows } = await supabase
-                .from('match_actions')
-                .select('participant_id, target_x')
-                .in('match_turn_id', prevTurnIdsD)
-                .in('action_type', ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'])
-                .order('created_at', { ascending: false })
-                .limit(1);
-              if (prevShotRows && prevShotRows.length > 0) {
-                const shooterId = prevShotRows[0].participant_id;
-                const shooter = (participants || []).find((pp: any) => pp.id === shooterId);
-                if (shooter) {
-                  deflectShooter = {
-                    id: shooter.id,
-                    clubId: shooter.club_id,
-                    name: (shooter as any)._player_name ?? null,
-                    shotTargetX: Number(prevShotRows[0].target_x ?? 50),
-                  };
-                }
-              }
-            }
-          }
-        }
-
-        if (!prevBhAction && !deflectOverride) {
-          // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
-          if (prevTurnNumber >= 1) {
-            const { data: prevTurnRows } = await supabase
-              .from('match_turns')
-              .select('id')
-              .eq('match_id', match_id)
-              .eq('turn_number', prevTurnNumber)
-              .order('created_at', { ascending: false });
-            const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
-            if (prevTurnIds.length > 0) {
-              const { data: prevActions } = await supabase
-                .from('match_actions')
-                .select('action_type, target_x, target_y, participant_id')
-                .in('match_turn_id', prevTurnIds)
-                .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
-                .order('created_at', { ascending: false })
-                .limit(1);
-              if (prevActions && prevActions.length > 0) {
-                prevBhAction = prevActions[0];
-                // Use the PASSER's position (not current ball pos) as origin for direction
-                const passer = (participants || []).find((p: any) => p.id === prevActions[0].participant_id);
-                bhStartPos = passer
-                  ? { x: Number(passer.pos_x ?? 50), y: Number(passer.pos_y ?? 50) }
-                  : ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
-              }
-            }
-          }
-        }
-
-        let inertiaBallX = ballEndPos ? (ballEndPos as { x: number; y: number }).x : 50;
-        let inertiaBallY = ballEndPos ? (ballEndPos as { x: number; y: number }).y : 50;
-        // Decay factor: 1st loose turn = 15%, 2nd+ = 8% (ball slowing down)
-        const inertiaFactor = wasAlreadyLoose ? 0.08 : 0.15;
-
-        // Compute direction: deflect (block/save) takes priority over original shot direction
-        let dirX = 0, dirY = 0;
-        if (deflectOverride) {
-          dirX = deflectOverride.toX - deflectOverride.fromX;
-          dirY = deflectOverride.toY - deflectOverride.fromY;
-        } else if (prevBhAction && prevBhAction.target_x != null && prevBhAction.target_y != null && bhStartPos) {
-          dirX = Number(prevBhAction.target_x) - bhStartPos.x;
-          dirY = Number(prevBhAction.target_y) - bhStartPos.y;
-        }
-
-        const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
-        if (dirLen > 0.1) {
-          const normDirX = dirX / dirLen;
-          const normDirY = dirY / dirLen;
-          const inertiaDistance = dirLen * inertiaFactor;
-          inertiaBallX = inertiaBallX + normDirX * inertiaDistance;
-          inertiaBallY = inertiaBallY + normDirY * inertiaDistance;
-          if (deflectOverride) console.log(`[ENGINE] Inertia from DEFLECT: ${dirLen.toFixed(1)} * ${inertiaFactor} = ${inertiaDistance.toFixed(1)} in direction (${normDirX.toFixed(2)},${normDirY.toFixed(2)})`);
-        }
         ballEndPos = { x: inertiaBallX, y: inertiaBallY };
 
         // Goal-from-deflect detection: after a GK save/block, the ball's inertia can
