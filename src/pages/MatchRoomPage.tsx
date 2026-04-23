@@ -1374,10 +1374,13 @@ export default function MatchRoomPage() {
       const turnBall = (activeTurn as any)?.ball_x != null && (activeTurn as any)?.ball_y != null
         ? { x: Number((activeTurn as any).ball_x), y: Number((activeTurn as any).ball_y) }
         : null;
+      // Prefer the server's authoritative ball_x/y from match_turns over an event-history
+      // scan — the engine writes it at every turn transition, whereas the scan may latch
+      // onto a stale ball_inertia / loose_ball event emitted several turns ago.
       const pos = finalBallPosRef.current
         ?? finalBallPos
-        ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia)
-        ?? turnBall;
+        ?? turnBall
+        ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia);
       if (pos) {
         setCarriedLooseBallPos(pos);
         // Seed ball direction for the animation. Done every loose turn (not just
@@ -1616,11 +1619,17 @@ export default function MatchRoomPage() {
 
       const possClubId = activeTurn.possession_club_id;
       const phaseIsAttacking = isAttackingPhase;
+      // In loose-ball turns both teams act in BOTH phases (see the filter in
+      // getActionsForParticipant). The regular attacking/defending phase gate
+      // would skip the non-possession team's menu, so relax it when loose.
+      const isLooseBallTurn = activeTurn.ball_holder_participant_id == null;
 
       let targetPid: string | null = null;
       if (myRole === 'player' && myParticipant?.id) {
         const isMyTeamAttacking = myClubId === possClubId;
-        const shouldActInThisPhase = (phaseIsAttacking && isMyTeamAttacking) || (!phaseIsAttacking && !isMyTeamAttacking);
+        const shouldActInThisPhase = isLooseBallTurn
+          || (phaseIsAttacking && isMyTeamAttacking)
+          || (!phaseIsAttacking && !isMyTeamAttacking);
         if (shouldActInThisPhase) targetPid = myParticipant.id;
       } else if (myRole === 'manager') {
         const parts = participantsRef.current;
@@ -1636,7 +1645,9 @@ export default function MatchRoomPage() {
         if (candidate && candidate.role_type === 'player') {
           const candidateIsAttacking = candidate.club_id === possClubId;
           const managerControlsCandidate = isTest || candidate.club_id === myClubId;
-          const candidateShouldAct = (phaseIsAttacking && candidateIsAttacking) || (!phaseIsAttacking && !candidateIsAttacking);
+          const candidateShouldAct = isLooseBallTurn
+            || (phaseIsAttacking && candidateIsAttacking)
+            || (!phaseIsAttacking && !candidateIsAttacking);
           if (managerControlsCandidate && candidateShouldAct) targetPid = candidate.id;
         }
       }
@@ -1761,16 +1772,12 @@ export default function MatchRoomPage() {
       setDrawingAction(null);
       setPendingInterceptChoice(null);
 
-      // Ball holder: pressing Z submits no_action (stay still, keep ball).
-      // Other players: move to current position (effectively no-op).
-      const isBH = activeTurn.ball_holder_participant_id === candidate.id;
-      if (isBH) {
-        void submitAction('no_action', candidate.id, null, null);
-      } else {
-        const cx = candidate.field_x ?? candidate.pos_x ?? 50;
-        const cy = candidate.field_y ?? candidate.pos_y ?? 50;
-        void submitAction('move', candidate.id, cx, cy);
-      }
+      // "Sem Ação" is submitted as a zero-length 'move' with payload.no_action=true
+      // so label renderers (toast, on-field popup, arrow label) show "SEM AÇÃO"
+      // instead of "MOVER". See feedback_no_action_payload.md.
+      const cx = candidate.field_x ?? candidate.pos_x ?? 50;
+      const cy = candidate.field_y ?? candidate.pos_y ?? 50;
+      void submitAction('move', candidate.id, cx, cy, undefined, { no_action: true });
 
       setShowActionMenu(candidate.id);
     };
@@ -3969,17 +3976,20 @@ export default function MatchRoomPage() {
   // engine applies 0.15 then 0.08 decay — any divergence between what the client
   // predicted and what the engine stored would make players target a spot that the
   // engine no longer considers "near the ball" (>2.65 units → rejected).
-  // Priority: finalBallPos (locked post-animation) > latest server event >
-  // local cache > match_turns.ball_x/_y.
+  // Priority: finalBallPos (locked post-animation) > match_turns.ball_x/y (server
+  // authoritative, written every turn transition) > event-history scan > local cache.
+  // Previously history-scan came before match_turns.ball_x/y, which caused visual
+  // desync when the scan latched onto a stale ball_inertia event and the client
+  // rendered the ball in a different place than the server had stored.
   const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
-    const fromHistory = resolveLooseBallFromHistory(events, turnActions, currentTurnNumber);
-    if (fromHistory) return fromHistory;
-    if (carriedLooseBallPos) return carriedLooseBallPos;
     const tx = (activeTurn as any)?.ball_x;
     const ty = (activeTurn as any)?.ball_y;
     if (tx != null && ty != null) return { x: Number(tx), y: Number(ty) };
+    const fromHistory = resolveLooseBallFromHistory(events, turnActions, currentTurnNumber);
+    if (fromHistory) return fromHistory;
+    if (carriedLooseBallPos) return carriedLooseBallPos;
     return null;
   })();
 
@@ -4703,6 +4713,11 @@ export default function MatchRoomPage() {
 
                 // Hide bot arrows during positioning phases (they just clutter the field)
                 if (action.controlled_by_type === 'bot' && isPositioningTurn) return null;
+
+                // Hide ALL move arrows during positioning — the player sprite animates
+                // straight to the target via getAnimatedPos override; a visible arrow
+                // duplicates that motion and adds a stray "MOVER" label at the midpoint.
+                if (isPositioningTurn && action.action_type === 'move') return null;
 
                 // Hide positioning phase arrows once we've moved past positioning
                 if (!isPositioningTurn && (action.turn_phase === 'positioning_attack' || action.turn_phase === 'positioning_defense')) return null;

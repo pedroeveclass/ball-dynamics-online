@@ -80,23 +80,37 @@ function snapBallToQuadrantIdx(x: number, y: number): number {
   return row * COLS + col;
 }
 
-/** Snap player to one of 9 points (3×3 grid) within whatever quadrant they land in. */
-function snapPlayerPosition(x: number, y: number): Pos {
+/** Snap player to one of 9 points (3×3 grid) within whatever quadrant they land in.
+ *  When `lockToQuadrant` is provided, the snap is forced to land inside that quadrant
+ *  regardless of where the drag ended — used to keep the GK anchored to the goal-area
+ *  quadrant (row 6, col 2 = idx 32) so it never drifts into midfield / opponent side. */
+function snapPlayerPosition(x: number, y: number, lockToQuadrant?: number): Pos {
   const cx = clamp(x, 0, 100);
   const cy = clamp(y, 0, 100);
-  const col = clamp(Math.floor(cx / QUADRANT_W), 0, COLS - 1);
-  const row = clamp(Math.floor(cy / QUADRANT_H), 0, ROWS - 1);
-  const relX = (cx - col * QUADRANT_W) / QUADRANT_W; // 0..1
-  const relY = (cy - row * QUADRANT_H) / QUADRANT_H;
+  let col = clamp(Math.floor(cx / QUADRANT_W), 0, COLS - 1);
+  let row = clamp(Math.floor(cy / QUADRANT_H), 0, ROWS - 1);
+  if (lockToQuadrant != null) {
+    col = lockToQuadrant % COLS;
+    row = Math.floor(lockToQuadrant / COLS);
+  }
+  const qLeft = col * QUADRANT_W;
+  const qTop = row * QUADRANT_H;
+  const relX = clamp((cx - qLeft) / QUADRANT_W, 0, 1);
+  const relY = clamp((cy - qTop) / QUADRANT_H, 0, 1);
   const subCol = clamp(Math.floor(relX * 3), 0, 2);
   const subRow = clamp(Math.floor(relY * 3), 0, 2);
   return {
-    x: col * QUADRANT_W + (subCol + 0.5) * (QUADRANT_W / 3),
-    y: row * QUADRANT_H + (subRow + 0.5) * (QUADRANT_H / 3),
+    x: qLeft + (subCol + 0.5) * (QUADRANT_W / 3),
+    y: qTop + (subRow + 0.5) * (QUADRANT_H / 3),
   };
 }
 
-/** Dynamic default for a quadrant — shift the whole formation proportionally to ball position. */
+/** Goal-area quadrant the GK is locked to: row 6 (y=85..100) × col 2 (x=40..60). */
+const GK_QUADRANT_IDX = 6 * COLS + 2;
+
+/** Dynamic default for a quadrant — shift the whole formation proportionally to ball position.
+ *  GK is anchored to the goal area and never participates in the dynamic shift so it
+ *  can't drift into midfield when the ball is in the attacking third. */
 function computeDynamicPositions(quadrantIdx: number, formation: string): QuadrantPositions {
   const slots = FORMATIONS[formation] || [];
   const center = quadrantCenter(quadrantIdx);
@@ -104,6 +118,10 @@ function computeDynamicPositions(quadrantIdx: number, formation: string): Quadra
   const dy = (center.y - 50) * DYNAMIC_SHIFT_Y;
   const result: QuadrantPositions = {};
   for (const s of slots) {
+    if (s.position === 'GK') {
+      result[s.position] = { x: s.x, y: s.y };
+      continue;
+    }
     result[s.position] = {
       x: clamp(s.x + dx, 0, 100),
       y: clamp(s.y + dy, 0, 100),
@@ -223,13 +241,14 @@ type ChipVariant = 'own' | 'ghost' | 'opponent';
 interface PlayerChipProps {
   jersey: number;
   label: string;
+  slotPosition: string;
   pos: Pos;
   fieldRef: React.RefObject<HTMLDivElement>;
   onDragEndSnapped?: (newPos: Pos) => void;
   variant?: ChipVariant;
 }
 
-function PlayerChip({ jersey, label, pos, fieldRef, onDragEndSnapped, variant = 'own' }: PlayerChipProps) {
+function PlayerChip({ jersey, label, slotPosition, pos, fieldRef, onDragEndSnapped, variant = 'own' }: PlayerChipProps) {
   const controls = useAnimationControls();
   const isGhost = variant === 'ghost';
   const isOpponent = variant === 'opponent';
@@ -280,7 +299,10 @@ function PlayerChip({ jersey, label, pos, fieldRef, onDragEndSnapped, variant = 
         const dyPct = (info.offset.y / rect.height) * 100;
         const newX = clamp(pos.x + dxPct, 0, 100);
         const newY = clamp(pos.y + dyPct, 0, 100);
-        const snapped = snapPlayerPosition(newX, newY);
+        // GK is anchored to the goal-area quadrant — drag lands inside quadrant 32
+        // regardless of where the user released, so it never moves into midfield.
+        const lockToQuadrant = slotPosition === 'GK' ? GK_QUADRANT_IDX : undefined;
+        const snapped = snapPlayerPosition(newX, newY, lockToQuadrant);
         controls.set({ x: 0, y: 0 });
         onDragEndSnapped!(snapped);
       }}
@@ -893,6 +915,7 @@ export default function SituationalTacticsPage() {
                           key={`ghost-${formation}-${slot.position}`}
                           jersey={i + 1}
                           label={slot.label}
+                          slotPosition={slot.position}
                           pos={p}
                           fieldRef={fieldRef}
                           variant="ghost"
@@ -913,6 +936,7 @@ export default function SituationalTacticsPage() {
                       key={`opp-${opponentFormation}-${slot.position}`}
                       jersey={i + 1}
                       label={slot.label}
+                      slotPosition={slot.position}
                       pos={p}
                       fieldRef={fieldRef}
                       variant="opponent"
@@ -930,6 +954,7 @@ export default function SituationalTacticsPage() {
                     key={`${formation}-${slot.position}`}
                     jersey={i + 1}
                     label={slot.label}
+                    slotPosition={slot.position}
                     pos={p}
                     fieldRef={fieldRef}
                     onDragEndSnapped={(np) => updatePlayerPos(slot.position, np)}

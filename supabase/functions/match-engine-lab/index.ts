@@ -1751,12 +1751,30 @@ function pickBestPassTarget(
   isHome: boolean,
   ballPos: { x: number; y: number },
   opponents: any[],
+  allParticipants?: any[],
+  possClubId?: string | null,
+  match?: { home_club_id: string; away_club_id: string; current_half?: number },
+  setPieceType?: string | null,
 ): { target: any; actionType: string } | null {
   if (teammates.length === 0) return null;
-  const humanPriority = getHumanPriorityTargets(bot, teammates, isHome);
+  // Filter out teammates in offside position — FIFA says no offside on throw-ins,
+  // goal kicks, or corners, so skip the check for those restarts.
+  let eligibleTeammates = teammates;
+  const noOffsideSetPieces = new Set(['throw_in', 'goal_kick', 'corner']);
+  const skipOffside = !!(setPieceType && noOffsideSetPieces.has(setPieceType));
+  if (!skipOffside && allParticipants && possClubId && match) {
+    eligibleTeammates = teammates.filter((t: any) =>
+      !checkOffside(t, bot, allParticipants, possClubId, match)
+    );
+    // If every candidate is offside, fall back to the full list — the bot still
+    // needs to do something with the ball rather than crash-pass backward to
+    // the keeper; offside will be awarded downstream like a human mistake.
+    if (eligibleTeammates.length === 0) eligibleTeammates = teammates;
+  }
+  const humanPriority = getHumanPriorityTargets(bot, eligibleTeammates, isHome);
   const humanBias = getHumanPriorityBias(role);
 
-  const scored = teammates.map((t: any) => {
+  const scored = eligibleTeammates.map((t: any) => {
     const tx = Number(t.pos_x ?? 50);
     const ty = Number(t.pos_y ?? 50);
     const bx = Number(bot.pos_x ?? 50);
@@ -2086,7 +2104,7 @@ async function generateBotActions(
 
       // ── Dead ball (kickoff, free kick, etc): BH MUST pass, never move ──
       if (setPieceType) {
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2108,7 +2126,7 @@ async function generateBotActions(
 
       if (isGK) {
         // GK: always pass to nearest free defender/midfielder, never shoot or dribble
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2127,7 +2145,7 @@ async function generateBotActions(
         }
       } else if (role === 'centerBack') {
         // CB: always pass, never dribble. Short pass to midfielder/fullback
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2156,7 +2174,7 @@ async function generateBotActions(
             target_x: crossX, target_y: crossY, status: 'pending',
           });
         } else {
-          const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+          const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
           if (passResult) {
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2185,7 +2203,7 @@ async function generateBotActions(
             const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
             if (passResult) {
               actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
@@ -2208,7 +2226,7 @@ async function generateBotActions(
             const moveY = posY + (50 - posY) * 0.3 + (Math.random() - 0.5) * 6;
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
             if (passResult) {
               actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
@@ -2256,7 +2274,7 @@ async function generateBotActions(
             const moveY = posY + (50 - posY) * 0.3 + (Math.random() - 0.5) * 6;
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
             if (passResult) {
               actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
@@ -2267,7 +2285,7 @@ async function generateBotActions(
         }
       } else {
         // Fallback: pass forward
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -6886,11 +6904,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           nextBallHolderParticipantId = ballHolder.id;
         }
 
-        // Offside check — NOT applied on throw-ins, goal kicks, or corners (FIFA rules)
+        // Offside check — NOT applied on throw-ins, goal kicks, or corners (FIFA rules).
+        //
+        // Two branches of this check cover all ways a pass can "land" on an offside
+        // teammate:
+        //   1. Successful first-touch reception (nextBallHolderParticipantId is set to
+        //      the receiver) → use the actual receiver.
+        //   2. Failed reception where the pass goes loose → use the INTENDED target
+        //      (ballHolderAction.target_participant_id). FIFA offside fires the moment
+        //      an offside-positioned teammate becomes involved with the ball, even via
+        //      a deflection / loose-ball pickup later. Without the intended-target
+        //      branch, a pass aimed at an offside player who failed to dominate would
+        //      just go loose and the offside player could pick it up silently.
         const noOffsideSetPieces = new Set(['throw_in', 'goal_kick', 'corner']);
         const skipOffside = activeTurn.set_piece_type && noOffsideSetPieces.has(activeTurn.set_piece_type);
-        if (!skipOffside && ballHolderAction && (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type)) && nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
-          const receiver = (participants || []).find(p => p.id === nextBallHolderParticipantId);
+        const isPassAttempt = !!ballHolderAction && (isPassType(ballHolderAction.action_type) || isHeaderPassType(ballHolderAction.action_type));
+        let offsideReceiverCandidateId: string | null = null;
+        if (!skipOffside && isPassAttempt) {
+          if (nextBallHolderParticipantId && nextBallHolderParticipantId !== ballHolder.id) {
+            offsideReceiverCandidateId = nextBallHolderParticipantId;
+          } else if (ballHolderAction.target_participant_id && ballHolderAction.target_participant_id !== ballHolder.id) {
+            offsideReceiverCandidateId = ballHolderAction.target_participant_id;
+          }
+        }
+        if (offsideReceiverCandidateId) {
+          const receiver = (participants || []).find(p => p.id === offsideReceiverCandidateId);
           if (receiver && receiver.club_id === possClubId && checkOffside(receiver, ballHolder, participants || [], possClubId || '', match)) {
             const defClub = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
             const defPlayersForFK = (participants || []).filter(p => p.club_id === defClub && p.role_type === 'player');
@@ -6938,6 +6976,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 failure_reason: 'offside',
               },
             });
+
+            // Drop any transient loose_ball / receive_failed events that the pass-
+            // resolution branch already queued before we decided this is offside.
+            // Otherwise the client briefly shows "bola solta" before the offside
+            // FK appears, and the match log carries a contradictory pass_failed.
+            for (let i = eventsToLog.length - 1; i >= 0; i--) {
+              const ev = eventsToLog[i];
+              if (ev.event_type === 'loose_ball') {
+                eventsToLog.splice(i, 1);
+              } else if (ev.event_type === 'pass_failed'
+                && (ev.payload as any)?.failure_reason === 'receive_failed') {
+                eventsToLog.splice(i, 1);
+              }
+            }
           }
         }
       }
@@ -8204,10 +8256,22 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         };
         buildResetBatch(match.home_club_id, homeFormation, true);
         buildResetBatch(match.away_club_id, awayFormation, false);
+        // Defensive: force the kickoff taker to the dead-center (50,50) even after
+        // `pickCenterKickoffPlayer` already did — any intervening position write
+        // (move action, set-piece snap, exclusion) would otherwise leave the BH
+        // off-center and the "must pass" action filter wouldn't kick in visually.
+        if (nextBallHolderParticipantId) {
+          resetBatch.push({ id: nextBallHolderParticipantId, x: KICKOFF_X, y: KICKOFF_Y });
+          const bhPart = (participants || []).find((p: any) => p.id === nextBallHolderParticipantId);
+          if (bhPart) {
+            bhPart.pos_x = KICKOFF_X;
+            bhPart.pos_y = KICKOFF_Y;
+          }
+        }
         if (resetBatch.length > 0) {
           await supabase.rpc('batch_update_participant_positions', { p_updates: resetBatch });
         }
-        console.log(`[ENGINE] Post-goal reset: all players moved to formation positions`);
+        console.log(`[ENGINE] Post-goal reset: all players moved to formation positions; BH anchored at (50,50)`);
       }
 
       const nextPhaseStart = new Date().toISOString();
@@ -8236,12 +8300,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const nextBallHolderMoveAct = nextBallHolderPart
         ? allActions.find((a: any) => a.participant_id === nextBallHolderPart.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'))
         : null;
-      const persistedBallPos = nextBallHolderPart
-        ? {
-            x: Number(nextBallHolderMoveAct?.target_x ?? nextBallHolderPart.pos_x ?? 50),
-            y: Number(nextBallHolderMoveAct?.target_y ?? nextBallHolderPart.pos_y ?? 50),
-          }
-        : (ballEndPos || { x: 50, y: 50 });
+      const persistedBallPos = nextSetPieceType === 'kickoff'
+        // Kickoff: ball always at center. Never derive from the conceding team
+        // player's move target — they were moving during the scoring turn, and
+        // reading their target would drop the ball far from midfield.
+        ? { x: KICKOFF_X, y: KICKOFF_Y }
+        : (nextBallHolderPart
+          ? {
+              x: Number(nextBallHolderMoveAct?.target_x ?? nextBallHolderPart.pos_x ?? 50),
+              y: Number(nextBallHolderMoveAct?.target_y ?? nextBallHolderPart.pos_y ?? 50),
+            }
+          : (ballEndPos || { x: 50, y: 50 }));
 
       const { data: insertedTurn } = await supabase.from('match_turns').insert({
         match_id, turn_number: newTurnNumber,
