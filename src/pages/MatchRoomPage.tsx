@@ -1374,13 +1374,10 @@ export default function MatchRoomPage() {
       const turnBall = (activeTurn as any)?.ball_x != null && (activeTurn as any)?.ball_y != null
         ? { x: Number((activeTurn as any).ball_x), y: Number((activeTurn as any).ball_y) }
         : null;
-      // Prefer the server's authoritative ball_x/y from match_turns over an event-history
-      // scan — the engine writes it at every turn transition, whereas the scan may latch
-      // onto a stale ball_inertia / loose_ball event emitted several turns ago.
       const pos = finalBallPosRef.current
         ?? finalBallPos
-        ?? turnBall
-        ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia);
+        ?? resolveLooseBallFromHistory(events, turnActions, currentTurnNumberForInertia)
+        ?? turnBall;
       if (pos) {
         setCarriedLooseBallPos(pos);
         // Seed ball direction for the animation. Done every loose turn (not just
@@ -3976,20 +3973,17 @@ export default function MatchRoomPage() {
   // engine applies 0.15 then 0.08 decay — any divergence between what the client
   // predicted and what the engine stored would make players target a spot that the
   // engine no longer considers "near the ball" (>2.65 units → rejected).
-  // Priority: finalBallPos (locked post-animation) > match_turns.ball_x/y (server
-  // authoritative, written every turn transition) > event-history scan > local cache.
-  // Previously history-scan came before match_turns.ball_x/y, which caused visual
-  // desync when the scan latched onto a stale ball_inertia event and the client
-  // rendered the ball in a different place than the server had stored.
+  // Priority: finalBallPos (locked post-animation) > latest server event >
+  // local cache > match_turns.ball_x/_y.
   const looseBallPos = (() => {
     if (!isLooseBall) return null;
     if (finalBallPos) return finalBallPos;
-    const tx = (activeTurn as any)?.ball_x;
-    const ty = (activeTurn as any)?.ball_y;
-    if (tx != null && ty != null) return { x: Number(tx), y: Number(ty) };
     const fromHistory = resolveLooseBallFromHistory(events, turnActions, currentTurnNumber);
     if (fromHistory) return fromHistory;
     if (carriedLooseBallPos) return carriedLooseBallPos;
+    const tx = (activeTurn as any)?.ball_x;
+    const ty = (activeTurn as any)?.ball_y;
+    if (tx != null && ty != null) return { x: Number(tx), y: Number(ty) };
     return null;
   })();
 
