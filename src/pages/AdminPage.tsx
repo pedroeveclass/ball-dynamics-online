@@ -278,24 +278,23 @@ function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) 
 
   async function saveClub() {
     if (!selected) return;
-    const { error } = await supabase.from('clubs').update({
-      name: name.trim(),
-      short_name: shortName.trim().toUpperCase(),
-      primary_color: primaryColor,
-      secondary_color: secondaryColor,
-      city: city.trim() || null,
-    }).eq('id', selected.id);
+    const { error } = await supabase.rpc('admin_update_club', {
+      p_club_id: selected.id,
+      p_name: name.trim(),
+      p_short_name: shortName.trim().toUpperCase(),
+      p_primary_color: primaryColor,
+      p_secondary_color: secondaryColor,
+      p_city: city.trim(),
+      p_formation: formation,
+    });
     if (error) { toast.error(error.message); return; }
-    if (formation) {
-      await supabase.from('club_settings').update({ default_formation: formation }).eq('club_id', selected.id);
-    }
     toast.success('Time salvo');
     setSelected(null);
     onReload();
   }
 
   async function fireManager(clubId: string) {
-    const { error } = await supabase.from('clubs').update({ is_bot_managed: true }).eq('id', clubId);
+    const { error } = await supabase.rpc('admin_fire_manager', { p_club_id: clubId });
     if (error) toast.error(error.message);
     else { toast.success('Treinador demitido, time voltou a ser bot'); onReload(); }
   }
@@ -370,33 +369,34 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
   async function addClubMoney() {
     if (!selectedClub || !clubAmount) return;
     const amount = parseInt(clubAmount);
-    const current = finances.find(f => f.club_id === selectedClub);
-    if (current) {
-      const { error } = await supabase.from('club_finances').update({ balance: current.balance + amount }).eq('club_id', selectedClub);
-      if (error) toast.error(error.message);
-      else { toast.success(`R$ ${amount.toLocaleString()} ${amount >= 0 ? 'adicionado' : 'removido'}`); setClubAmount(''); onReload(); }
-    } else {
-      const { error } = await supabase.from('club_finances').insert({ club_id: selectedClub, balance: amount, weekly_wage_bill: 0, projected_income: 0, projected_expense: 0 });
-      if (error) toast.error(error.message);
-      else { toast.success(`R$ ${amount.toLocaleString()} adicionado`); setClubAmount(''); onReload(); }
+    if (!Number.isFinite(amount)) return;
+    const { error } = await supabase.rpc('admin_adjust_club_balance', { p_club_id: selectedClub, p_amount: amount });
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`R$ ${amount.toLocaleString()} ${amount >= 0 ? 'adicionado' : 'removido'}`);
+      setClubAmount('');
+      onReload();
     }
   }
 
   async function searchPlayer() {
     if (!playerSearch.trim()) return;
-    // Sanitize input: escape PostgREST special characters to prevent filter injection
-    const sanitized = playerSearch.replace(/[%_\\(),."']/g, '');
-    if (!sanitized.trim()) return;
-    const { data } = await supabase.from('player_profiles').select('*').or(`full_name.ilike.%${sanitized}%,name.ilike.%${sanitized}%`).limit(10);
+    const { data, error } = await supabase.rpc('admin_search_players', { p_query: playerSearch });
+    if (error) { toast.error(error.message); return; }
     setPlayerResults((data || []) as any);
   }
 
   async function addPlayerMoney() {
     if (!selectedPlayer || !playerAmount) return;
     const amount = parseInt(playerAmount);
-    const { error } = await supabase.from('player_profiles').update({ money: (selectedPlayer.money || 0) + amount }).eq('id', selectedPlayer.id);
+    if (!Number.isFinite(amount)) return;
+    const { error } = await supabase.rpc('admin_adjust_player_money', { p_player_id: selectedPlayer.id, p_amount: amount });
     if (error) toast.error(error.message);
-    else { toast.success(`R$ ${amount.toLocaleString()} ${amount >= 0 ? 'adicionado' : 'removido'} para ${selectedPlayer.full_name || selectedPlayer.name}`); setPlayerAmount(''); setSelectedPlayer(null); }
+    else {
+      toast.success(`R$ ${amount.toLocaleString()} ${amount >= 0 ? 'adicionado' : 'removido'} para ${selectedPlayer.full_name || selectedPlayer.name}`);
+      setPlayerAmount('');
+      setSelectedPlayer(null);
+    }
   }
 
   return (
@@ -575,30 +575,11 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
 
   async function handleAssignClub() {
     if (!assignDialog || !selectedClubId) return;
-    const { error } = await supabase
-      .from('player_profiles')
-      .update({ club_id: selectedClubId })
-      .eq('id', assignDialog.id);
+    const { error } = await supabase.rpc('admin_assign_player_to_club', {
+      p_player_id: assignDialog.id,
+      p_club_id: selectedClubId,
+    });
     if (error) { toast.error('Erro ao atribuir clube: ' + error.message); return; }
-
-    const { data: existing } = await supabase
-      .from('contracts')
-      .select('id')
-      .eq('player_profile_id', assignDialog.id)
-      .eq('club_id', selectedClubId)
-      .eq('status', 'active')
-      .maybeSingle();
-    if (!existing) {
-      await supabase.from('contracts').insert({
-        player_profile_id: assignDialog.id,
-        club_id: selectedClubId,
-        weekly_salary: 500,
-        release_clause: 5000,
-        start_date: new Date().toISOString(),
-        end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'active',
-      });
-    }
 
     toast.success(`${assignDialog.full_name} atribuído ao ${clubs.find(c => c.id === selectedClubId)?.name}`);
     setAssignDialog(null);
@@ -608,8 +589,8 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
 
   async function handleRemoveFromClub(player: HumanPlayer) {
     if (!player.club_id) return;
-    await supabase.from('player_profiles').update({ club_id: null }).eq('id', player.id);
-    await supabase.from('contracts').update({ status: 'terminated', end_date: new Date().toISOString() }).eq('player_profile_id', player.id).eq('status', 'active');
+    const { error } = await supabase.rpc('admin_remove_player_from_club', { p_player_id: player.id });
+    if (error) { toast.error('Erro ao remover: ' + error.message); return; }
     toast.success(`${player.full_name} removido do clube`);
     loadHumanPlayers();
   }

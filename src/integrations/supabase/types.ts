@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -2857,6 +2856,46 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_adjust_club_balance: {
+        Args: { p_amount: number; p_club_id: string }
+        Returns: number
+      }
+      admin_adjust_player_money: {
+        Args: { p_amount: number; p_player_id: string }
+        Returns: number
+      }
+      admin_assign_player_to_club: {
+        Args: { p_club_id: string; p_player_id: string }
+        Returns: undefined
+      }
+      admin_fire_manager: { Args: { p_club_id: string }; Returns: undefined }
+      admin_remove_player_from_club: {
+        Args: { p_player_id: string }
+        Returns: undefined
+      }
+      admin_search_players: {
+        Args: { p_query: string }
+        Returns: {
+          club_id: string
+          full_name: string
+          id: string
+          money: number
+          overall: number
+          primary_position: string
+        }[]
+      }
+      admin_update_club: {
+        Args: {
+          p_city: string
+          p_club_id: string
+          p_formation: string
+          p_name: string
+          p_primary_color: string
+          p_secondary_color: string
+          p_short_name: string
+        }
+        Returns: undefined
+      }
       advance_all_player_ages: { Args: { p_season_id: string }; Returns: Json }
       apply_aging_decay: {
         Args: { p_player_profile_id: string }
@@ -3081,6 +3120,7 @@ export type Database = {
         }
         Returns: number
       }
+      is_admin_caller: { Args: never; Returns: boolean }
       is_same_active_club_as_current_user: {
         Args: { _player_profile_id: string }
         Returns: boolean
