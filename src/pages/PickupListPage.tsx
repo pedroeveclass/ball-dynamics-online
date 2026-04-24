@@ -2,9 +2,6 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-// Cast once — pickup_games / pickup_game_participants / create_pickup_game
-// aren't in the generated types.ts yet. Remove when types are regenerated.
-const sb = supabase as any;
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -70,7 +67,7 @@ export default function PickupListPage() {
   const loadAll = useCallback(async () => {
     // Recent + open. 48h lookback is enough to show recently finished/cancelled.
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: pg } = await sb
+    const { data: pg } = await supabase
       .from('pickup_games')
       .select('id, created_by_profile_id, format, formation, kickoff_at, status, match_id, created_at')
       .gte('created_at', cutoff)
@@ -84,7 +81,7 @@ export default function PickupListPage() {
       setLoading(false);
       return;
     }
-    const { data: parts } = await sb
+    const { data: parts } = await supabase
       .from('pickup_game_participants')
       .select('pickup_game_id, player_profile_id, team_side, slot_id')
       .in('pickup_game_id', ids);
@@ -151,7 +148,7 @@ export default function PickupListPage() {
     if (!user) return;
     const kickoffIso = new Date(createKickoff).toISOString();
     setCreating(true);
-    const { data, error } = await sb.rpc('create_pickup_game', {
+    const { data, error } = await supabase.rpc('create_pickup_game', {
       p_format: createFormat,
       p_kickoff_at: kickoffIso,
       p_team_side: createSide,

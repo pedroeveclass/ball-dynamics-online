@@ -10,8 +10,6 @@ import { ArrowLeft, Bot, Clock, LogOut, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PICKUP_SLOTS, totalSlotsPerSide, type PickupFormat } from '@/lib/pickupSlots';
 
-const sb = supabase as any;
-
 type PickupRow = {
   id: string;
   created_by_profile_id: string;
@@ -64,14 +62,14 @@ export default function PickupLobbyPage() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const { data: pg } = await sb
+    const { data: pg } = await supabase
       .from('pickup_games')
       .select('id, created_by_profile_id, format, formation, kickoff_at, status, match_id')
       .eq('id', id)
       .maybeSingle();
     setPickup(pg as PickupRow | null);
 
-    const { data: parts } = await sb.rpc('get_pickup_lobby', { p_pickup_id: id });
+    const { data: parts } = await supabase.rpc('get_pickup_lobby', { p_pickup_id: id });
     setParticipants((parts || []) as ParticipantRow[]);
     setLoading(false);
   }, [id]);
@@ -119,7 +117,7 @@ export default function PickupLobbyPage() {
     // If the slot is already taken, ignore.
     if (participants.some(p => p.team_side === side && p.slot_id === slotId)) return;
     setActing(true);
-    const { error } = await sb.rpc('join_pickup_game', {
+    const { error } = await supabase.rpc('join_pickup_game', {
       p_pickup_id: pickup.id,
       p_team_side: side,
       p_slot_id: slotId,
@@ -135,7 +133,7 @@ export default function PickupLobbyPage() {
   const handleLeave = async () => {
     if (!pickup) return;
     setActing(true);
-    const { error } = await sb.rpc('leave_pickup_game', { p_pickup_id: pickup.id });
+    const { error } = await supabase.rpc('leave_pickup_game', { p_pickup_id: pickup.id });
     setActing(false);
     if (error) { toast.error(error.message || 'Erro ao sair'); return; }
     toast.success('Você saiu do jogo');
@@ -145,7 +143,7 @@ export default function PickupLobbyPage() {
     if (!pickup) return;
     if (!confirm('Tem certeza que quer cancelar este jogo?')) return;
     setActing(true);
-    const { error } = await sb.rpc('cancel_pickup_game', { p_pickup_id: pickup.id });
+    const { error } = await supabase.rpc('cancel_pickup_game', { p_pickup_id: pickup.id });
     setActing(false);
     if (error) { toast.error(error.message || 'Erro ao cancelar'); return; }
     toast.success('Jogo cancelado');

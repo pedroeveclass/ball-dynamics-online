@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -12,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -1603,6 +1577,7 @@ export type Database = {
           possession_club_id: string | null
           processing_started_at: string | null
           processing_token: string | null
+          resolution_script: Json | null
           resolved_at: string | null
           set_piece_type: string | null
           started_at: string
@@ -1621,6 +1596,7 @@ export type Database = {
           possession_club_id?: string | null
           processing_started_at?: string | null
           processing_token?: string | null
+          resolution_script?: Json | null
           resolved_at?: string | null
           set_piece_type?: string | null
           started_at?: string
@@ -1639,6 +1615,7 @@ export type Database = {
           possession_club_id?: string | null
           processing_started_at?: string | null
           processing_token?: string | null
+          resolution_script?: Json | null
           resolved_at?: string | null
           set_piece_type?: string | null
           started_at?: string
@@ -1689,6 +1666,7 @@ export type Database = {
           id: string
           injury_time_start_turn: number | null
           injury_time_turns: number
+          match_type: string
           possession_club_id: string | null
           scheduled_at: string
           started_at: string | null
@@ -1714,6 +1692,7 @@ export type Database = {
           id?: string
           injury_time_start_turn?: number | null
           injury_time_turns?: number
+          match_type?: string
           possession_club_id?: string | null
           scheduled_at?: string
           started_at?: string | null
@@ -1739,6 +1718,7 @@ export type Database = {
           id?: string
           injury_time_start_turn?: number | null
           injury_time_turns?: number
+          match_type?: string
           possession_club_id?: string | null
           scheduled_at?: string
           started_at?: string | null
@@ -1815,6 +1795,99 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      pickup_game_participants: {
+        Row: {
+          id: string
+          joined_at: string
+          pickup_game_id: string
+          player_profile_id: string
+          slot_id: string
+          team_side: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          pickup_game_id: string
+          player_profile_id: string
+          slot_id: string
+          team_side: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          pickup_game_id?: string
+          player_profile_id?: string
+          slot_id?: string
+          team_side?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_game_participants_pickup_game_id_fkey"
+            columns: ["pickup_game_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_game_participants_player_profile_id_fkey"
+            columns: ["player_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_games: {
+        Row: {
+          created_at: string
+          created_by_profile_id: string
+          format: string
+          formation: string
+          id: string
+          kickoff_at: string
+          match_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_profile_id: string
+          format: string
+          formation: string
+          id?: string
+          kickoff_at: string
+          match_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_profile_id?: string
+          format?: string
+          formation?: string
+          id?: string
+          kickoff_at?: string
+          match_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_games_created_by_profile_id_fkey"
+            columns: ["created_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "player_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_games_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       player_attributes: {
         Row: {
@@ -2367,6 +2440,36 @@ export type Database = {
           },
         ]
       }
+      season_aging_log: {
+        Row: {
+          bots_deleted: number
+          humans_retired: number
+          id: string
+          players_aged: number
+          players_decayed: number
+          ran_at: string
+          season_id: string
+        }
+        Insert: {
+          bots_deleted: number
+          humans_retired: number
+          id?: string
+          players_aged: number
+          players_decayed: number
+          ran_at?: string
+          season_id: string
+        }
+        Update: {
+          bots_deleted?: number
+          humans_retired?: number
+          id?: string
+          players_aged?: number
+          players_decayed?: number
+          ran_at?: string
+          season_id?: string
+        }
+        Relationships: []
+      }
       situational_tactics: {
         Row: {
           attack_type: string
@@ -2738,6 +2841,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _delete_bot_player: {
+        Args: { p_player_profile_id: string }
+        Returns: undefined
+      }
       accept_mutual_exit: {
         Args: {
           p_agreement_id: string
@@ -2745,6 +2852,11 @@ export type Database = {
           p_player_id: string
         }
         Returns: undefined
+      }
+      advance_all_player_ages: { Args: { p_season_id: string }; Returns: Json }
+      apply_aging_decay: {
+        Args: { p_player_profile_id: string }
+        Returns: Json
       }
       apply_league_schedule_votes: { Args: never; Returns: undefined }
       auto_train_attribute: {
@@ -2768,6 +2880,7 @@ export type Database = {
         }[]
       }
       can_fire_just_cause: { Args: { p_player_id: string }; Returns: boolean }
+      cancel_pickup_game: { Args: { p_pickup_id: string }; Returns: undefined }
       cancel_store_subscription: {
         Args: { p_purchase_id: string }
         Returns: Json
@@ -2793,6 +2906,7 @@ export type Database = {
           possession_club_id: string | null
           processing_started_at: string | null
           processing_token: string | null
+          resolution_script: Json | null
           resolved_at: string | null
           set_piece_type: string | null
           started_at: string
@@ -2815,6 +2929,15 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      create_pickup_game: {
+        Args: {
+          p_format: string
+          p_kickoff_at: string
+          p_slot_id: string
+          p_team_side: string
+        }
+        Returns: string
       }
       create_player_profile: {
         Args: {
@@ -2853,6 +2976,10 @@ export type Database = {
         Args: { p_club_id: string; p_player_id: string }
         Returns: boolean
       }
+      get_aging_decay: {
+        Args: { p_age: number; p_category: string }
+        Returns: number
+      }
       get_attribute_cap: {
         Args: {
           p_archetype: string
@@ -2862,6 +2989,10 @@ export type Database = {
         }
         Returns: number
       }
+      get_attribute_decay_category: {
+        Args: { p_attribute_key: string }
+        Returns: string
+      }
       get_bankruptcy_status: {
         Args: { p_club_id: string }
         Returns: {
@@ -2870,6 +3001,10 @@ export type Database = {
           debt_since: string
           is_in_debt: boolean
         }[]
+      }
+      get_club_starting_overall: {
+        Args: { p_club_id: string }
+        Returns: number
       }
       get_coach_bonuses: {
         Args: { p_club_id: string }
@@ -2915,6 +3050,17 @@ export type Database = {
         }
         Returns: Json
       }
+      get_pickup_lobby: {
+        Args: { p_pickup_id: string }
+        Returns: {
+          full_name: string
+          participant_id: string
+          player_profile_id: string
+          primary_position: string
+          slot_id: string
+          team_side: string
+        }[]
+      }
       get_position_demand_counts: {
         Args: never
         Returns: {
@@ -2936,6 +3082,11 @@ export type Database = {
         Returns: boolean
       }
       is_transfer_window_open: { Args: never; Returns: boolean }
+      join_pickup_game: {
+        Args: { p_pickup_id: string; p_slot_id: string; p_team_side: string }
+        Returns: undefined
+      }
+      leave_pickup_game: { Args: { p_pickup_id: string }; Returns: undefined }
       merge_match_action_payload: {
         Args: { p_action_id: string; p_patch: Json }
         Returns: undefined
@@ -2944,6 +3095,9 @@ export type Database = {
         Args: { p_entity_id: string; p_entity_type: string; p_loan_id: string }
         Returns: undefined
       }
+      pickup_away_club_id: { Args: never; Returns: string }
+      pickup_home_club_id: { Args: never; Returns: string }
+      pickup_slot_ids: { Args: { p_format: string }; Returns: string[] }
       process_loan: {
         Args: {
           p_amount: number
@@ -2993,10 +3147,7 @@ export type Database = {
         Args: { p_match_id: string }
         Returns: number
       }
-      retire_player: {
-        Args: { p_player_profile_id: string }
-        Returns: Json
-      }
+      retire_player: { Args: { p_player_profile_id: string }; Returns: Json }
       set_club_assistant_manager: {
         Args: { p_assistant_user_id: string; p_club_id: string }
         Returns: undefined
@@ -3174,9 +3325,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
