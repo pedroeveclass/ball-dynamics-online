@@ -3035,11 +3035,30 @@ export default function MatchRoomPage() {
         const bhPart = bhId ? participantsRef.current.find(p => p.id === bhId) : null;
 
         if (!bhPart) {
-          // Loose ball with inertia
+          // Loose ball with inertia. The server-authoritative endpoint is
+          // resolution_script.ball_end_pos — this is where the engine actually
+          // stopped the ball, which may be SHORT of the full inertia endpoint
+          // when a player claimed it mid-flight. Using the raw inertia endpoint
+          // made the ball visually roll past the claimer even though the engine
+          // had already awarded possession, producing the "ball goes through
+          // the player but next turn he has it" effect the user reported.
+          const ballEnd = script?.ball_end_pos
+            ? { x: script.ball_end_pos.x, y: script.ball_end_pos.y }
+            : null;
+          if (ballEnd && carriedLooseBallPos) {
+            const ballEaseK = 3;
+            const expDecay = 1 - Math.exp(-ballEaseK * raw);
+            const normFactor = 1 - Math.exp(-ballEaseK);
+            const t = expDecay / normFactor;
+            return {
+              x: carriedLooseBallPos.x + (ballEnd.x - carriedLooseBallPos.x) * t,
+              y: carriedLooseBallPos.y + (ballEnd.y - carriedLooseBallPos.y) * t,
+            };
+          }
           if (ballInertiaDir && carriedLooseBallPos) {
-            // Mirror engine decay: 0.15 first loose turn, 0.08 subsequent.
+            // Legacy fallback (builds without a resolution_script). Mirrors
+            // engine decay: 0.15 first loose turn, 0.08 subsequent.
             const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
-            // Don't clamp — let the ball go out of bounds visually (straight line)
             const endX = carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
             const endY = carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
             const ballEaseK = 3;
@@ -5257,24 +5276,53 @@ export default function MatchRoomPage() {
                   }
                 }
 
-                // Loose-ball scenario: no trajectory, just a ball at a fixed point.
-                // Purple if the cursor sits on/near the ball and the player can reach it.
+                // Loose-ball scenario: the ball rolls from looseBallPos along
+                // ballInertiaDir. Purple iff (a) the cursor sits on/near the
+                // rolling path, (b) the player can PHYSICALLY reach the claim
+                // point, and (c) the player arrives at the claim point before
+                // the ball rolls past it — without (c) a far-away player could
+                // claim near the start of the arrow, but by the time they get
+                // there the ball has already left.
                 if (isMove && isLooseBall && looseBallPos &&
                     drawingFrom.field_x != null && drawingFrom.field_y != null) {
                   const FIELD_Y_SCALE = INNER_H / INNER_W;
-                  const dxP = drawingFrom.field_x! - looseBallPos.x;
-                  const dyP = (drawingFrom.field_y! - looseBallPos.y) * FIELD_Y_SCALE;
-                  const distPlayerToBall = Math.sqrt(dxP * dxP + dyP * dyP);
-                  const cxP = mouseFieldPct.x - looseBallPos.x;
-                  const cyP = (mouseFieldPct.y - looseBallPos.y) * FIELD_Y_SCALE;
-                  const distCursorToBall = Math.sqrt(cxP * cxP + cyP * cyP);
                   const looseBallRange = computeMaxMoveRange(drawingAction.fromParticipantId);
                   const circleRadiusField = 9 / INNER_W * 100;
-                  // Player can reach the ball AND cursor is close enough to "pick up"
-                  // (visually the move circle overlaps the ball).
-                  // Range tolerance 0.5 matches engine's findLooseBallClaimer.
-                  if (distPlayerToBall <= looseBallRange + 0.5
-                      && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
+
+                  // Cursor → nearest point on the ball's rolling segment, and
+                  // the time-fraction the ball reaches that projected point.
+                  const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
+                  const endX = ballInertiaDir ? looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY : looseBallPos.x;
+                  const endY = ballInertiaDir ? looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY : looseBallPos.y;
+                  const segDx = endX - looseBallPos.x;
+                  const segDy = endY - looseBallPos.y;
+                  const segLenSq = segDx * segDx + segDy * segDy;
+                  let tBallAtTarget = 0;
+                  let projX = looseBallPos.x;
+                  let projY = looseBallPos.y;
+                  if (segLenSq > 1e-6) {
+                    tBallAtTarget = ((mouseFieldPct.x - looseBallPos.x) * segDx + (mouseFieldPct.y - looseBallPos.y) * segDy) / segLenSq;
+                    tBallAtTarget = Math.max(0, Math.min(1, tBallAtTarget));
+                    projX = looseBallPos.x + segDx * tBallAtTarget;
+                    projY = looseBallPos.y + segDy * tBallAtTarget;
+                  }
+                  const cxP = (mouseFieldPct.x - projX);
+                  const cyP = (mouseFieldPct.y - projY) * FIELD_Y_SCALE;
+                  const distCursorToPath = Math.sqrt(cxP * cxP + cyP * cyP);
+
+                  // Player → claim target (Y-scaled, same as engine).
+                  const pxToT = (mouseFieldPct.x - drawingFrom.field_x!);
+                  const pyToT = (mouseFieldPct.y - drawingFrom.field_y!) * FIELD_Y_SCALE;
+                  const distPlayerToTarget = Math.sqrt(pxToT * pxToT + pyToT * pyToT);
+
+                  const withinCircle = distCursorToPath <= circleRadiusField + INTERCEPT_RADIUS + 1;
+                  const withinReach = distPlayerToTarget <= looseBallRange + 0.5;
+                  // Temporal: player must arrive before (or as) ball passes.
+                  // 0.15 slack mirrors findLooseBallClaimer in the engine.
+                  const tPlayer = looseBallRange > 0 ? distPlayerToTarget / looseBallRange : 1;
+                  const inTime = tPlayer <= tBallAtTarget + 0.15;
+
+                  if (withinCircle && withinReach && inTime) {
                     canReachBall = true;
                   }
                 }

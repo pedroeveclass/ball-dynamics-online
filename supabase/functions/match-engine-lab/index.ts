@@ -4114,12 +4114,10 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     const participant = participants.find((p: any) => p.id === action.participant_id);
     if (!participant) continue;
 
-    // If we know ball position, reject receives that are too far from the ball.
-    // Threshold 2.65 mirrors the client's purple-circle proximity check
-    // (circleRadiusField + INTERCEPT_RADIUS + 1) so "what I see is what happens".
-    // When ballEndPos is provided (the position the ball will roll to under this
-    // turn's inertia), we check distance to the full segment ballPos → ballEndPos
-    // so a player can legitimately intercept anywhere along the rolling path.
+    // Project the claim target onto the ball's rolling segment (ballPos →
+    // ballEndPos). `tBallAtTarget` (∈[0,1]) is the time the ball reaches the
+    // projected point — used below for the temporal catch check.
+    let tBallAtTarget: number | null = null;
     if (ballPos) {
       let distToBall: number;
       if (ballEndPos) {
@@ -4135,9 +4133,12 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
         const projX = ax + dx * t;
         const projY = ay + dy * t;
         distToBall = Math.sqrt((action.target_x - projX) ** 2 + (action.target_y - projY) ** 2);
+        tBallAtTarget = t;
       } else {
         distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
       }
+      // Threshold 2.65 mirrors the client's purple-circle proximity check so
+      // "what I see is what happens" (circleRadiusField + INTERCEPT_RADIUS + 1).
       if (distToBall > 2.65) {
         console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball path (${distToBall.toFixed(2)} > 2.65)`);
         continue;
@@ -4149,6 +4150,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     const dist = getMovementDistance(action.target_x - startX, action.target_y - startY);
 
     // ── Check if player can physically reach the ball ──
+    let maxRangeForPlayer: number | null = null;
     if (attrByProfile && turnNumber != null) {
       const raw = participant.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
       const posMult = participantPositionalMultiplier(participant);
@@ -4160,8 +4162,27 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
         forca: Number(raw?.forca ?? 40) * posMult,
       };
       const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
+      maxRangeForPlayer = maxRange;
       if (dist > maxRange + 0.5) { // small tolerance for floating point
         console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+        continue;
+      }
+    }
+
+    // ── Temporal catch check ──
+    // The player must arrive at the claim point before (or at) the ball does.
+    // Without this, a far-away player could "claim" at a point near the ball's
+    // current position — by the time they get there the ball has already
+    // rolled past, but the engine was still awarding them possession. Ball
+    // crosses the segment linearly over a turn (t=0 at current pos, t=1 at
+    // inertia endpoint). Player crosses their distance at constant max speed
+    // (t=0 at start, t=1 when they've covered full maxRange). A 0.15 slack
+    // accounts for the ball having a small physical footprint and the player
+    // stretching for it.
+    if (tBallAtTarget != null && maxRangeForPlayer != null && maxRangeForPlayer > 0) {
+      const tPlayer = dist / maxRangeForPlayer;
+      if (tPlayer > tBallAtTarget + 0.15) {
+        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} arrives at t=${tPlayer.toFixed(2)} but ball passes at t=${tBallAtTarget.toFixed(2)} (too late)`);
         continue;
       }
     }
