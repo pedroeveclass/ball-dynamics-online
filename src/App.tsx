@@ -52,6 +52,8 @@ const BankPage = lazy(() => import("./pages/BankPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const ForumPage = lazy(() => import("./pages/ForumPage"));
 const ForumTopicPage = lazy(() => import("./pages/ForumTopicPage"));
+const PickupListPage = lazy(() => import("./pages/PickupListPage"));
+const PickupLobbyPage = lazy(() => import("./pages/PickupLobbyPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -116,6 +118,8 @@ const App = () => (
             <Route path="/player/offers" element={<PlayerRoute><PlayerOffersPage /></PlayerRoute>} />
             <Route path="/player/club" element={<PlayerRoute><PlayerClubPage /></PlayerRoute>} />
             <Route path="/player/matches" element={<PlayerRoute><PlayerMatchesPage /></PlayerRoute>} />
+            <Route path="/varzea" element={<PlayerRoute><PickupListPage /></PlayerRoute>} />
+            <Route path="/varzea/:id" element={<PlayerRoute><PickupLobbyPage /></PlayerRoute>} />
             <Route path="/manager" element={<ManagerRoute><ManagerDashboard /></ManagerRoute>} />
             <Route path="/manager/club" element={<ManagerRoute><ManagerClubPage /></ManagerRoute>} />
             <Route path="/manager/finance" element={<ManagerRoute><ManagerFinancePage /></ManagerRoute>} />

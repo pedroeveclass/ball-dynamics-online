@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock,
+  LayoutDashboard, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -15,6 +15,7 @@ const playerNav = [
   { title: 'Treino Automático', url: '/player/training-plan', icon: CalendarClock },
   { title: 'Meu Clube', url: '/player/club', icon: Shield },
   { title: 'Partidas', url: '/player/matches', icon: Swords },
+  { title: 'Jogos de Várzea', url: '/varzea', icon: Users2 },
   { title: 'Liga', url: '/league', icon: Trophy },
   { title: 'Contrato', url: '/player/contract', icon: FileText },
   { title: 'Propostas', url: '/player/offers', icon: Inbox },

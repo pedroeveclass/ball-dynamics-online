@@ -98,6 +98,174 @@ Deno.serve(async (req) => {
       return { matchId: match.id };
     }
 
+    // ─── Materialize due pickup matches (kickoff has arrived) ───
+    //
+    // Picks every pickup_games row whose kickoff_at has passed and status
+    // is still 'open', atomically flips it to 'materialized' (CAS), then
+    // creates the `matches` row + participants (humans + bots) and fires
+    // match-engine-lab's auto_start. Keep slot defs in sync with
+    // src/lib/pickupSlots.ts — Deno can't import from src/.
+    if (action === 'materialize_due_pickups') {
+      const PICKUP_SLOTS: Record<string, Array<{ slot_id: string; x: number; y: number }>> = {
+        '5v5': [
+          { slot_id: 'GK',   x: 5,  y: 50 },
+          { slot_id: 'DEF1', x: 25, y: 30 },
+          { slot_id: 'DEF2', x: 25, y: 70 },
+          { slot_id: 'MC',   x: 40, y: 50 },
+          { slot_id: 'ATA',  x: 42, y: 50 },
+        ],
+        '11v11': [
+          { slot_id: 'GK',  x: 5,  y: 50 },
+          { slot_id: 'LB',  x: 20, y: 15 },
+          { slot_id: 'CB1', x: 18, y: 38 },
+          { slot_id: 'CB2', x: 18, y: 62 },
+          { slot_id: 'RB',  x: 20, y: 85 },
+          { slot_id: 'LM',  x: 40, y: 20 },
+          { slot_id: 'CM1', x: 37, y: 42 },
+          { slot_id: 'CM2', x: 37, y: 58 },
+          { slot_id: 'RM',  x: 40, y: 80 },
+          { slot_id: 'ST1', x: 55, y: 40 },
+          { slot_id: 'ST2', x: 55, y: 60 },
+        ],
+      };
+
+      const nowIso = new Date().toISOString();
+      const { data: due } = await supabase
+        .from('pickup_games')
+        .select('id, format, kickoff_at, created_by_profile_id')
+        .eq('status', 'open')
+        .lte('kickoff_at', nowIso);
+
+      const { data: homeClub } = await supabase.rpc('pickup_home_club_id');
+      const { data: awayClub } = await supabase.rpc('pickup_away_club_id');
+      const homeClubId = homeClub as string | null;
+      const awayClubId = awayClub as string | null;
+
+      if (!homeClubId || !awayClubId) {
+        return new Response(JSON.stringify({ error: 'Pickup shell clubs missing — run migration' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const warnings: string[] = [];
+      let materialized = 0;
+
+      for (const pg of (due || [])) {
+        // Atomic CAS: only one invocation wins.
+        const { data: claimed } = await supabase.from('pickup_games')
+          .update({ status: 'materialized', updated_at: nowIso })
+          .eq('id', pg.id).eq('status', 'open')
+          .select('id').maybeSingle();
+        if (!claimed) continue;
+
+        const slots = PICKUP_SLOTS[pg.format as string];
+        if (!slots) {
+          warnings.push(`unknown_format pg=${pg.id} format=${pg.format}`);
+          continue;
+        }
+
+        // Create the real match row.
+        const { data: match, error: insertErr } = await supabase.from('matches').insert({
+          home_club_id: homeClubId,
+          away_club_id: awayClubId,
+          scheduled_at: nowIso,
+          status: 'scheduled',
+          home_lineup_id: null,
+          away_lineup_id: null,
+          current_half: 1,
+          injury_time_turns: 0,
+          match_type: 'pickup',
+        }).select('id').single();
+
+        if (insertErr || !match) {
+          warnings.push(`match_insert_failed pg=${pg.id}: ${insertErr?.message || 'no row'}`);
+          await supabase.from('pickup_games').update({ status: 'open' }).eq('id', pg.id);
+          continue;
+        }
+
+        // Fetch humans who joined.
+        const { data: humans } = await supabase
+          .from('pickup_game_participants')
+          .select('player_profile_id, team_side, slot_id, player_profiles!inner(user_id)')
+          .eq('pickup_game_id', pg.id);
+
+        type Row = { slot_id: string; x: number; y: number; humanPid: string | null; humanUid: string | null };
+        const buildSide = (side: 'home' | 'away'): Row[] => {
+          const humansOnSide = (humans || []).filter((h: any) => h.team_side === side);
+          return slots.map(s => {
+            const h = humansOnSide.find((x: any) => x.slot_id === s.slot_id);
+            return {
+              slot_id: s.slot_id,
+              x: side === 'home' ? s.x : 100 - s.x,
+              y: s.y,
+              humanPid: h ? (h.player_profile_id as string) : null,
+              humanUid: h?.player_profiles ? ((h.player_profiles as any).user_id as string | null) : null,
+            };
+          });
+        };
+
+        const homeRows = buildSide('home');
+        const awayRows = buildSide('away');
+
+        const participants = [
+          ...homeRows.map(r => ({
+            match_id: match.id,
+            club_id: homeClubId,
+            role_type: 'player',
+            is_bot: r.humanPid === null,
+            player_profile_id: r.humanPid,
+            connected_user_id: r.humanUid,
+            pos_x: r.x,
+            pos_y: r.y,
+          })),
+          ...awayRows.map(r => ({
+            match_id: match.id,
+            club_id: awayClubId,
+            role_type: 'player',
+            is_bot: r.humanPid === null,
+            player_profile_id: r.humanPid,
+            connected_user_id: r.humanUid,
+            pos_x: r.x,
+            pos_y: r.y,
+          })),
+        ];
+
+        const { error: partsErr } = await supabase.from('match_participants').insert(participants);
+        if (partsErr) {
+          warnings.push(`participants_insert_failed pg=${pg.id}: ${partsErr.message}`);
+          await supabase.from('matches').delete().eq('id', match.id);
+          await supabase.from('pickup_games').update({ status: 'open' }).eq('id', pg.id);
+          continue;
+        }
+
+        // Link the pickup to its match row.
+        await supabase.from('pickup_games')
+          .update({ match_id: match.id, updated_at: nowIso })
+          .eq('id', pg.id);
+
+        // Kick off the engine.
+        try {
+          await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/match-engine-lab`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            },
+            body: JSON.stringify({ action: 'auto_start', match_id: match.id }),
+          });
+        } catch (e) {
+          warnings.push(`auto_start_failed pg=${pg.id}: ${e}`);
+        }
+
+        materialized++;
+      }
+
+      console.log(`[SCHEDULER] materialize_due_pickups: materialized=${materialized} warnings=${warnings.length}`);
+      return new Response(JSON.stringify({ materialized, warnings }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ─── Materialize upcoming matches (5 min before kickoff) ───
     if (action === 'materialize_upcoming_matches') {
       const nowIso = new Date().toISOString();
@@ -528,7 +696,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ error: 'Unknown action. Use: process_due_rounds, materialize_upcoming_matches, update_standings, recalculate_standings, apply_votes' }), {
+    return new Response(JSON.stringify({ error: 'Unknown action. Use: process_due_rounds, materialize_upcoming_matches, materialize_due_pickups, update_standings, recalculate_standings, apply_votes' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
