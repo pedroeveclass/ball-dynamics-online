@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -1458,6 +1459,7 @@ export type Database = {
           lineup_slot_id: string | null
           match_energy: number
           match_id: string
+          pickup_slot_id: string | null
           player_profile_id: string | null
           pos_x: number | null
           pos_y: number | null
@@ -1476,6 +1478,7 @@ export type Database = {
           lineup_slot_id?: string | null
           match_energy?: number
           match_id: string
+          pickup_slot_id?: string | null
           player_profile_id?: string | null
           pos_x?: number | null
           pos_y?: number | null
@@ -1494,6 +1497,7 @@ export type Database = {
           lineup_slot_id?: string | null
           match_energy?: number
           match_id?: string
+          pickup_slot_id?: string | null
           player_profile_id?: string | null
           pos_x?: number | null
           pos_y?: number | null

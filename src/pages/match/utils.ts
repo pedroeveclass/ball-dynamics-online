@@ -2,6 +2,7 @@ import { getFormationPositions } from '@/lib/formations';
 import type { MatchAction, MatchData, ClubInfo, Participant, PlayerProfileSummary, LineupSlotSummary } from './types';
 import { ACTION_PHASE_ORDER } from './constants';
 import { DEFAULT_FORMATION } from '@/lib/formations';
+import { labelForPickupSlot } from '@/lib/pickupSlots';
 
 export function filterEffectiveTurnActions(actions: MatchAction[], optimisticHumanActionedIds?: Set<string>): MatchAction[] {
   const humanActionedIds = new Set(optimisticHumanActionedIds || []);
@@ -79,6 +80,7 @@ export function buildParticipantLayout(
     enriched
       .filter(participant =>
         participant.slot_position === 'GK'
+        || participant.pickup_slot_id === 'GK'
         || (participant.player_profile_id && playerMap.get(participant.player_profile_id)?.primary_position === 'GK')
       )
       .map(participant => participant.id)
@@ -114,6 +116,7 @@ export function buildParticipantLayout(
         field_pos: isGoalkeeper(participant)
           ? 'GK'
           : (participant.slot_position ? participant.slot_position.replace(/^BENCH_?/i, '') : undefined)
+          || labelForPickupSlot(participant.pickup_slot_id) ?? undefined
           || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined)
           || positions[index]?.pos
           || '?',

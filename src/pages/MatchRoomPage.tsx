@@ -1582,9 +1582,14 @@ export default function MatchRoomPage() {
       const bhAlreadySubmitted = submittedActions.has(activeTurn.ball_holder_participant_id);
       if (bhAlreadySubmitted) return;
 
+      // Ignore actions from previous phases of the SAME turn — the
+      // BH likely submitted a 'move' during positioning_attack, which
+      // would otherwise trick this check into treating the ball_holder
+      // phase as already-actioned and skip the menu auto-open.
       const bhHasAction = turnActions.some(a =>
         a.participant_id === activeTurn.ball_holder_participant_id &&
-        a.action_type !== 'receive'
+        a.action_type !== 'receive' &&
+        a.turn_phase === 'ball_holder'
       );
       if (bhHasAction) return;
 
@@ -1693,7 +1698,14 @@ export default function MatchRoomPage() {
         return;
       }
 
-      const alreadyHasAction = turnActions.some(a => a.participant_id === targetPid && a.action_type !== 'receive');
+      // Only treat as "already acted" if the action was submitted in the CURRENT phase.
+      // A move submitted during positioning_attack/defense must not block the
+      // attacking_support / defending_response menu.
+      const alreadyHasAction = turnActions.some(a =>
+        a.participant_id === targetPid
+        && a.action_type !== 'receive'
+        && a.turn_phase === activeTurn.phase
+      );
       if (alreadyHasAction) return;
 
       // Before opening the menu, check if this player is already on the ball

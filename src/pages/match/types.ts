@@ -25,6 +25,7 @@ export interface Participant {
   club_id: string; lineup_slot_id: string | null; role_type: string;
   is_bot: boolean; connected_user_id: string | null;
   pos_x: number | null; pos_y: number | null;
+  pickup_slot_id?: string | null;
   player_name?: string; slot_position?: string; overall?: number;
   field_x?: number; field_y?: number; field_pos?: string;
   jersey_number?: number;

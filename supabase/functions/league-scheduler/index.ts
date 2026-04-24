@@ -217,6 +217,7 @@ Deno.serve(async (req) => {
             connected_user_id: r.humanUid,
             pos_x: r.x,
             pos_y: r.y,
+            pickup_slot_id: r.slot_id,
           })),
           ...awayRows.map(r => ({
             match_id: match.id,
@@ -227,6 +228,7 @@ Deno.serve(async (req) => {
             connected_user_id: r.humanUid,
             pos_x: r.x,
             pos_y: r.y,
+            pickup_slot_id: r.slot_id,
           })),
         ];
 

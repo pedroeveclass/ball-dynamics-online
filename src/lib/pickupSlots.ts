@@ -53,3 +53,27 @@ export function pickupSlotLabel(format: PickupFormat, slotId: string): string {
 export function totalSlotsPerSide(format: PickupFormat): number {
   return PICKUP_SLOTS[format].length;
 }
+
+// slot_id → PT-BR position label. Works across both 5v5 and 11v11 since
+// their slot IDs don't overlap. Used by the match sidebar to show the
+// pickup position instead of the player's primary_position.
+const PICKUP_SLOT_LABELS: Record<string, string> = {
+  GK: 'GOL',
+  DEF1: 'ZAG', DEF2: 'ZAG',
+  MC: 'MEIA',
+  ATA: 'ATA',
+  LB: 'LE', RB: 'LD',
+  CB1: 'ZAG', CB2: 'ZAG',
+  LM: 'ME', RM: 'MD',
+  CM1: 'MC', CM2: 'MC',
+  ST1: 'ATA', ST2: 'ATA',
+};
+
+export function labelForPickupSlot(slotId: string | null | undefined): string | null {
+  if (!slotId) return null;
+  return PICKUP_SLOT_LABELS[slotId] ?? null;
+}
+
+export function isPickupGoalkeeperSlot(slotId: string | null | undefined): boolean {
+  return slotId === 'GK';
+}
