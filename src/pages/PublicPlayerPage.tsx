@@ -167,7 +167,8 @@ export default function PublicPlayerPage() {
 
   const isGK = player.primary_position === 'GK';
   const footLabel = player.dominant_foot === 'right' ? 'Destro' : player.dominant_foot === 'left' ? 'Canhoto' : 'Ambidestro';
-  const canMakeOffer = !!managerProfile && !!club && player.club_id !== club.id;
+  const canMakeOffer = !!managerProfile && !!club && player.club_id !== club.id
+    && (player as any).retirement_status !== 'retired';
 
   return (
     <Layout>
@@ -187,6 +188,11 @@ export default function PublicPlayerPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="font-display text-2xl font-bold truncate">{player.full_name}</h1>
+                {(player as any).retirement_status === 'retired' && (
+                  <Badge variant="outline" className="gap-1 text-xs border-amber-500/60 text-amber-700 dark:text-amber-400">
+                    Aposentado
+                  </Badge>
+                )}
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleCopyLink}>
                   <Copy className="h-3 w-3 mr-1" /> Copiar link
                 </Button>

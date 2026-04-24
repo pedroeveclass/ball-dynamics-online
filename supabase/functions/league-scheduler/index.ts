@@ -320,6 +320,21 @@ Deno.serve(async (req) => {
             next_season_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           }).eq('id', round.season_id);
           console.log(`[SCHEDULER] Season ${round.season_id} finished!`);
+
+          // Season-end aging: +1 age all active players, decay 33+, cull bots 40+.
+          // Idempotent per season — safe if both scheduler and engine reach here.
+          try {
+            const { data: aging, error: agingErr } = await supabase.rpc('advance_all_player_ages', {
+              p_season_id: round.season_id,
+            });
+            if (agingErr) {
+              console.error(`[SCHEDULER] advance_all_player_ages failed for season ${round.season_id}:`, agingErr);
+            } else {
+              console.log(`[SCHEDULER] Aging applied for season ${round.season_id}:`, aging);
+            }
+          } catch (agingEx) {
+            console.error(`[SCHEDULER] advance_all_player_ages threw for season ${round.season_id}:`, agingEx);
+          }
         }
       }
 

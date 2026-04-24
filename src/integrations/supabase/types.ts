@@ -2123,6 +2123,7 @@ export type Database = {
           primary_position: string
           primary_position_changes: number
           reputation: number
+          retirement_status: string
           secondary_position: string | null
           updated_at: string
           user_id: string | null
@@ -2149,6 +2150,7 @@ export type Database = {
           primary_position: string
           primary_position_changes?: number
           reputation?: number
+          retirement_status?: string
           secondary_position?: string | null
           updated_at?: string
           user_id?: string | null
@@ -2175,6 +2177,7 @@ export type Database = {
           primary_position?: string
           primary_position_changes?: number
           reputation?: number
+          retirement_status?: string
           secondary_position?: string | null
           updated_at?: string
           user_id?: string | null
@@ -2989,6 +2992,10 @@ export type Database = {
       resolve_stale_active_turns: {
         Args: { p_match_id: string }
         Returns: number
+      }
+      retire_player: {
+        Args: { p_player_profile_id: string }
+        Returns: Json
       }
       set_club_assistant_manager: {
         Args: { p_assistant_user_id: string; p_club_id: string }

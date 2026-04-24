@@ -17,7 +17,7 @@ import {
   getTrainingTierMultiplier,
 } from '@/lib/attributes';
 import type { Tables } from '@/integrations/supabase/types';
-import { Save, Trash2, Battery, Swords, Dumbbell, Trophy } from 'lucide-react';
+import { Save, Trash2, Battery, Swords, Dumbbell, Trophy, Hourglass } from 'lucide-react';
 import { formatBRTTimeOnly, isoDowInSaoPaulo } from '@/lib/upcomingMatches';
 
 const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
@@ -411,6 +411,35 @@ export default function PlayerTrainingPlanPage() {
             </Button>
           </div>
         </div>
+
+        {/* Aging / decay warning */}
+        {playerProfile.age >= 32 && (() => {
+          const age = playerProfile.age;
+          const daysLeftToDecay = age < 33 ? 33 - age : 0;
+          let tone = 'bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400';
+          let title = 'Atenção: jogador se aproximando do auge';
+          let body = `Aos 33 anos seu jogador começa a perder atributos físicos a cada temporada. Faltam ${daysLeftToDecay} temporada(s). Foque nas faixas mais altas antes que o decay supere o ganho de treino.`;
+          if (age >= 33 && age < 36) {
+            title = `Carreira madura — decay leve (${age} anos)`;
+            body = 'Atributos físicos caem um pouco a cada fim de temporada. Treino concentrado ainda consegue manter.';
+          } else if (age >= 36 && age < 38) {
+            tone = 'bg-orange-500/10 border-orange-500/40 text-orange-700 dark:text-orange-400';
+            title = `Decay acelerado (${age} anos)`;
+            body = 'O treino já não compensa a perda. A partir daqui o jogador perde mais do que ganha — aproveite os últimos minutos em campo.';
+          } else if (age >= 38) {
+            tone = 'bg-amber-600/15 border-amber-600/50 text-amber-800 dark:text-amber-300';
+            title = `Veterano (${age} anos) — aposentadoria disponível`;
+            body = 'Você pode aposentar o jogador pelo Perfil a qualquer momento. Continuar jogando é opcional, mas os atributos vão cair rápido.';
+          }
+          return (
+            <div className={`stat-card space-y-1 border ${tone}`}>
+              <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+                <Hourglass className="h-4 w-4" /> {title}
+              </h2>
+              <p className="text-xs opacity-90">{body}</p>
+            </div>
+          );
+        })()}
 
         {/* Quick status bar */}
         <div className="stat-card grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

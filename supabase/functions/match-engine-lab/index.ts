@@ -8162,6 +8162,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                   next_season_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
                 }).eq('id', round.season_id);
                 console.log(`[ENGINE] Season ${round.season_id} finished!`);
+
+                // Season-end aging: +1 age for every active player, apply
+                // decay to 33+, delete bots at 40+. Idempotent per season.
+                try {
+                  const { data: aging, error: agingErr } = await supabase.rpc('advance_all_player_ages', {
+                    p_season_id: round.season_id,
+                  });
+                  if (agingErr) {
+                    console.error(`[ENGINE] advance_all_player_ages failed for season ${round.season_id}:`, agingErr);
+                  } else {
+                    console.log(`[ENGINE] Aging applied for season ${round.season_id}:`, aging);
+                  }
+                } catch (agingEx) {
+                  console.error(`[ENGINE] advance_all_player_ages threw for season ${round.season_id}:`, agingEx);
+                }
               }
             }
 

@@ -58,11 +58,12 @@ export default function ManagerMarketPage() {
   const fetchFreeAgents = async () => {
     setLoading(true);
 
-    // Get players with no active contract and no club_id
+    // Get players with no active contract and no club_id (exclude retired)
     const { data, error } = await supabase
       .from('player_profiles')
       .select('id, full_name, age, primary_position, secondary_position, archetype, overall, reputation')
       .is('club_id', null)
+      .eq('retirement_status', 'active')
       .order('overall', { ascending: false });
 
     if (!error && data) setPlayers(data);

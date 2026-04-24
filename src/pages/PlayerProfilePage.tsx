@@ -19,7 +19,7 @@ import {
 import {
   User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Loader2, AlertTriangle, TrendingUp, Calendar,
-  Repeat, Plus, UserCircle, Copy, Trash2,
+  Repeat, Plus, UserCircle, Copy, Trash2, Award,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { positionToPT } from '@/lib/positions';
@@ -153,6 +153,10 @@ export default function PlayerProfilePage() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resettingPlayer, setResettingPlayer] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
+
+  // Retire player state
+  const [retireOpen, setRetireOpen] = useState(false);
+  const [retiringPlayer, setRetiringPlayer] = useState(false);
 
   const p = playerProfile;
 
@@ -346,6 +350,24 @@ export default function PlayerProfilePage() {
     setResetOpen(true);
   }
 
+  async function handleRetirePlayer() {
+    if (!p) return;
+    setRetiringPlayer(true);
+    try {
+      const { error } = await (supabase as any).rpc('retire_player', {
+        p_player_profile_id: p.id,
+      });
+      if (error) throw error;
+
+      toast.success('Jogador aposentado. Suas estatísticas continuam disponíveis pelo link público.');
+      setRetireOpen(false);
+      await refreshPlayerProfile();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao aposentar jogador.');
+    }
+    setRetiringPlayer(false);
+  }
+
   async function handleResetPlayer() {
     if (!p) return;
     if (p.club_id) {
@@ -383,9 +405,25 @@ export default function PlayerProfilePage() {
   const footLabel = p.dominant_foot === 'right' ? 'Direito' : p.dominant_foot === 'left' ? 'Esquerdo' : 'Ambos';
   const canCreateNewPlayer = p.money >= NEW_PLAYER_COST;
 
+  const isRetired = (p as any).retirement_status === 'retired';
+  const canRetire = !isRetired && p.age >= 38 && p.user_id != null;
+
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
+
+        {/* ── Retired Banner ── */}
+        {isRetired && (
+          <div className="stat-card space-y-2 border-amber-500/40 bg-amber-500/5">
+            <h2 className="font-display font-semibold text-sm flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <Award className="h-4 w-4" /> Jogador Aposentado
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {p.full_name} encerrou a carreira. As estatísticas e conquistas continuam disponíveis
+              pelo link público. Você pode resetar este jogador a qualquer momento para liberar o slot.
+            </p>
+          </div>
+        )}
 
         {/* ── Character Selector ── */}
         {!allPlayersLoading && allPlayers.length > 1 && (
@@ -694,6 +732,27 @@ export default function PlayerProfilePage() {
           </Button>
         </div>
 
+        {/* ── Aposentar Jogador ── */}
+        {canRetire && (
+          <div className="stat-card space-y-3 border-amber-500/40">
+            <h2 className="font-display font-semibold text-sm flex items-center gap-2">
+              <Award className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Aposentar Jogador
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Seu jogador tem {p.age} anos. Aposentar encerra a carreira: ele sai do clube atual,
+              para de treinar e não aparece mais em mercados ou escalações. As estatísticas ficam
+              preservadas e acessíveis pelo link público.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full gap-2 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+              onClick={() => setRetireOpen(true)}
+            >
+              <Award className="h-4 w-4" /> Aposentar {p.full_name}
+            </Button>
+          </div>
+        )}
+
         {/* ── Resetar Jogador ── */}
         <div className="stat-card space-y-3 border-destructive/30">
           <h2 className="font-display font-semibold text-sm flex items-center gap-2">
@@ -914,6 +973,44 @@ export default function PlayerProfilePage() {
             >
               {resettingPlayer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               {resettingPlayer ? 'Apagando...' : 'Apagar Jogador'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Retire Player Confirmation Dialog ── */}
+      <Dialog open={retireOpen} onOpenChange={(open) => { if (!retiringPlayer) setRetireOpen(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <Award className="h-5 w-5" /> Aposentar {p.full_name}
+            </DialogTitle>
+            <DialogDescription>
+              Encerrar a carreira é uma decisão definitiva. As estatísticas continuam preservadas
+              e visíveis pelo link público do jogador.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs space-y-1">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">O que vai acontecer:</p>
+            <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+              <li>Contrato com o clube atual {p.club_id ? 'será rescindido' : '(sem clube)'}</li>
+              <li>Plano de auto-treino semanal será apagado</li>
+              <li>Jogador não aparece mais em mercados, escalações ou ofertas</li>
+              <li>Atributos congelam no estado atual (OVR {p.overall})</li>
+              <li>Você pode resetar depois para liberar o slot</li>
+            </ul>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setRetireOpen(false)} disabled={retiringPlayer}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleRetirePlayer}
+              disabled={retiringPlayer}
+              className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {retiringPlayer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Award className="h-4 w-4" />}
+              {retiringPlayer ? 'Aposentando...' : 'Confirmar Aposentadoria'}
             </Button>
           </DialogFooter>
         </DialogContent>
