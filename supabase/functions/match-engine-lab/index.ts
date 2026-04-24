@@ -6408,6 +6408,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let bhResolveResult: any = null;
 
+    // Delayed-offside snapshot carried across loose-ball turns. A pass that
+    // found a teammate in offside position is an offence the moment that
+    // teammate gets involved with the ball — even via a loose-ball recovery
+    // one or more turns later. We snapshot the offside-positioned teammates
+    // at the pass moment here, then check it against the loose-ball claimer
+    // below. The snapshot rides forward on resolution_script.offside_pending
+    // as long as the ball stays loose; any opponent claim / set-piece / goal
+    // drops it.
+    let offsidePendingSnapshot: {
+      passer_club_id: string;
+      passer_name: string | null;
+      offside_teammate_ids: string[];
+      pass_turn_number: number;
+    } | null = null;
+
     if (ballHolder) {
       // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
       const ballHolderAction = allActions
@@ -6992,6 +7007,49 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
         }
+
+        // ── Delayed-offside snapshot (loose-ball recovery case) ──
+        // The synchronous branch above only catches offside when the engine knows
+        // the intended target (target_participant_id) or when a first-touch
+        // reception succeeded. When a human passes to empty space toward an
+        // offside teammate who then recovers the loose ball one or more turns
+        // later, neither branch fires and the offside slips through.
+        //
+        // Snapshot every offside-positioned teammate of the passer RIGHT NOW
+        // (post-move positions are the authoritative "moment the ball is played"
+        // per FIFA) and ride it forward on resolution_script.offside_pending
+        // until the ball is claimed / out / scored. The else-branch below reads
+        // the prev turn's snapshot when it finds a claimer.
+        //
+        // Only snapshot when:
+        //   • the pass is a real pass (isPassAttempt);
+        //   • not on a no-offside restart (throw-in / goal-kick / corner);
+        //   • the synchronous check did NOT award offside (nextSetPieceType
+        //     wasn't set to 'free_kick' above) — redundant otherwise;
+        //   • the pass actually went loose (nextBallHolderParticipantId is
+        //     null — either no receiver or the first-touch failed).
+        if (!skipOffside && isPassAttempt
+          && nextSetPieceType !== 'free_kick'
+          && nextBallHolderParticipantId === null) {
+          const teammateIds: string[] = [];
+          for (const p of (participants || [])) {
+            if (p.role_type !== 'player') continue;
+            if (p.club_id !== possClubId) continue;
+            if (p.id === ballHolder.id) continue;
+            if (checkOffside(p, ballHolder, participants || [], possClubId || '', match)) {
+              teammateIds.push(p.id);
+            }
+          }
+          if (teammateIds.length > 0) {
+            offsidePendingSnapshot = {
+              passer_club_id: possClubId!,
+              passer_name: (ballHolder as any)?._player_name ?? null,
+              offside_teammate_ids: teammateIds,
+              pass_turn_number: match.current_turn_number ?? 1,
+            };
+            console.log(`[ENGINE] offside_pending snapshot: passer=${ballHolder.id.slice(0,8)} offside_teammates=[${teammateIds.map(id => id.slice(0,8)).join(',')}]`);
+          }
+        }
       }
     } else {
       // ── LOOSE BALL HANDLING ──
@@ -7144,7 +7202,90 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         ballStartPos, inertiaEndPos,
       );
 
-      if (looseBallClaimer) {
+      // ── Delayed-offside check ──
+      // Read the snapshot the pass-resolution turn (or a prior loose-ball turn
+      // that carried it forward) attached to resolution_script.offside_pending.
+      // If the claimer is one of the offside-listed teammates, the recovery
+      // itself is the FIFA "becomes involved with the ball" moment → offside.
+      let prevOffsidePending: {
+        passer_club_id: string;
+        passer_name: string | null;
+        offside_teammate_ids: string[];
+        pass_turn_number: number;
+      } | null = null;
+      if (prevTurnNumber >= 1) {
+        const { data: prevResRows } = await supabase
+          .from('match_turns')
+          .select('resolution_script')
+          .eq('match_id', match_id)
+          .eq('turn_number', prevTurnNumber)
+          .eq('phase', 'resolution')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        const prevRs = prevResRows && prevResRows.length > 0 ? (prevResRows[0].resolution_script as any) : null;
+        if (prevRs && prevRs.offside_pending) {
+          prevOffsidePending = prevRs.offside_pending;
+        }
+      }
+      const claimerTriggersOffside = !!(
+        looseBallClaimer
+        && prevOffsidePending
+        && prevOffsidePending.passer_club_id === looseBallClaimer.club_id
+        && (prevOffsidePending.offside_teammate_ids || []).includes(looseBallClaimer.id)
+      );
+
+      if (claimerTriggersOffside && looseBallClaimer && prevOffsidePending) {
+        // Offside — set up the free kick exactly like the synchronous branch
+        // above. The offending team loses possession; the defending team gets
+        // an indirect free kick from the recoverer's spot.
+        const passerClubId = prevOffsidePending.passer_club_id;
+        const defClub = passerClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
+        const defPlayersForFK = (participants || []).filter((p: any) => p.club_id === defClub && p.role_type === 'player');
+        const offsideX = Number(looseBallClaimer.pos_x ?? ballStartPos.x);
+        const offsideY = Number(looseBallClaimer.pos_y ?? ballStartPos.y);
+        defPlayersForFK.sort((a: any, b: any) => {
+          const dA = Math.sqrt((Number(a.pos_x ?? 50) - offsideX) ** 2 + (Number(a.pos_y ?? 50) - offsideY) ** 2);
+          const dB = Math.sqrt((Number(b.pos_x ?? 50) - offsideX) ** 2 + (Number(b.pos_y ?? 50) - offsideY) ** 2);
+          return dA - dB;
+        });
+        const offsideFkRoles = lineupRolesCache ? (defClub === match.home_club_id ? lineupRolesCache.home : lineupRolesCache.away) : null;
+        const offsideFkDesignated = offsideFkRoles ? findParticipantByProfileId(defPlayersForFK, offsideFkRoles.free_kick_taker_id) : null;
+        const fkTaker = offsideFkDesignated || defPlayersForFK[0];
+        if (fkTaker) {
+          deferredPositionUpdates.push({ id: fkTaker.id, pos_x: offsideX, pos_y: offsideY });
+          nextBallHolderParticipantId = fkTaker.id;
+        } else {
+          nextBallHolderParticipantId = null;
+        }
+        newPossessionClubId = defClub;
+        nextSetPieceType = 'free_kick';
+        ballEndPos = { x: offsideX, y: offsideY };
+
+        eventsToLog.push({
+          match_id, event_type: 'offside',
+          title: '🚩 Impedimento!',
+          body: 'Jogador em posição irregular recuperou a bola. Tiro livre indireto.',
+          payload: {
+            caught_participant_id: looseBallClaimer.id,
+            caught_name: (looseBallClaimer as any)?._player_name ?? null,
+            passer_participant_id: null,
+            passer_name: prevOffsidePending.passer_name,
+          },
+        });
+
+        // Suppress the loose_ball_phase / loose_ball_recovered / ball_inertia
+        // chatter that would otherwise narrate a normal recovery before the
+        // offside flag.
+        for (let i = eventsToLog.length - 1; i >= 0; i--) {
+          const et = eventsToLog[i].event_type;
+          if (et === 'loose_ball_phase' || et === 'loose_ball_recovered'
+            || et === 'possession_change' || et === 'ball_inertia') {
+            eventsToLog.splice(i, 1);
+          }
+        }
+        // Snapshot consumed — don't carry forward.
+        offsidePendingSnapshot = null;
+      } else if (looseBallClaimer) {
         nextBallHolderParticipantId = looseBallClaimer.id;
         newPossessionClubId = looseBallClaimer.club_id;
 
@@ -7162,6 +7303,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               }
             : undefined,
         });
+        // Any claim (opponent steal or teammate recovery that wasn't offside)
+        // closes the offside window — don't carry the snapshot forward.
+        offsidePendingSnapshot = null;
       } else {
         nextBallHolderParticipantId = null;
         ballEndPos = { x: inertiaBallX, y: inertiaBallY };
@@ -7211,6 +7355,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
             payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
           });
+          // Ball stays loose — carry the offside_pending snapshot forward
+          // into this turn's resolution_script so the next loose-ball turn
+          // can still catch an offside recovery (the original pass can be
+          // 2+ turns ago when inertia is heavy).
+          if (prevOffsidePending) {
+            offsidePendingSnapshot = prevOffsidePending;
+          }
         }
       }
     }
@@ -7747,6 +7898,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         set_piece_type: nextSetPieceType,
       },
       scores: { home: homeScore, away: awayScore },
+      // Delayed-offside snapshot. Populated when a pass finds a teammate in
+      // offside position and the ball ends up loose; carried forward on every
+      // subsequent loose-ball turn until either the offside teammate recovers
+      // (→ offside FK) or the ball is otherwise resolved. Read by the next
+      // turn's loose-ball handling block.
+      offside_pending: offsidePendingSnapshot,
     };
 
     // Token-guarded resolve: bail if claim was stolen during long resolution.

@@ -2936,12 +2936,27 @@ export default function MatchRoomPage() {
 
       if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
 
+      // The resolution_script (when present) is server-authoritative for both
+      // the turn's starting positions and its final positions. Prefer it over
+      // the client's participant state to avoid two kinds of drift:
+      //   (a) participantsRef may be mid-update if realtime is lagging, so the
+      //       "start" snapshot could be a stale or half-applied state;
+      //   (b) the client recomputes move targets with a simpler maxRange
+      //       formula that omits the engine's directional-inertia multiplier,
+      //       so the animation finish would differ from the DB end position.
+      // Falling back to the local participantsRef preserves behaviour on
+      // builds that haven't deployed the script yet.
+      const script = resolutionScriptRef.current;
       const currentParticipants = participantsRef.current;
-      const snapshot = Object.fromEntries(
-        currentParticipants
-          .filter(p => p.field_x != null && p.field_y != null)
-          .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
-      );
+      const snapshot = script?.initial_positions
+        ? Object.fromEntries(
+            Object.entries(script.initial_positions).map(([id, pos]) => [id, { x: pos.x, y: pos.y }])
+          )
+        : Object.fromEntries(
+            currentParticipants
+              .filter(p => p.field_x != null && p.field_y != null)
+              .map(p => [p.id, { x: p.field_x as number, y: p.field_y as number }])
+          );
 
       setResolutionStartPositions(snapshot);
       animatedResolutionIdRef.current = activeTurn.id;
@@ -3001,7 +3016,13 @@ export default function MatchRoomPage() {
           const seg = (scaledRaw - 0.8) / 0.2;
           t = 0.85 + (1 - Math.pow(1 - seg, 2)) * 0.15;
         }
-        const effectiveTarget = getEffectiveActionTarget(moveAction, startPos, actionsSnap);
+        // Prefer the server-authoritative final position from the script —
+        // that's exactly where the engine wrote the player. Falling back to
+        // the client's local clamp is only for builds without a script.
+        const scriptFinal = script?.final_positions?.[pId];
+        const effectiveTarget = scriptFinal
+          ? { x: scriptFinal.x, y: scriptFinal.y }
+          : getEffectiveActionTarget(moveAction, startPos, actionsSnap);
         return {
           x: startPos.x + ((effectiveTarget?.x ?? targetX) - startPos.x) * t,
           y: startPos.y + ((effectiveTarget?.y ?? targetY) - startPos.y) * t,
@@ -3212,6 +3233,17 @@ export default function MatchRoomPage() {
           );
 
           for (const p of participantsRef.current) {
+            // Prefer server-authoritative final position from resolution_script.
+            // This avoids the silent teleport at animation end that happened when
+            // the client's locally-recomputed target differed from the engine's
+            // result (engine applies directional-inertia multiplier on maxRange;
+            // client's getEffectiveActionTarget does not). Also fixes the stored
+            // inertia direction that was based on client-clamped endpoints.
+            const scriptFinal = script?.final_positions?.[p.id];
+            if (scriptFinal) {
+              finals[p.id] = { x: scriptFinal.x, y: scriptFinal.y };
+              continue;
+            }
             // Both 'move' and 'receive' actions cause player to end at target
             const action = latestActions.find(a => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive') && a.target_x != null && a.target_y != null);
             if (action && action.target_x != null && action.target_y != null) {
