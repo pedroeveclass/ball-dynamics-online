@@ -4540,7 +4540,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
   const now = new Date().toISOString();
   let query = supabase
     .from('matches')
-    .select('id, home_club_id, away_club_id, home_lineup_id, away_lineup_id')
+    .select('id, home_club_id, away_club_id, home_lineup_id, away_lineup_id, match_type')
     .eq('status', 'scheduled')
     .lte('scheduled_at', now);
 
@@ -5138,8 +5138,15 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
 
       const profileIds = (allMatchParts || []).filter((p: any) => p.player_profile_id).map((p: any) => p.player_profile_id);
 
-      // Initialize match energy from player_profiles.energy_current/energy_max
-      if (profileIds.length > 0) {
+      // Initialize match energy from player_profiles.energy_current/energy_max.
+      // Pickup matches (Jogos de Várzea) are purely casual — everybody starts
+      // at 100, human or bot, regardless of their persistent energy pool.
+      if (m.match_type === 'pickup') {
+        await supabase.from('match_participants')
+          .update({ match_energy: 100 })
+          .eq('match_id', m.id).eq('role_type', 'player');
+        console.log(`[ENGINE] Pickup match ${m.id.slice(0,8)} — reset all match_energy to 100`);
+      } else if (profileIds.length > 0) {
         const { data: energyProfiles } = await supabase
           .from('player_profiles')
           .select('id, energy_current, energy_max')
