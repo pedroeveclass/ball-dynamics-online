@@ -154,9 +154,20 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
 
   const clubName = (id: string) => clubs.find(c => c.id === id)?.short_name || clubs.find(c => c.id === id)?.name?.slice(0, 8) || id.slice(0, 8);
 
-  async function runMatchAction(matchId: string, kind: 'start' | 'simulate' | 'finalize' | 'restart') {
-    setBusyMatchId(matchId);
+  async function ensureMaterialized(m: RoundMatch): Promise<string | null> {
+    if (m.match_id) return m.match_id;
+    const { data, error } = await supabase.rpc('admin_materialize_league_match', { p_league_match_id: m.id });
+    if (error) { toast.error('Falha ao materializar: ' + error.message); return null; }
+    return (data as string) || null;
+  }
+
+  async function runMatchAction(m: RoundMatch, kind: 'start' | 'simulate' | 'finalize' | 'restart') {
+    const tag = m.match_id || m.id;
+    setBusyMatchId(tag);
     try {
+      const matchId = await ensureMaterialized(m);
+      if (!matchId) return;
+
       let err: any = null;
       if (kind === 'start') {
         const { error } = await supabase.rpc('admin_force_start_match', { p_match_id: matchId });
@@ -316,48 +327,48 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                 <div className="p-2 space-y-1">
                   {(roundMatches[r.id] || []).map(m => {
                     const hasMatchRow = !!m.match_id && !!m.status;
-                    const status = m.status || 'pendente';
+                    const status = hasMatchRow ? (m.status as string) : 'pendente';
                     const score = hasMatchRow ? `${m.home_score ?? 0} x ${m.away_score ?? 0}` : '-';
-                    const busy = busyMatchId === m.match_id;
+                    const busy = busyMatchId === (m.match_id || m.id);
+                    const canStart = !hasMatchRow || status === 'scheduled';
+                    const canSimulate = !hasMatchRow || status === 'scheduled' || status === 'live';
+                    const canFinalize = status === 'live';
+                    const canRestart = hasMatchRow;
                     return (
                       <div key={m.id} className="flex flex-wrap items-center gap-2 text-xs p-1.5 bg-background rounded">
                         <span className="font-mono w-44 shrink-0">
                           {clubName(m.home_club_id)} {score} {clubName(m.away_club_id)}
                         </span>
                         <Badge variant="outline" className="text-[10px]">{status}</Badge>
-                        {!hasMatchRow && (
-                          <span className="text-muted-foreground italic">aguardando materializar (5min antes)</span>
-                        )}
-                        {hasMatchRow && (
-                          <div className="flex gap-1 ml-auto">
-                            {status === 'scheduled' && (
-                              <Button size="sm" className="h-6 text-[11px] px-2" disabled={busy}
-                                onClick={() => m.match_id && runMatchAction(m.match_id, 'start')}>
-                                Iniciar
-                              </Button>
-                            )}
-                            {(status === 'scheduled' || status === 'live') && (
-                              <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
-                                onClick={() => m.match_id && runMatchAction(m.match_id, 'simulate')}>
-                                Simular
-                              </Button>
-                            )}
-                            {status === 'live' && (
-                              <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
-                                onClick={() => m.match_id && runMatchAction(m.match_id, 'finalize')}>
-                                Finalizar
-                              </Button>
-                            )}
+                        <div className="flex gap-1 ml-auto">
+                          {canStart && (
+                            <Button size="sm" className="h-6 text-[11px] px-2" disabled={busy}
+                              onClick={() => runMatchAction(m, 'start')}>
+                              Iniciar
+                            </Button>
+                          )}
+                          {canSimulate && (
+                            <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
+                              onClick={() => runMatchAction(m, 'simulate')}>
+                              Simular
+                            </Button>
+                          )}
+                          {canFinalize && (
+                            <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
+                              onClick={() => runMatchAction(m, 'finalize')}>
+                              Finalizar
+                            </Button>
+                          )}
+                          {canRestart && (
                             <Button size="sm" variant="destructive" className="h-6 text-[11px] px-2" disabled={busy}
                               onClick={() => {
-                                if (!m.match_id) return;
                                 if (!confirm('Reiniciar a partida zera placar e apaga eventos. Continuar?')) return;
-                                runMatchAction(m.match_id, 'restart');
+                                runMatchAction(m, 'restart');
                               }}>
                               Reiniciar
                             </Button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     );
                   })}

@@ -2877,6 +2877,10 @@ export type Database = {
         Args: { p_item_id: string; p_player_id: string }
         Returns: Json
       }
+      admin_materialize_league_match: {
+        Args: { p_league_match_id: string }
+        Returns: string
+      }
       admin_remove_player_from_club: {
         Args: { p_player_id: string }
         Returns: undefined
