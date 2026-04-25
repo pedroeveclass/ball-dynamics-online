@@ -116,8 +116,8 @@ export function buildParticipantLayout(
         field_pos: isGoalkeeper(participant)
           ? 'GK'
           : (participant.slot_position ? participant.slot_position.replace(/^BENCH_?/i, '') : undefined)
-          || labelForPickupSlot(participant.pickup_slot_id) ?? undefined
-          || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position ?? undefined : undefined)
+          || labelForPickupSlot(participant.pickup_slot_id)
+          || (participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.primary_position : undefined)
           || positions[index]?.pos
           || '?',
         jersey_number: (participant.player_profile_id
