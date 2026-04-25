@@ -715,12 +715,14 @@ export function getTrainingFit(
   if (heightTier === 'hard' || heightBoost < 0) heightFit = -1;
 
   // ── position_fit ──────────────────────────────────────────
+  // Mirrors server `get_training_multiplier`: only the explicit positionProfiles
+  // signal counts here. POSITION_CAPS already lowers the ceiling for off-profile
+  // attrs (e.g. ST + visao_jogo capped at 88), so penalising growth via the cap
+  // tier would double-dip.
   const posBonus = positionProfiles[position]?.[attrKey as keyof AttrKeys] ?? 0;
-  const posTier = POSITION_CAPS[position]?.[attrKey];
 
   let positionFit: -1 | 0 | 1 = 0;
   if (posBonus >= 6) positionFit = 1;
-  else if (posTier === 'pos_hard' || posTier === 'pos_wall') positionFit = -1;
   else if (posBonus < 0) positionFit = -1;
 
   // ── compose ───────────────────────────────────────────────
