@@ -15,6 +15,7 @@ import {
   getTrainingFit,
   getTrainingGrowthRate,
   getTrainingTierMultiplier,
+  TRAINING_PACE_FACTOR,
 } from '@/lib/attributes';
 import type { Tables } from '@/integrations/supabase/types';
 import { Save, Trash2, Battery, Swords, Dumbbell, Trophy, Hourglass } from 'lucide-react';
@@ -264,8 +265,8 @@ export default function PlayerTrainingPlanPage() {
     const trainerBonusPct = trainerBonus / 100;
     const bonus = 1 + coachBonus + tcBonus + trainerBonusPct;
     const fitMult = getTrainingFit(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, attrKey).multiplier;
-    const min = growthRate * tierMult * bonus * fitMult;
-    const max = (growthRate + 0.99) * tierMult * bonus * fitMult;
+    const min = growthRate * tierMult * bonus * fitMult * TRAINING_PACE_FACTOR;
+    const max = (growthRate + 0.99) * tierMult * bonus * fitMult * TRAINING_PACE_FACTOR;
     return [min, max];
   };
 

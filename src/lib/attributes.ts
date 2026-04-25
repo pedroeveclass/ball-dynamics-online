@@ -168,6 +168,10 @@ export function getTrainingGrowthRate(age: number): number {
   return 0.2;
 }
 
+// Global pace factor applied at the end of every gain calculation.
+// Mirrors `v_pace_factor` in train_attribute / auto_train_attribute.
+export const TRAINING_PACE_FACTOR = 0.40;
+
 // ── Attribute Quality Tiers ──
 export interface AttributeTier {
   name: string;
