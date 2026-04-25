@@ -102,15 +102,84 @@ export default function AdminPage() {
 // ═══════════════════════════════════════════════════
 // LIGA TAB
 // ═══════════════════════════════════════════════════
+interface RoundMatch {
+  id: string;
+  round_id: string;
+  home_club_id: string;
+  away_club_id: string;
+  match_id: string | null;
+  status: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  scheduled_at: string | null;
+}
+
 function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: League[]; seasons: LeagueSeason[]; rounds: LeagueRound[]; clubs: Club[]; onReload: () => void }) {
   const [editLeague, setEditLeague] = useState<League | null>(null);
   const [matchDay1, setMatchDay1] = useState('');
   const [matchDay2, setMatchDay2] = useState('');
   const [matchTime, setMatchTime] = useState('');
   const [newRoundDate, setNewRoundDate] = useState('');
+  const [roundMatches, setRoundMatches] = useState<Record<string, RoundMatch[]>>({});
+  const [busyMatchId, setBusyMatchId] = useState<string | null>(null);
 
   const league = leagues[0];
   const season = seasons[0];
+
+  async function loadRoundMatches() {
+    const { data } = await supabase
+      .from('league_matches')
+      .select('id, round_id, home_club_id, away_club_id, match_id, matches(status, home_score, away_score, scheduled_at)');
+    if (!data) return;
+    const grouped: Record<string, RoundMatch[]> = {};
+    for (const lm of data as any[]) {
+      const m = lm.matches || {};
+      const row: RoundMatch = {
+        id: lm.id,
+        round_id: lm.round_id,
+        home_club_id: lm.home_club_id,
+        away_club_id: lm.away_club_id,
+        match_id: lm.match_id,
+        status: m.status ?? null,
+        home_score: m.home_score ?? null,
+        away_score: m.away_score ?? null,
+        scheduled_at: m.scheduled_at ?? null,
+      };
+      (grouped[row.round_id] ??= []).push(row);
+    }
+    setRoundMatches(grouped);
+  }
+
+  useEffect(() => { loadRoundMatches(); }, [rounds.length]);
+
+  const clubName = (id: string) => clubs.find(c => c.id === id)?.short_name || clubs.find(c => c.id === id)?.name?.slice(0, 8) || id.slice(0, 8);
+
+  async function runMatchAction(matchId: string, kind: 'start' | 'simulate' | 'finalize' | 'restart') {
+    setBusyMatchId(matchId);
+    try {
+      let err: any = null;
+      if (kind === 'start') {
+        const { error } = await supabase.rpc('admin_force_start_match', { p_match_id: matchId });
+        err = error;
+      } else if (kind === 'simulate') {
+        const { error } = await supabase.rpc('admin_simulate_match', { p_match_id: matchId, p_home_score: null, p_away_score: null });
+        err = error;
+      } else if (kind === 'finalize') {
+        const res = await supabase.functions.invoke('match-engine-lab', { body: { action: 'finish_match', match_id: matchId } });
+        err = res.error;
+      } else if (kind === 'restart') {
+        const { error } = await supabase.rpc('admin_restart_match', { p_match_id: matchId, p_scheduled_at: null });
+        err = error;
+      }
+      if (err) toast.error(err.message || String(err));
+      else {
+        toast.success({ start: 'Iniciada', simulate: 'Simulada', finalize: 'Finalizada', restart: 'Reiniciada' }[kind]);
+        await loadRoundMatches();
+      }
+    } finally {
+      setBusyMatchId(null);
+    }
+  }
 
   async function updateSchedule() {
     if (!league) return;
@@ -225,21 +294,75 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
             <Input type="datetime-local" value={newRoundDate} onChange={e => setNewRoundDate(e.target.value)} className="max-w-xs" />
             <Button onClick={createRound}>Criar Rodada</Button>
           </div>
-          <div className="max-h-[400px] overflow-y-auto space-y-1">
+          <div className="max-h-[600px] overflow-y-auto space-y-3">
             {rounds.map(r => (
-              <div key={r.id} className="flex items-center justify-between text-sm p-2 bg-card rounded border">
-                <span>R{r.round_number} - {new Date(r.scheduled_at).toLocaleString('pt-BR')} [{r.status}]</span>
-                <div className="flex gap-1">
-                  <Input
-                    type="datetime-local"
-                    className="w-44 h-7 text-xs"
-                    defaultValue={new Date(r.scheduled_at).toISOString().slice(0, 16)}
-                    onBlur={e => e.target.value && updateRoundDate(r.id, e.target.value)}
-                  />
-                  {r.status === 'scheduled' && (
-                    <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => cancelRound(r.id)}>
-                      Cancelar
-                    </Button>
+              <div key={r.id} className="bg-card rounded border">
+                <div className="flex items-center justify-between text-sm p-2 border-b">
+                  <span className="font-medium">R{r.round_number} - {new Date(r.scheduled_at).toLocaleString('pt-BR')} [{r.status}]</span>
+                  <div className="flex gap-1">
+                    <Input
+                      type="datetime-local"
+                      className="w-44 h-7 text-xs"
+                      defaultValue={new Date(r.scheduled_at).toISOString().slice(0, 16)}
+                      onBlur={e => e.target.value && updateRoundDate(r.id, e.target.value)}
+                    />
+                    {r.status === 'scheduled' && (
+                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => cancelRound(r.id)}>
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="p-2 space-y-1">
+                  {(roundMatches[r.id] || []).map(m => {
+                    const hasMatchRow = !!m.match_id && !!m.status;
+                    const status = m.status || 'pendente';
+                    const score = hasMatchRow ? `${m.home_score ?? 0} x ${m.away_score ?? 0}` : '-';
+                    const busy = busyMatchId === m.match_id;
+                    return (
+                      <div key={m.id} className="flex flex-wrap items-center gap-2 text-xs p-1.5 bg-background rounded">
+                        <span className="font-mono w-44 shrink-0">
+                          {clubName(m.home_club_id)} {score} {clubName(m.away_club_id)}
+                        </span>
+                        <Badge variant="outline" className="text-[10px]">{status}</Badge>
+                        {!hasMatchRow && (
+                          <span className="text-muted-foreground italic">aguardando materializar (5min antes)</span>
+                        )}
+                        {hasMatchRow && (
+                          <div className="flex gap-1 ml-auto">
+                            {status === 'scheduled' && (
+                              <Button size="sm" className="h-6 text-[11px] px-2" disabled={busy}
+                                onClick={() => m.match_id && runMatchAction(m.match_id, 'start')}>
+                                Iniciar
+                              </Button>
+                            )}
+                            {(status === 'scheduled' || status === 'live') && (
+                              <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
+                                onClick={() => m.match_id && runMatchAction(m.match_id, 'simulate')}>
+                                Simular
+                              </Button>
+                            )}
+                            {status === 'live' && (
+                              <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
+                                onClick={() => m.match_id && runMatchAction(m.match_id, 'finalize')}>
+                                Finalizar
+                              </Button>
+                            )}
+                            <Button size="sm" variant="destructive" className="h-6 text-[11px] px-2" disabled={busy}
+                              onClick={() => {
+                                if (!m.match_id) return;
+                                if (!confirm('Reiniciar a partida zera placar e apaga eventos. Continuar?')) return;
+                                runMatchAction(m.match_id, 'restart');
+                              }}>
+                              Reiniciar
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {(roundMatches[r.id] || []).length === 0 && (
+                    <div className="text-xs text-muted-foreground italic p-1">Sem partidas nesta rodada.</div>
                   )}
                 </div>
               </div>
@@ -525,13 +648,63 @@ interface HumanPlayer {
   email: string | null;
 }
 
+interface StoreItem { id: string; name: string; category: string; level: number | null; bonus_type: string | null; duration: string | null; is_available: boolean; sort_order: number; }
+
 function JogadoresTab({ clubs }: { clubs: Club[] }) {
   const [humanPlayers, setHumanPlayers] = useState<HumanPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignDialog, setAssignDialog] = useState<HumanPlayer | null>(null);
   const [selectedClubId, setSelectedClubId] = useState<string>('');
+  const [energyDraft, setEnergyDraft] = useState<Record<string, string>>({});
+  const [itemsDialog, setItemsDialog] = useState<HumanPlayer | null>(null);
+  const [storeItems, setStoreItems] = useState<StoreItem[]>([]);
+  const [grantingItemId, setGrantingItemId] = useState<string | null>(null);
 
   useEffect(() => { loadHumanPlayers(); }, []);
+
+  async function loadStoreItems() {
+    if (storeItems.length > 0) return;
+    const { data } = await supabase
+      .from('store_items')
+      .select('id, name, category, level, bonus_type, duration, is_available, sort_order')
+      .order('category')
+      .order('sort_order');
+    setStoreItems((data || []) as any);
+  }
+
+  async function applyEnergy(playerId: string) {
+    const raw = energyDraft[playerId];
+    if (raw === undefined || raw === '') return;
+    const val = parseInt(raw);
+    if (!Number.isFinite(val)) { toast.error('Valor inválido'); return; }
+    const { data, error } = await supabase.rpc('admin_set_player_energy', { p_player_id: playerId, p_energy: val });
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`Energia setada para ${data}`);
+      setEnergyDraft(prev => ({ ...prev, [playerId]: '' }));
+    }
+  }
+
+  async function resetAvatar(userId: string, name: string) {
+    if (!confirm(`Resetar avatar de ${name}? Ele será obrigado a recriar no próximo login.`)) return;
+    const { error } = await supabase.rpc('admin_reset_avatar', { p_user_id: userId });
+    if (error) toast.error(error.message);
+    else toast.success('Avatar resetado');
+  }
+
+  async function grantItem(playerId: string, itemId: string) {
+    setGrantingItemId(itemId);
+    try {
+      const { data, error } = await supabase.rpc('admin_grant_store_item', { p_player_id: playerId, p_item_id: itemId });
+      if (error) toast.error(error.message);
+      else {
+        const r: any = data;
+        toast.success(`${r?.item_name || 'Item'} concedido (${r?.status || 'ok'})`);
+      }
+    } finally {
+      setGrantingItemId(null);
+    }
+  }
 
   async function loadHumanPlayers() {
     setLoading(true);
@@ -609,34 +782,56 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
           ) : (
             <div className="space-y-2">
               {humanPlayers.map(p => (
-                <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-display font-bold text-sm">{p.full_name}</span>
-                      <Badge variant="outline" className="text-[10px]">{p.primary_position}</Badge>
-                      <span className="text-xs text-muted-foreground">OVR {Math.round(p.overall)}</span>
+                <div key={p.id} className="flex flex-col gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-display font-bold text-sm">{p.full_name}</span>
+                        <Badge variant="outline" className="text-[10px]">{p.primary_position}</Badge>
+                        <span className="text-xs text-muted-foreground">OVR {Math.round(p.overall)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        {p.email && <span>{p.email}</span>}
+                        {p.club_name ? (
+                          <Badge className="text-[10px]" variant="secondary">{p.club_name}</Badge>
+                        ) : (
+                          <Badge className="text-[10px]" variant="destructive">Sem clube</Badge>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                      {p.email && <span>{p.email}</span>}
-                      {p.club_name ? (
-                        <Badge className="text-[10px]" variant="secondary">{p.club_name}</Badge>
-                      ) : (
-                        <Badge className="text-[10px]" variant="destructive">Sem clube</Badge>
+                    <div className="flex gap-1.5 shrink-0">
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleLoginAs(p)}>
+                        Copiar ID
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAssignDialog(p); setSelectedClubId(p.club_id || ''); }}>
+                        Atribuir Clube
+                      </Button>
+                      {p.club_id && (
+                        <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleRemoveFromClub(p)}>
+                          Remover
+                        </Button>
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleLoginAs(p)}>
-                      Copiar ID
+                  <div className="flex flex-wrap gap-2 items-center pl-1">
+                    <span className="text-[11px] text-muted-foreground">Energia:</span>
+                    <Input
+                      type="number"
+                      placeholder="0-100"
+                      className="h-7 w-20 text-xs"
+                      value={energyDraft[p.id] ?? ''}
+                      onChange={e => setEnergyDraft(prev => ({ ...prev, [p.id]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && applyEnergy(p.id)}
+                    />
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyEnergy(p.id)}>
+                      Aplicar
                     </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAssignDialog(p); setSelectedClubId(p.club_id || ''); }}>
-                      Atribuir Clube
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setItemsDialog(p); loadStoreItems(); }}>
+                      Dar item
                     </Button>
-                    {p.club_id && (
-                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleRemoveFromClub(p)}>
-                        Remover
-                      </Button>
-                    )}
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => resetAvatar(p.user_id, p.full_name)}>
+                      Resetar avatar
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -666,6 +861,41 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignDialog(null)}>Cancelar</Button>
             <Button onClick={handleAssignClub} disabled={!selectedClubId}>Confirmar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!itemsDialog} onOpenChange={open => { if (!open) setItemsDialog(null); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Dar item — {itemsDialog?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto space-y-1">
+            {storeItems.length === 0 ? (
+              <div className="text-center text-muted-foreground text-sm py-4">Carregando itens...</div>
+            ) : (
+              storeItems.map(it => (
+                <div key={it.id} className="flex items-center gap-2 p-2 rounded border bg-card">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{it.name}</div>
+                    <div className="text-[10px] text-muted-foreground flex gap-1 flex-wrap">
+                      <Badge variant="outline" className="text-[10px]">{it.category}</Badge>
+                      {it.level !== null && <Badge variant="outline" className="text-[10px]">L{it.level}</Badge>}
+                      {it.duration && <Badge variant="outline" className="text-[10px]">{it.duration}</Badge>}
+                      {it.bonus_type && <Badge variant="outline" className="text-[10px]">{it.bonus_type}</Badge>}
+                      {!it.is_available && <Badge variant="destructive" className="text-[10px]">indisponível</Badge>}
+                    </div>
+                  </div>
+                  <Button size="sm" className="h-7 text-xs" disabled={grantingItemId === it.id}
+                    onClick={() => itemsDialog && grantItem(itemsDialog.id, it.id)}>
+                    Dar
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setItemsDialog(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

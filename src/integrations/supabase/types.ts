@@ -234,7 +234,7 @@ export type Database = {
           id: string
           is_bot_managed: boolean
           league_id: string | null
-          manager_profile_id: string
+          manager_profile_id: string | null
           name: string
           primary_color: string
           reputation: number
@@ -250,7 +250,7 @@ export type Database = {
           id?: string
           is_bot_managed?: boolean
           league_id?: string | null
-          manager_profile_id: string
+          manager_profile_id?: string | null
           name: string
           primary_color?: string
           reputation?: number
@@ -266,7 +266,7 @@ export type Database = {
           id?: string
           is_bot_managed?: boolean
           league_id?: string | null
-          manager_profile_id?: string
+          manager_profile_id?: string | null
           name?: string
           primary_color?: string
           reputation?: number
@@ -2869,8 +2869,21 @@ export type Database = {
         Returns: undefined
       }
       admin_fire_manager: { Args: { p_club_id: string }; Returns: undefined }
+      admin_force_start_match: {
+        Args: { p_match_id: string }
+        Returns: undefined
+      }
+      admin_grant_store_item: {
+        Args: { p_item_id: string; p_player_id: string }
+        Returns: Json
+      }
       admin_remove_player_from_club: {
         Args: { p_player_id: string }
+        Returns: undefined
+      }
+      admin_reset_avatar: { Args: { p_user_id: string }; Returns: undefined }
+      admin_restart_match: {
+        Args: { p_match_id: string; p_scheduled_at?: string }
         Returns: undefined
       }
       admin_search_players: {
@@ -2883,6 +2896,18 @@ export type Database = {
           overall: number
           primary_position: string
         }[]
+      }
+      admin_set_player_energy: {
+        Args: { p_energy: number; p_player_id: string }
+        Returns: number
+      }
+      admin_simulate_match: {
+        Args: {
+          p_away_score?: number
+          p_home_score?: number
+          p_match_id: string
+        }
+        Returns: Json
       }
       admin_update_club: {
         Args: {
