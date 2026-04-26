@@ -7164,31 +7164,39 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
 
       if (!prevBhAction && !deflectOverride) {
-        // No ball action in current turn — fetch from previous turn (the one that created the loose ball)
-        if (prevTurnNumber >= 1) {
-          const { data: prevTurnRows } = await supabase
+        // No ball action in current turn — fetch the most recent pass/shot
+        // ANYWHERE in the match. A loose-ball chain has consecutive turns with
+        // no ball action; restricting to prevTurnNumber alone caused the chain
+        // to go static after the first decay tick (engine couldn't derive a
+        // direction → dirLen=0 → ball stayed put while the client kept
+        // animating it forward, producing the "ball is in a different place
+        // for me than for the server" desync that the user reported).
+        const { data: priorActions } = await supabase
+          .from('match_actions')
+          .select('action_type, target_x, target_y, participant_id, match_turn_id, created_at')
+          .eq('match_id', match_id)
+          .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (priorActions && priorActions.length > 0) {
+          prevBhAction = priorActions[0];
+          // Use the passer's pre-pass position as the direction origin.
+          // match_turns persists `ball_x/ball_y` on the ball_holder phase row,
+          // which equals the BH (passer) position at the moment of the pass —
+          // not their current pos (they may have moved several turns since).
+          const { data: passTurn } = await supabase
             .from('match_turns')
-            .select('id')
-            .eq('match_id', match_id)
-            .eq('turn_number', prevTurnNumber)
-            .order('created_at', { ascending: false });
-          const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
-          if (prevTurnIds.length > 0) {
-            const { data: prevActions } = await supabase
-              .from('match_actions')
-              .select('action_type, target_x, target_y, participant_id')
-              .in('match_turn_id', prevTurnIds)
-              .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power'])
-              .order('created_at', { ascending: false })
-              .limit(1);
-            if (prevActions && prevActions.length > 0) {
-              prevBhAction = prevActions[0];
-              // Use the PASSER's position (not current ball pos) as origin for direction
-              const passer = (participants || []).find((p: any) => p.id === prevActions[0].participant_id);
-              bhStartPos = passer
-                ? { x: Number(passer.pos_x ?? 50), y: Number(passer.pos_y ?? 50) }
-                : ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
-            }
+            .select('ball_x, ball_y, possession_club_id')
+            .eq('id', priorActions[0].match_turn_id)
+            .maybeSingle();
+          if (passTurn?.ball_x != null && passTurn?.ball_y != null) {
+            bhStartPos = { x: Number(passTurn.ball_x), y: Number(passTurn.ball_y) };
+          } else {
+            // Fallback: passer's current pos (legacy behaviour).
+            const passer = (participants || []).find((p: any) => p.id === priorActions[0].participant_id);
+            bhStartPos = passer
+              ? { x: Number(passer.pos_x ?? 50), y: Number(passer.pos_y ?? 50) }
+              : ballEndPos ? { x: (ballEndPos as any).x, y: (ballEndPos as any).y } : null;
           }
         }
       }

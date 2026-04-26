@@ -4,19 +4,37 @@ import { ACTION_PHASE_ORDER } from './constants';
 import { DEFAULT_FORMATION } from '@/lib/formations';
 import { labelForPickupSlot } from '@/lib/pickupSlots';
 
-export function filterEffectiveTurnActions(actions: MatchAction[], optimisticHumanActionedIds?: Set<string>): MatchAction[] {
-  const humanActionedIds = new Set(optimisticHumanActionedIds || []);
+export function filterEffectiveTurnActions(
+  actions: MatchAction[],
+  optimisticHumanActionedIds?: Set<string>,
+  optimisticPhase?: string | null,
+): MatchAction[] {
   const nonOverriddenActions = actions.filter(action => action.status !== 'overridden');
 
+  // (participant_id, phase) tuples where a real human action exists in turnActions.
+  // Scoped per-phase so a human takeover in attacking_support doesn't erase the
+  // bot's pass arrow from ball_holder phase: both rows are legitimate parts of
+  // the turn's plan (BH-bot passes in phase 1, then user mini-moves in phase 2).
+  const humanActedKey = new Set<string>();
   for (const action of nonOverriddenActions) {
     if (action.controlled_by_type === 'player' || action.controlled_by_type === 'manager') {
-      humanActionedIds.add(action.participant_id);
+      humanActedKey.add(`${action.participant_id}:${action.turn_phase ?? 'unknown'}`);
     }
   }
 
+  const optimisticPids = optimisticHumanActionedIds ?? new Set<string>();
+
   return nonOverriddenActions.filter(action => {
-    if (action.controlled_by_type === 'bot' && humanActionedIds.has(action.participant_id)) {
-      return false;
+    if (action.controlled_by_type !== 'bot') return true;
+    const phase = action.turn_phase ?? 'unknown';
+    if (humanActedKey.has(`${action.participant_id}:${phase}`)) return false;
+    // Optimistic id-only fallback: if caller passed a participant id without
+    // phase info AND we were told the active phase, only suppress bot arrows
+    // in that specific phase. Without an optimisticPhase, suppress across all
+    // phases (legacy behaviour) so callers that haven't been updated still
+    // benefit from optimistic dedup.
+    if (optimisticPids.has(action.participant_id)) {
+      if (optimisticPhase == null || phase === optimisticPhase) return false;
     }
     return true;
   });

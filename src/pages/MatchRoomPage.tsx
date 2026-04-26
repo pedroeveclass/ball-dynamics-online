@@ -2856,13 +2856,16 @@ export default function MatchRoomPage() {
   };
 
   // ─── Filter bot arrows when human already acted ───────────────
+  // Optimistic ids are scoped to the current activeTurn.phase — a user
+  // submitting in attacking_support shouldn't retroactively erase the bot's
+  // ball_holder arrow for the same participant.
   const visibleActions = useMemo(() => {
     const humanActionedIds = new Set<string>();
     for (const pid of submittedActions) {
       humanActionedIds.add(pid);
     }
-    return filterEffectiveTurnActions(turnActions, humanActionedIds);
-  }, [turnActions, submittedActions]);
+    return filterEffectiveTurnActions(turnActions, humanActionedIds, activeTurn?.phase ?? null);
+  }, [turnActions, submittedActions, activeTurn?.phase]);
 
   // ─── Animation for phase 4 ─────────────────────────────────
 
