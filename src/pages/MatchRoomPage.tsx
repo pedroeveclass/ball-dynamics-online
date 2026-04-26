@@ -3310,11 +3310,16 @@ export default function MatchRoomPage() {
           setFinalPositions(finals);
 
           // Store movement directions for inertia system.
-          // Source of truth: `finals[p.id]` (computed above as the authoritative end
-          // position for this turn) minus `snapshot[p.id]` (turn start). Using `finals`
-          // avoids divergence from the engine: if the engine clamped differently from the
-          // client, we still store the direction of the *actual* move that happened.
-          // IMPORTANT: if a player did NOT move this turn, reset their inertia.
+          // Use the player's INTENT (action target − snapshot) rather than
+          // `finals - snapshot`. The engine's bump-pass collision handler can
+          // shove a player perpendicular to their chosen direction; using the
+          // post-bump endpoint as inertia would store the bump direction, so a
+          // user who clicked "up" but got nudged left would see their next-turn
+          // inertia arrow pointing left, which is not what they chose. We only
+          // care about angle here (dirMult ignores magnitude), so it's safe to
+          // use the unclamped target.
+          // Falls back to (finals − snapshot) for participants without a move
+          // action this turn (e.g. positioning rows, or a teammate's idle).
           const newDirections: Record<string, { x: number; y: number }> = { ...prevDirectionsRef.current };
           for (const p of participantsRef.current) {
             const sp = snapshot[p.id];
@@ -3323,9 +3328,21 @@ export default function MatchRoomPage() {
               delete newDirections[p.id];
               continue;
             }
-            const ddx = endPos.x - sp.x;
-            const ddy = endPos.y - sp.y;
-            if (Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
+            const moveAction = latestActions.find(a =>
+              a.participant_id === p.id
+              && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block')
+              && a.target_x != null && a.target_y != null
+            );
+            const ddx = moveAction
+              ? Number(moveAction.target_x) - sp.x
+              : endPos.x - sp.x;
+            const ddy = moveAction
+              ? Number(moveAction.target_y) - sp.y
+              : endPos.y - sp.y;
+            // Decide "stayed still" against the ACTUAL displacement so a click
+            // on the player's own spot still drops the entry.
+            const actualDisp = Math.sqrt((endPos.x - sp.x) ** 2 + (endPos.y - sp.y) ** 2);
+            if (actualDisp > 0.5 && Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
               newDirections[p.id] = { x: ddx, y: ddy };
             } else {
               delete newDirections[p.id]; // Stayed still — reset inertia

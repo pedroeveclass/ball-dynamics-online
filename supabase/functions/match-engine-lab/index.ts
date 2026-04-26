@@ -2032,6 +2032,50 @@ async function generateBotActions(
   }
   const turnNumber = match?.current_turn_number ?? 1;
 
+  // Pre-load previous turn's move direction + inertia power so the bot's
+  // planning respects the same dirMult the resolution applies. Without this,
+  // a bot whose last move was LEFT would still try to receive a ball UP at the
+  // base reach, then the resolution would clamp it back — fine numerically but
+  // the bot's submitted target was misleadingly long, making it appear to
+  // "ignore inertia" relative to a human whose client clamped the arrow up
+  // front.
+  const botPrevMoveDir = new Map<string, { x: number; y: number }>();
+  const botPrevInertia = new Map<string, number>();
+  if ((match?.current_turn_number ?? 1) > 1) {
+    const { data: prevTurnRows } = await supabase
+      .from('match_turns').select('id').eq('match_id', matchId)
+      .eq('turn_number', (match?.current_turn_number ?? 1) - 1);
+    const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+    if (prevTurnIds.length > 0) {
+      const { data: prevMoveActions } = await supabase
+        .from('match_actions')
+        .select('participant_id, action_type, payload')
+        .in('match_turn_id', prevTurnIds)
+        .in('action_type', ['move', 'receive', 'block']);
+      for (const pm of (prevMoveActions || [])) {
+        const p = pm.payload as any;
+        if (p && typeof p.move_dx === 'number' && typeof p.move_dy === 'number') {
+          const existing = botPrevMoveDir.get(pm.participant_id);
+          if (!existing || pm.action_type === 'move') {
+            botPrevMoveDir.set(pm.participant_id, { x: p.move_dx, y: p.move_dy });
+          }
+        }
+        if (typeof p?.inertia_power === 'number') {
+          botPrevInertia.set(pm.participant_id, p.inertia_power);
+        }
+      }
+    }
+  }
+  const inertiaAdjustedRange = (botId: string, baseRange: number, dx: number, dy: number): number => {
+    if (Math.sqrt(dx * dx + dy * dy) < 0.1) return baseRange;
+    const prevDir = botPrevMoveDir.get(botId);
+    if (!prevDir) return baseRange;
+    const rawMult = getDirectionalMultiplier(prevDir, { x: dx, y: dy });
+    const power = (botPrevInertia.get(botId) ?? 100) / 100;
+    const dirMult = 1.0 + (rawMult - 1.0) * power;
+    return baseRange * dirMult;
+  };
+
   // ── Pre-compute team maps: teammates and opponents by club (Fix 1) ──
   const playersByClub = new Map<string, typeof participants>();
   for (const p of participants) {
@@ -2818,6 +2862,44 @@ async function generateBotActions(
         action.target_y = by + (ballPos.y - by) * 0.3;
         console.log(`[ENGINE] Bot ${action.participant_id.slice(0,8)} receive/block too far from ball (${distToBall.toFixed(1)}), converted to move`);
       }
+    }
+  }
+
+  // ── Inertia clamp on every bot move/receive target ──
+  // The engine's resolution applies a directional multiplier to maxRange
+  // (1.2× same direction → 0.5× full reverse) but the bot's planning above
+  // uses base maxMoveRange. Without this clamp the bot submits a target
+  // beyond what it can actually reach, the resolution silently shortens it,
+  // and the resulting movement diverges from what the user sees on the
+  // human's side (whose client clamps the arrow up front). Apply the same
+  // dirMult here so the submitted targets — and the visible bot arrow —
+  // match the reach the engine will allow.
+  for (const action of actions) {
+    if (action.action_type !== 'move' && action.action_type !== 'receive') continue;
+    if (action.target_x == null || action.target_y == null) continue;
+    const part = participants.find((p: any) => p.id === action.participant_id);
+    if (!part) continue;
+    const sx = Number(part.pos_x ?? 50);
+    const sy = Number(part.pos_y ?? 50);
+    const dx = Number(action.target_x) - sx;
+    const dy = Number(action.target_y) - sy;
+    const dist = getMovementDistance(dx, dy);
+    if (dist < 0.1) continue;
+    const rawAttrs = part.player_profile_id ? botAttrMap[part.player_profile_id] : null;
+    if (!rawAttrs) continue;
+    const posMult = participantPositionalMultiplier(part);
+    const baseRange = computeMaxMoveRange({
+      velocidade: Number(rawAttrs?.velocidade ?? 40) * posMult,
+      aceleracao: Number(rawAttrs?.aceleracao ?? 40) * posMult,
+      agilidade: Number(rawAttrs?.agilidade ?? 40) * posMult,
+      stamina: Number(rawAttrs?.stamina ?? 40) * posMult,
+      forca: Number(rawAttrs?.forca ?? 40) * posMult,
+    }, turnNumber);
+    const adjustedRange = inertiaAdjustedRange(action.participant_id, baseRange, dx, dy);
+    if (dist > adjustedRange) {
+      const scale = adjustedRange / dist;
+      action.target_x = sx + dx * scale;
+      action.target_y = sy + dy * scale;
     }
   }
 
@@ -6327,19 +6409,27 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         resolutionMoveBatch.push({ id: a.participant_id, x: finalX, y: finalY });
 
         // Persist move_ratio AND move direction in the action payload.
-        // move_ratio: used for deviation penalty on next turn's pass/shoot.
+        // move_ratio: used for deviation penalty on next turn's pass/shoot
+        //   (uses ACTUAL movement, since the penalty cares about how much the
+        //   player ran).
         // move_dx/move_dy: used for directional inertia on next turn's move.
-        // We store for move AND receive/block so a player who ran to intercept also
-        // carries inertia into the next turn (matches client-side storage).
+        //   Use the player's INTENT (action target − start), not the post-clamp
+        //   final position. Otherwise a perpendicular bump-pass collision would
+        //   overwrite the actual direction the user chose, leaving them with
+        //   inertia pointing sideways even though they only ever clicked
+        //   forward. The dirMult formula only reads this for angle, so the
+        //   magnitude doesn't matter.
         if (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') {
           const actualDist = getMovementDistance(finalX - startX, finalY - startY);
           const moveRatioVal = maxRange > 0 ? Math.min(1, actualDist / maxRange) : 0;
+          const intendedDx = Number(a.target_x) - startX;
+          const intendedDy = Number(a.target_y) - startY;
           // Atomic JSONB merge in Postgres. Using `.update({ payload: {...} })`
           // with an in-memory spread would overwrite whatever the client wrote
           // between our SELECT and UPDATE (e.g. the inertia_power slider).
           await supabase.rpc('merge_match_action_payload', {
             p_action_id: a.id,
-            p_patch: { move_ratio: moveRatioVal, move_dx: finalX - startX, move_dy: finalY - startY },
+            p_patch: { move_ratio: moveRatioVal, move_dx: intendedDx, move_dy: intendedDy },
           });
         }
       }
