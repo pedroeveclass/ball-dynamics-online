@@ -4275,7 +4275,7 @@ function computeBallControlDifficulty(
 
 function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number, ballPos?: { x: number; y: number } | null, ballEndPos?: { x: number; y: number } | null): any | null {
   const receiveActions = allActions.filter((a) => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
-  const ranked: Array<{ participant: any; distance: number; createdAt: number }> = [];
+  const ranked: Array<{ participant: any; distance: number; createdAt: number; stationary: boolean }> = [];
 
   for (const action of receiveActions) {
     const participant = participants.find((p: any) => p.id === action.participant_id);
@@ -4292,15 +4292,20 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
         const bx = ballEndPos.x, by = ballEndPos.y;
         const dx = bx - ax, dy = by - ay;
         const lenSq = dx * dx + dy * dy;
-        let t = 0;
+        // Stationary ball: leave tBallAtTarget=null so the temporal check below
+        // is skipped — there's no "too late" for a ball that isn't moving.
+        // Previously t defaulted to 0, which falsely rejected every claimant
+        // whose tPlayer > 0.15 (≈98% of attempts in production logs).
         if (lenSq > 1e-6) {
-          t = ((action.target_x - ax) * dx + (action.target_y - ay) * dy) / lenSq;
+          let t = ((action.target_x - ax) * dx + (action.target_y - ay) * dy) / lenSq;
           t = Math.max(0, Math.min(1, t));
+          const projX = ax + dx * t;
+          const projY = ay + dy * t;
+          distToBall = Math.sqrt((action.target_x - projX) ** 2 + (action.target_y - projY) ** 2);
+          tBallAtTarget = t;
+        } else {
+          distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
         }
-        const projX = ax + dx * t;
-        const projY = ay + dy * t;
-        distToBall = Math.sqrt((action.target_x - projX) ** 2 + (action.target_y - projY) ** 2);
-        tBallAtTarget = t;
       } else {
         distToBall = Math.sqrt((action.target_x - ballPos.x) ** 2 + (action.target_y - ballPos.y) ** 2);
       }
@@ -4358,12 +4363,17 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
       participant,
       distance: dist,
       createdAt: new Date(action.created_at || 0).getTime(),
+      stationary: tBallAtTarget == null,
     });
   }
 
   if (ranked.length === 0) return null;
   ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
-  return ranked[0].participant;
+  const winner = ranked[0];
+  if (winner.stationary) {
+    console.log(`[ENGINE] Stationary loose ball claimed by ${winner.participant.id.slice(0,8)} dist=${winner.distance.toFixed(2)}`);
+  }
+  return winner.participant;
 }
 // ─── Out of bounds detection ─────────────────────────────────
 interface OOBResult {
@@ -6391,6 +6401,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
+    mark('res_dedup_attrs');
     // ── Apply movement ──
     // Check if ball holder has a ball action (pass/shoot) — if so, defer their move until after resolution
     const bhHasBallAction = ballHolder && allActions.some(a =>
@@ -6685,6 +6696,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       // tackleBlockedIds / tackleMovementPenalty were built before the movement loop
       // (scope starts higher up in executeTickForMatch).
+      mark('res_motion');
       if (ballHolderAction) {
         // ── MatchFlow: always log the ball holder's action (regardless of outcome).
         // Outcome-specific logs (pass_complete, intercepted, shot_over, blocked, dribble
@@ -7330,6 +7342,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
       }
+      mark('res_ball_action');
     } else {
       // ── LOOSE BALL HANDLING ──
       // Initialize ballEndPos from looseBallPos so the inertia calculation below
@@ -7781,6 +7794,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (usedIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds));
       if (overriddenIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds));
       if (actionStatusUpdates.length > 0) await Promise.all(actionStatusUpdates);
+      mark('res_loose_ball');
     }
 
     // ── Compute ball end position for out-of-bounds check ──
@@ -8229,6 +8243,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .select('id');
     if (!resResolvedRows || resResolvedRows.length === 0) {
       console.log(`[ENGINE] Token stolen on resolution end for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      tickExitStatus = 'skipped:token_stolen_on_resolve_end';
       return { status: 'skipped' };
     }
 
@@ -8924,6 +8939,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       .select('id');
     if (!lbRes || lbRes.length === 0) {
       console.log(`[ENGINE] Token stolen on loose-ball skip for turn ${activeTurn.id.slice(0,8)} — bailing`);
+      tickExitStatus = 'skipped:token_stolen_on_loose_ball_skip';
       return { status: 'skipped' };
     }
 
