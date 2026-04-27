@@ -3800,6 +3800,11 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
           looseBallX = Math.max(1, Math.min(99, looseBallX));
         }
         const blockDesc = isGKBlockCtx ? `🧤 Goleiro espalmou! (${chancePct})` : `🛡️ Bloqueio! (${chancePct})`;
+        // Note: when the GK espalma (deflects), do NOT set gkSaveAttempt — that field
+        // is reserved for "GK caught the ball" outcomes. The `block` event below already
+        // carries blocker identity + chance; emitting a second `gk_save` event with
+        // saved:true would cause the Match Flow to render two conflicting animations
+        // ("defendeu" + "espalmou") for a single deflection.
         return {
           success: false, event: 'block', description: blockDesc,
           possession_change: false, goal: false, newBallHolderId: undefined,
@@ -3809,7 +3814,6 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
           blocker_club_id: candidate.participant.club_id,
           block_chance: chancePct,
           interruptProgress: candidate.progress,
-          ...(isGKBlockCtx ? { gkSaveAttempt: { gkParticipantId: candidate.participant.id, gkClubId: candidate.participant.club_id, chance: chancePct, saved: true } } : {}),
         };
       }
       if (context.type === 'gk_save') {
@@ -6720,23 +6724,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           ballEndPos = { x: result.looseBallPos.x, y: result.looseBallPos.y };
           // Record the deflect direction (blocker pos → deflect pos) so next turn's
           // inertia continues in that direction, not in the original shot direction.
-          const blocker = result.gkSaveAttempt?.gkParticipantId
-            ? (participants || []).find((p: any) => p.id === result.gkSaveAttempt!.gkParticipantId)
-            : null;
-          const deflectFromX = blocker ? Number(blocker.pos_x ?? 50) : result.looseBallPos.x;
-          const deflectFromY = blocker ? Number(blocker.pos_y ?? 50) : result.looseBallPos.y;
           const blockerForEvent = result.blocker_participant_id
             ? (participants || []).find((p: any) => p.id === result.blocker_participant_id)
-            : blocker;
+            : null;
+          const deflectFromX = blockerForEvent ? Number((blockerForEvent as any).pos_x ?? 50) : result.looseBallPos.x;
+          const deflectFromY = blockerForEvent ? Number((blockerForEvent as any).pos_y ?? 50) : result.looseBallPos.y;
           eventsToLog.push({
             match_id, event_type: result.event || 'blocked',
             title: result.description,
             body: `Bola espirrou para (${result.looseBallPos.x.toFixed(0)},${result.looseBallPos.y.toFixed(0)})`,
             payload: {
-              blocker_participant_id: result.blocker_participant_id ?? (result.gkSaveAttempt?.gkParticipantId ?? null),
-              blocker_club_id: result.blocker_club_id ?? (result.gkSaveAttempt?.gkClubId ?? null),
+              blocker_participant_id: result.blocker_participant_id ?? null,
+              blocker_club_id: result.blocker_club_id ?? null,
               blocker_name: (blockerForEvent as any)?._player_name ?? null,
-              block_chance: result.block_chance ?? (result.gkSaveAttempt?.chance ?? null),
+              block_chance: result.block_chance ?? null,
               deflect_from_x: deflectFromX,
               deflect_from_y: deflectFromY,
               deflect_to_x: result.looseBallPos.x,
