@@ -528,9 +528,17 @@ export default function MatchRoomPage() {
     // Track resolution-relevant events so animation can incorporate actual results
     const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball', 'dispute', 'shot_over', 'shot_missed', 'offside', 'turn_interrupted'];
     if (resolutionEventTypes.includes(event.event_type)) {
-      resolutionEventsRef.current = [...resolutionEventsRef.current, event];
+      const alreadyInResolution = event.id != null && resolutionEventsRef.current.some(e => e.id === event.id);
+      if (!alreadyInResolution) {
+        resolutionEventsRef.current = [...resolutionEventsRef.current, event];
+      }
     }
     setEvents(prev => {
+      // Dedupe by id — Supabase realtime can re-deliver an event after a
+      // reconnect, and a snapshot reload that races with an in-flight INSERT
+      // produces the same row twice. Without this guard the Match Flow shows
+      // the same line 2-3 times.
+      if (event.id != null && prev.some(e => e.id === event.id)) return prev;
       const nextEvents = [...prev, event];
       return nextEvents.length > LIVE_EVENT_LIMIT ? nextEvents.slice(-LIVE_EVENT_LIMIT) : nextEvents;
     });
@@ -958,8 +966,22 @@ export default function MatchRoomPage() {
         setActiveTurn(null);
       }
 
-      // Query fetches latest N events in descending order; reverse for chronological display
-      setEvents(((eventsRes.data || []) as EventLog[]).reverse());
+      // Query fetches latest N events in descending order; reverse for chronological display.
+      // Merge with whatever is already in state so realtime events that landed during
+      // the snapshot fetch don't get duplicated when the snapshot replaces the list.
+      const snapshotEvents = ((eventsRes.data || []) as EventLog[]).reverse();
+      setEvents(prev => {
+        const seen = new Set<string | number>();
+        const merged: EventLog[] = [];
+        for (const ev of [...snapshotEvents, ...prev]) {
+          const key = ev.id ?? `${ev.event_type}|${ev.created_at}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(ev);
+        }
+        merged.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+        return merged.length > LIVE_EVENT_LIMIT ? merged.slice(-LIVE_EVENT_LIMIT) : merged;
+      });
       scheduleTurnActionsReconcile(true);
     } finally {
       liveSnapshotInFlightRef.current = false;
@@ -4061,7 +4083,12 @@ export default function MatchRoomPage() {
           const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
           if (fromP) {
             const isHome = fromP.club_id === match?.home_club_id;
-            if (isHome) finalX = Math.min(finalX, 49);
+            const isSecondHalf = (match?.current_half ?? 1) >= 2;
+            // In 2nd half, sides flip: home is now on the RIGHT, away on LEFT.
+            // Must mirror handleFieldClick or the cursor preview clamps to the
+            // wrong half and visibly jumps to the opponent side.
+            const ownHalfIsLeft = isHome ? !isSecondHalf : isSecondHalf;
+            if (ownHalfIsLeft) finalX = Math.min(finalX, 49);
             else finalX = Math.max(finalX, 51);
             // Center circle restriction for defending team
             const possClubId = activeTurn?.possession_club_id;
@@ -4073,7 +4100,7 @@ export default function MatchRoomPage() {
                 const angle = Math.atan2(finalY - 50, finalX - 50);
                 finalX = 50 + Math.cos(angle) * CENTER_CIRCLE_RADIUS;
                 finalY = 50 + Math.sin(angle) * CENTER_CIRCLE_RADIUS;
-                if (isHome) finalX = Math.min(finalX, 49);
+                if (ownHalfIsLeft) finalX = Math.min(finalX, 49);
                 else finalX = Math.max(finalX, 51);
               }
             }
@@ -5462,6 +5489,27 @@ export default function MatchRoomPage() {
 
                   if (withinCircle && withinReach && inTime) {
                     canReachBall = true;
+                  }
+
+                  // Path B fallback — mirrors handleFieldClick's "cursor on the
+                  // ball directly" branch. When the cursor sits on the ball
+                  // start (not on the rolling segment) and the player is within
+                  // base range of the ball itself, the click accepts dominate.
+                  // The render must do the same or we get green-circle-but-menu-
+                  // opens (the temporal branch can fail when the cursor is
+                  // exactly at t≈0 and the player is closer to the ball than to
+                  // the projection point).
+                  if (!canReachBall) {
+                    const dxBall = drawingFrom.field_x! - looseBallPos.x;
+                    const dyBall = (drawingFrom.field_y! - looseBallPos.y) * FIELD_Y_SCALE;
+                    const distPlayerToBall = Math.sqrt(dxBall * dxBall + dyBall * dyBall);
+                    const cxBall = mouseFieldPct.x - looseBallPos.x;
+                    const cyBall = (mouseFieldPct.y - looseBallPos.y) * FIELD_Y_SCALE;
+                    const distCursorToBall = Math.sqrt(cxBall * cxBall + cyBall * cyBall);
+                    if (distPlayerToBall <= looseBallRange + 0.5
+                        && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
+                      canReachBall = true;
+                    }
                   }
                 }
 

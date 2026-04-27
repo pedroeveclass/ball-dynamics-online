@@ -201,6 +201,63 @@ function resolveRenderedPositions(
 
 const oppositePhase = (p: Phase): Phase => (p === 'with_ball' ? 'without_ball' : 'with_ball');
 
+// ── Set-piece tactics ─────────────────────────────────────────
+// Bola Parada: one positional layout per (set_piece_type, phase). The engine
+// picks the layout when a dead-ball restart fires (corner/throw-in/free-kick/
+// goal-kick) and mirrors X by which side of the field the ball is on. No
+// quadrants, no knobs — just one fixed shape per situation.
+type SetPieceType = 'corner' | 'throw_in' | 'free_kick' | 'goal_kick';
+const SET_PIECE_TYPES: SetPieceType[] = ['corner', 'throw_in', 'free_kick', 'goal_kick'];
+const SET_PIECE_LABEL: Record<SetPieceType, string> = {
+  corner: 'Escanteio',
+  throw_in: 'Lateral',
+  free_kick: 'Falta',
+  goal_kick: 'Tiro de meta',
+};
+const SET_PIECE_HELP: Record<SetPieceType, string> = {
+  corner: 'Layout aplicado quando há um escanteio. O engine espelha pelo lado do campo (esq/dir) automaticamente.',
+  throw_in: 'Layout aplicado em qualquer reposição de lateral. O engine espelha pelo lado em que a bola saiu.',
+  free_kick: 'Layout aplicado em qualquer falta. O engine ajusta pela posição da bola no campo.',
+  goal_kick: 'Layout aplicado quando há um tiro de meta. Coloque atacantes onde quer pegar o lançamento.',
+};
+
+type SetPiecePhase = Phase;
+type SetPieceLayout = QuadrantPositions; // slot_position → {x,y}
+type SetPieceMap = Record<SetPieceType, Record<SetPiecePhase, SetPieceLayout | null>>;
+
+function buildEmptySetPieceMap(): SetPieceMap {
+  const out = {} as SetPieceMap;
+  for (const t of SET_PIECE_TYPES) {
+    out[t] = { with_ball: null, without_ball: null };
+  }
+  return out;
+}
+
+/** Sensible defaults per set-piece type. Used when no custom layout is saved. */
+function defaultSetPiecePositions(
+  formation: string,
+  type: SetPieceType,
+  phase: SetPiecePhase,
+): SetPieceLayout {
+  const slots = FORMATIONS[formation] || [];
+  const out: SetPieceLayout = {};
+  for (const s of slots) {
+    if (s.position === 'GK') {
+      // GK always near own goal area in editor space.
+      out[s.position] = { x: SITU_GK_CENTER.x, y: SITU_GK_CENTER.y };
+      continue;
+    }
+    // Start every outfield player at their formation default. The user drags
+    // from there. We could be cleverer (push attackers up for a corner, etc.)
+    // but the formation default is a known shape the user already understands.
+    out[s.position] = { x: s.x, y: s.y };
+  }
+  return out;
+}
+
+/** GK center in editor space — same constant as the engine. */
+const SITU_GK_CENTER = { x: 50, y: 92 };
+
 /** Pair each slot with its left/right mirror by grouping slots into rows (by y±5) and reversing x order. */
 function computeMirrorMapping(formation: string): Record<string, string> {
   const slots = FORMATIONS[formation] || [];
@@ -383,7 +440,16 @@ export default function SituationalTacticsPage() {
   const [compareQuadrant, setCompareQuadrant] = useState<number | null>(null);
   const [comparePhase, setComparePhase] = useState<Phase>('with_ball');
 
+  // ── Mode toggle: regular tactics vs set-piece (Bola Parada) ──
+  const [mode, setMode] = useState<'general' | 'set_piece'>('general');
+  const [setPieceType, setSetPieceType] = useState<SetPieceType>('corner');
+  const [setPiecePhase, setSetPiecePhase] = useState<SetPiecePhase>('with_ball');
+  const [setPieceMap, setSetPieceMap] = useState<SetPieceMap>(() => buildEmptySetPieceMap());
+  const [setPieceLoading, setSetPieceLoading] = useState(true);
+  const [setPieceSaving, setSetPieceSaving] = useState(false);
+
   const fieldRef = useRef<HTMLDivElement>(null);
+  const setPieceFieldRef = useRef<HTMLDivElement>(null);
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
 
   // Seed the formation from the club's active lineup on mount, so the tactics page
@@ -464,6 +530,47 @@ export default function SituationalTacticsPage() {
       setLoading(false);
     }
     load();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [club?.id, formation]);
+
+  // ── Set-piece (Bola Parada): load from DB ──────────────────
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSetPiece() {
+      if (!club) return;
+      setSetPieceLoading(true);
+      const { data, error } = await supabase
+        .from('set_piece_tactics' as any)
+        .select('set_piece_type, phase, positions')
+        .eq('club_id', club.id)
+        .eq('formation', formation);
+      if (cancelled) return;
+      if (error) {
+        console.error(error);
+        toast.error('Erro ao carregar bola parada');
+        setSetPieceMap(buildEmptySetPieceMap());
+        setSetPieceLoading(false);
+        return;
+      }
+      const fresh = buildEmptySetPieceMap();
+      const validSlots = new Set(slots.map(s => s.position));
+      for (const row of (data || []) as any[]) {
+        const t = row.set_piece_type as SetPieceType;
+        const p = row.phase as SetPiecePhase;
+        if (!SET_PIECE_TYPES.includes(t)) continue;
+        const stored = (row.positions || {}) as SetPieceLayout;
+        // Keep only slots that exist in the current formation; fall back to default for the rest.
+        const merged: SetPieceLayout = defaultSetPiecePositions(formation, t, p);
+        for (const k of Object.keys(stored)) {
+          if (validSlots.has(k)) merged[k] = stored[k];
+        }
+        fresh[t][p] = merged;
+      }
+      setSetPieceMap(fresh);
+      setSetPieceLoading(false);
+    }
+    loadSetPiece();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [club?.id, formation]);
@@ -571,6 +678,77 @@ export default function SituationalTacticsPage() {
     toast.success('Táticas salvas');
   };
 
+  // ── Set-piece mutators / save ──────────────────────────────
+  const currentSetPiecePositions: SetPieceLayout =
+    setPieceMap[setPieceType][setPiecePhase]
+    ?? defaultSetPiecePositions(formation, setPieceType, setPiecePhase);
+
+  const updateSetPiecePos = (slotPosition: string, newPos: Pos) => {
+    setSetPieceMap(prev => {
+      const baseline = prev[setPieceType][setPiecePhase]
+        ?? defaultSetPiecePositions(formation, setPieceType, setPiecePhase);
+      const next: SetPieceLayout = { ...baseline, [slotPosition]: newPos };
+      return {
+        ...prev,
+        [setPieceType]: { ...prev[setPieceType], [setPiecePhase]: next },
+      };
+    });
+  };
+
+  const resetCurrentSetPiece = () => {
+    setSetPieceMap(prev => ({
+      ...prev,
+      [setPieceType]: { ...prev[setPieceType], [setPiecePhase]: null },
+    }));
+    toast.success('Layout resetado para o padrão da formação');
+  };
+
+  const handleSaveSetPiece = async () => {
+    if (!club) return;
+    setSetPieceSaving(true);
+    // Persist every customized (type, phase) — null entries are skipped (DB
+    // returns no row → engine falls back to current behavior).
+    const rows: any[] = [];
+    for (const t of SET_PIECE_TYPES) {
+      for (const p of PHASES) {
+        const layout = setPieceMap[t][p];
+        if (!layout) continue;
+        rows.push({
+          club_id: club.id,
+          formation,
+          set_piece_type: t,
+          phase: p,
+          positions: layout as any,
+        });
+      }
+    }
+    if (rows.length === 0) {
+      setSetPieceSaving(false);
+      toast.info('Nenhum layout personalizado para salvar.');
+      return;
+    }
+    const { error } = await supabase
+      .from('set_piece_tactics' as any)
+      .upsert(rows, { onConflict: 'club_id,formation,set_piece_type,phase' });
+    setSetPieceSaving(false);
+    if (error) {
+      console.error(error);
+      toast.error('Erro ao salvar bola parada');
+      return;
+    }
+    toast.success('Bola parada salva');
+  };
+
+  const customizedSetPieceCount = useMemo(() => {
+    let n = 0;
+    for (const t of SET_PIECE_TYPES) {
+      for (const p of PHASES) {
+        if (setPieceMap[t][p]) n++;
+      }
+    }
+    return n;
+  }, [setPieceMap]);
+
   const handleReset = () => {
     setPhaseMap(buildEmptyBothPhases());
     toast.success('Todas as personalizações removidas — não esquece de salvar');
@@ -665,13 +843,116 @@ export default function SituationalTacticsPage() {
                 {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button onClick={handleSave} disabled={saving || loading} className="gap-1.5">
-              <Save className="h-4 w-4" />
-              {saving ? 'Salvando...' : 'Salvar'}
-            </Button>
+            {mode === 'general' ? (
+              <Button onClick={handleSave} disabled={saving || loading} className="gap-1.5">
+                <Save className="h-4 w-4" />
+                {saving ? 'Salvando...' : 'Salvar'}
+              </Button>
+            ) : (
+              <Button onClick={handleSaveSetPiece} disabled={setPieceSaving || setPieceLoading} className="gap-1.5">
+                <Save className="h-4 w-4" />
+                {setPieceSaving ? 'Salvando...' : 'Salvar bola parada'}
+              </Button>
+            )}
           </div>
         </div>
 
+        {/* Top-level mode toggle: Geral (35-quadrant) vs Bola Parada */}
+        <Tabs value={mode} onValueChange={(v) => setMode(v as 'general' | 'set_piece')}>
+          <TabsList>
+            <TabsTrigger value="general">Geral</TabsTrigger>
+            <TabsTrigger value="set_piece">Bola Parada</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {mode === 'set_piece' && (
+          <div className="space-y-4">
+            {/* Set-piece type tabs + phase toggle */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <Tabs value={setPieceType} onValueChange={(v) => setSetPieceType(v as SetPieceType)}>
+                <TabsList>
+                  {SET_PIECE_TYPES.map(t => (
+                    <TabsTrigger key={t} value={t}>{SET_PIECE_LABEL[t]}</TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              <Tabs value={setPiecePhase} onValueChange={(v) => setSetPiecePhase(v as SetPiecePhase)}>
+                <TabsList>
+                  <TabsTrigger value="with_ball">Atacando</TabsTrigger>
+                  <TabsTrigger value="without_ball">Defendendo</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            <p className="text-xs text-muted-foreground">{SET_PIECE_HELP[setPieceType]}</p>
+
+            {/* Set-piece field */}
+            <Card>
+              <CardContent className="p-3">
+                <div
+                  ref={setPieceFieldRef}
+                  className="relative w-full mx-auto rounded-lg overflow-hidden border-2 border-white/30 bg-gradient-to-b from-green-700 to-green-800 touch-none"
+                  style={{ aspectRatio: '3/4', maxWidth: 480 }}
+                >
+                  {/* Field markings */}
+                  <div className="absolute left-0 right-0 border-t-2 border-white/60" style={{ top: '50%' }} />
+                  <div
+                    className="absolute rounded-full border-2 border-white/60"
+                    style={{
+                      left: '50%', top: '50%',
+                      width: '22%', aspectRatio: '1 / 1',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  />
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 top-0 border-2 border-t-0 border-white/60"
+                    style={{ width: '38%', height: '14%' }}
+                  />
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 bottom-0 border-2 border-b-0 border-white/60"
+                    style={{ width: '38%', height: '14%' }}
+                  />
+
+                  {/* Players */}
+                  {!setPieceLoading && slots.map((slot, i) => {
+                    const p = currentSetPiecePositions[slot.position] || { x: slot.x, y: slot.y };
+                    return (
+                      <PlayerChip
+                        key={`sp-${formation}-${setPieceType}-${setPiecePhase}-${slot.position}`}
+                        jersey={i + 1}
+                        label={slot.label}
+                        slotPosition={slot.position}
+                        pos={p}
+                        fieldRef={setPieceFieldRef}
+                        onDragEndSnapped={(np) => updateSetPiecePos(slot.position, np)}
+                      />
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Set-piece secondary actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {setPieceMap[setPieceType][setPiecePhase] && (
+                <Button variant="outline" size="sm" onClick={resetCurrentSetPiece} className="gap-1.5">
+                  <RotateCcw className="h-4 w-4" /> Resetar este layout
+                </Button>
+              )}
+              <div className="ml-auto text-xs text-muted-foreground">
+                {customizedSetPieceCount}/8 layout(s) personalizado(s) (4 tipos × 2 fases)
+              </div>
+            </div>
+
+            <div className="text-xs text-muted-foreground">
+              <strong>Como funciona:</strong> o engine usa esse layout em qualquer cobrança do tipo selecionado.
+              Para escanteios e laterais, ele espelha a posição X automaticamente conforme o lado em que a bola saiu/está.
+              Goleiro fica trancado na pequena área. Se você não personalizar, o engine usa o comportamento padrão (situacional + knobs).
+            </div>
+          </div>
+        )}
+
+        {mode === 'general' && (<>
         {/* Phase tabs + quadrant info */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <Tabs value={phase} onValueChange={(v) => setPhase(v as Phase)}>
@@ -1003,6 +1284,7 @@ export default function SituationalTacticsPage() {
           <strong>Dinâmico (padrão):</strong> o time inteiro acompanha a bola — verticalmente mais, lateralmente menos.
           Quando você arrasta um jogador, o quadrante vira <strong>personalizado</strong> (pontinho amarelo no canto) e trava naquela configuração.
         </div>
+        </>)}
       </div>
 
       {/* Duplicate dialog */}

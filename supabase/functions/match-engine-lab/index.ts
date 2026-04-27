@@ -1464,6 +1464,49 @@ type SituSide = {
 };
 type SituCache = { home?: SituSide; away?: SituSide };
 
+// ── Set-piece (Bola Parada) tactics cache ─────────────────────────────
+type SetPieceTypeKey = 'corner' | 'throw_in' | 'free_kick' | 'goal_kick';
+type SetPiecePhaseKey = 'with_ball' | 'without_ball';
+// Per slot_position → editor-space {x,y}.
+type SetPieceLayout = Record<string, { x: number; y: number }>;
+type SetPieceSide = Partial<Record<SetPieceTypeKey, Partial<Record<SetPiecePhaseKey, SetPieceLayout>>>>;
+type SetPieceCache = { home?: SetPieceSide; away?: SetPieceSide };
+
+/**
+ * Returns engine-space target for a bot based on the saved set-piece layout.
+ * - Reads the team's per-(type, phase) layout in editor space.
+ * - If the ball is on the right half of the field (x > 50 in editor frame),
+ *   mirrors X so a single saved layout covers both sides (left/right corner,
+ *   left/right throw-in, etc.).
+ * - Returns null if no layout is configured → caller falls back to the
+ *   normal situational target.
+ */
+function resolveSetPieceTarget(
+  bot: any,
+  ballPos: { x: number; y: number },
+  isHome: boolean,
+  isDefending: boolean,
+  setPieceType: SetPieceTypeKey,
+  setPieceCache: SetPieceCache | undefined,
+): { x: number; y: number } | null {
+  if (!setPieceCache) return null;
+  const slotPos = (bot._editor_slot_position || bot._slot_position || bot.slot_position || '').toUpperCase();
+  if (!slotPos) return null;
+  const side = isHome ? 'home' : 'away';
+  const phaseKey: SetPiecePhaseKey = isDefending ? 'without_ball' : 'with_ball';
+  const layout = setPieceCache[side]?.[setPieceType]?.[phaseKey];
+  if (!layout) return null;
+  const editorPos = layout[slotPos];
+  if (!editorPos) return null;
+  // Engine ball pos → editor frame so we can decide mirror by side. Same
+  // formula as engineBallToEditorQuadrant but we only need editorX.
+  const editorBallX = isHome ? ballPos.y : 100 - ballPos.y;
+  const mirrored = editorBallX > 50
+    ? { x: 100 - editorPos.x, y: editorPos.y }
+    : editorPos;
+  return editorPosToEngine(mirrored.x, mirrored.y, isHome);
+}
+
 /** Replicates SituationalTacticsPage.applyKnobs for a single slot, on the dynamic default. */
 function applyKnobsToDynamicSlotPos(
   quadrantIdx: number,
@@ -1592,7 +1635,14 @@ function computeTacticalTarget(
   // assignment, not a shape decision). Also skip for GKs so their reactive "shadow
   // the ball" behavior below stays intact.
   if (!attractOverride && role !== 'goalkeeper') {
-    const situ = resolveSituationalTarget(bot, ballPos, isHome, isDefending, formation, tickCache);
+    // Bola Parada wins when the active turn is a set-piece restart AND the
+    // user configured a layout for this (type, phase). Otherwise fall back
+    // to the regular 35-quadrant situational target.
+    const spType = tickCache?.currentSetPieceType;
+    const setPieceTarget = spType
+      ? resolveSetPieceTarget(bot, ballPos, isHome, isDefending, spType, tickCache?.setPieceTactics)
+      : null;
+    const situ = setPieceTarget ?? resolveSituationalTarget(bot, ballPos, isHome, isDefending, formation, tickCache);
     if (situ) {
       let targetX = situ.x + (Math.random() - 0.5) * 1.5;
       let targetY = situ.y + (Math.random() - 0.5) * 1.5;
@@ -1887,6 +1937,11 @@ interface TickCache {
   lineupRoles?: { home: any | null; away: any | null };
   coachBonuses?: { home: CoachBonus[]; away: CoachBonus[] };
   situationalTactics?: SituCache;
+  setPieceTactics?: SetPieceCache;
+  // Active turn's set-piece type, propagated into computeTacticalTarget so
+  // bots use the Bola-Parada layout instead of the regular situational shape
+  // during the entire set-piece turn (not just the initial snap).
+  currentSetPieceType?: SetPieceTypeKey | null;
 }
 
 async function generateBotActions(
@@ -5329,6 +5384,28 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         console.error(`[ENGINE] Failed to load situational_tactics (will fall back to dynamic default):`, e);
       }
 
+      // Set-piece (Bola Parada) tactics for both clubs, snapshot at match start.
+      const setPieceTactics: SetPieceCache = { home: {}, away: {} };
+      try {
+        const { data: spRows } = await supabase
+          .from('set_piece_tactics')
+          .select('club_id, formation, set_piece_type, phase, positions')
+          .in('club_id', [m.home_club_id, m.away_club_id]);
+        for (const row of (spRows || []) as any[]) {
+          const side = row.club_id === m.home_club_id ? 'home' : 'away';
+          const expectedFormation = side === 'home' ? homeForm : awayForm;
+          if (row.formation !== expectedFormation) continue;
+          const t = row.set_piece_type as SetPieceTypeKey;
+          const p = row.phase as SetPiecePhaseKey;
+          if (!['corner', 'throw_in', 'free_kick', 'goal_kick'].includes(t)) continue;
+          if (p !== 'with_ball' && p !== 'without_ball') continue;
+          if (!setPieceTactics[side]![t]) setPieceTactics[side]![t] = {};
+          setPieceTactics[side]![t]![p] = row.positions || {};
+        }
+      } catch (e) {
+        console.error(`[ENGINE] Failed to load set_piece_tactics (will fall back to situational default):`, e);
+      }
+
       const engineCache = {
         attrByProfile: Object.fromEntries((attrRes.data || []).map((r: any) => [r.player_profile_id, r])),
         clubSettings: {
@@ -5346,10 +5423,11 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           away: awayCoachRes.data || [],
         },
         situationalTactics,
+        setPieceTactics,
       };
 
       await supabase.from('matches').update({ engine_cache: engineCache }).eq('id', m.id);
-      console.log(`[ENGINE] Pre-loaded engine cache: ${profileIds.length} attrs, 2 settings, 2 coach bonuses, situational tactics`);
+      console.log(`[ENGINE] Pre-loaded engine cache: ${profileIds.length} attrs, 2 settings, 2 coach bonuses, situational+set-piece tactics`);
     } catch (e) {
       console.error(`[ENGINE] Failed to pre-load engine cache:`, e);
     }
@@ -5423,7 +5501,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     p_match_id: match_id,
     p_processing_token: processingToken,
     p_now: new Date().toISOString(),
-    p_stale_after: '15 seconds',
+    // 15s was too aggressive: when a slow DB / edge cold start pushed a
+    // resolution past 15s, the next cron tick stole the claim and re-ran the
+    // entire resolution with fresh RNG, inserting duplicate events and
+    // regenerating BH bot actions. 120s comfortably covers normal-case slow
+    // resolutions while still releasing genuinely-stuck claims in reasonable
+    // time. Pair with the unfiltered match_actions read above so even a
+    // legitimate re-claim doesn't regenerate already-resolved actions.
+    p_stale_after: '120 seconds',
   });
   if (!claimedTurns || claimedTurns.length === 0) {
     return { status: 'busy' };
@@ -5458,6 +5543,16 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ec.lineupRoles) tickCache.lineupRoles = ec.lineupRoles;
     if (ec.coachBonuses) tickCache.coachBonuses = ec.coachBonuses;
     if (ec.situationalTactics) tickCache.situationalTactics = ec.situationalTactics;
+    if (ec.setPieceTactics) tickCache.setPieceTactics = ec.setPieceTactics;
+  }
+  // Set-piece-aware bot positioning: bots in this tick will pick the
+  // user-configured Bola Parada layout when the active turn is a set-piece
+  // restart (corner / throw-in / free-kick / goal-kick).
+  {
+    const sp = activeTurn.set_piece_type;
+    tickCache.currentSetPieceType = (sp === 'corner' || sp === 'throw_in' || sp === 'free_kick' || sp === 'goal_kick')
+      ? sp
+      : null;
   }
   mark('hydrate');
 
@@ -5976,6 +6071,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   let nextSetPieceType: string | null = null;
   const eventsToLog: any[] = [];
   const deferredPositionUpdates: Array<{id: string, pos_x: number, pos_y: number}> = [];
+  // Set-piece situational snap. Persisted to the DB so the next turn's
+  // positioning phase reads the snapped layout, but intentionally NOT folded
+  // into `final_positions` of the resolution_script for this turn — otherwise
+  // the client motion playback animates every player teleporting to the snap
+  // grid mid-shot/mid-out-of-bounds.
+  const setPieceSnapUpdates: Array<{id: string, pos_x: number, pos_y: number}> = [];
 
   // Captured once per resolution so the resolution_script can describe where
   // each player/ball *started* the turn (before any movement or snap) and the
@@ -6001,8 +6102,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     // ── Bot AI fallback: generate actions for inactive players ──
     {
+      // Intentionally NOT filtered by status — when a stale tick re-claims a long
+      // resolution, the prior tick's actions are already 'used', so a `pending`
+      // filter would see an empty list and regenerate fresh bot actions for
+      // everyone (including human BHs). This caused duplicate bh_shot/goal/etc.
+      // events when one resolution tick took longer than `p_stale_after`.
       const { data: existingActions } = await supabase
-        .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds).eq('status', 'pending');
+        .from('match_actions').select('participant_id, match_turn_id').in('match_turn_id', allTurnIds);
       const submittedIds = new Set<string>((existingActions || []).map((a: any) => a.participant_id));
       const turnPhaseMap = new Map((turnRows || []).map((t: any) => [t.id, t.phase]));
 
@@ -7872,6 +7978,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const homeForm = tickCache.clubSettings?.homeFormation || '4-4-2';
         const awayForm = tickCache.clubSettings?.awayFormation || '4-4-2';
         const isSecondHalfSnap = (match.current_half ?? 1) >= 2;
+        const setPieceTypeKey = nextSetPieceType as SetPieceTypeKey;
         const snapBatch: Array<{ id: string; x: number; y: number }> = [];
         for (const p of (participants || [])) {
           if (p.role_type !== 'player' || p.is_sent_off) continue;
@@ -7880,7 +7987,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const isHome = isSecondHalfSnap ? !isHomeRaw : isHomeRaw;
           const formation = isHomeRaw ? homeForm : awayForm;
           const isDefending = p.club_id !== newPossessionClubId;
-          const situ = resolveSituationalTarget(p, snapBallPos, isHome, isDefending, formation, tickCache);
+          // Bola Parada wins when configured for this (type, phase) — single
+          // saved layout per situation, no quadrants. Falls back to the
+          // 35-quadrant situational target if the user never customized this
+          // set-piece type.
+          const setPieceTarget = resolveSetPieceTarget(p, snapBallPos, isHome, isDefending, setPieceTypeKey, tickCache.setPieceTactics);
+          const situ = setPieceTarget ?? resolveSituationalTarget(p, snapBallPos, isHome, isDefending, formation, tickCache);
           if (!situ) continue;
           // Push defenders outside the 10u exclusion zone around the ball (FIFA ~9.15m)
           let tx = situ.x;
@@ -7903,23 +8015,25 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           snapBatch.push({ id: p.id, x: tx, y: ty });
         }
         if (snapBatch.length > 0) {
-          deferredPositionUpdates.push(...snapBatch.map(b => ({ id: b.id, pos_x: b.x, pos_y: b.y })));
+          setPieceSnapUpdates.push(...snapBatch.map(b => ({ id: b.id, pos_x: b.x, pos_y: b.y })));
           console.log(`[ENGINE] Set-piece (${nextSetPieceType}) snap: ${snapBatch.length} bots moved to situational target`);
         }
       }
     }
 
     mark('res_resolve');
-    // ── Batch: flush deferred position updates + event logs ──
-    const batchOps: Promise<any>[] = [];
-    if (deferredPositionUpdates.length > 0) {
-      const deferredBatch = deferredPositionUpdates.map(u => ({ id: u.id, x: u.pos_x, y: u.pos_y }));
-      batchOps.push(supabase.rpc('batch_update_participant_positions', { p_updates: deferredBatch }));
+    // ── Batch: flush deferred position updates ──
+    // NOTE: event-log inserts are deferred until AFTER the token-guarded
+    // resolve below. Position updates are idempotent (overwrite the same
+    // pos_x/pos_y) so it's fine if a stolen-token tick repeats them, but
+    // event_logs are append-only — flushing them here on a stolen-token
+    // tick produced visible duplicates ("⚽ GOL!" emitted 4× for the same
+    // turn) until the loser bailed at the token check.
+    if (deferredPositionUpdates.length > 0 || setPieceSnapUpdates.length > 0) {
+      const deferredBatch = [...deferredPositionUpdates, ...setPieceSnapUpdates]
+        .map(u => ({ id: u.id, x: u.pos_x, y: u.pos_y }));
+      await supabase.rpc('batch_update_participant_positions', { p_updates: deferredBatch });
     }
-    if (eventsToLog.length > 0) {
-      batchOps.push(supabase.from('match_event_logs').insert(eventsToLog));
-    }
-    if (batchOps.length > 0) await Promise.all(batchOps);
     mark('res_persist');
 
     // ── Energy drain: compute and apply for all players ──
@@ -8118,6 +8232,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       return { status: 'skipped' };
     }
 
+    // Token win confirmed → flush event logs now. Doing this AFTER the
+    // resolve update guarantees a stolen-token loser never inserts duplicates.
+    if (eventsToLog.length > 0) {
+      await supabase.from('match_event_logs').insert(eventsToLog);
+    }
+
     // ── Real-time clock: halftime / end-of-match check ──
     const currentHalf = match.current_half || 1;
     const halfElapsed = match.half_started_at
@@ -8190,8 +8310,36 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         set_piece_type: 'kickoff',
       });
 
-      // Reset ready flags so players can re-check ready for the 2nd half start
+      // Reset ready flags so players can re-check ready for the 2nd half start.
+      // BUT auto-ready (a) every bot and (b) every human who never submitted an
+      // action in the 1st half — they're effectively absent and shouldn't keep
+      // active humans waiting through the full 5min break.
       await supabase.from('match_participants').update({ is_ready: false }).eq('match_id', match_id).eq('role_type', 'player');
+      {
+        const { data: htParts } = await supabase.from('match_participants')
+          .select('id, is_bot, connected_user_id')
+          .eq('match_id', match_id).eq('role_type', 'player');
+        const allParts = htParts || [];
+        const botIds = allParts.filter((p: any) => p.is_bot).map((p: any) => p.id);
+        const humanIds = allParts.filter((p: any) => !p.is_bot).map((p: any) => p.id);
+        const autoReadyIds: string[] = [...botIds];
+        if (humanIds.length > 0) {
+          // Find humans who DID submit at least one player-controlled action.
+          const { data: actedRows } = await supabase.from('match_actions')
+            .select('participant_id')
+            .eq('match_id', match_id)
+            .eq('controlled_by_type', 'player')
+            .in('participant_id', humanIds);
+          const actedSet = new Set((actedRows || []).map((r: any) => r.participant_id));
+          for (const id of humanIds) {
+            if (!actedSet.has(id)) autoReadyIds.push(id);
+          }
+        }
+        if (autoReadyIds.length > 0) {
+          await supabase.from('match_participants').update({ is_ready: true }).in('id', autoReadyIds);
+          console.log(`[ENGINE] Halftime auto-ready: ${botIds.length} bots + ${autoReadyIds.length - botIds.length} inactive humans`);
+        }
+      }
 
       // Reset all players to formation positions (field inverted for second half)
       {
@@ -8694,7 +8842,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }).select('id').single();
 
       // ── One-touch auto-action (same approach as 11x11 engine) ──
-      if (nextBallHolderParticipantId && insertedTurn?.id) {
+      // Skip when the ball left the field of play: any dead-ball restart
+      // (throw-in/corner/goal-kick/free-kick/penalty/kickoff) means the
+      // queued one-touch never actually happened — the ball is reset and the
+      // player has to make a fresh decision next turn. Without this guard the
+      // engine emits "⚡ Toque de primeira!" and pre-runs the queued pass even
+      // though the previous pass actually went out for a lateral, producing
+      // contradictory event logs.
+      if (nextBallHolderParticipantId && insertedTurn?.id && !nextSetPieceType) {
         const oneTouchAction = allActions.find(a =>
           a.participant_id === nextBallHolderParticipantId &&
           a.action_type === 'receive' &&
