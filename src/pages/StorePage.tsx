@@ -113,14 +113,23 @@ export default function StorePage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+    // Refetch when the active player changes — purchases are per-player,
+    // so swapping characters must reload "owned" / active subscriptions.
+  }, [playerProfile?.id]);
 
   async function fetchData() {
     setLoading(true);
-    const userId = (await supabase.auth.getUser()).data.user?.id || '';
+    const activePlayerId = playerProfile?.id;
+    const purchasesPromise = activePlayerId
+      ? supabase
+          .from('store_purchases')
+          .select('*')
+          .eq('player_profile_id', activePlayerId)
+          .in('status', ['active', 'inventory', 'cancelling'])
+      : Promise.resolve({ data: [] as Purchase[] });
     const [itemsRes, purchasesRes] = await Promise.all([
       (supabase as any).from('store_items').select('*').eq('is_available', true).order('sort_order'),
-      supabase.from('store_purchases').select('*').eq('user_id', userId).in('status', ['active', 'inventory', 'cancelling']),
+      purchasesPromise,
     ]);
     const allItems = (itemsRes.data || []) as StoreItem[];
     setItems(allItems);
