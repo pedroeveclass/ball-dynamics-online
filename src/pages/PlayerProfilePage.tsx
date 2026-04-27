@@ -223,29 +223,20 @@ export default function PlayerProfilePage() {
   }, [user?.id, p?.id]);
 
   // ── Create new player handler ──
+  // The R$1M charge is debited inside create_player_profile RPC,
+  // atomically with the new profile insert. We only do a client-side
+  // balance preview here so we don't redirect users who can't afford it.
   async function handleCreateNewPlayer() {
     if (!p || !user) return;
     setCreatingNewPlayer(true);
 
-    try {
-      if (p.money < NEW_PLAYER_COST) {
-        toast.error('Saldo insuficiente para criar novo jogador.');
-        setCreatingNewPlayer(false);
-        return;
-      }
-
-      // Deduct money from current player
-      const { error: moneyErr } = await supabase
-        .from('player_profiles')
-        .update({ money: p.money - NEW_PLAYER_COST })
-        .eq('id', p.id);
-      if (moneyErr) throw moneyErr;
-
-      toast.success('Saldo debitado. Crie seu novo jogador!');
-      navigate('/onboarding/player');
-    } catch (err) {
-      toast.error('Erro ao iniciar criação de novo jogador.');
+    if (p.money < NEW_PLAYER_COST) {
+      toast.error('Saldo insuficiente para criar novo jogador.');
+      setCreatingNewPlayer(false);
+      return;
     }
+
+    navigate('/onboarding/player');
     setCreatingNewPlayer(false);
   }
 
@@ -786,15 +777,16 @@ export default function PlayerProfilePage() {
               <Plus className="h-5 w-5 text-tactical" /> Criar Novo Jogador
             </DialogTitle>
             <DialogDescription>
-              Criar um novo jogador custa {formatBRL(NEW_PLAYER_COST)}. O valor sera debitado do jogador atual.
-              Seu jogador atual sera mantido e voce podera alternar entre eles.
+              Criar um novo jogador custa {formatBRL(NEW_PLAYER_COST)}. O valor sera debitado do jogador
+              atual no momento em que o novo atleta for criado. Seu jogador atual sera mantido e voce
+              podera alternar entre eles.
             </DialogDescription>
           </DialogHeader>
           <div className="p-3 rounded-lg bg-tactical/10 border border-tactical/20 text-sm space-y-1">
             <p className="font-semibold">O que vai acontecer:</p>
             <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5">
-              <li>{formatBRL(NEW_PLAYER_COST)} sera debitado de {p.full_name}</li>
               <li>Voce sera redirecionado para criar um novo jogador</li>
+              <li>{formatBRL(NEW_PLAYER_COST)} sera debitado de {p.full_name} ao concluir a criacao</li>
               <li>O novo jogador se tornara o jogador ativo</li>
               <li>Voce podera alternar entre jogadores a qualquer momento</li>
             </ul>
