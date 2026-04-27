@@ -553,6 +553,28 @@ export default function MatchRoomPage() {
     );
   }, [matchId]);
 
+  // Coalesced layout rebuild for realtime bursts. The engine's
+  // `batch_update_participant_positions` lands as ONE SQL statement on the
+  // server but the Postgres realtime stream delivers it as 22 separate row
+  // updates — one per player. The previous handler called the (expensive)
+  // `buildParticipantLayout` once per event = 22 full layout rebuilds + 22
+  // SVG re-renders within a few ms at the end of every resolution. Visible as
+  // a "stutter" during phase transitions.
+  //
+  // Now: handler only mutates `participantRowsRef.current` and schedules ONE
+  // RAF-flushed rebuild. React batches the state update; layout cost paid once.
+  const participantLayoutRebuildScheduledRef = useRef(false);
+  const scheduleParticipantLayoutRebuild = useCallback(() => {
+    if (participantLayoutRebuildScheduledRef.current) return;
+    participantLayoutRebuildScheduledRef.current = true;
+    requestAnimationFrame(() => {
+      participantLayoutRebuildScheduledRef.current = false;
+      const effectiveMatch = matchRef.current;
+      if (!effectiveMatch) return;
+      applyParticipantRows(participantRowsRef.current, effectiveMatch);
+    });
+  }, [applyParticipantRows]);
+
   const runTurnActionsReconcile = useCallback(async () => {
     const turnNumber = currentTurnNumberRef.current;
     if (!matchId || !turnNumber) {
@@ -1984,7 +2006,13 @@ export default function MatchRoomPage() {
               activeTurnRef.current = nextTurn;
               setActiveTurn(nextTurn);
               scheduleTurnActionsReconcile(true);
-              setTimeout(() => scheduleTurnActionsReconcile(true), 500);
+              // The previous code fired a SECOND reconcile 500ms later as a
+              // belt-and-suspenders. With the realtime match_actions channel
+              // subscribed (any new action arrives via INSERT/UPDATE events
+              // and is merged by `applyIncomingTurnAction`) and the recovery
+              // loop further down catching any expired-phase gaps, the duplicate
+              // reconcile only added load — 4 DB queries per turn change instead
+              // of 2 — without closing real gaps.
 
               // Pre-schedule engine trigger for when this phase expires
               // This ensures instant processing without waiting for cron
@@ -2043,9 +2071,11 @@ export default function MatchRoomPage() {
         const row = (eventType === 'DELETE' ? payload.old : payload.new) as Participant | null;
         if (!row) return;
 
+        // Mutate the ref in place; coalesced rebuild flushes once per RAF so
+        // a 22-row burst from `batch_update_participant_positions` doesn't
+        // trigger 22 separate layout rebuilds + re-renders.
         const nextRows = [...participantRowsRef.current];
         const existingIndex = nextRows.findIndex(participant => participant.id === row.id);
-
         if (eventType === 'DELETE') {
           if (existingIndex >= 0) nextRows.splice(existingIndex, 1);
         } else if (existingIndex >= 0) {
@@ -2053,9 +2083,8 @@ export default function MatchRoomPage() {
         } else {
           nextRows.push(row);
         }
-
-        const effectiveMatch = matchRef.current;
-        if (effectiveMatch) applyParticipantRows(nextRows, effectiveMatch);
+        participantRowsRef.current = nextRows;
+        scheduleParticipantLayoutRebuild();
       })
       .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') {
@@ -2079,7 +2108,7 @@ export default function MatchRoomPage() {
       realtimeNeedsRecoveryRef.current = false;
       supabase.removeChannel(channel);
     };
-  }, [applyIncomingTurnAction, applyParticipantRows, appendEventLog, loadLiveSnapshot, matchId, scheduleTurnActionsReconcile, setTurnActionsState]);
+  }, [applyIncomingTurnAction, applyParticipantRows, appendEventLog, loadLiveSnapshot, matchId, scheduleParticipantLayoutRebuild, scheduleTurnActionsReconcile, setTurnActionsState]);
 
   useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
 
