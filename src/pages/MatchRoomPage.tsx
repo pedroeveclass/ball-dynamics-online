@@ -202,6 +202,34 @@ function resolveLooseBallFromHistory(
   return null;
 }
 
+// Server-authoritative inertia direction + next decay factor, recovered from
+// the latest loose_ball / ball_inertia / blocked event payload. The engine
+// emits these fields so the client doesn't have to keep `lastBallDirRef` alive
+// across reloads — without this, a page refresh mid-loose-ball-chain would
+// wipe the in-memory direction and the inertia arrow would never reappear,
+// even though the server keeps rolling the ball.
+const INERTIA_EVENT_TYPES = new Set<string>(['loose_ball', 'ball_inertia', 'blocked', 'block']);
+function resolveLooseBallInertiaFromHistory(
+  events: EventLog[],
+): { dir: { dx: number; dy: number }; nextDecay: number } | null {
+  const start = events.length - 1;
+  const stop = Math.max(0, events.length - HISTORY_EVENT_SCAN_LIMIT);
+  for (let i = start; i >= stop; i--) {
+    const ev = events[i];
+    if (!ev || !INERTIA_EVENT_TYPES.has(ev.event_type)) continue;
+    const payload = ev.payload as any;
+    if (!payload) continue;
+    const dx = Number(payload.dir_x);
+    const dy = Number(payload.dir_y);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) continue;
+    if (Math.sqrt(dx * dx + dy * dy) < 0.5) continue;
+    const nextDecayRaw = Number(payload.next_decay);
+    const nextDecay = Number.isFinite(nextDecayRaw) ? nextDecayRaw : 0.08;
+    return { dir: { dx, dy }, nextDecay };
+  }
+  return null;
+}
+
 export default function MatchRoomPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1382,10 +1410,33 @@ export default function MatchRoomPage() {
         setCarriedLooseBallPos(pos);
         // Seed ball direction for the animation. Done every loose turn (not just
         // the first) so subsequent turns can still animate the server's continuing
-        // decay — lastBallDirRef is kept alive for exactly this purpose.
-        if (!alreadySeededForThisTurn && lastBallDirRef.current) {
-          setBallInertiaDir(lastBallDirRef.current);
-          inertiaAppliedForTurnRef.current = currentTurnNumberForInertia;
+        // decay. lastBallDirRef survives turn transitions for the user who watched
+        // the originating pass; for users who joined / reloaded mid-chain, it's
+        // null and we fall back to dir_x/dir_y from the latest server event so
+        // the inertia arrow + animation stay correct without observing the pass.
+        if (!alreadySeededForThisTurn) {
+          let seededDir: { dx: number; dy: number } | null = lastBallDirRef.current;
+          let serverNextDecay: number | null = null;
+          if (!seededDir) {
+            const recovered = resolveLooseBallInertiaFromHistory(events);
+            if (recovered) {
+              seededDir = recovered.dir;
+              serverNextDecay = recovered.nextDecay;
+              // Also revive lastBallDirRef so subsequent same-session turns
+              // don't keep paying the event-history scan cost.
+              lastBallDirRef.current = recovered.dir;
+            }
+          }
+          if (seededDir) {
+            setBallInertiaDir(seededDir);
+            inertiaAppliedForTurnRef.current = currentTurnNumberForInertia;
+            // Align inertiaConsumedRef with what the server says comes next:
+            // 0.08 → at least one inertia tick already happened (consumed=true);
+            // 0.15 → fresh loose ball, this turn is the first tick (consumed=false).
+            if (serverNextDecay != null) {
+              inertiaConsumedRef.current = serverNextDecay <= 0.10;
+            }
+          }
         }
       }
     } else {
@@ -3506,19 +3557,31 @@ export default function MatchRoomPage() {
                   finalBallPosRef.current = fbp;
                 }
               }
-            } else if (!bhId && carriedLooseBallPos && ballInertiaDir) {
-              // Loose ball with inertia: mirror the engine's decay (0.15 first
-              // turn, 0.08 subsequent) so the animation's end-of-frame matches
-              // the position the server persists in ball_inertia. Keeping
-              // lastBallDirRef alive lets the next loose turn animate too.
-              const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
-              const newX = carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY;
-              const newY = carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY;
-              const newPos = { x: newX, y: newY };
-              setCarriedLooseBallPos(newPos);
-              finalBallPosRef.current = newPos;
-              setFinalBallPos(newPos);
-              inertiaConsumedRef.current = true;
+            } else if (!bhId && carriedLooseBallPos) {
+              // Loose-ball end position: PREFER the server-authoritative
+              // resolution_script.ball_end_pos. The animation already interpolates
+              // toward this exact point (see computeAnimBallPos), so locking
+              // finalBallPos to the same value eliminates the post-animation jump
+              // (the "ball flickering between with and without inertia" the user
+              // reported). The legacy client-side recomputation is kept only as a
+              // fallback for old turns whose script never landed.
+              const scriptEnd = resolutionScriptRef.current?.ball_end_pos;
+              let newPos: { x: number; y: number } | null = null;
+              if (scriptEnd && typeof scriptEnd.x === 'number' && typeof scriptEnd.y === 'number') {
+                newPos = { x: scriptEnd.x, y: scriptEnd.y };
+              } else if (ballInertiaDir) {
+                const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
+                newPos = {
+                  x: carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY,
+                  y: carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY,
+                };
+              }
+              if (newPos) {
+                setCarriedLooseBallPos(newPos);
+                finalBallPosRef.current = newPos;
+                setFinalBallPos(newPos);
+                inertiaConsumedRef.current = true;
+              }
             }
 
           // Release the interceptor snapshot — next render uses the live memo again.
@@ -4097,12 +4160,26 @@ export default function MatchRoomPage() {
     }
 
     if (!ballHolder) {
-      // During resolution, animate loose ball along inertia trajectory
-      if (animating && activeTurn?.phase === 'resolution' && ballInertiaDir && carriedLooseBallPos) {
-        // Mirror engine decay: 0.15 first loose turn, 0.08 subsequent.
-        const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
-        const endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
-        const endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+      // During resolution, animate loose ball along inertia trajectory.
+      // Server-authoritative endpoint (resolution_script.ball_end_pos) wins
+      // when present so React re-renders during animation can't drift the
+      // ball off the trajectory the RAF loop is drawing in computeAnimBallPos.
+      if (animating && activeTurn?.phase === 'resolution' && carriedLooseBallPos) {
+        const scriptEnd = resolutionScriptRef.current?.ball_end_pos;
+        let endX: number, endY: number;
+        if (scriptEnd && typeof scriptEnd.x === 'number' && typeof scriptEnd.y === 'number') {
+          endX = clamp(scriptEnd.x, 2, 98);
+          endY = clamp(scriptEnd.y, 2, 98);
+        } else if (ballInertiaDir) {
+          const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
+          endX = clamp(carriedLooseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY, 2, 98);
+          endY = clamp(carriedLooseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY, 2, 98);
+        } else {
+          // No direction known — leave the ball where the cache says.
+          if (looseBallPos) return looseBallPos;
+          if (finalBallPos) return finalBallPos;
+          return null;
+        }
         const raw = animProgressRef.current;
         const ballEaseK = 3;
         const expDecay = 1 - Math.exp(-ballEaseK * raw);

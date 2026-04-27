@@ -6742,6 +6742,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               deflect_from_y: deflectFromY,
               deflect_to_x: result.looseBallPos.x,
               deflect_to_y: result.looseBallPos.y,
+              // Same convention as loose_ball / ball_inertia: dir_x/dir_y +
+              // next_decay let the client recover the inertia arrow + decay
+              // factor from event history alone (page-reload-mid-chain safety).
+              // Direction is the deflect vector (blocker → spirro point), which
+              // is what the next loose turn's inertia will follow.
+              dir_x: result.looseBallPos.x - deflectFromX,
+              dir_y: result.looseBallPos.y - deflectFromY,
+              next_decay: 0.15,
             },
           });
 
@@ -7019,7 +7027,27 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             nextBallHolderParticipantId = null;
             const looseDest = { x: Number(ballHolderAction.target_x ?? 50), y: Number(ballHolderAction.target_y ?? 50) };
             ballEndPos = looseDest;
-            eventsToLog.push({ match_id, event_type: 'loose_ball', title: '⚽ Bola solta!', body: `Ninguém dominou a bola.`, payload: { x: looseDest.x, y: looseDest.y } });
+            // dir_x / dir_y + next_decay: same purpose as on ball_inertia events.
+            // Lets the client recover the inertia arrow + decay factor from event
+            // history alone, so a page reload mid-chain doesn't lose the rolling
+            // direction. Direction is from the passer's pre-pass position to the
+            // pass target — the same vector the next loose-ball turn will use to
+            // compute inertia.
+            const passerX = Number(ballHolder.pos_x ?? 50);
+            const passerY = Number(ballHolder.pos_y ?? 50);
+            const looseDirX = looseDest.x - passerX;
+            const looseDirY = looseDest.y - passerY;
+            eventsToLog.push({
+              match_id, event_type: 'loose_ball',
+              title: '⚽ Bola solta!', body: `Ninguém dominou a bola.`,
+              payload: {
+                x: looseDest.x, y: looseDest.y,
+                dir_x: looseDirX, dir_y: looseDirY,
+                // Right after a pass goes loose, the very next loose turn applies
+                // the 0.15 decay (first inertia tick).
+                next_decay: 0.15,
+              },
+            });
 
             // ── pass_failed companion event (nobody received) ──
             eventsToLog.push({
@@ -7476,11 +7504,27 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
 
         if (!scoredOnRebound) {
+          // dir_x / dir_y + next_decay: lets the client reconstruct the inertia
+          // arrow + decay factor from event history alone. Without this, a page
+          // reload mid-chain wipes the in-memory `lastBallDirRef` and the arrow
+          // never reappears for the rest of the loose-ball chain (and the
+          // client's INERTIA_DISPLAY would default to 0.15 instead of the 0.08
+          // the engine actually applies). The values stored here are the same
+          // (dx, dy) the engine used to compute (inertiaBallX, inertiaBallY),
+          // so client + server stay perfectly in sync.
           eventsToLog.push({
             match_id, event_type: 'ball_inertia',
             title: wasAlreadyLoose ? '⚽ Bola desacelerando...' : '⚽ Bola continua rolando...',
             body: 'Ninguém alcançou a bola. Ela continua na mesma direção por inércia.',
-            payload: { x: inertiaBallX, y: inertiaBallY, ball_x: inertiaBallX, ball_y: inertiaBallY },
+            payload: {
+              x: inertiaBallX, y: inertiaBallY,
+              ball_x: inertiaBallX, ball_y: inertiaBallY,
+              dir_x: dirX, dir_y: dirY,
+              // Every subsequent loose turn uses 0.08 (only the very first uses 0.15).
+              // After this event lands, the chain is at least one inertia tick deep,
+              // so the next tick will always be 0.08.
+              next_decay: 0.08,
+            },
           });
           // Ball stays loose — carry the offside_pending snapshot forward
           // into this turn's resolution_script so the next loose-ball turn
