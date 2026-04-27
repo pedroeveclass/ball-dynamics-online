@@ -577,8 +577,9 @@ export default function PlayerClubPage() {
     <AppLayout>
       <div className="max-w-4xl space-y-6">
 
-        {/* ── Header ── */}
+        {/* ── Header + Stats (compact beside coach) ── */}
         <div className="flex items-start justify-between gap-5">
+          <div className="flex-1 min-w-0 space-y-4">
           <div className="flex items-center gap-5 min-w-0">
           <ClubCrest
             crestUrl={(clubInfo as any).crest_url}
@@ -601,35 +602,8 @@ export default function PlayerClubPage() {
           </div>
           </div>
 
-          {/* Manager avatar - full-body block on the right */}
-          <div className="shrink-0 flex flex-col items-center text-center">
-            {managerInfo ? (
-              <>
-                <div className="w-20 h-40 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg overflow-hidden">
-                  <PlayerAvatar
-                    appearance={managerInfo.appearance ?? seededAppearance(managerInfo.id || managerInfo.full_name)}
-                    variant="full-front"
-                    clubPrimaryColor={clubInfo.primary_color}
-                    clubSecondaryColor={clubInfo.secondary_color}
-                    playerName={managerInfo.full_name}
-                    className="w-full h-full"
-                    fallbackSeed={managerInfo.id || managerInfo.full_name}
-                    outfit="coach"
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
-                <p className="text-xs font-semibold max-w-[120px] truncate">{managerInfo.full_name}</p>
-              </>
-            ) : (
-              <div className="w-20 h-40 flex items-center justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
-                <Bot className="h-9 w-9 text-muted-foreground" />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Stats Row ── */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {/* Stats: 5 cards arranged in 2 rows beside the coach (dense flow) */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:grid-flow-row-dense">
           {/* Team Overall */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -654,8 +628,8 @@ export default function PlayerClubPage() {
             </p>
           </div>
 
-          {/* Next match */}
-          <div className="stat-card">
+          {/* Next match (wider — more content) */}
+          <div className="stat-card sm:col-span-2">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
               <Calendar className="h-3.5 w-3.5" /> Proximo Jogo
               {nextMatch && <span className="text-[10px] text-muted-foreground/80">R{nextMatch.round_number}</span>}
@@ -689,6 +663,34 @@ export default function PlayerClubPage() {
               <Star className="h-3.5 w-3.5" /> Reputacao
             </div>
             <p className="font-display text-lg font-bold">{clubInfo.reputation}/100</p>
+          </div>
+          </div>
+          </div>
+
+          {/* Manager avatar - full-body block on the right */}
+          <div className="shrink-0 flex flex-col items-center text-center">
+            {managerInfo ? (
+              <>
+                <div className="w-20 h-40 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg overflow-hidden">
+                  <PlayerAvatar
+                    appearance={managerInfo.appearance ?? seededAppearance(managerInfo.id || managerInfo.full_name)}
+                    variant="full-front"
+                    clubPrimaryColor={clubInfo.primary_color}
+                    clubSecondaryColor={clubInfo.secondary_color}
+                    playerName={managerInfo.full_name}
+                    className="w-full h-full"
+                    fallbackSeed={managerInfo.id || managerInfo.full_name}
+                    outfit="coach"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
+                <p className="text-xs font-semibold max-w-[120px] truncate">{managerInfo.full_name}</p>
+              </>
+            ) : (
+              <div className="w-20 h-40 flex items-center justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
+                <Bot className="h-9 w-9 text-muted-foreground" />
+              </div>
+            )}
           </div>
         </div>
 
