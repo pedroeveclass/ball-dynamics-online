@@ -1436,6 +1436,16 @@ const SITU_QH = 100 / SITU_ROWS;
 // Kept in sync with SituationalTacticsPage.tsx.
 const SITU_SHIFT_X = 0.25;
 const SITU_SHIFT_Y = 0.45;
+// GK is locked to the goal-area quadrant (row 6, col 2 — directly in front
+// of own goal). The editor enforces this via PlayerChip's lockToQuadrant +
+// computeDynamicPositions skipping GK. The engine MUST do the same so set-
+// piece snaps don't drag the keeper into midfield based on a legacy custom
+// position or a far-quadrant dynamic shift.
+const SITU_GK_QUADRANT_IDX = 6 * SITU_COLS + 2;
+const SITU_GK_CENTER = {
+  x: ((SITU_GK_QUADRANT_IDX % SITU_COLS) + 0.5) * SITU_QW,
+  y: (Math.floor(SITU_GK_QUADRANT_IDX / SITU_COLS) + 0.5) * SITU_QH,
+};
 
 // Tactical knobs — kept in sync with SituationalTacticsPage.tsx.
 const SITU_ATTACK_X_SCALE = { central: 0.78, balanced: 1.0, wide: 1.22 } as const;
@@ -1496,8 +1506,15 @@ function editorPosToEngine(editorX: number, editorY: number, isHome: boolean): {
   return { x: editorY, y: 100 - editorX };
 }
 
-/** Frontend's dynamic-default formula: base formation pos shifted by ball quadrant. */
+/** Frontend's dynamic-default formula: base formation pos shifted by ball quadrant.
+ *  GK is anchored to the goal-area quadrant — mirrors SituationalTacticsPage's
+ *  computeDynamicPositions which skips the dynamic shift for GK. Without this
+ *  the engine would drift the keeper into midfield based on ball position even
+ *  for non-customized quadrants, breaking the editor↔engine parity. */
 function computeDynamicEditorSlotPos(quadrantIdx: number, slot: EditorSlot): { x: number; y: number } {
+  if (slot.position === 'GK') {
+    return { x: SITU_GK_CENTER.x, y: SITU_GK_CENTER.y };
+  }
   const col = quadrantIdx % SITU_COLS;
   const row = Math.floor(quadrantIdx / SITU_COLS);
   const cx = (col + 0.5) * SITU_QW;
@@ -1540,6 +1557,15 @@ function resolveSituationalTarget(
   const savedQuadrant = sideTactics?.[phaseKey]?.[String(quadrantIdx)];
   const savedSlot = savedQuadrant?.[slotPos];
   const knobs = sideTactics?.knobs ?? DEFAULT_SITU_KNOBS;
+
+  // GK lock: regardless of whether the quadrant is customized or dynamic, the
+  // keeper is always anchored to the goal-area quadrant. Old saved tactics may
+  // still hold legacy GK positions outside q32 (drag-without-lock pre-dated
+  // commit f628834); ignoring savedSlot for GK keeps the engine consistent
+  // with the editor's lock-on-drag behavior even before the DB cleanup runs.
+  if (slotPos === 'GK') {
+    return editorPosToEngine(SITU_GK_CENTER.x, SITU_GK_CENTER.y, isHome);
+  }
 
   // Custom quadrant → use the stored layout as-is (knobs don't re-apply, matching editor behavior).
   // Dynamic → apply knobs on top of the default formula.
