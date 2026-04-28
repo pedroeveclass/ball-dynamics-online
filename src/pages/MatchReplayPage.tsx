@@ -283,6 +283,26 @@ export default function MatchReplayPage() {
       const builtScenes: MotionScene[] = [];
 
       if (resolutionTurns.length > 0) {
+        // Group all match_actions for a scene by ROUND, not by resolution turn:
+        // shots/passes are submitted during positioning/attack/ball_holder turns,
+        // each of which has its own match_turn_id. The resolution turn itself
+        // usually has only computed/derived actions. We need every action whose
+        // match_turn_id belongs to a turn between (prevResolutionTurnNumber, this]
+        // so the goal-target lookup and the on-screen arrows show the full play.
+        const scenesActions = new Map<string, ActionRow[]>();
+        let prevResTurnNum = 0;
+        for (const tRow of resolutionTurns) {
+          const roundTurnIds = turns
+            .filter(tt => tt.turn_number > prevResTurnNum && tt.turn_number <= tRow.turn_number)
+            .map(tt => tt.id);
+          const acts: ActionRow[] = [];
+          for (const tid of roundTurnIds) {
+            for (const a of (actionsByTurn.get(tid) || [])) acts.push(a);
+          }
+          scenesActions.set(tRow.id, acts);
+          prevResTurnNum = tRow.turn_number;
+        }
+
         // Index events to scenes by event creation order: events emitted between
         // resolution N-1 and resolution N belong to scene N. We don't have a
         // reliable per-event timestamp tied to ticks, so we partition events by
@@ -362,19 +382,39 @@ export default function MatchReplayPage() {
           // Goal override: when a goal happens, script.ball_end_pos is already
           // the centre kickoff spot. Pull the shot's actual target so the ball
           // visibly travels into the net during the motion.
+          const sceneActionsForRound = scenesActions.get(tRow.id) || [];
           const goalEvent = sceneEvents.find(e => e.event_type === 'goal');
           const endsInGoal = !!goalEvent;
           if (endsInGoal) {
-            const sceneActions = actionsByTurn.get(tRow.id) || [];
             const SHOT_TYPES = new Set(['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power']);
-            const shot = sceneActions.find(a =>
+            // Prefer an explicit shot/header; fall back to any ball action with
+            // a target near the goal line (covers dribble-into-the-net goals).
+            let shotTarget: { x: number; y: number } | null = null;
+            const shot = sceneActionsForRound.find(a =>
               SHOT_TYPES.has(a.action_type) && a.target_x != null && a.target_y != null
             );
             if (shot && shot.target_x != null && shot.target_y != null) {
-              const ty = Math.min(58, Math.max(42, shot.target_y));
-              // Push X just past the goal line so the ball is clearly in the net.
-              const tx = shot.target_x > 50 ? Math.max(98, shot.target_x) : Math.min(2, shot.target_x);
+              shotTarget = { x: shot.target_x, y: shot.target_y };
+            } else {
+              // Find any action targeting the goal area
+              const ballActionTypes = new Set(['pass_low', 'pass_high', 'pass_launch', 'header_low', 'header_high', 'move']);
+              const near = sceneActionsForRound
+                .filter(a => ballActionTypes.has(a.action_type) && a.target_x != null && a.target_y != null
+                  && (a.target_x <= 5 || a.target_x >= 95)
+                  && (a.target_y as number) >= 35 && (a.target_y as number) <= 65)
+                .sort((a, b) => Math.abs((b.target_x as number) - 50) - Math.abs((a.target_x as number) - 50));
+              if (near[0]) shotTarget = { x: near[0].target_x as number, y: near[0].target_y as number };
+            }
+            if (shotTarget) {
+              const ty = Math.min(58, Math.max(42, shotTarget.y));
+              const tx = shotTarget.x > 50 ? Math.max(98, shotTarget.x) : Math.min(2, shotTarget.x);
               ballEnd = { x: tx, y: ty };
+            } else {
+              // Last-resort fallback: aim at the centre of whichever goal the
+              // attacking holder is closest to, so the ball at least crosses
+              // a goal line visually.
+              const targetGoalX = ballStart.x > 50 ? 99 : 1;
+              ballEnd = { x: targetGoalX, y: 50 };
             }
           }
           // Running score = scriptScore if provided, else accumulate goals.
@@ -427,7 +467,7 @@ export default function MatchReplayPage() {
             ballEnd,
             ballHolderParticipantId: tRow.ball_holder_participant_id,
             events: sceneEvents,
-            actions: actionsByTurn.get(tRow.id) || [],
+            actions: sceneActionsForRound,
             scoresAfter: { home: runningHome, away: runningAway },
             endsHalf,
             endsInGoal,
