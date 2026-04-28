@@ -17,23 +17,73 @@
     "capacity": "Capacidade",
     "reputation": "Reputação",
     "history": "Histórico",
-    "next_matches": "Próximos Jogos"
+    "next_matches": "Próximos Jogos",
+    "team_overall": "OVR do Time",
+    "team_overall_hint": "Média do time titular",
+    "wins_draws_losses": "Vitórias / Empates / Derrotas",
+    "goals_for_against": "Gols (GP / GC)",
+    "players_count": "{{count}} jogador",
+    "players_count_plural": "{{count}} jogadores",
+    "humans_count": "{{count}} humano",
+    "humans_count_plural": "{{count}} humanos",
+    "rep_short": "Rep."
+  },
+  "next_match": {
+    "title": "Próximo Jogo",
+    "round": "Rodada {{n}}",
+    "home": "Casa",
+    "away": "Fora",
+    "none": "Nenhum jogo agendado."
+  },
+  "recent": {
+    "title": "Últimos Resultados",
+    "empty": "Nenhum resultado ainda.",
+    "opponent_fallback": "Adversário"
   },
   "squad": {
     "title": "Elenco",
     "empty": "Nenhum jogador no elenco.",
     "human": "Humano",
-    "bot": "Bot"
+    "bot": "Bot",
+    "col_position": "POS",
+    "col_name": "Nome",
+    "col_overall": "OVR",
+    "col_age": "Idade"
+  },
+  "player_dialog": {
+    "subtitle": "{{position}}{{secondary}} • {{archetype}} • {{age}} anos",
+    "secondary_separator": " / {{position}}",
+    "foot": "Pé:",
+    "height": "Altura:",
+    "height_value": "{{value}} cm",
+    "release_clause": "Multa:",
+    "no_attrs": "Atributos não disponíveis.",
+    "make_offer": "Fazer Proposta",
+    "ovr": "OVR",
+    "section_physical": "Físico",
+    "section_technical": "Técnico",
+    "section_mental": "Mental",
+    "section_shooting": "Finalização",
+    "section_defending": "Defesa",
+    "section_goalkeeping": "Goleiro",
+    "dash": "—"
   },
   "offer": {
-    "title": "Fazer Proposta",
-    "weekly_salary": "Salário Semanal",
-    "release_clause": "Multa Rescisória",
-    "contract_length": "Duração do Contrato (semanas)",
+    "title": "Enviar Proposta",
+    "description": "Proposta de contrato para {{name}}",
+    "weekly_salary": "Salário Semanal (R$)",
+    "release_clause": "Multa Rescisória (R$)",
+    "contract_length": "Duração (meses)",
+    "months_6": "6 meses",
+    "months_12": "12 meses",
+    "months_18": "18 meses",
+    "months_24": "24 meses",
     "squad_role": "Papel no Elenco",
     "message": "Mensagem (opcional)",
+    "message_placeholder": "Ex: Queremos você como peça-chave do time...",
     "submit": "Enviar Proposta",
-    "sending": "Enviando..."
+    "sending": "Enviando...",
+    "cancel": "Cancelar"
   },
   "squad_roles": {
     "starter": "Titular",
@@ -42,7 +92,9 @@
     "youth": "Jovem Promessa"
   },
   "toast": {
-    "offer_sent": "Proposta enviada!",
-    "offer_error": "Erro ao enviar proposta"
+    "offer_sent": "Proposta enviada para {{name}}!",
+    "offer_error": "Não foi possível enviar a proposta.",
+    "offer_notification_title": "Nova proposta de contrato!",
+    "offer_notification_body": "{{club}} enviou uma proposta de {{salary}}/semana."
   }
 }

@@ -17,23 +17,73 @@
     "capacity": "Capacity",
     "reputation": "Reputation",
     "history": "History",
-    "next_matches": "Upcoming Matches"
+    "next_matches": "Upcoming Matches",
+    "team_overall": "Team OVR",
+    "team_overall_hint": "Starting XI average",
+    "wins_draws_losses": "Wins / Draws / Losses",
+    "goals_for_against": "Goals (GF / GA)",
+    "players_count": "{{count}} player",
+    "players_count_plural": "{{count}} players",
+    "humans_count": "{{count}} human",
+    "humans_count_plural": "{{count}} humans",
+    "rep_short": "Rep."
+  },
+  "next_match": {
+    "title": "Next Match",
+    "round": "Round {{n}}",
+    "home": "Home",
+    "away": "Away",
+    "none": "No match scheduled."
+  },
+  "recent": {
+    "title": "Recent Results",
+    "empty": "No results yet.",
+    "opponent_fallback": "Opponent"
   },
   "squad": {
     "title": "Squad",
     "empty": "No players in the squad.",
     "human": "Human",
-    "bot": "Bot"
+    "bot": "Bot",
+    "col_position": "POS",
+    "col_name": "Name",
+    "col_overall": "OVR",
+    "col_age": "Age"
+  },
+  "player_dialog": {
+    "subtitle": "{{position}}{{secondary}} • {{archetype}} • {{age}} y/o",
+    "secondary_separator": " / {{position}}",
+    "foot": "Foot:",
+    "height": "Height:",
+    "height_value": "{{value}} cm",
+    "release_clause": "Clause:",
+    "no_attrs": "Attributes unavailable.",
+    "make_offer": "Make Offer",
+    "ovr": "OVR",
+    "section_physical": "Physical",
+    "section_technical": "Technical",
+    "section_mental": "Mental",
+    "section_shooting": "Shooting",
+    "section_defending": "Defending",
+    "section_goalkeeping": "Goalkeeping",
+    "dash": "—"
   },
   "offer": {
-    "title": "Make Offer",
-    "weekly_salary": "Weekly Salary",
-    "release_clause": "Release Clause",
-    "contract_length": "Contract Length (weeks)",
+    "title": "Send Offer",
+    "description": "Contract offer for {{name}}",
+    "weekly_salary": "Weekly Salary (R$)",
+    "release_clause": "Release Clause (R$)",
+    "contract_length": "Length (months)",
+    "months_6": "6 months",
+    "months_12": "12 months",
+    "months_18": "18 months",
+    "months_24": "24 months",
     "squad_role": "Squad Role",
     "message": "Message (optional)",
+    "message_placeholder": "E.g.: We want you as a key piece of the team...",
     "submit": "Send Offer",
-    "sending": "Sending..."
+    "sending": "Sending...",
+    "cancel": "Cancel"
   },
   "squad_roles": {
     "starter": "Starter",
@@ -42,7 +92,9 @@
     "youth": "Youth Prospect"
   },
   "toast": {
-    "offer_sent": "Offer sent!",
-    "offer_error": "Error sending offer"
+    "offer_sent": "Offer sent to {{name}}!",
+    "offer_error": "Could not send the offer.",
+    "offer_notification_title": "New contract offer!",
+    "offer_notification_body": "{{club}} sent you an offer of {{salary}}/week."
   }
 }

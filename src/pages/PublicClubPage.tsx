@@ -21,8 +21,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
+import { positionLabel, sortPlayersByPosition } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
+import { archetypeLabel } from '@/lib/attributes';
 import { seededAppearance } from '@/lib/avatar';
 import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 import {
@@ -322,7 +323,7 @@ export default function PublicClubPage() {
     });
 
     if (error) {
-      toast.error('Não foi possível enviar a proposta.');
+      toast.error(t('toast.offer_error'));
     } else {
       // Notify player if human
       const { data: playerData } = await supabase
@@ -334,8 +335,8 @@ export default function PublicClubPage() {
       if (playerData?.user_id) {
         await supabase.from('notifications').insert({
           user_id: playerData.user_id,
-          title: 'Nova proposta de contrato!',
-          body: `${myClub.name} enviou uma proposta de ${formatBRL(salary)}/semana.`,
+          title: t('toast.offer_notification_title'),
+          body: t('toast.offer_notification_body', { club: myClub.name, salary: formatBRL(salary) }),
           type: 'contract',
           link: '/player/offers',
           i18n_key: 'contract_offer_received',
@@ -343,7 +344,7 @@ export default function PublicClubPage() {
         } as any);
       }
 
-      toast.success(`Proposta enviada para ${selectedPlayer.full_name}!`);
+      toast.success(t('toast.offer_sent', { name: selectedPlayer.full_name }));
       setOfferOpen(false);
     }
     setSending(false);
@@ -398,7 +399,7 @@ export default function PublicClubPage() {
               </p>
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 <Badge variant="outline" className="text-xs">
-                  <Star className="h-3 w-3 mr-1" /> Rep. {clubData.reputation}
+                  <Star className="h-3 w-3 mr-1" /> {t('stats.rep_short')} {clubData.reputation}
                 </Badge>
                 {stadium && (
                   <Badge variant="outline" className="text-xs">
@@ -445,12 +446,12 @@ export default function PublicClubPage() {
           {/* Team Overall */}
           <div className="stat-card">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Star className="h-3.5 w-3.5" /> OVR do Time
+              <Star className="h-3.5 w-3.5" /> {t('stats.team_overall')}
             </div>
             <p className="font-display font-extrabold text-3xl text-tactical leading-none">
               {teamOverall ?? '—'}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">Média do time titular</p>
+            <p className="text-xs text-muted-foreground mt-1">{t('stats.team_overall_hint')}</p>
           </div>
 
           {/* League standing */}
@@ -469,7 +470,7 @@ export default function PublicClubPage() {
           {standing && (
             <>
               <div className="stat-card">
-                <div className="text-xs text-muted-foreground mb-1">Vitórias / Empates / Derrotas</div>
+                <div className="text-xs text-muted-foreground mb-1">{t('stats.wins_draws_losses')}</div>
                 <p className="font-display font-bold text-lg">
                   <span className="text-pitch">{standing.won}</span>
                   {' / '}
@@ -479,7 +480,7 @@ export default function PublicClubPage() {
                 </p>
               </div>
               <div className="stat-card">
-                <div className="text-xs text-muted-foreground mb-1">Gols (GP / GC)</div>
+                <div className="text-xs text-muted-foreground mb-1">{t('stats.goals_for_against')}</div>
                 <p className="font-display font-bold text-lg">
                   {standing.goals_for} / {standing.goals_against}
                 </p>
@@ -491,11 +492,11 @@ export default function PublicClubPage() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <Users className="h-3.5 w-3.5" /> {t('stats.squad')}
             </div>
-            <p className="font-display font-bold text-lg">{squad.length} {lang === 'en' ? 'players' : 'jogadores'}</p>
+            <p className="font-display font-bold text-lg">{t('stats.players_count', { count: squad.length })}</p>
             {squad.filter((p: any) => p.user_id).length > 0 && (
               <p className="text-xs text-pitch flex items-center gap-1 mt-0.5">
                 <User className="h-3 w-3" />
-                {squad.filter((p: any) => p.user_id).length} {lang === 'en' ? (squad.filter((p: any) => p.user_id).length > 1 ? 'humans' : 'human') : (squad.filter((p: any) => p.user_id).length > 1 ? 'humanos' : 'humano')}
+                {t('stats.humans_count', { count: squad.filter((p: any) => p.user_id).length })}
               </p>
             )}
           </div>
@@ -505,7 +506,7 @@ export default function PublicClubPage() {
           {/* Next match */}
           <div className="stat-card space-y-3">
             <h3 className="font-display font-semibold text-sm">
-              Próximo Jogo {nextMatch && <span className="text-xs font-normal text-muted-foreground">— Rodada {nextMatch.round_number}</span>}
+              {t('next_match.title')} {nextMatch && <span className="text-xs font-normal text-muted-foreground">— {t('next_match.round', { n: nextMatch.round_number })}</span>}
             </h3>
             {nextMatch ? (
               <div className="flex items-center justify-between gap-2">
@@ -513,7 +514,7 @@ export default function PublicClubPage() {
                   <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-bold truncate">
-                      {nextMatch.is_home ? 'Casa' : 'Fora'} vs {nextMatch.opponent_name}
+                      {nextMatch.is_home ? t('next_match.home') : t('next_match.away')} vs {nextMatch.opponent_name}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatBRTDateTime(nextMatch.scheduled_at)}
@@ -529,13 +530,13 @@ export default function PublicClubPage() {
                 />
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Nenhum jogo agendado.</p>
+              <p className="text-xs text-muted-foreground">{t('next_match.none')}</p>
             )}
           </div>
 
           {/* Recent results */}
           <div className="stat-card space-y-3">
-            <h3 className="font-display font-semibold text-sm">Últimos Resultados</h3>
+            <h3 className="font-display font-semibold text-sm">{t('recent.title')}</h3>
             {recentResults.length > 0 ? (
               <div className="space-y-1.5">
                 {recentResults.map((r: any) => (
@@ -564,7 +565,7 @@ export default function PublicClubPage() {
                       {r.isHome ? 'vs' : '@'}
                     </span>
                     <span className="text-xs font-medium truncate group-hover:text-tactical transition-colors">
-                      {r.opponent?.name || 'Adversário'}
+                      {r.opponent?.name || t('recent.opponent_fallback')}
                     </span>
                     <span className="ml-auto text-xs font-display font-bold tabular-nums shrink-0">
                       {r.myScore}–{r.oppScore}
@@ -573,7 +574,7 @@ export default function PublicClubPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Nenhum resultado ainda.</p>
+              <p className="text-xs text-muted-foreground">{t('recent.empty')}</p>
             )}
           </div>
         </div>
@@ -587,10 +588,10 @@ export default function PublicClubPage() {
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
                     <th className="py-2 pr-3 w-10"></th>
-                    <th className="py-2 pr-3">POS</th>
-                    <th className="py-2 pr-3">Nome</th>
-                    <th className="py-2 pr-3">OVR</th>
-                    <th className="py-2 pr-3">Idade</th>
+                    <th className="py-2 pr-3">{t('squad.col_position')}</th>
+                    <th className="py-2 pr-3">{t('squad.col_name')}</th>
+                    <th className="py-2 pr-3">{t('squad.col_overall')}</th>
+                    <th className="py-2 pr-3">{t('squad.col_age')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -620,9 +621,9 @@ export default function PublicClubPage() {
                       <td className="py-3 pr-3 font-display font-bold">
                         <div className="flex items-center gap-1.5">
                           {p.user_id ? (
-                            <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label="Humano" />
+                            <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label={t('squad.human')} />
                           ) : (
-                            <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label="Bot" />
+                            <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label={t('squad.bot')} />
                           )}
                           <span>{p.full_name}</span>
                         </div>
@@ -651,7 +652,14 @@ export default function PublicClubPage() {
           <DialogHeader>
             <DialogTitle className="font-display">{selectedPlayer?.full_name}</DialogTitle>
             <DialogDescription>
-              {positionToPT(selectedPlayer?.primary_position)} {selectedPlayer?.secondary_position ? `/ ${positionToPT(selectedPlayer.secondary_position)}` : ''} • {selectedPlayer?.archetype} • {selectedPlayer?.age} anos
+              {t('player_dialog.subtitle', {
+                position: positionLabel(selectedPlayer?.primary_position),
+                secondary: selectedPlayer?.secondary_position
+                  ? t('player_dialog.secondary_separator', { position: positionLabel(selectedPlayer.secondary_position) })
+                  : '',
+                archetype: archetypeLabel(selectedPlayer?.archetype),
+                age: selectedPlayer?.age,
+              })}
             </DialogDescription>
           </DialogHeader>
 
@@ -661,20 +669,20 @@ export default function PublicClubPage() {
               <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                 <div className="text-center">
                   <span className="font-display text-3xl font-extrabold text-tactical">{selectedPlayer.overall}</span>
-                  <p className="text-[10px] text-muted-foreground">OVR</p>
+                  <p className="text-[10px] text-muted-foreground">{t('player_dialog.ovr')}</p>
                 </div>
                 <div className="space-y-1 text-sm">
                   <div className="flex gap-4">
-                    <span className="text-muted-foreground">Pé:</span>
-                    <span className="font-semibold capitalize">{selectedPlayer.dominant_foot || '—'}</span>
+                    <span className="text-muted-foreground">{t('player_dialog.foot')}</span>
+                    <span className="font-semibold capitalize">{selectedPlayer.dominant_foot || t('player_dialog.dash')}</span>
                   </div>
                   <div className="flex gap-4">
-                    <span className="text-muted-foreground">Altura:</span>
-                    <span className="font-semibold">{selectedPlayer.height ? `${selectedPlayer.height} cm` : '—'}</span>
+                    <span className="text-muted-foreground">{t('player_dialog.height')}</span>
+                    <span className="font-semibold">{selectedPlayer.height ? t('player_dialog.height_value', { value: selectedPlayer.height }) : t('player_dialog.dash')}</span>
                   </div>
                   {releaseClause != null && releaseClause > 0 && (
                     <div className="flex gap-4">
-                      <span className="text-muted-foreground">Multa:</span>
+                      <span className="text-muted-foreground">{t('player_dialog.release_clause')}</span>
                       <span className="font-semibold text-destructive">{formatBRL(releaseClause)}</span>
                     </div>
                   )}
@@ -688,23 +696,23 @@ export default function PublicClubPage() {
                 </div>
               ) : playerAttrs ? (
                 <div className="space-y-2.5">
-                  <AttrGroup title="Físico" rows={PHYSICAL} attrs={playerAttrs} />
-                  <AttrGroup title="Técnico" rows={TECHNICAL} attrs={playerAttrs} />
-                  <AttrGroup title="Mental" rows={MENTAL} attrs={playerAttrs} />
-                  <AttrGroup title="Finalização" rows={SHOOTING} attrs={playerAttrs} />
-                  <AttrGroup title="Defesa" rows={DEFENDING} attrs={playerAttrs} />
+                  <AttrGroup title={t('player_dialog.section_physical')} rows={PHYSICAL} attrs={playerAttrs} />
+                  <AttrGroup title={t('player_dialog.section_technical')} rows={TECHNICAL} attrs={playerAttrs} />
+                  <AttrGroup title={t('player_dialog.section_mental')} rows={MENTAL} attrs={playerAttrs} />
+                  <AttrGroup title={t('player_dialog.section_shooting')} rows={SHOOTING} attrs={playerAttrs} />
+                  <AttrGroup title={t('player_dialog.section_defending')} rows={DEFENDING} attrs={playerAttrs} />
                   {selectedPlayer.primary_position === 'GK' && (
-                    <AttrGroup title="Goleiro" rows={GK_ATTRS} attrs={playerAttrs} />
+                    <AttrGroup title={t('player_dialog.section_goalkeeping')} rows={GK_ATTRS} attrs={playerAttrs} />
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">Atributos não disponíveis.</p>
+                <p className="text-xs text-muted-foreground text-center py-4">{t('player_dialog.no_attrs')}</p>
               )}
 
               {/* Offer button */}
               {canOffer && (
                 <Button className="w-full gap-2" onClick={openOfferDialog}>
-                  <UserPlus className="h-4 w-4" /> Fazer Proposta
+                  <UserPlus className="h-4 w-4" /> {t('player_dialog.make_offer')}
                 </Button>
               )}
             </div>
@@ -716,9 +724,9 @@ export default function PublicClubPage() {
       <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display">Enviar Proposta</DialogTitle>
+            <DialogTitle className="font-display">{t('offer.title')}</DialogTitle>
             <DialogDescription>
-              Proposta de contrato para {selectedPlayer?.full_name}
+              {t('offer.description', { name: selectedPlayer?.full_name })}
             </DialogDescription>
           </DialogHeader>
 
@@ -729,18 +737,23 @@ export default function PublicClubPage() {
                 <div>
                   <p className="font-display font-bold text-sm">{selectedPlayer.full_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {positionToPT(selectedPlayer.primary_position)} • {selectedPlayer.archetype} • {selectedPlayer.age} anos
+                    {t('player_dialog.subtitle', {
+                      position: positionLabel(selectedPlayer.primary_position),
+                      secondary: '',
+                      archetype: archetypeLabel(selectedPlayer.archetype),
+                      age: selectedPlayer.age,
+                    })}
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Salário Semanal (R$)</Label>
+                  <Label className="text-xs">{t('offer.weekly_salary')}</Label>
                   <Input type="number" min={100} value={salary} onChange={e => setSalary(Number(e.target.value))} />
                 </div>
                 <div>
-                  <Label className="text-xs">Multa Rescisória (R$)</Label>
+                  <Label className="text-xs">{t('offer.release_clause')}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -750,34 +763,34 @@ export default function PublicClubPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Duração (meses)</Label>
+                  <Label className="text-xs">{t('offer.contract_length')}</Label>
                   <Select value={contractLength} onValueChange={setContractLength}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="6">6 meses</SelectItem>
-                      <SelectItem value="12">12 meses</SelectItem>
-                      <SelectItem value="18">18 meses</SelectItem>
-                      <SelectItem value="24">24 meses</SelectItem>
+                      <SelectItem value="6">{t('offer.months_6')}</SelectItem>
+                      <SelectItem value="12">{t('offer.months_12')}</SelectItem>
+                      <SelectItem value="18">{t('offer.months_18')}</SelectItem>
+                      <SelectItem value="24">{t('offer.months_24')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Papel no Elenco</Label>
+                  <Label className="text-xs">{t('offer.squad_role')}</Label>
                   <Select value={role} onValueChange={setRole}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {SQUAD_ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                      {SQUAD_ROLE_VALUES.map(r => <SelectItem key={r} value={r}>{squadRoleLabel(r)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
               <div>
-                <Label className="text-xs">Mensagem (opcional)</Label>
+                <Label className="text-xs">{t('offer.message')}</Label>
                 <Textarea
                   value={message}
                   onChange={e => setMessage(e.target.value)}
-                  placeholder="Ex: Queremos você como peça-chave do time..."
+                  placeholder={t('offer.message_placeholder')}
                   rows={2}
                 />
               </div>
@@ -785,9 +798,9 @@ export default function PublicClubPage() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOfferOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setOfferOpen(false)}>{t('offer.cancel')}</Button>
             <Button onClick={sendOffer} disabled={sending}>
-              {sending ? 'Enviando...' : 'Enviar Proposta'}
+              {sending ? t('offer.sending') : t('offer.submit')}
             </Button>
           </DialogFooter>
         </DialogContent>
