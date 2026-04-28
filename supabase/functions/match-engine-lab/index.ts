@@ -5530,9 +5530,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   // Marks are relative to tickStart; the final log is emitted in `finally`
   // so it prints regardless of which `return` path exits the function.
   const tickStart = performance.now();
+  const memStart = (() => { try { return (Deno as any).memoryUsage?.()?.heapUsed ?? 0; } catch { return 0; } })();
   const perfMarks: Array<{ label: string; ms: number }> = [];
   const mark = (label: string) => perfMarks.push({ label, ms: Math.round(performance.now() - tickStart) });
   let tickExitStatus = 'unknown';
+  // Hoisted snapshot fields so the finally-block log can read them safely
+  // even if an exception fired before they were assigned.
+  let _partsCount = 0;
 
   try {
 
@@ -5998,6 +6002,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       tickCache.enrichedParticipants = participants;
     }
   }
+  _partsCount = participants?.length ?? 0;
   mark('participants');
 
   const possClubId = activeTurn.possession_club_id;
@@ -7785,6 +7790,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (resolutionMoveBatch.length > 0) {
       await supabase.rpc('batch_update_participant_positions', { p_updates: resolutionMoveBatch });
     }
+    mark('res_pos_batch');
 
     const allRawIds = (rawActions || []).map((a: any) => a.id);
     if (allRawIds.length > 0) {
@@ -7794,7 +7800,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (usedIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'used' }).in('id', usedIds));
       if (overriddenIds.length > 0) actionStatusUpdates.push(supabase.from('match_actions').update({ status: 'overridden' }).in('id', overriddenIds));
       if (actionStatusUpdates.length > 0) await Promise.all(actionStatusUpdates);
-      mark('res_loose_ball');
+      mark('res_actions_status');
     }
 
     // ── Compute ball end position for out-of-bounds check ──
@@ -8092,15 +8098,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
       if (energyUpdates.length > 0) {
-        // Batch update energy using the same RPC (position unchanged, only energy)
-        const energyBatch = energyUpdates.map(u => ({ id: u.id, x: -1, y: -1, energy: u.energy }));
-        // Use direct updates since we don't want to change positions
-        const energyOps = energyUpdates.map(u =>
-          supabase.from('match_participants').update({ match_energy: u.energy }).eq('id', u.id)
-        );
-        await Promise.all(energyOps);
+        await supabase.rpc('batch_update_match_energy', { p_updates: energyUpdates });
       }
     }
+    mark('res_energy');
 
     // ── Save turn snapshot for replay ──
     try {
@@ -8153,6 +8154,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     } catch (snapErr) {
       console.error('[ENGINE] Snapshot save failed:', snapErr);
     }
+    mark('res_snapshot');
 
     const newTurnNumber = match.current_turn_number + 1;
 
@@ -8258,6 +8260,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (eventsToLog.length > 0) {
       await supabase.from('match_event_logs').insert(eventsToLog);
     }
+    mark(`res_events_flush:${eventsToLog.length}`);
 
     // ── Real-time clock: halftime / end-of-match check ──
     const currentHalf = match.current_half || 1;
@@ -9087,6 +9090,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         console.error('[ENGINE] Chained resolution tick failed:', chainErr);
         tickExitStatus = `advanced:${activeTurn.phase}+chain_failed`;
       }
+      mark('chained_resolution');
       return { status: 'advanced' };
     }
   }
@@ -9114,7 +9118,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       prevMs = m.ms;
       return `${m.label}=${delta}ms`;
     }).join(' ');
-    console.log(`[TICK-PERF] match=${match_id.slice(0,8)} turn=${activeTurn?.turn_number ?? '?'} phase=${activeTurn?.phase ?? '?'} exit=${tickExitStatus} total=${totalMs}ms ${breakdown}`);
+    let memInfo = '';
+    try {
+      const memEnd = (Deno as any).memoryUsage?.()?.heapUsed ?? 0;
+      const memEndMB = Math.round(memEnd / 1024 / 1024);
+      const memDeltaMB = Math.round((memEnd - memStart) / 1024 / 1024);
+      memInfo = ` mem=${memEndMB}MB Δ=${memDeltaMB >= 0 ? '+' : ''}${memDeltaMB}MB`;
+    } catch { /* memoryUsage unavailable */ }
+    console.log(`[TICK-PERF] match=${match_id.slice(0,8)} turn=${activeTurn?.turn_number ?? '?'} phase=${activeTurn?.phase ?? '?'} exit=${tickExitStatus} total=${totalMs}ms players=${_partsCount}${memInfo} ${breakdown}`);
   }
 }
 
