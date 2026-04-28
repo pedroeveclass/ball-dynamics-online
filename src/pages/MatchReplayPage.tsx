@@ -162,10 +162,11 @@ const LEGACY_TURN_DURATION_MS = 1000; // used only when falling back to per-turn
 // Replay plays each motion slower than the live engine so the action reads
 // naturally on screen. The engine's duration_ms ranges 400–2500ms depending
 // on the ball action / distance; multiplying by SLOWDOWN and clamping to a
-// floor avoids "flash" plays that would otherwise be over in <1s.
+// floor + ceiling keeps every play in a comfortable ~2.5s window.
 // Applied at 1× speed; the 2×/4× speed buttons still divide on top.
 const REPLAY_MOTION_SLOWDOWN = 2.0;
-const REPLAY_MOTION_MIN_MS = 1200;
+const REPLAY_MOTION_MIN_MS = 2000;
+const REPLAY_MOTION_MAX_MS = 3000;
 
 type Phase = 'motion' | 'halftime_pause' | 'set_piece_pause' | 'idle_pause' | 'finished';
 
@@ -615,7 +616,7 @@ export default function MatchReplayPage() {
       if (phase === 'motion') {
         const scene = usingLegacy ? null : scenes[currentSceneIdx];
         const rawDur = (scene ? scene.durationMs : LEGACY_TURN_DURATION_MS) * REPLAY_MOTION_SLOWDOWN;
-        const baseDur = Math.max(REPLAY_MOTION_MIN_MS, rawDur);
+        const baseDur = Math.min(REPLAY_MOTION_MAX_MS, Math.max(REPLAY_MOTION_MIN_MS, rawDur));
         const dur = baseDur / Math.max(1, speedMul);
         let transitioned = false;
         setAnimProgress(prev => {
