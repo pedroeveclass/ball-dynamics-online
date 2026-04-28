@@ -19,6 +19,10 @@
     "enter": "Tela cheia",
     "exit": "Sair da tela cheia"
   },
+  "panel": {
+    "show": "Mostrar painel",
+    "hide": "Ocultar painel"
+  },
   "events": {
     "title": "Eventos",
     "empty": "Nenhum evento neste turno",

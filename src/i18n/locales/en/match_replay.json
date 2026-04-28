@@ -19,6 +19,10 @@
     "enter": "Fullscreen",
     "exit": "Exit fullscreen"
   },
+  "panel": {
+    "show": "Show panel",
+    "hide": "Hide panel"
+  },
   "events": {
     "title": "Events",
     "empty": "No events on this turn",

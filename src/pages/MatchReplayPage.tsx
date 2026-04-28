@@ -7,7 +7,7 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Film, Maximize, Minimize } from 'lucide-react';
+import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Film, Maximize, Minimize, PanelRightClose, PanelRightOpen } from 'lucide-react';
 
 // ─── Layout wrapper (same pattern as LeaguePage) ──────────────────
 function ReplayLayout({ children }: { children: ReactNode }) {
@@ -220,6 +220,7 @@ export default function MatchReplayPage() {
   const animFrameRef = useRef<number>(0);
   const playerRootRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showSidePanel, setShowSidePanel] = useState(true);
 
   // Sync state if the user leaves fullscreen via ESC or browser UI
   useEffect(() => {
@@ -951,8 +952,10 @@ export default function MatchReplayPage() {
         ref={playerRootRef}
         className={`flex flex-col gap-2 ${isFullscreen ? 'h-screen w-screen bg-background p-3 overflow-hidden' : 'h-full min-h-[600px]'}`}
       >
-        {/* ── Field (fills available space; scoreboard + events overlay on top) ── */}
-        <div className="flex-1 min-h-0 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
+        {/* ── Field box (field area + collapsible side panel share the same gradient) ── */}
+        <div className="flex-1 min-h-0 flex gap-2" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
+          {/* Field area (shrinks when side panel opens) */}
+          <div className="flex-1 min-h-0 relative">
             <svg
               viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
               className="h-full w-full rounded-lg"
@@ -1061,53 +1064,17 @@ export default function MatchReplayPage() {
               <span className="text-xs font-medium hidden sm:inline">{t('back')}</span>
             </button>
 
-            {/* Scoreboard overlay (top center) */}
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 shadow-lg">
-              <div className="flex items-center gap-1.5">
-                <span className="font-display font-bold text-xs text-white/90">{homeClub?.short_name}</span>
-                <div
-                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                  style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
-                >
-                  {homeClub?.short_name}
-                </div>
-              </div>
-              <span className="font-display font-bold text-lg tabular-nums text-white">
-                {scoreNow.home} - {scoreNow.away}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <div
-                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
-                  style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
-                >
-                  {awayClub?.short_name}
-                </div>
-                <span className="font-display font-bold text-xs text-white/90">{awayClub?.short_name}</span>
-              </div>
-              {minuteLabel && (
-                <Badge variant="outline" className="text-[10px] font-mono ml-1 border-white/20 text-white/90">{minuteLabel}</Badge>
-              )}
-              <Badge variant="outline" className="text-[10px] font-mono border-white/20 text-white/70">
-                {currentSceneIdx + 1}/{totalScenes}
-              </Badge>
-            </div>
-
-            {/* MatchFlow events overlay (right side, inside the field) */}
-            <div className="absolute top-14 bottom-2 right-2 w-52 hidden md:flex flex-col gap-1 bg-black/45 backdrop-blur-sm border border-white/10 rounded-lg p-2 overflow-y-auto shadow-lg">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">{t('events.title')}</span>
-              {eventLog.length === 0 && (
-                <span className="text-[10px] text-white/50">{t('events.empty_total')}</span>
-              )}
-              {eventLog.slice().reverse().map((ev) => (
-                <div
-                  key={ev.id}
-                  className={`text-[11px] rounded px-1.5 py-1 ${ev.event_type === 'goal' ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-100 font-bold' : ev.event_type === 'red_card' ? 'bg-red-500/20 border border-red-500/40 text-red-200' : ev.event_type === 'yellow_card' ? 'bg-yellow-500/15 border border-yellow-500/30 text-yellow-200' : 'bg-white/5 text-white/80'}`}
-                >
-                  <div className="font-semibold leading-tight">{ev.title}</div>
-                  {ev.body && <div className="opacity-70 mt-0.5 leading-tight">{ev.body}</div>}
-                </div>
-              ))}
-            </div>
+            {/* Side-panel toggle (top-right). Shown only on md+ since the panel
+                itself is desktop-only; on mobile we keep the legacy events list
+                under the controls. */}
+            <button
+              onClick={() => setShowSidePanel(prev => !prev)}
+              className="absolute top-2 right-2 hidden md:flex items-center gap-1 bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg px-2 py-1.5 text-white/85 hover:text-white hover:bg-black/70 transition-colors shadow-lg"
+              title={t(showSidePanel ? 'panel.hide' : 'panel.show')}
+              aria-label={t(showSidePanel ? 'panel.hide' : 'panel.show')}
+            >
+              {showSidePanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            </button>
 
             {/* Pause overlay (halftime / set-piece / goal) */}
             {overlayText && (
@@ -1126,6 +1093,71 @@ export default function MatchReplayPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Collapsible side panel: scoreboard on top, matchflow below.
+              Hidden on mobile — the legacy events list under the controls
+              still serves small screens. */}
+          {showSidePanel && (
+            <div className="w-60 shrink-0 hidden md:flex flex-col gap-2 min-h-0">
+              {/* Scoreboard card */}
+              <div className="bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg p-2.5 shadow-lg flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div
+                      className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                      style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
+                    >
+                      {homeClub?.short_name}
+                    </div>
+                    <span className="font-display font-bold text-xs text-white/90 truncate">{homeClub?.short_name}</span>
+                  </div>
+                  <span className="font-display font-bold text-lg tabular-nums text-white">
+                    {scoreNow.home}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div
+                      className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                      style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
+                    >
+                      {awayClub?.short_name}
+                    </div>
+                    <span className="font-display font-bold text-xs text-white/90 truncate">{awayClub?.short_name}</span>
+                  </div>
+                  <span className="font-display font-bold text-lg tabular-nums text-white">
+                    {scoreNow.away}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-1 mt-0.5 pt-1.5 border-t border-white/10">
+                  {minuteLabel && (
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/20 text-white/90">{minuteLabel}</Badge>
+                  )}
+                  <Badge variant="outline" className="text-[10px] font-mono border-white/20 text-white/70 ml-auto">
+                    {currentSceneIdx + 1}/{totalScenes}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* MatchFlow events list */}
+              <div className="flex-1 min-h-0 bg-black/45 backdrop-blur-sm border border-white/10 rounded-lg p-2 overflow-y-auto shadow-lg flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">{t('events.title')}</span>
+                {eventLog.length === 0 && (
+                  <span className="text-[10px] text-white/50">{t('events.empty_total')}</span>
+                )}
+                {eventLog.slice().reverse().map((ev) => (
+                  <div
+                    key={ev.id}
+                    className={`text-[11px] rounded px-1.5 py-1 ${ev.event_type === 'goal' ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-100 font-bold' : ev.event_type === 'red_card' ? 'bg-red-500/20 border border-red-500/40 text-red-200' : ev.event_type === 'yellow_card' ? 'bg-yellow-500/15 border border-yellow-500/30 text-yellow-200' : 'bg-white/5 text-white/80'}`}
+                  >
+                    <div className="font-semibold leading-tight">{ev.title}</div>
+                    {ev.body && <div className="opacity-70 mt-0.5 leading-tight">{ev.body}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Controls bar ── */}
