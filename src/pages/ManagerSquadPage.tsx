@@ -18,6 +18,7 @@ import { Users, MoreVertical, AlertTriangle, Loader2, User, Bot } from 'lucide-r
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { sortPlayersByPosition } from '@/lib/positions';
+import { archetypeLabel } from '@/lib/attributes';
 import { CountryFlag } from '@/components/CountryFlag';
 import { useTranslation } from 'react-i18next';
 
@@ -452,7 +453,7 @@ export default function ManagerSquadPage() {
                         {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                       </div>
                     </td>
-                    <td className="py-3 pr-3 text-muted-foreground cursor-pointer" onClick={() => setSelectedPlayerId(p.id)}>{p.archetype}</td>
+                    <td className="py-3 pr-3 text-muted-foreground cursor-pointer" onClick={() => setSelectedPlayerId(p.id)}>{archetypeLabel(p.archetype)}</td>
                     <td className="py-3 pr-3 text-muted-foreground cursor-pointer" onClick={() => setSelectedPlayerId(p.id)}>{p.age}</td>
                     <td className="py-3 pr-3 w-28 cursor-pointer" onClick={() => setSelectedPlayerId(p.id)}>
                       <EnergyBar current={p.energy_current} max={p.energy_max} />

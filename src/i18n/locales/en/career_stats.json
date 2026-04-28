@@ -1,0 +1,25 @@
+{
+  "title": "Career Statistics",
+  "common": {
+    "matches": "Matches",
+    "goals": "Goals",
+    "assists": "Assists",
+    "yellow_cards": "Yellows",
+    "red_cards": "Reds"
+  },
+  "extras": {
+    "clean_sheets": "Clean Sheets",
+    "goals_conceded": "Goals Conceded",
+    "gk_saves": "Saves",
+    "gk_penalties_saved": "Penalties Saved",
+    "tackles": "Tackles",
+    "interceptions": "Interceptions",
+    "passes_completed": "Passes Completed",
+    "pass_accuracy": "Pass Accuracy",
+    "big_chances_created": "Big Chances Created",
+    "shots": "Shots",
+    "shots_on_target": "Shots on Target",
+    "shot_accuracy": "Shot Accuracy",
+    "offsides": "Offsides"
+  }
+}

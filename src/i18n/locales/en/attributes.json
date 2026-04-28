@@ -62,5 +62,17 @@
     "normal": "NORMAL",
     "bad": "BAD",
     "counter": "COUNTER"
-  }
+  },
+  "archetypes": {
+    "All Around": "All-Around",
+    "Condutor": "Playmaker",
+    "Chutador": "Shooter",
+    "Velocista": "Speedster",
+    "Torre": "Tower",
+    "Cão de Guarda": "Watchdog",
+    "Goleiro Completo": "Complete Keeper",
+    "Goleiro Felino": "Cat-like Keeper",
+    "Goleiro Muralha": "Wall Keeper"
+  },
+  "energy": "Energy"
 }

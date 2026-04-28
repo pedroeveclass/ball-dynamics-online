@@ -1,0 +1,48 @@
+{
+  "header": {
+    "club_label": "Clube",
+    "back_to_league": "Voltar à Liga",
+    "not_found": "Clube não encontrado."
+  },
+  "manager": {
+    "label": "Treinador",
+    "no_manager": "Sem Treinador"
+  },
+  "stats": {
+    "standing": "Classificação",
+    "standing_value": "{{points}} pts • {{played}} jogos",
+    "no_data": "Sem dados",
+    "squad": "Elenco",
+    "stadium": "Estádio",
+    "capacity": "Capacidade",
+    "reputation": "Reputação",
+    "history": "Histórico",
+    "next_matches": "Próximos Jogos"
+  },
+  "squad": {
+    "title": "Elenco",
+    "empty": "Nenhum jogador no elenco.",
+    "human": "Humano",
+    "bot": "Bot"
+  },
+  "offer": {
+    "title": "Fazer Proposta",
+    "weekly_salary": "Salário Semanal",
+    "release_clause": "Multa Rescisória",
+    "contract_length": "Duração do Contrato (semanas)",
+    "squad_role": "Papel no Elenco",
+    "message": "Mensagem (opcional)",
+    "submit": "Enviar Proposta",
+    "sending": "Enviando..."
+  },
+  "squad_roles": {
+    "starter": "Titular",
+    "rotation": "Rotação",
+    "backup": "Reserva",
+    "youth": "Jovem Promessa"
+  },
+  "toast": {
+    "offer_sent": "Proposta enviada!",
+    "offer_error": "Erro ao enviar proposta"
+  }
+}

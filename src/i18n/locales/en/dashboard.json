@@ -58,6 +58,68 @@
     "recent_matches": "Recent Results",
     "no_recent_matches": "No recent matches.",
     "notifications": "Notifications",
-    "no_notifications": "No new notifications."
+    "no_notifications": "No new notifications.",
+    "transfer_window": {
+      "open": "Transfer Window OPEN — Transfers are processed immediately!",
+      "next": "Next window: {{date}}"
+    },
+    "bankruptcy": {
+      "title": "CRITICAL DEBT — Balance: {{amount}}",
+      "days_remaining": "Clear the debt in {{count}} days or you'll be fired and the club reset.",
+      "no_deadline": "The club is in debt over R$1,000,000. Clear it as soon as possible!"
+    },
+    "header": {
+      "manager_label": "Manager: {{name}}",
+      "style_label": "Style: {{label}}",
+      "status": "Status"
+    },
+    "cards": {
+      "club_rep": "Club Rep.",
+      "manager_rep": "Manager Rep.",
+      "squad": "Squad",
+      "squad_subtitle": "players",
+      "balance": "Balance"
+    },
+    "finances": {
+      "title": "Finances",
+      "balance": "Balance",
+      "wage_bill": "Weekly Wages",
+      "projected_income": "Projected Income",
+      "projected_expense": "Projected Expenses"
+    },
+    "stadium": {
+      "title": "Stadium",
+      "capacity": "Capacity",
+      "quality": "Quality",
+      "prestige": "Prestige"
+    },
+    "squad_card": {
+      "title": "Squad",
+      "subtitle": "players in the squad"
+    },
+    "market": {
+      "title": "Market",
+      "subtitle": "Find free agents and send contract offers."
+    },
+    "facilities": {
+      "title": "Facilities",
+      "subtitle": "Manage your facilities"
+    },
+    "league": {
+      "title": "League",
+      "subtitle": "Standings and rounds"
+    },
+    "reports": {
+      "title": "Player Report",
+      "inactive_one": "{{count}} player untrained for 5+ days",
+      "inactive_other": "{{count}} players untrained for 5+ days",
+      "subtitle": "Squad activity, training, matches and purchases"
+    },
+    "no_team": {
+      "title": "You don't manage any team yet.",
+      "hint": "Visit the League to see available teams and take one over.",
+      "go_to_league": "Go to League"
+    },
+    "loading": "Loading..."
   }
 }

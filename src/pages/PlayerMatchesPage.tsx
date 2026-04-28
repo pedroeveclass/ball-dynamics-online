@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -33,16 +34,17 @@ interface MatchEntry {
   away_club?: { name: string; short_name: string; primary_color: string; secondary_color: string };
 }
 
-const STATUS_INFO: Record<string, { label: string; className: string }> = {
-  scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
-  live: { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
-  finished: { label: 'Encerrada', className: 'bg-muted text-muted-foreground border-border' },
+const STATUS_CLASS: Record<string, string> = {
+  scheduled: 'bg-secondary text-secondary-foreground',
+  live: 'bg-pitch/20 text-pitch border-pitch/30',
+  finished: 'bg-muted text-muted-foreground border-border',
 };
 
 export default function PlayerMatchesPage() {
   const { user, playerProfile } = useAuth();
   const navigate = useNavigate();
   const { current: lang } = useAppLanguage();
+  const { t } = useTranslation('player_matches');
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating5v5, setCreating5v5] = useState(false);
@@ -147,7 +149,7 @@ export default function PlayerMatchesPage() {
       }
     } catch (err: any) {
       setIsAvailable(previous);
-      toast.error(err.message || 'Erro ao atualizar presença');
+      toast.error(err.message || t('league.presence_error'));
     } finally {
       setTogglingAvailability(false);
     }
@@ -245,7 +247,7 @@ export default function PlayerMatchesPage() {
         status: 'scheduled',
         scheduled_at: new Date(Date.now() + 5000).toISOString(),
       }).select('id').single();
-      if (matchError || !match) throw matchError || new Error('Falha ao criar partida');
+      if (matchError || !match) throw matchError || new Error(t('test_match.creation_failed'));
 
       const participants: any[] = [];
       const buildSideParticipants = (
@@ -281,13 +283,13 @@ export default function PlayerMatchesPage() {
       await supabase.from('match_event_logs').insert({
         match_id: match.id, event_type: 'system',
         title: '⚽ Teste 5v5',
-        body: `Partida teste 5 contra 5 — você controla seu jogador!`,
+        body: t('test_match.body'),
       });
 
-      toast.success('Teste 5v5 criado!');
+      toast.success(t('test_match.title'));
       navigate(`/match/${match.id}`);
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar teste 5v5');
+      toast.error(err.message || t('test_match.create_error'));
     } finally {
       setCreating5v5(false);
     }
@@ -300,12 +302,12 @@ export default function PlayerMatchesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-            <Swords className="h-6 w-6 text-tactical" /> Minhas Partidas
+            <Swords className="h-6 w-6 text-tactical" /> {t('title')}
           </h1>
           <Button size="sm" variant="outline" onClick={handleCreate5v5} disabled={creating5v5}
             className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
             {creating5v5 ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />}
-            {creating5v5 ? 'Criando...' : 'Teste 5v5'}
+            {creating5v5 ? t('test_match.creating') : t('test_match.create_button')}
           </Button>
         </div>
 
@@ -316,7 +318,7 @@ export default function PlayerMatchesPage() {
             <div className="flex items-center gap-2 mb-2">
               <Trophy className="h-4 w-4 text-amber-400" />
               <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
-                Próxima rodada da liga — Rodada {nextLeagueMatch.round_number}
+                {t('league.next_round', { round: nextLeagueMatch.round_number })}
               </span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -330,7 +332,7 @@ export default function PlayerMatchesPage() {
                 />
                 <div>
                   <p className="font-display font-bold text-sm">
-                    {nextLeagueMatch.is_home ? 'Casa' : 'Fora'} — vs {nextLeagueMatch.opponent_name}
+                    {nextLeagueMatch.is_home ? t('league.home') : t('league.away')} — vs {nextLeagueMatch.opponent_name}
                   </p>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <CalendarClock className="h-3 w-3" />
@@ -342,12 +344,12 @@ export default function PlayerMatchesPage() {
                 <Link to={`/match/${nextLeagueMatch.match_id}`}>
                   <Button size="sm" className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs">
                     <Play className="h-3 w-3 mr-1" />
-                    Entrar na Partida
+                    {t('buttons.enter')}
                   </Button>
                 </Link>
               ) : (
                 <span className="text-[11px] text-muted-foreground italic">
-                  Link disponível 5 min antes do jogo
+                  {t('league.link_available_soon')}
                 </span>
               )}
             </div>
@@ -370,10 +372,10 @@ export default function PlayerMatchesPage() {
                 ) : (
                   <Check className={`h-3 w-3 mr-1 ${isAvailable ? '' : 'opacity-40'}`} />
                 )}
-                {isAvailable ? 'Presença confirmada' : 'Confirmar presença'}
+                {isAvailable ? t('league.presence_confirmed') : t('league.presence_confirm')}
               </Button>
               <p className="text-[10px] text-muted-foreground mt-1.5">
-                Apenas informativo — o técnico verá se você marcou presença.
+                {t('league.presence_hint')}
               </p>
             </div>
           </div>
@@ -382,21 +384,21 @@ export default function PlayerMatchesPage() {
         {matches.length === 0 && (
           <div className="stat-card text-center py-12">
             <Swords className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <p className="font-display font-bold text-muted-foreground">Nenhuma partida ainda</p>
-            <p className="text-sm text-muted-foreground mt-1">Quando seu clube for escalado em uma partida, ela aparecerá aqui.</p>
+            <p className="font-display font-bold text-muted-foreground">{t('empty')}</p>
+            <p className="text-sm text-muted-foreground mt-1">{t('empty_hint')}</p>
           </div>
         )}
 
         {liveOrSoon.length > 0 && (
           <section>
-            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">🔴 Ao Vivo / Em Breve</h2>
+            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">{t('sections.live_or_soon')}</h2>
             <div className="space-y-3">{liveOrSoon.map(e => <MatchCard key={e.match_id} entry={e} />)}</div>
           </section>
         )}
 
         {upcoming.length > 0 && (
           <section>
-            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Próximas Partidas</h2>
+            <h2 className="font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">{t('sections.upcoming')}</h2>
             <div className="space-y-3">{upcoming.map(e => <MatchCard key={e.match_id} entry={e} />)}</div>
           </section>
         )}
@@ -404,7 +406,7 @@ export default function PlayerMatchesPage() {
         {past.length > 0 && (
           <Collapsible>
             <CollapsibleTrigger className="flex items-center gap-2 font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide hover:text-foreground transition-colors">
-              <ChevronDown className="h-4 w-4" /> Partidas Encerradas ({past.length})
+              <ChevronDown className="h-4 w-4" /> {t('sections.past', { count: past.length })}
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="space-y-3">{past.map(e => <MatchCard key={e.match_id} entry={e} />)}</div>
@@ -417,8 +419,10 @@ export default function PlayerMatchesPage() {
 }
 
 function MatchCard({ entry }: { entry: MatchEntry }) {
+  const { t } = useTranslation('player_matches');
   const { match: m, home_club, away_club, is_bot } = entry;
-  const statusInfo = STATUS_INFO[m.status] || { label: m.status, className: 'bg-muted text-muted-foreground' };
+  const statusLabel = t(`status.${m.status}`, { defaultValue: m.status });
+  const statusClassName = STATUS_CLASS[m.status] || 'bg-muted text-muted-foreground';
   const isLive = m.status === 'live';
 
   return (
@@ -433,7 +437,7 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
           </div>
           <ClubMini club={away_club} />
         </div>
-        <Badge variant="outline" className={`text-xs shrink-0 ${statusInfo.className}`}>{statusInfo.label}</Badge>
+        <Badge variant="outline" className={`text-xs shrink-0 ${statusClassName}`}>{statusLabel}</Badge>
       </div>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 flex-wrap">

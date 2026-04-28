@@ -6,6 +6,8 @@ import ptAccountProfile from './locales/pt/account_profile.json';
 import ptAdmin from './locales/pt/admin.json';
 import ptAuth from './locales/pt/auth.json';
 import ptBank from './locales/pt/bank.json';
+import ptCareerStats from './locales/pt/career_stats.json';
+import ptClubDemand from './locales/pt/club_demand.json';
 import ptCoach from './locales/pt/coach.json';
 import ptCommon from './locales/pt/common.json';
 import ptDashboard from './locales/pt/dashboard.json';
@@ -13,6 +15,12 @@ import ptForum from './locales/pt/forum.json';
 import ptForumTopic from './locales/pt/forum_topic.json';
 import ptHelp from './locales/pt/help.json';
 import ptAttributes from './locales/pt/attributes.json';
+import ptNotifyPlayerDialog from './locales/pt/notify_player_dialog.json';
+import ptPlayerCard from './locales/pt/player_card.json';
+import ptPlayerMatches from './locales/pt/player_matches.json';
+import ptPublicClub from './locales/pt/public_club.json';
+import ptPublicPlayer from './locales/pt/public_player.json';
+import ptStore from './locales/pt/store.json';
 import ptLeague from './locales/pt/league.json';
 import ptLeagueVote from './locales/pt/league_vote.json';
 import ptMatchEvents from './locales/pt/match_events.json';
@@ -48,6 +56,8 @@ import enAccountProfile from './locales/en/account_profile.json';
 import enAdmin from './locales/en/admin.json';
 import enAuth from './locales/en/auth.json';
 import enBank from './locales/en/bank.json';
+import enCareerStats from './locales/en/career_stats.json';
+import enClubDemand from './locales/en/club_demand.json';
 import enCoach from './locales/en/coach.json';
 import enCommon from './locales/en/common.json';
 import enDashboard from './locales/en/dashboard.json';
@@ -55,6 +65,12 @@ import enForum from './locales/en/forum.json';
 import enForumTopic from './locales/en/forum_topic.json';
 import enHelp from './locales/en/help.json';
 import enAttributes from './locales/en/attributes.json';
+import enNotifyPlayerDialog from './locales/en/notify_player_dialog.json';
+import enPlayerCard from './locales/en/player_card.json';
+import enPlayerMatches from './locales/en/player_matches.json';
+import enPublicClub from './locales/en/public_club.json';
+import enPublicPlayer from './locales/en/public_player.json';
+import enStore from './locales/en/store.json';
 import enLeague from './locales/en/league.json';
 import enLeagueVote from './locales/en/league_vote.json';
 import enMatchEvents from './locales/en/match_events.json';
@@ -108,6 +124,8 @@ i18n
         attributes: ptAttributes,
         auth: ptAuth,
         bank: ptBank,
+        career_stats: ptCareerStats,
+        club_demand: ptClubDemand,
         coach: ptCoach,
         common: ptCommon,
         dashboard: ptDashboard,
@@ -130,20 +148,26 @@ i18n
         nav: ptNav,
         notification_messages: ptNotificationMessages,
         notifications: ptNotifications,
+        notify_player_dialog: ptNotifyPlayerDialog,
         onboarding: ptOnboarding,
         pickup_list: ptPickupList,
         pickup_lobby: ptPickupLobby,
         player_attributes: ptPlayerAttributes,
         player_avatar: ptPlayerAvatar,
+        player_card: ptPlayerCard,
         player_club: ptPlayerClub,
         player_contract: ptPlayerContract,
+        player_matches: ptPlayerMatches,
         player_offers: ptPlayerOffers,
         player_profile: ptPlayerProfile,
         player_training_plan: ptPlayerTrainingPlan,
         positions: ptPositions,
+        public_club: ptPublicClub,
+        public_player: ptPublicPlayer,
         situational_tactics: ptSituationalTactics,
         solo_lab: ptSoloLab,
         squad: ptSquad,
+        store: ptStore,
       },
       en: {
         account_profile: enAccountProfile,
@@ -151,6 +175,8 @@ i18n
         attributes: enAttributes,
         auth: enAuth,
         bank: enBank,
+        career_stats: enCareerStats,
+        club_demand: enClubDemand,
         coach: enCoach,
         common: enCommon,
         dashboard: enDashboard,
@@ -173,20 +199,26 @@ i18n
         nav: enNav,
         notification_messages: enNotificationMessages,
         notifications: enNotifications,
+        notify_player_dialog: enNotifyPlayerDialog,
         onboarding: enOnboarding,
         pickup_list: enPickupList,
         pickup_lobby: enPickupLobby,
         player_attributes: enPlayerAttributes,
         player_avatar: enPlayerAvatar,
+        player_card: enPlayerCard,
         player_club: enPlayerClub,
         player_contract: enPlayerContract,
+        player_matches: enPlayerMatches,
         player_offers: enPlayerOffers,
         player_profile: enPlayerProfile,
         player_training_plan: enPlayerTrainingPlan,
         positions: enPositions,
+        public_club: enPublicClub,
+        public_player: enPublicPlayer,
         situational_tactics: enSituationalTactics,
         solo_lab: enSoloLab,
         squad: enSquad,
+        store: enStore,
       },
     },
     defaultNS: 'common',

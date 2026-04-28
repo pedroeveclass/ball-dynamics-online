@@ -1,0 +1,23 @@
+{
+  "title": "Notificar {{name}}",
+  "description": "A mensagem aparece no sino de notificações do jogador.",
+  "default_title": "Mensagem do técnico",
+  "template_inactive": "Oi {{firstName}}, notei que você não treina há {{days}} dias. Bora voltar pros treinos pra manter a forma?",
+  "labels": {
+    "title": "Título",
+    "message": "Mensagem"
+  },
+  "placeholders": {
+    "message": "Escreva uma mensagem para o jogador..."
+  },
+  "buttons": {
+    "cancel": "Cancelar",
+    "send": "Enviar",
+    "sending": "Enviando..."
+  },
+  "toast": {
+    "empty_message": "Escreva uma mensagem antes de enviar.",
+    "send_error": "Falha ao enviar notificação.",
+    "sent": "Notificação enviada para {{name}}."
+  }
+}

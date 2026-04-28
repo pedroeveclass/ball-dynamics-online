@@ -1,0 +1,36 @@
+{
+  "header": {
+    "title": "Perfil do Jogador",
+    "not_found": "Jogador não encontrado.",
+    "copy_link": "Copiar link",
+    "copy_link_success": "Link copiado!",
+    "retired": "Aposentado"
+  },
+  "details": {
+    "age_value": "{{count}} anos",
+    "free_agent": "Agente Livre",
+    "reputation": "Reputação {{value}}",
+    "make_offer": "Fazer proposta"
+  },
+  "foot": {
+    "right": "Destro",
+    "left": "Canhoto",
+    "both": "Ambidestro"
+  },
+  "visual": {
+    "title": "Visual do Jogador",
+    "front": "Frente",
+    "back": "Costas"
+  },
+  "attributes": {
+    "title": "Atributos",
+    "groups": {
+      "goalkeeper": "Goleiro",
+      "physical": "Físico",
+      "technical": "Técnico",
+      "mental": "Mental",
+      "shooting": "Finalização",
+      "defending": "Defesa"
+    }
+  }
+}

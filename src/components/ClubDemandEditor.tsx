@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { POSITIONS } from '@/lib/attributes';
-import { positionToPT } from '@/lib/positions';
+import { positionLabel } from '@/lib/positions';
 import { toast } from 'sonner';
 import { Check } from 'lucide-react';
 
@@ -24,6 +25,7 @@ const FIELD_SLOTS: Record<string, { col: number; row: number }> = {
 };
 
 export function ClubDemandEditor() {
+  const { t } = useTranslation('club_demand');
   const [active, setActive] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function ClubDemandEditor() {
     const { data, error } = await supabase.rpc('toggle_club_position_demand', { p_position: pos });
     setPending(null);
     if (error) {
-      toast.error(error.message || 'Erro ao atualizar demanda');
+      toast.error(error.message || t('toast.update_error'));
       return;
     }
     setActive(prev => {
@@ -62,13 +64,13 @@ export function ClubDemandEditor() {
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg font-bold">Demanda de Contratação</h2>
+          <h2 className="font-display text-lg font-bold">{t('title')}</h2>
           <p className="text-xs text-muted-foreground">
-            Marque as posições que você está procurando contratar. Jogadores novos vão ver isso ao criar conta — posições em alta ficam mais atraentes.
+            {t('description')}
           </p>
         </div>
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {active.size} posiç{active.size === 1 ? 'ão' : 'ões'}
+          {t('count', { count: active.size })}
         </span>
       </div>
 
@@ -107,7 +109,7 @@ export function ClubDemandEditor() {
               title={p.label}
             >
               <div className="font-display text-[11px] font-bold leading-tight">
-                {positionToPT(p.value)}
+                {positionLabel(p.value, 'short')}
               </div>
               <div className="font-display text-[10px] leading-tight opacity-70">
                 {p.label}

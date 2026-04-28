@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,40 +16,43 @@ interface NotifyPlayerDialogProps {
 }
 
 export function NotifyPlayerDialog({ open, onOpenChange, playerUserId, playerName, daysInactive }: NotifyPlayerDialogProps) {
-  const [title, setTitle] = useState('Mensagem do técnico');
+  const { t } = useTranslation('notify_player_dialog');
+  const [title, setTitle] = useState(() => t('default_title'));
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    // Reset title to localized default each time the dialog opens
+    setTitle(t('default_title'));
     // Suggest a template based on inactivity
     if (daysInactive != null && daysInactive >= 3) {
-      setBody(`Oi ${playerName.split(' ')[0]}, notei que você não treina há ${daysInactive} dias. Bora voltar pros treinos pra manter a forma?`);
+      setBody(t('template_inactive', { firstName: playerName.split(' ')[0], days: daysInactive }));
     } else {
       setBody('');
     }
-  }, [open, playerName, daysInactive]);
+  }, [open, playerName, daysInactive, t]);
 
   const handleSend = async () => {
     if (!playerUserId) return;
     const trimmed = body.trim();
     if (!trimmed) {
-      toast.error('Escreva uma mensagem antes de enviar.');
+      toast.error(t('toast.empty_message'));
       return;
     }
     setSending(true);
     const { error } = await supabase.from('notifications').insert({
       user_id: playerUserId,
       type: 'system',
-      title: title.trim() || 'Mensagem do técnico',
+      title: title.trim() || t('default_title'),
       body: trimmed,
     });
     setSending(false);
     if (error) {
-      toast.error('Falha ao enviar notificação.');
+      toast.error(t('toast.send_error'));
       return;
     }
-    toast.success(`Notificação enviada para ${playerName}.`);
+    toast.success(t('toast.sent', { name: playerName }));
     onOpenChange(false);
   };
 
@@ -56,26 +60,26 @@ export function NotifyPlayerDialog({ open, onOpenChange, playerUserId, playerNam
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Notificar {playerName}</DialogTitle>
+          <DialogTitle>{t('title', { name: playerName })}</DialogTitle>
           <DialogDescription>
-            A mensagem aparece no sino de notificações do jogador.
+            {t('description')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <label className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Título</label>
+            <label className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">{t('labels.title')}</label>
             <Input value={title} onChange={e => setTitle(e.target.value)} maxLength={80} />
           </div>
           <div>
-            <label className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Mensagem</label>
-            <Textarea value={body} onChange={e => setBody(e.target.value)} rows={4} maxLength={500} placeholder="Escreva uma mensagem para o jogador..." />
+            <label className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">{t('labels.message')}</label>
+            <Textarea value={body} onChange={e => setBody(e.target.value)} rows={4} maxLength={500} placeholder={t('placeholders.message')} />
             <p className="text-[10px] text-muted-foreground mt-1 text-right">{body.length}/500</p>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={sending}>Cancelar</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={sending}>{t('buttons.cancel')}</Button>
           <Button onClick={handleSend} disabled={sending || !body.trim()}>
-            {sending ? 'Enviando...' : 'Enviar'}
+            {sending ? t('buttons.sending') : t('buttons.send')}
           </Button>
         </DialogFooter>
       </DialogContent>

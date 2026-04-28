@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight, BarChart3, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatBRL } from '@/lib/formatting';
+import { formatDate } from '@/lib/formatDate';
 import { ClubCrest } from '@/components/ClubCrest';
 import { CountryFlag } from '@/components/CountryFlag';
 
-const COACH_TYPE_MAP: Record<string, { label: string; icon: typeof Shield }> = {
-  defensive: { label: 'Defensivo', icon: Shield },
-  offensive: { label: 'Ofensivo', icon: Swords },
-  technical: { label: 'Técnico', icon: Brain },
-  complete: { label: 'Completo', icon: CircleDot },
+const COACH_TYPE_ICON: Record<string, typeof Shield> = {
+  defensive: Shield,
+  offensive: Swords,
+  technical: Brain,
+  complete: CircleDot,
 };
 
 export default function ManagerDashboard() {
+  const { t } = useTranslation(['dashboard', 'onboarding']);
+  const { current: lang } = useAppLanguage();
   const { managerProfile, club } = useAuth();
   const [finance, setFinance] = useState<any>(null);
   const [stadium, setStadium] = useState<any>(null);
@@ -62,16 +67,16 @@ export default function ManagerDashboard() {
       <ManagerLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
           <Trophy className="h-16 w-16 text-muted-foreground/40" />
-          <h2 className="font-display text-2xl font-bold">Você ainda não gerencia nenhum time.</h2>
+          <h2 className="font-display text-2xl font-bold">{t('dashboard:manager.no_team.title')}</h2>
           <p className="text-muted-foreground max-w-md">
-            Visite a Liga para ver times disponíveis e assumir um.
+            {t('dashboard:manager.no_team.hint')}
           </p>
           <Link
             to="/league"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-pitch text-white font-display font-semibold hover:bg-pitch/90 transition-colors"
           >
             <Trophy className="h-4 w-4" />
-            Ir para a Liga
+            {t('dashboard:manager.no_team.go_to_league')}
           </Link>
         </div>
       </ManagerLayout>
@@ -92,8 +97,8 @@ export default function ManagerDashboard() {
               <ArrowLeftRight className={`h-4 w-4 ${isOpen ? 'text-pitch' : 'text-muted-foreground'}`} />
               <span className={`font-display text-sm font-semibold ${isOpen ? 'text-pitch' : 'text-muted-foreground'}`}>
                 {isOpen
-                  ? 'Janela de Transferência ABERTA — Transferências são processadas imediatamente!'
-                  : `Próxima janela: 01/${nextMonth.toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' })}`}
+                  ? t('dashboard:manager.transfer_window.open')
+                  : t('dashboard:manager.transfer_window.next', { date: formatDate(nextMonth, lang, 'date_short') })}
               </span>
             </div>
           );
@@ -106,12 +111,12 @@ export default function ManagerDashboard() {
               <AlertTriangle className="h-5 w-5 text-destructive" />
               <div>
                 <p className="font-display text-sm font-bold text-destructive">
-                  DÍVIDA CRÍTICA — Saldo: {formatBRL(bankruptcyStatus.balance)}
+                  {t('dashboard:manager.bankruptcy.title', { amount: formatBRL(bankruptcyStatus.balance) })}
                 </p>
                 <p className="text-xs text-destructive/80 mt-0.5">
                   {bankruptcyStatus.days_remaining != null
-                    ? `Quite a dívida em ${bankruptcyStatus.days_remaining} dias ou será demitido e o clube será resetado.`
-                    : 'O clube está em dívida acima de R$1.000.000. Quite o mais rápido possível!'}
+                    ? t('dashboard:manager.bankruptcy.days_remaining', { count: bankruptcyStatus.days_remaining })
+                    : t('dashboard:manager.bankruptcy.no_deadline')}
                 </p>
               </div>
             </div>
@@ -127,33 +132,33 @@ export default function ManagerDashboard() {
                 {(club as any).country && <CountryFlag code={(club as any).country} size="sm" />}
               </h1>
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                <span>Manager: {managerProfile.full_name}</span>
+                <span>{t('dashboard:manager.header.manager_label', { name: managerProfile.full_name })}</span>
                 {(managerProfile as any).country_code && <CountryFlag code={(managerProfile as any).country_code} size="xs" />}
                 {club.city && <span>• {club.city}</span>}
               </p>
-              {managerProfile.coach_type && COACH_TYPE_MAP[managerProfile.coach_type] && (() => {
-                const ct = COACH_TYPE_MAP[managerProfile.coach_type];
-                const CoachIcon = ct.icon;
+              {managerProfile.coach_type && COACH_TYPE_ICON[managerProfile.coach_type] && (() => {
+                const CoachIcon = COACH_TYPE_ICON[managerProfile.coach_type];
+                const coachLabel = t(`onboarding:manager.coach.${managerProfile.coach_type}`);
                 return (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                     <CoachIcon className="h-3 w-3" />
-                    Estilo: {ct.label}
+                    {t('dashboard:manager.header.style_label', { label: coachLabel })}
                   </p>
                 );
               })()}
             </div>
           </div>
           <div className="text-right">
-            <span className="text-xs text-muted-foreground">Status</span>
+            <span className="text-xs text-muted-foreground">{t('dashboard:manager.header.status')}</span>
             <p className="font-display font-bold text-pitch capitalize">{club.status}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Rep. Clube" value={club.reputation} icon={<Trophy className="h-5 w-5" />} />
-          <StatCard label="Rep. Manager" value={managerProfile.reputation} icon={<Star className="h-5 w-5" />} />
-          <StatCard label="Elenco" value={playerCount} icon={<Users className="h-5 w-5" />} subtitle="jogadores" />
-          <StatCard label="Saldo" value={finance ? `$${(finance.balance / 1000).toFixed(0)}k` : '...'} icon={<DollarSign className="h-5 w-5" />} />
+          <StatCard label={t('dashboard:manager.cards.club_rep')} value={club.reputation} icon={<Trophy className="h-5 w-5" />} />
+          <StatCard label={t('dashboard:manager.cards.manager_rep')} value={managerProfile.reputation} icon={<Star className="h-5 w-5" />} />
+          <StatCard label={t('dashboard:manager.cards.squad')} value={playerCount} icon={<Users className="h-5 w-5" />} subtitle={t('dashboard:manager.cards.squad_subtitle')} />
+          <StatCard label={t('dashboard:manager.cards.balance')} value={finance ? `$${(finance.balance / 1000).toFixed(0)}k` : '...'} icon={<DollarSign className="h-5 w-5" />} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -161,53 +166,53 @@ export default function ManagerDashboard() {
           <Link to="/manager/finance" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
               <DollarSign className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Finanças</span>
+              <span className="font-display font-semibold text-sm">{t('dashboard:manager.finances.title')}</span>
             </div>
             {finance ? (
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Saldo</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.finances.balance')}</span>
                   <span className="font-display font-bold">${finance.balance.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Folha Salarial/Sem</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.finances.wage_bill')}</span>
                   <span className="font-display font-bold">${finance.weekly_wage_bill.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Receita Projetada</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.finances.projected_income')}</span>
                   <span className="font-display font-bold text-pitch">${finance.projected_income.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Despesas Projetadas</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.finances.projected_expense')}</span>
                   <span className="font-display font-bold text-destructive">${finance.projected_expense.toLocaleString()}</span>
                 </div>
               </div>
-            ) : <p className="text-sm text-muted-foreground">Carregando...</p>}
+            ) : <p className="text-sm text-muted-foreground">{t('dashboard:manager.loading')}</p>}
           </Link>
 
           {/* Stadium summary */}
           <Link to="/manager/stadium" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
               <Building2 className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Estádio</span>
+              <span className="font-display font-semibold text-sm">{t('dashboard:manager.stadium.title')}</span>
             </div>
             {stadium ? (
               <div className="space-y-2 text-sm">
                 <p className="font-display font-bold text-lg">{stadium.name}</p>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Capacidade</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.stadium.capacity')}</span>
                   <span className="font-display font-bold">{stadium.capacity.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Qualidade</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.stadium.quality')}</span>
                   <span className="font-display font-bold">{stadium.quality}/100</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Prestígio</span>
+                  <span className="text-muted-foreground">{t('dashboard:manager.stadium.prestige')}</span>
                   <span className="font-display font-bold">{stadium.prestige}/100</span>
                 </div>
               </div>
-            ) : <p className="text-sm text-muted-foreground">Carregando...</p>}
+            ) : <p className="text-sm text-muted-foreground">{t('dashboard:manager.loading')}</p>}
           </Link>
         </div>
 
@@ -216,17 +221,17 @@ export default function ManagerDashboard() {
           <Link to="/manager/squad" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
               <Users className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Elenco</span>
+              <span className="font-display font-semibold text-sm">{t('dashboard:manager.squad_card.title')}</span>
             </div>
             <p className="font-display text-2xl font-bold">{playerCount}</p>
-            <p className="text-xs text-muted-foreground">jogadores no elenco</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard:manager.squad_card.subtitle')}</p>
           </Link>
           <Link to="/manager/market" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Mercado</span>
+              <span className="font-display font-semibold text-sm">{t('dashboard:manager.market.title')}</span>
             </div>
-            <p className="text-sm text-muted-foreground">Encontre agentes livres e envie propostas de contrato.</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard:manager.market.subtitle')}</p>
           </Link>
         </div>
 
@@ -234,16 +239,16 @@ export default function ManagerDashboard() {
           <Link to="/manager/facilities" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
               <Wrench className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Facilities</span>
+              <span className="font-display font-semibold text-sm">{t('dashboard:manager.facilities.title')}</span>
             </div>
-            <p className="text-sm text-muted-foreground">Gerencie suas instalações</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard:manager.facilities.subtitle')}</p>
           </Link>
           <Link to="/league" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
               <Trophy className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Liga</span>
+              <span className="font-display font-semibold text-sm">{t('dashboard:manager.league.title')}</span>
             </div>
-            <p className="text-sm text-muted-foreground">Classificação e rodadas</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard:manager.league.subtitle')}</p>
           </Link>
         </div>
 
@@ -255,14 +260,14 @@ export default function ManagerDashboard() {
             <div className="flex items-center gap-3">
               <BarChart3 className={`h-5 w-5 ${inactivePlayerCount > 0 ? 'text-amber-400' : 'text-tactical'}`} />
               <div>
-                <span className="font-display font-semibold text-sm block">Relatório de Jogadores</span>
+                <span className="font-display font-semibold text-sm block">{t('dashboard:manager.reports.title')}</span>
                 {inactivePlayerCount > 0 ? (
                   <span className="text-xs text-amber-400 flex items-center gap-1 mt-0.5">
                     <Clock className="h-3 w-3" />
-                    {inactivePlayerCount} jogador{inactivePlayerCount > 1 ? 'es' : ''} sem treinar há 5+ dias
+                    {t('dashboard:manager.reports.inactive', { count: inactivePlayerCount })}
                   </span>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Atividade, treinos, jogos e compras do elenco</span>
+                  <span className="text-xs text-muted-foreground">{t('dashboard:manager.reports.subtitle')}</span>
                 )}
               </div>
             </div>

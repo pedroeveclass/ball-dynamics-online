@@ -3,7 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Goal, Shield, TrendingUp, Loader2, Crosshair, Footprints, ShieldAlert,
 } from 'lucide-react';
-import { extrasForPosition, EXTRA_LABELS, type PositionExtra } from '@/lib/playerStats';
+import { extrasForPosition, type PositionExtra } from '@/lib/playerStats';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   playerProfileId: string;
@@ -56,6 +57,7 @@ function formatAccuracy(completed: number, attempted: number): string {
 }
 
 export function CareerStatsBlock({ playerProfileId, position }: Props) {
+  const { t } = useTranslation('career_stats');
   const [loading, setLoading] = useState(true);
   const [totals, setTotals] = useState<StatTotals>(EMPTY);
 
@@ -106,7 +108,7 @@ export function CareerStatsBlock({ playerProfileId, position }: Props) {
   const extras = extrasForPosition(position);
 
   const renderExtra = (key: PositionExtra) => {
-    const label = EXTRA_LABELS[key];
+    const label = t(`extras.${key}`);
     switch (key) {
       case 'clean_sheets':
         return <StatCell key={key} label={label} value={totals.clean_sheets} icon={<Shield className="h-4 w-4" />} color="text-pitch" />;
@@ -143,7 +145,7 @@ export function CareerStatsBlock({ playerProfileId, position }: Props) {
   return (
     <div className="stat-card space-y-3">
       <h2 className="font-display font-semibold text-sm flex items-center gap-2">
-        <Goal className="h-4 w-4 text-tactical" /> Estatísticas de Carreira
+        <Goal className="h-4 w-4 text-tactical" /> {t('title')}
       </h2>
       {loading ? (
         <div className="flex items-center justify-center py-6">
@@ -153,11 +155,11 @@ export function CareerStatsBlock({ playerProfileId, position }: Props) {
         <div className="space-y-3">
           {/* Common block */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <StatCell label="Partidas" value={totals.matches} icon={<Shield className="h-4 w-4" />} />
-            <StatCell label="Gols" value={totals.goals} icon={<Goal className="h-4 w-4" />} color="text-pitch" />
-            <StatCell label="Assistências" value={totals.assists} icon={<TrendingUp className="h-4 w-4" />} color="text-blue-400" />
-            <StatCell label="Amarelos" value={totals.yellow_cards} icon={<div className="w-3 h-4 rounded-sm bg-yellow-400" />} color="text-yellow-500" />
-            <StatCell label="Vermelhos" value={totals.red_cards} icon={<div className="w-3 h-4 rounded-sm bg-red-500" />} color="text-destructive" />
+            <StatCell label={t('common.matches')} value={totals.matches} icon={<Shield className="h-4 w-4" />} />
+            <StatCell label={t('common.goals')} value={totals.goals} icon={<Goal className="h-4 w-4" />} color="text-pitch" />
+            <StatCell label={t('common.assists')} value={totals.assists} icon={<TrendingUp className="h-4 w-4" />} color="text-blue-400" />
+            <StatCell label={t('common.yellow_cards')} value={totals.yellow_cards} icon={<div className="w-3 h-4 rounded-sm bg-yellow-400" />} color="text-yellow-500" />
+            <StatCell label={t('common.red_cards')} value={totals.red_cards} icon={<div className="w-3 h-4 rounded-sm bg-red-500" />} color="text-destructive" />
           </div>
           {/* Position extras */}
           {extras.length > 0 && (

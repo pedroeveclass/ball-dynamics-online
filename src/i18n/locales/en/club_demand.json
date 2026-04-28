@@ -1,0 +1,9 @@
+{
+  "title": "Hiring Demand",
+  "description": "Mark the positions you're looking to sign. New players see this when creating an account — high-demand positions become more attractive.",
+  "count_one": "{{count}} position",
+  "count_other": "{{count}} positions",
+  "toast": {
+    "update_error": "Couldn't update demand."
+  }
+}

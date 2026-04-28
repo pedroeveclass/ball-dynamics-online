@@ -1,5 +1,8 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -26,12 +29,7 @@ import {
   Shield, Star, Building2, Users, Calendar, Trophy, Loader2, ArrowLeft, UserPlus, Bot, User,
 } from 'lucide-react';
 
-const SQUAD_ROLES = [
-  { value: 'starter', label: 'Titular' },
-  { value: 'rotation', label: 'Rotação' },
-  { value: 'backup', label: 'Reserva' },
-  { value: 'youth', label: 'Jovem Promessa' },
-];
+const SQUAD_ROLE_VALUES = ['starter', 'rotation', 'backup', 'youth'] as const;
 
 // Adaptive layout: ManagerLayout if logged-in manager, otherwise simple public layout
 function ClubLayout({ children }: { children: ReactNode }) {
@@ -52,7 +50,7 @@ function ClubLayout({ children }: { children: ReactNode }) {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <Shield className="h-5 w-5 text-tactical" />
-          <span className="font-display text-lg font-bold">Clube</span>
+          <span className="font-display text-lg font-bold">{i18n.t('public_club:header.club_label')}</span>
         </div>
       </nav>
       <div className="max-w-5xl mx-auto px-4 py-6">{children}</div>
@@ -124,9 +122,15 @@ function AttrGroup({ title, rows, attrs }: { title: string; rows: AttrRow[]; att
 
 // ── Main component ──
 
+function squadRoleLabel(value: string): string {
+  return i18n.t(`public_club:squad_roles.${value}`, { defaultValue: value });
+}
+
 export default function PublicClubPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { managerProfile, club: myClub } = useAuth();
+  const { t } = useTranslation('public_club');
+  const { current: lang } = useAppLanguage();
 
   const [loading, setLoading] = useState(true);
   const [clubData, setClubData] = useState<any>(null);
@@ -362,9 +366,9 @@ export default function PublicClubPage() {
       <ClubLayout>
         <div className="text-center py-12 space-y-3">
           <Shield className="h-12 w-12 mx-auto text-muted-foreground" />
-          <p className="text-muted-foreground">Clube não encontrado.</p>
+          <p className="text-muted-foreground">{t('header.not_found')}</p>
           <Link to="/league">
-            <Button variant="outline">Voltar à Liga</Button>
+            <Button variant="outline">{t('header.back_to_league')}</Button>
           </Link>
         </div>
       </ClubLayout>
@@ -413,7 +417,7 @@ export default function PublicClubPage() {
                 <div className="w-20 h-40 flex items-center justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
                   <Bot className="h-9 w-9 text-muted-foreground" />
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5">Sem Treinador</p>
+                <p className="text-[10px] text-muted-foreground mt-1.5">{t('manager.no_manager')}</p>
               </>
             ) : manager ? (
               <>
@@ -429,7 +433,7 @@ export default function PublicClubPage() {
                     outfit="coach"
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
+                <p className="text-[10px] text-muted-foreground mt-1.5">{t('manager.label')}</p>
                 <p className="text-xs font-semibold max-w-[120px] truncate">{manager.full_name}</p>
               </>
             ) : null}
@@ -452,13 +456,13 @@ export default function PublicClubPage() {
           {/* League standing */}
           <div className="stat-card">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Trophy className="h-3.5 w-3.5" /> Classificação
+              <Trophy className="h-3.5 w-3.5" /> {t('stats.standing')}
             </div>
             <p className="font-display font-bold text-lg">
-              {standing ? `${standing.position}º lugar` : '—'}
+              {standing ? (lang === 'en' ? `#${standing.position}` : `${standing.position}º lugar`) : '—'}
             </p>
             <p className="text-xs text-muted-foreground">
-              {standing ? `${standing.points} pts • ${standing.played} jogos` : 'Sem dados'}
+              {standing ? t('stats.standing_value', { points: standing.points, played: standing.played }) : t('stats.no_data')}
             </p>
           </div>
 
@@ -485,13 +489,13 @@ export default function PublicClubPage() {
 
           <div className="stat-card">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Users className="h-3.5 w-3.5" /> Elenco
+              <Users className="h-3.5 w-3.5" /> {t('stats.squad')}
             </div>
-            <p className="font-display font-bold text-lg">{squad.length} jogadores</p>
+            <p className="font-display font-bold text-lg">{squad.length} {lang === 'en' ? 'players' : 'jogadores'}</p>
             {squad.filter((p: any) => p.user_id).length > 0 && (
               <p className="text-xs text-pitch flex items-center gap-1 mt-0.5">
                 <User className="h-3 w-3" />
-                {squad.filter((p: any) => p.user_id).length} humano{squad.filter((p: any) => p.user_id).length > 1 ? 's' : ''}
+                {squad.filter((p: any) => p.user_id).length} {lang === 'en' ? (squad.filter((p: any) => p.user_id).length > 1 ? 'humans' : 'human') : (squad.filter((p: any) => p.user_id).length > 1 ? 'humanos' : 'humano')}
               </p>
             )}
           </div>
@@ -576,7 +580,7 @@ export default function PublicClubPage() {
 
         {/* ── Squad table ── */}
         <div className="stat-card space-y-3">
-          <h3 className="font-display font-semibold text-sm">Elenco</h3>
+          <h3 className="font-display font-semibold text-sm">{t('squad.title')}</h3>
           {squad.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -635,7 +639,7 @@ export default function PublicClubPage() {
           ) : (
             <div className="text-center py-8">
               <Users className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">Nenhum jogador no elenco.</p>
+              <p className="text-xs text-muted-foreground">{t('squad.empty')}</p>
             </div>
           )}
         </div>

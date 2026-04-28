@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import type { Tables } from '@/integrations/supabase/types';
 import { formatDate } from '@/lib/formatDate';
 import { formatBRL } from '@/lib/formatting';
-import { ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
+import { ATTRIBUTE_CATEGORIES, attrCategoryLabel, archetypeLabel } from '@/lib/attributes';
 import { useTranslation } from 'react-i18next';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { renderNotificationTitle, renderNotificationBody } from '@/lib/notificationRender';
@@ -143,7 +143,7 @@ export default function PlayerDashboard() {
             <div className="flex items-center gap-3 mt-1">
               <PositionBadge position={p.primary_position} />
               {p.secondary_position && <PositionBadge position={p.secondary_position} />}
-              <span className="text-sm text-muted-foreground">{p.archetype}</span>
+              <span className="text-sm text-muted-foreground">{archetypeLabel(p.archetype)}</span>
               <span className="text-sm text-muted-foreground">•</span>
               <span className="text-sm text-muted-foreground">{p.dominant_foot === 'right' ? t('player.header.right_foot') : t('player.header.left_foot')}</span>
               <span className="text-sm text-muted-foreground">•</span>
@@ -275,16 +275,16 @@ export default function PlayerDashboard() {
           const isGK = p.primary_position === 'GK';
           const cards = isGK
             ? [
-                { label: 'Goleiro', val: avg(gkKeys) },
-                { label: 'Físico', val: avg(physicalKeys) },
-                { label: 'Mental', val: avg(mentalKeys) },
-                { label: 'Chute', val: avg(shootingKeys) },
+                { label: attrCategoryLabel('Goleiro'), val: avg(gkKeys) },
+                { label: attrCategoryLabel('Físico'), val: avg(physicalKeys) },
+                { label: attrCategoryLabel('Mental'), val: avg(mentalKeys) },
+                { label: attrCategoryLabel('Chute'), val: avg(shootingKeys) },
               ]
             : [
-                { label: 'Físico', val: avg(physicalKeys) },
-                { label: 'Técnico', val: avg(technicalKeys) },
-                { label: 'Mental', val: avg(mentalKeys) },
-                { label: 'Chute', val: avg(shootingKeys) },
+                { label: attrCategoryLabel('Físico'), val: avg(physicalKeys) },
+                { label: attrCategoryLabel('Técnico'), val: avg(technicalKeys) },
+                { label: attrCategoryLabel('Mental'), val: avg(mentalKeys) },
+                { label: attrCategoryLabel('Chute'), val: avg(shootingKeys) },
               ];
 
           return (

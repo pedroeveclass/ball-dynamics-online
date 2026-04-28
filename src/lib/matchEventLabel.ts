@@ -34,7 +34,16 @@ export function renderMatchEventTitle(event: MatchEventLike): string {
 }
 
 export function renderMatchEventBody(event: MatchEventLike): string {
-  // Bodies are very payload-dependent ("Turno X - Gol de condução!"), so we
-  // don't try to fully localize them yet — keep the engine-emitted PT text.
+  const type = event.event_type;
+  if (type) {
+    // For event types whose body is a fixed string (no payload params), the
+    // localized version lives at `match_events:bodies.<event_type>`.
+    // Highly dynamic bodies (gol de condução turno X, x/y coordinates,
+    // chances, fouler names) keep their engine-emitted PT — they include
+    // values we can't reconstruct safely on the client without payload
+    // changes engine-side.
+    const translated = i18n.t(`match_events:bodies.${type}`, { defaultValue: '' });
+    if (translated) return translated;
+  }
   return event.body || '';
 }

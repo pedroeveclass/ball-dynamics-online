@@ -1,0 +1,23 @@
+{
+  "title": "Notify {{name}}",
+  "description": "The message appears in the player's notification bell.",
+  "default_title": "Message from the coach",
+  "template_inactive": "Hi {{firstName}}, I noticed you haven't trained in {{days}} days. Let's get back to training to stay in shape.",
+  "labels": {
+    "title": "Title",
+    "message": "Message"
+  },
+  "placeholders": {
+    "message": "Write a message to the player..."
+  },
+  "buttons": {
+    "cancel": "Cancel",
+    "send": "Send",
+    "sending": "Sending..."
+  },
+  "toast": {
+    "empty_message": "Write a message before sending.",
+    "send_error": "Couldn't send the notification.",
+    "sent": "Notification sent to {{name}}."
+  }
+}

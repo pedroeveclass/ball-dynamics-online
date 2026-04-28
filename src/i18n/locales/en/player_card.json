@@ -1,0 +1,22 @@
+{
+  "title": "Player Card",
+  "subtitle": "Technical profile, fitness and attributes.",
+  "loading": "Loading card...",
+  "ovr": "OVR",
+  "details": {
+    "age": "Age",
+    "age_value": "{{count}} years old",
+    "dominant_foot": "Dominant foot",
+    "archetype": "Archetype",
+    "reputation": "Reputation",
+    "primary_position": "Primary position",
+    "secondary_position": "Secondary position",
+    "club": "Club",
+    "energy": "Energy"
+  },
+  "foot": {
+    "right": "Right",
+    "left": "Left",
+    "both": "Both"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "header": {
+    "club_label": "Club",
+    "back_to_league": "Back to League",
+    "not_found": "Club not found."
+  },
+  "manager": {
+    "label": "Manager",
+    "no_manager": "No Manager"
+  },
+  "stats": {
+    "standing": "Standing",
+    "standing_value": "{{points}} pts • {{played}} matches",
+    "no_data": "No data",
+    "squad": "Squad",
+    "stadium": "Stadium",
+    "capacity": "Capacity",
+    "reputation": "Reputation",
+    "history": "History",
+    "next_matches": "Upcoming Matches"
+  },
+  "squad": {
+    "title": "Squad",
+    "empty": "No players in the squad.",
+    "human": "Human",
+    "bot": "Bot"
+  },
+  "offer": {
+    "title": "Make Offer",
+    "weekly_salary": "Weekly Salary",
+    "release_clause": "Release Clause",
+    "contract_length": "Contract Length (weeks)",
+    "squad_role": "Squad Role",
+    "message": "Message (optional)",
+    "submit": "Send Offer",
+    "sending": "Sending..."
+  },
+  "squad_roles": {
+    "starter": "Starter",
+    "rotation": "Rotation",
+    "backup": "Backup",
+    "youth": "Youth Prospect"
+  },
+  "toast": {
+    "offer_sent": "Offer sent!",
+    "offer_error": "Error sending offer"
+  }
+}

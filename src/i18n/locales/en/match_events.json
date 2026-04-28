@@ -1,4 +1,21 @@
 {
+  "bodies": {
+    "kickoff": "Home team starts with the ball at midfield.",
+    "halftime": "Time to rest. Make subs before the second half.",
+    "second_half": "Positioning for the start of the second half.",
+    "final_whistle": "Match over!",
+    "penalty": "Foul inside the box! Penalty awarded.",
+    "foul": "Foul committed! Free kick to the attacking team.",
+    "offside": "Offside! Free kick.",
+    "tackle_failed": "The tackle failed and the player kept the ball.",
+    "shot_over": "The ball went over the bar.",
+    "shot_missed": "The ball went out behind the goal line.",
+    "loose_ball": "Nobody controlled the ball.",
+    "loose_ball_phase": "All players move to contest the ball.",
+    "throw_in": "Throw-in.",
+    "corner": "Corner kick.",
+    "goal_kick": "Goal kick."
+  },
   "by_type": {
     "kickoff": "⚽ Kickoff!",
     "halftime": "⏸️ Half-time",

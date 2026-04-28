@@ -650,6 +650,19 @@ export function attrCategoryLabel(category: string): string {
   return translated || category;
 }
 
+// Localized archetype name. Archetype values are stored in PT in the DB
+// (e.g. 'Velocista', 'Goleiro Felino') — this turns them into the active
+// language while keeping PT as fallback.
+export function archetypeLabel(archetype: string | null | undefined): string {
+  if (!archetype) return '';
+  const translated = i18n.t(`attributes:archetypes.${archetype}`, { defaultValue: '' });
+  return translated || archetype;
+}
+
+export function energyLabel(): string {
+  return i18n.t('attributes:energy', { defaultValue: 'Energia' });
+}
+
 // Read-only Proxy that resolves attribute labels through i18next on access.
 // Lets `ATTR_LABELS[key]` keep working everywhere without sweeping all callers.
 export const ATTR_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {

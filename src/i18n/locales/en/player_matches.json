@@ -1,0 +1,41 @@
+{
+  "title": "My Matches",
+  "loading": "Loading matches...",
+  "empty": "No matches yet",
+  "empty_hint": "When your club is selected for a match, it will appear here.",
+  "sections": {
+    "live_or_soon": "🔴 Live / Coming Up",
+    "upcoming": "Upcoming Matches",
+    "past": "Finished Matches ({{count}})"
+  },
+  "buttons": {
+    "enter": "Enter Match",
+    "watch": "View Match",
+    "replay": "View Replay"
+  },
+  "status": {
+    "scheduled": "Scheduled",
+    "waiting": "Waiting",
+    "live": "🔴 Live",
+    "finished": "Finished"
+  },
+  "vs": "vs",
+  "test_match": {
+    "title": "5v5 Test Match",
+    "body": "5v5 test match — you control your player!",
+    "creation_failed": "Failed to create match",
+    "create_button": "5v5 Test",
+    "creating": "Creating...",
+    "create_error": "Error creating 5v5 test"
+  },
+  "league": {
+    "next_round": "Next league round — Round {{round}}",
+    "home": "Home",
+    "away": "Away",
+    "link_available_soon": "Link available 5 min before kickoff",
+    "presence_confirmed": "Presence confirmed",
+    "presence_confirm": "Confirm Presence",
+    "presence_hint": "Informational only — the coach will see who marked.",
+    "presence_error": "Error updating presence"
+  }
+}

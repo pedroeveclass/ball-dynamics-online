@@ -1,0 +1,22 @@
+{
+  "title": "Ficha do Jogador",
+  "subtitle": "Perfil técnico, estado físico e atributos.",
+  "loading": "Carregando ficha...",
+  "ovr": "OVR",
+  "details": {
+    "age": "Idade",
+    "age_value": "{{count}} anos",
+    "dominant_foot": "Pé dominante",
+    "archetype": "Arquétipo",
+    "reputation": "Reputação",
+    "primary_position": "Posição principal",
+    "secondary_position": "Posição secundária",
+    "club": "Clube",
+    "energy": "Energia"
+  },
+  "foot": {
+    "right": "Direito",
+    "left": "Esquerdo",
+    "both": "Ambos"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "title": "Minhas Partidas",
+  "loading": "Carregando partidas...",
+  "empty": "Nenhuma partida ainda",
+  "empty_hint": "Quando seu clube for escalado em uma partida, ela aparecerá aqui.",
+  "sections": {
+    "live_or_soon": "🔴 Ao Vivo / Em Breve",
+    "upcoming": "Próximas Partidas",
+    "past": "Partidas Encerradas ({{count}})"
+  },
+  "buttons": {
+    "enter": "Entrar na Partida",
+    "watch": "Ver Partida",
+    "replay": "Ver Replay"
+  },
+  "status": {
+    "scheduled": "Agendada",
+    "waiting": "Aguardando",
+    "live": "🔴 Ao Vivo",
+    "finished": "Encerrada"
+  },
+  "vs": "vs",
+  "test_match": {
+    "title": "Partida teste 5v5",
+    "body": "Partida teste 5 contra 5 — você controla seu jogador!",
+    "creation_failed": "Falha ao criar partida",
+    "create_button": "Teste 5v5",
+    "creating": "Criando...",
+    "create_error": "Erro ao criar teste 5v5"
+  },
+  "league": {
+    "next_round": "Próxima rodada da liga — Rodada {{round}}",
+    "home": "Casa",
+    "away": "Fora",
+    "link_available_soon": "Link disponível 5 min antes do jogo",
+    "presence_confirmed": "Presença confirmada",
+    "presence_confirm": "Confirmar presença",
+    "presence_hint": "Apenas informativo — o técnico verá se você marcou presença.",
+    "presence_error": "Erro ao atualizar presença"
+  }
+}

@@ -1,4 +1,21 @@
 {
+  "bodies": {
+    "kickoff": "Time da casa começa com a bola no meio-campo.",
+    "halftime": "Tempo para descansar. Faça as substituições antes do segundo tempo.",
+    "second_half": "Posicionamento para o início do segundo tempo.",
+    "final_whistle": "Fim de jogo!",
+    "penalty": "Falta dentro da área! Pênalti marcado.",
+    "foul": "Falta cometida! Tiro livre para o time atacante.",
+    "offside": "Impedimento! Reposição.",
+    "tackle_failed": "O desarme falhou e o jogador seguiu com a bola.",
+    "shot_over": "A bola foi por cima do gol.",
+    "shot_missed": "A bola saiu pela linha de fundo.",
+    "loose_ball": "Ninguém dominou a bola.",
+    "loose_ball_phase": "Todos os jogadores se movimentam para disputar a bola.",
+    "throw_in": "Reposição pela lateral.",
+    "corner": "Cobrança de escanteio.",
+    "goal_kick": "Tiro de meta."
+  },
   "by_type": {
     "kickoff": "⚽ Bola rolando!",
     "halftime": "⏸️ Intervalo",

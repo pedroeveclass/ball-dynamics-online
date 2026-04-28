@@ -18,6 +18,7 @@ import {
 import { formatBRL } from '@/lib/formatting';
 import { getStoreItemName, getStoreItemDescription } from '@/lib/storeItemLabel';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
+import i18n from '@/i18n';
 
 interface StoreItem {
   id: string;
@@ -57,10 +58,9 @@ const DISPLAY_CATEGORIES: Record<string, string> = {
   donation: 'outros', currency: 'outros',
 };
 
-const CATEGORY_TAB_LABELS: Record<string, string> = {
-  meus_itens: 'Meus Itens', cosmeticos: 'Cosméticos', chuteiras: 'Chuteiras', luvas: 'Luvas de Goleiro',
-  consumiveis: 'Consumíveis', servicos: 'Serviços', outros: 'Outros',
-};
+function categoryTabLabel(key: string): string {
+  return i18n.t(`store:tabs.${key}`, { defaultValue: key });
+}
 
 function getItemIcon(category: string) {
   if (category === 'trainer') return <GraduationCap className="h-5 w-5 text-muted-foreground" />;
@@ -76,14 +76,11 @@ function getItemIcon(category: string) {
 
 function getDurationLabel(duration: string | null): string | null {
   if (!duration) return null;
-  switch (duration) {
-    case 'permanent': return 'Permanente';
-    case 'monthly': return 'Mensal';
-    case 'single_use': return 'Uso Único';
-    case 'daily': return '1x por dia';
-    case 'seasonal': return '1 Temporada';
-    default: return duration;
+  const known = ['permanent', 'monthly', 'single_use', 'daily', 'seasonal'];
+  if (known.includes(duration)) {
+    return i18n.t(`store:duration.${duration}`, { defaultValue: duration });
   }
+  return duration;
 }
 
 export default function StorePage() {
@@ -407,7 +404,7 @@ export default function StorePage() {
             {!isManager && playerPurchases.length > 0 && (
               <TabsTrigger value="meus_itens" className="flex items-center gap-1 text-xs">
                 <Package className="h-3 w-3" />
-                {CATEGORY_TAB_LABELS['meus_itens']}
+                {categoryTabLabel('meus_itens')}
                 <span className="text-[10px] text-muted-foreground">({playerPurchases.length})</span>
               </TabsTrigger>
             )}
@@ -416,7 +413,7 @@ export default function StorePage() {
               if (count === 0) return null;
               return (
                 <TabsTrigger key={cat} value={cat} className="flex items-center gap-1 text-xs">
-                  {CATEGORY_TAB_LABELS[cat] || cat}
+                  {categoryTabLabel(cat)}
                   <span className="text-[10px] text-muted-foreground">({count})</span>
                 </TabsTrigger>
               );

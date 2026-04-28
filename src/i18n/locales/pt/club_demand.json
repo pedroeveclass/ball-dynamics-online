@@ -1,0 +1,9 @@
+{
+  "title": "Demanda de Contratação",
+  "description": "Marque as posições que você está procurando contratar. Jogadores novos vão ver isso ao criar conta — posições em alta ficam mais atraentes.",
+  "count_one": "{{count}} posição",
+  "count_other": "{{count}} posições",
+  "toast": {
+    "update_error": "Erro ao atualizar demanda"
+  }
+}

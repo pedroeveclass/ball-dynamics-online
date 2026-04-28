@@ -562,11 +562,18 @@ export default function PlayerTrainingPlanPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">{t('day_card.no_attribute_option')}</SelectItem>
-                            {availableAttrs.map(k => (
-                              <SelectItem key={k} value={k} className="text-xs">
-                                {ATTR_LABELS[k] || k}
-                              </SelectItem>
-                            ))}
+                            {availableAttrs.map(k => {
+                              const value = Math.round(Number((attrs as any)?.[k] ?? 0));
+                              const cap = getAttrCap(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, k);
+                              return (
+                                <SelectItem key={k} value={k} className="text-xs">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span>{ATTR_LABELS[k] || k}</span>
+                                    <span className="text-muted-foreground tabular-nums">{value}/{cap}</span>
+                                  </span>
+                                </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                         {slot.attribute_key && (() => {

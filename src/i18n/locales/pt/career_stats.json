@@ -1,0 +1,25 @@
+{
+  "title": "Estatísticas de Carreira",
+  "common": {
+    "matches": "Partidas",
+    "goals": "Gols",
+    "assists": "Assistências",
+    "yellow_cards": "Amarelos",
+    "red_cards": "Vermelhos"
+  },
+  "extras": {
+    "clean_sheets": "Clean Sheets",
+    "goals_conceded": "Gols Sofridos",
+    "gk_saves": "Defesas",
+    "gk_penalties_saved": "Pênaltis Defendidos",
+    "tackles": "Desarmes",
+    "interceptions": "Interceptações",
+    "passes_completed": "Passes Completos",
+    "pass_accuracy": "Acerto de Passe",
+    "big_chances_created": "Grandes Chances Criadas",
+    "shots": "Chutes",
+    "shots_on_target": "Chutes no Gol",
+    "shot_accuracy": "Acerto de Chute",
+    "offsides": "Impedimentos"
+  }
+}

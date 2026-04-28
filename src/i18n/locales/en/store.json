@@ -1,0 +1,18 @@
+{
+  "tabs": {
+    "meus_itens": "My Items",
+    "cosmeticos": "Cosmetics",
+    "chuteiras": "Boots",
+    "luvas": "Goalkeeper Gloves",
+    "consumiveis": "Consumables",
+    "servicos": "Services",
+    "outros": "Other"
+  },
+  "duration": {
+    "permanent": "Permanent",
+    "monthly": "Monthly",
+    "single_use": "Single Use",
+    "daily": "1x per day",
+    "seasonal": "1 Season"
+  }
+}

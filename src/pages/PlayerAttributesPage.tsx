@@ -5,7 +5,7 @@ import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR, tierLabel, archetypeLabel, attrCategoryLabel } from '@/lib/attributes';
 import { formatDate } from '@/lib/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -204,7 +204,7 @@ export default function PlayerAttributesPage() {
       toast.success(t('toast.success', {
         label: ATTR_LABELS[attrKey] || attrKey,
         growth: result.growth.toFixed(2),
-        tier: tier.label,
+        tier: tierLabel(tier),
         suffix: fitSuffix,
       }));
     } catch (err: any) {
@@ -280,7 +280,7 @@ export default function PlayerAttributesPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${tier.bgColor} ${tier.color}`}>
-                      {tier.label}
+                      {tierLabel(tier)}
                     </span>
                     <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${fitPillClass}`}>
                       {fitPillText}
@@ -298,7 +298,7 @@ export default function PlayerAttributesPage() {
                     <Trans
                       i18nKey="popover.type_cap"
                       t={t}
-                      values={{ archetype: playerProfile.archetype, height: playerProfile.height, cap }}
+                      values={{ archetype: archetypeLabel(playerProfile.archetype), height: playerProfile.height, cap }}
                       components={[<span key="0" />, <span key="1" className="font-bold text-foreground" />]}
                     />
                   </p>

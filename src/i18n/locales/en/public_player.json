@@ -1,0 +1,36 @@
+{
+  "header": {
+    "title": "Player Profile",
+    "not_found": "Player not found.",
+    "copy_link": "Copy link",
+    "copy_link_success": "Link copied!",
+    "retired": "Retired"
+  },
+  "details": {
+    "age_value": "{{count}} years old",
+    "free_agent": "Free Agent",
+    "reputation": "Reputation {{value}}",
+    "make_offer": "Make Offer"
+  },
+  "foot": {
+    "right": "Right",
+    "left": "Left",
+    "both": "Both"
+  },
+  "visual": {
+    "title": "Player Visual",
+    "front": "Front",
+    "back": "Back"
+  },
+  "attributes": {
+    "title": "Attributes",
+    "groups": {
+      "goalkeeper": "Goalkeeper",
+      "physical": "Physical",
+      "technical": "Technical",
+      "mental": "Mental",
+      "shooting": "Shooting",
+      "defending": "Defending"
+    }
+  }
+}

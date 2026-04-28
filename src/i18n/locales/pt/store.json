@@ -1,0 +1,18 @@
+{
+  "tabs": {
+    "meus_itens": "Meus Itens",
+    "cosmeticos": "Cosméticos",
+    "chuteiras": "Chuteiras",
+    "luvas": "Luvas de Goleiro",
+    "consumiveis": "Consumíveis",
+    "servicos": "Serviços",
+    "outros": "Outros"
+  },
+  "duration": {
+    "permanent": "Permanente",
+    "monthly": "Mensal",
+    "single_use": "Uso Único",
+    "daily": "1x por dia",
+    "seasonal": "1 Temporada"
+  }
+}

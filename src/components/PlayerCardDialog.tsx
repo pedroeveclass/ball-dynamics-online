@@ -6,9 +6,11 @@ import { EnergyBar } from '@/components/EnergyBar';
 import { CountryFlag } from '@/components/CountryFlag';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
-import { ATTR_LABELS, ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
+import { ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, attrCategoryLabel } from '@/lib/attributes';
 import { getCountry, getCountryName } from '@/lib/countries';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface PlayerCardDialogProps {
   playerId: string | null;
@@ -27,10 +29,10 @@ const mentalKeys = ATTRIBUTE_CATEGORIES['Mental'];
 const shootingKeys = ATTRIBUTE_CATEGORIES['Chute'];
 const gkKeys = ATTRIBUTE_CATEGORIES['Goleiro'];
 
-function formatDominantFoot(foot: string) {
-  if (foot === 'right') return 'Direito';
-  if (foot === 'left') return 'Esquerdo';
-  if (foot === 'both') return 'Ambos';
+function formatDominantFoot(foot: string, t: TFunction) {
+  if (foot === 'right') return t('foot.right');
+  if (foot === 'left') return t('foot.left');
+  if (foot === 'both') return t('foot.both');
   return foot || '-';
 }
 
@@ -57,6 +59,7 @@ function AttributeSection({ title, keys, attrs }: { title: string; keys: readonl
 }
 
 export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDialogProps) {
+  const { t } = useTranslation('player_card');
   const [player, setPlayer] = useState<PlayerProfileSummary | null>(null);
   const [attrs, setAttrs] = useState<Tables<'player_attributes'> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,12 +95,12 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
     <Dialog open={!!playerId} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle className="font-display text-xl">Ficha do Jogador</DialogTitle>
-          <DialogDescription>Perfil técnico, estado físico e atributos.</DialogDescription>
+          <DialogTitle className="font-display text-xl">{t('title')}</DialogTitle>
+          <DialogDescription>{t('subtitle')}</DialogDescription>
         </DialogHeader>
 
         {loading ? (
-          <div className="stat-card py-10 text-center text-sm text-muted-foreground">Carregando ficha...</div>
+          <div className="stat-card py-10 text-center text-sm text-muted-foreground">{t('loading')}</div>
         ) : error && !player ? (
           <div className="stat-card py-10 text-center text-sm text-muted-foreground">{error}</div>
         ) : player ? (
@@ -115,7 +118,7 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <PositionBadge position={player.primary_position} />
                     {player.secondary_position && <PositionBadge position={player.secondary_position} />}
-                    <span className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{player.archetype}</span>
+                    <span className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{archetypeLabel(player.archetype)}</span>
                     {player.country_code && (() => {
                       const country = getCountry(player.country_code);
                       return country ? (
@@ -128,7 +131,7 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
                 </div>
                 <div className="text-left sm:text-right">
                   <span className="font-display text-4xl font-extrabold text-tactical">{player.overall}</span>
-                  <p className="text-xs text-muted-foreground">OVR</p>
+                  <p className="text-xs text-muted-foreground">{t('ovr')}</p>
                 </div>
               </div>
 
@@ -136,14 +139,14 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
               <EnergyBar current={player.energy_current} max={player.energy_max} />
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <DetailItem label="Idade" value={`${player.age} anos`} />
-                <DetailItem label="Pé dominante" value={formatDominantFoot(player.dominant_foot)} />
-                <DetailItem label="Arquétipo" value={player.archetype} />
-                <DetailItem label="Reputação" value={player.reputation.toString()} />
-                <DetailItem label="Posição principal" value={player.primary_position} />
-                <DetailItem label="Posição secundária" value={player.secondary_position || '-'} />
-                {clubName && <DetailItem label="Clube" value={clubName} />}
-                <DetailItem label="Energia" value={`${player.energy_current}/${player.energy_max}`} />
+                <DetailItem label={t('details.age')} value={t('details.age_value', { count: player.age })} />
+                <DetailItem label={t('details.dominant_foot')} value={formatDominantFoot(player.dominant_foot, t)} />
+                <DetailItem label={t('details.archetype')} value={archetypeLabel(player.archetype)} />
+                <DetailItem label={t('details.reputation')} value={player.reputation.toString()} />
+                <DetailItem label={t('details.primary_position')} value={player.primary_position} />
+                <DetailItem label={t('details.secondary_position')} value={player.secondary_position || '-'} />
+                {clubName && <DetailItem label={t('details.club')} value={clubName} />}
+                <DetailItem label={t('details.energy')} value={`${player.energy_current}/${player.energy_max}`} />
               </div>
             </div>
 
@@ -151,18 +154,18 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
               <div className="grid gap-4 md:grid-cols-2">
                 {isGK ? (
                   <>
-                    <AttributeSection title="Goleiro" keys={gkKeys} attrs={attrs} />
-                    <AttributeSection title="Físico" keys={physicalKeys} attrs={attrs} />
-                    <AttributeSection title="Técnico" keys={technicalKeys} attrs={attrs} />
-                    <AttributeSection title="Mental" keys={mentalKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Goleiro')} keys={gkKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Físico')} keys={physicalKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Técnico')} keys={technicalKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Mental')} keys={mentalKeys} attrs={attrs} />
                   </>
                 ) : (
                   <>
-                    <AttributeSection title="Físico" keys={physicalKeys} attrs={attrs} />
-                    <AttributeSection title="Técnico" keys={technicalKeys} attrs={attrs} />
-                    <AttributeSection title="Mental" keys={mentalKeys} attrs={attrs} />
-                    <AttributeSection title="Chute" keys={shootingKeys} attrs={attrs} />
-                    <AttributeSection title="Goleiro" keys={gkKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Físico')} keys={physicalKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Técnico')} keys={technicalKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Mental')} keys={mentalKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Chute')} keys={shootingKeys} attrs={attrs} />
+                    <AttributeSection title={attrCategoryLabel('Goleiro')} keys={gkKeys} attrs={attrs} />
                   </>
                 )}
               </div>

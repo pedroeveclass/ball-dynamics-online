@@ -58,6 +58,68 @@
     "recent_matches": "Resultados Recentes",
     "no_recent_matches": "Sem partidas recentes.",
     "notifications": "Notificações",
-    "no_notifications": "Sem notificações novas."
+    "no_notifications": "Sem notificações novas.",
+    "transfer_window": {
+      "open": "Janela de Transferência ABERTA — Transferências são processadas imediatamente!",
+      "next": "Próxima janela: 01/{{date}}"
+    },
+    "bankruptcy": {
+      "title": "DÍVIDA CRÍTICA — Saldo: {{amount}}",
+      "days_remaining": "Quite a dívida em {{count}} dias ou será demitido e o clube será resetado.",
+      "no_deadline": "O clube está em dívida acima de R$1.000.000. Quite o mais rápido possível!"
+    },
+    "header": {
+      "manager_label": "Manager: {{name}}",
+      "style_label": "Estilo: {{label}}",
+      "status": "Status"
+    },
+    "cards": {
+      "club_rep": "Rep. Clube",
+      "manager_rep": "Rep. Manager",
+      "squad": "Elenco",
+      "squad_subtitle": "jogadores",
+      "balance": "Saldo"
+    },
+    "finances": {
+      "title": "Finanças",
+      "balance": "Saldo",
+      "wage_bill": "Folha Salarial/Sem",
+      "projected_income": "Receita Projetada",
+      "projected_expense": "Despesas Projetadas"
+    },
+    "stadium": {
+      "title": "Estádio",
+      "capacity": "Capacidade",
+      "quality": "Qualidade",
+      "prestige": "Prestígio"
+    },
+    "squad_card": {
+      "title": "Elenco",
+      "subtitle": "jogadores no elenco"
+    },
+    "market": {
+      "title": "Mercado",
+      "subtitle": "Encontre agentes livres e envie propostas de contrato."
+    },
+    "facilities": {
+      "title": "Facilities",
+      "subtitle": "Gerencie suas instalações"
+    },
+    "league": {
+      "title": "Liga",
+      "subtitle": "Classificação e rodadas"
+    },
+    "reports": {
+      "title": "Relatório de Jogadores",
+      "inactive_one": "{{count}} jogador sem treinar há 5+ dias",
+      "inactive_other": "{{count}} jogadores sem treinar há 5+ dias",
+      "subtitle": "Atividade, treinos, jogos e compras do elenco"
+    },
+    "no_team": {
+      "title": "Você ainda não gerencia nenhum time.",
+      "hint": "Visite a Liga para ver times disponíveis e assumir um.",
+      "go_to_league": "Ir para a Liga"
+    },
+    "loading": "Carregando..."
   }
 }

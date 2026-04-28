@@ -56,7 +56,6 @@ const STATUS_INFO: Record<string, { label: string; className: string }> = {
 
 export default function ManagerChallengesPage() {
   const { club, managerProfile } = useAuth();
-  const { current: lang } = useAppLanguage();
   const navigate = useNavigate();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -904,6 +903,7 @@ function ChallengeCard({ challenge: c, direction, isActing, onAccept, onReject, 
   challenge: Challenge; direction: 'received' | 'sent'; isActing: boolean;
   onAccept?: () => void; onReject?: () => void; onCancel?: () => void; onViewMatch?: () => void;
 }) {
+  const { current: lang } = useAppLanguage();
   const statusInfo = STATUS_INFO[c.status] || { label: c.status, className: 'bg-muted text-muted-foreground' };
   const opponent = direction === 'received' ? c.challenger_club : c.challenged_club;
 

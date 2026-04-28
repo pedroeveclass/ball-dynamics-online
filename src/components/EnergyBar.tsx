@@ -1,3 +1,5 @@
+import { energyLabel } from '@/lib/attributes';
+
 interface EnergyBarProps {
   current: number;
   max: number;
@@ -10,7 +12,7 @@ export function EnergyBar({ current, max }: EnergyBarProps) {
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">Energia</span>
+        <span className="text-muted-foreground">{energyLabel()}</span>
         <span className="font-display font-bold">{current}/{max}</span>
       </div>
       <div className="h-2 rounded-full bg-muted">

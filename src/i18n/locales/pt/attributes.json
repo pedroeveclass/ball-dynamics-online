@@ -62,5 +62,17 @@
     "normal": "Treino NORMAL",
     "bad": "Treino RUIM",
     "counter": "Treino CONTRA"
-  }
+  },
+  "archetypes": {
+    "All Around": "All Around",
+    "Condutor": "Condutor",
+    "Chutador": "Chutador",
+    "Velocista": "Velocista",
+    "Torre": "Torre",
+    "Cão de Guarda": "Cão de Guarda",
+    "Goleiro Completo": "Goleiro Completo",
+    "Goleiro Felino": "Goleiro Felino",
+    "Goleiro Muralha": "Goleiro Muralha"
+  },
+  "energy": "Energia"
 }
