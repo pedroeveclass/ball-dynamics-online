@@ -15,7 +15,10 @@ import ptForum from './locales/pt/forum.json';
 import ptForumTopic from './locales/pt/forum_topic.json';
 import ptHelp from './locales/pt/help.json';
 import ptAttributes from './locales/pt/attributes.json';
+import ptAvatar from './locales/pt/avatar.json';
+import ptLanding from './locales/pt/landing.json';
 import ptNotifyPlayerDialog from './locales/pt/notify_player_dialog.json';
+import ptPlayerActivityDrawer from './locales/pt/player_activity_drawer.json';
 import ptPlayerCard from './locales/pt/player_card.json';
 import ptPlayerMatches from './locales/pt/player_matches.json';
 import ptPublicClub from './locales/pt/public_club.json';
@@ -66,7 +69,10 @@ import enForum from './locales/en/forum.json';
 import enForumTopic from './locales/en/forum_topic.json';
 import enHelp from './locales/en/help.json';
 import enAttributes from './locales/en/attributes.json';
+import enAvatar from './locales/en/avatar.json';
+import enLanding from './locales/en/landing.json';
 import enNotifyPlayerDialog from './locales/en/notify_player_dialog.json';
+import enPlayerActivityDrawer from './locales/en/player_activity_drawer.json';
 import enPlayerCard from './locales/en/player_card.json';
 import enPlayerMatches from './locales/en/player_matches.json';
 import enPublicClub from './locales/en/public_club.json';
@@ -125,6 +131,7 @@ i18n
         admin: ptAdmin,
         attributes: ptAttributes,
         auth: ptAuth,
+        avatar: ptAvatar,
         bank: ptBank,
         career_stats: ptCareerStats,
         club_demand: ptClubDemand,
@@ -134,6 +141,7 @@ i18n
         forum: ptForum,
         forum_topic: ptForumTopic,
         help: ptHelp,
+        landing: ptLanding,
         league: ptLeague,
         league_vote: ptLeagueVote,
         manager_avatar: ptManagerAvatar,
@@ -152,6 +160,7 @@ i18n
         notification_messages: ptNotificationMessages,
         notifications: ptNotifications,
         notify_player_dialog: ptNotifyPlayerDialog,
+        player_activity_drawer: ptPlayerActivityDrawer,
         onboarding: ptOnboarding,
         pickup_list: ptPickupList,
         pickup_lobby: ptPickupLobby,
@@ -177,6 +186,7 @@ i18n
         admin: enAdmin,
         attributes: enAttributes,
         auth: enAuth,
+        avatar: enAvatar,
         bank: enBank,
         career_stats: enCareerStats,
         club_demand: enClubDemand,
@@ -186,6 +196,7 @@ i18n
         forum: enForum,
         forum_topic: enForumTopic,
         help: enHelp,
+        landing: enLanding,
         league: enLeague,
         league_vote: enLeagueVote,
         manager_avatar: enManagerAvatar,
@@ -204,6 +215,7 @@ i18n
         notification_messages: enNotificationMessages,
         notifications: enNotifications,
         notify_player_dialog: enNotifyPlayerDialog,
+        player_activity_drawer: enPlayerActivityDrawer,
         onboarding: enOnboarding,
         pickup_list: enPickupList,
         pickup_lobby: enPickupLobby,

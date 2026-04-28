@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "brand": "FOOTBALL IDENTITY",
+    "login": "Sign In",
+    "register": "Sign Up"
+  },
+  "hero": {
+    "title_line1": "FOOTBALL",
+    "title_tactical": "TACTICAL.",
+    "title_online": "ONLINE.",
+    "title_persistent": "PERSISTENT.",
+    "subtitle_html": "The only game where <1>22 human players</1> control every position on the field. Each turn you decide: move, pass, shoot, dribble or intercept. Create your athlete or take charge as a manager — your career starts now.",
+    "cta_primary": "START NOW",
+    "cta_league": "VIEW LEAGUE"
+  },
+  "how_it_works": {
+    "title": "How It Works",
+    "steps": {
+      "create": {
+        "title": "Create your Character",
+        "desc": "Choose Player or Manager. Pick your position, name, and start your journey."
+      },
+      "train": {
+        "title": "Train and Evolve",
+        "desc": "Spend energy training 30+ attributes. The more you train, the stronger you get."
+      },
+      "play": {
+        "title": "Play Real Matches",
+        "desc": "Step onto the pitch with other humans. Every turn: move, pass, shoot, intercept."
+      }
+    }
+  },
+  "details": {
+    "title": "Every Detail Matters",
+    "arrows": {
+      "green": {
+        "label": "Green arrows",
+        "desc": "show player movement on the field."
+      },
+      "blue": {
+        "label": "Blue arrows",
+        "desc": "represent passes to teammates."
+      },
+      "orange": {
+        "label": "Orange arrows",
+        "desc": "represent shots on goal with direction and power."
+      },
+      "purple": {
+        "label": "Purple circle",
+        "desc": "appears when you can intercept the ball. Click to act!"
+      }
+    }
+  },
+  "paths": {
+    "title": "Two Paths, One Passion",
+    "player": {
+      "title": "Player",
+      "items": {
+        "0": "Control your athlete every turn of the match",
+        "1": "Train attributes daily (speed, passing, shooting...)",
+        "2": "Negotiate contracts and wages with clubs",
+        "3": "Buy items from the shop: boots, energy drinks, personal trainer",
+        "4": "Build reputation and raise your overall"
+      }
+    },
+    "manager": {
+      "title": "Manager",
+      "items": {
+        "0": "Set the lineup and tactical formation",
+        "1": "Sign human players in the market",
+        "2": "Handle finances: wages, gate receipts, facilities",
+        "3": "Upgrade the stadium and training center",
+        "4": "Send friendly invites and compete in the league"
+      }
+    }
+  },
+  "features": {
+    "title": "Everything You Need",
+    "turn_based": {
+      "title": "Turn-Based Matches",
+      "desc": "Each turn has 3 phases: positioning, action and resolution. Every decision counts."
+    },
+    "humans": {
+      "title": "22 Human Players",
+      "desc": "Every position on the field controlled by a real player. Real football."
+    },
+    "club": {
+      "title": "Full Club Management",
+      "desc": "Lineup, tactical formation, signings, finances and stadium."
+    },
+    "attributes": {
+      "title": "30+ Trainable Attributes",
+      "desc": "Speed, passing, shooting, vision, strength, stamina and much more."
+    },
+    "league": {
+      "title": "Competitive League",
+      "desc": "20 clubs, 19 rounds, real standings, top scorers and prizes."
+    },
+    "economy": {
+      "title": "Realistic Economy",
+      "desc": "Weekly wages, transfers, matchday revenue, facilities."
+    },
+    "store": {
+      "title": "Item Shop",
+      "desc": "Boots, gloves, energy drinks, personal trainer — it all impacts the pitch."
+    },
+    "community": {
+      "title": "Active Community",
+      "desc": "Built-in forum with discussions, tactics, suggestions and reports."
+    }
+  },
+  "stats": {
+    "players_per_match": "players per match",
+    "trainable_attributes": "trainable attributes",
+    "league_clubs": "league clubs",
+    "phases_per_turn": "phases per turn"
+  },
+  "pitch_labels": {
+    "pass": "PASS",
+    "shot": "SHOT",
+    "intercept": "INTERCEPT"
+  },
+  "final_cta": {
+    "title_line1": "Ready to forge your",
+    "title_line2": "football identity?",
+    "subtitle": "Sign up for free and step onto the pitch right now.",
+    "button": "SIGN UP FREE"
+  },
+  "footer": {
+    "copyright": "2025 Football Identity. All rights reserved.",
+    "league": "League",
+    "forum": "Forum",
+    "login": "Login"
+  }
+}

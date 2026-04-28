@@ -295,7 +295,7 @@ export default function MatchRoomPage() {
       session = refreshed.session;
     }
     if (!session?.access_token) {
-      toast.error('Sessão expirada. Faça login novamente.');
+      toast.error(i18n.t('match_room:toast.session_expired'));
       return { response: new Response(null, { status: 401 }), result: { error: 'No session' }, resolvedFunction: '' };
     }
     return invokeConfiguredMatchEngine({
@@ -2216,7 +2216,7 @@ export default function MatchRoomPage() {
     // Halftime lockout — during the break only the ready-check is allowed. Any move/pass/shoot
     // would "unfreeze" the game (the server keeps ticking), so reject on the client.
     if (match?.current_half === 2 && match?.half_started_at && new Date(match.half_started_at).getTime() > Date.now()) {
-      toast.info('Intervalo em andamento. Aguarde o fim ou clique em "Pronto" para pular.');
+      toast.info(i18n.t('match_room:toast.halftime_locked'));
       return;
     }
 
@@ -2276,14 +2276,14 @@ export default function MatchRoomPage() {
       });
       if (!response.ok && !result?.error) {
         rollbackOptimistic();
-        throw new Error('Erro ao enviar ação');
+        throw new Error(i18n.t('match_room:toast.submit_error'));
       }
       if (result.error) {
         rollbackOptimistic();
         if (result.recoverable || result.error === 'No active turn') {
           console.warn('[SUBMIT] No active turn - phase transition in progress, retrying...');
           await loadLiveSnapshot();
-          toast.info('Turno em transicao, tente novamente');
+          toast.info(i18n.t('match_room:toast.turn_in_transition'));
         } else {
           toast.error(String(result.error));
         }
@@ -2303,8 +2303,8 @@ export default function MatchRoomPage() {
           const bhAction = turnActionsRef.current.find(a => a.participant_id === bhId);
           const isOpponent = actingPart && bhPart && actingPart.club_id !== bhPart.club_id;
           const isGK = actingPart?.field_pos === 'GK' || actingPart?.slot_position === 'GK';
-          if (bhAction?.action_type === 'move' && isOpponent) toastLabel = 'DESARME';
-          else if (isAnyShootAction(bhAction?.action_type ?? '') && isGK) toastLabel = 'AGARRAR';
+          if (bhAction?.action_type === 'move' && isOpponent) toastLabel = i18n.t('match_room:toast.tackle_label');
+          else if (isAnyShootAction(bhAction?.action_type ?? '') && isGK) toastLabel = i18n.t('match_room:toast.gk_catch_label');
         }
         toast.success(`✅ ${toastLabel}`);
         // Sound effects
@@ -2314,7 +2314,7 @@ export default function MatchRoomPage() {
       }
     } catch {
       rollbackOptimistic();
-      toast.error('Erro ao enviar ação');
+      toast.error(i18n.t('match_room:toast.submit_error'));
     }
     finally { setSubmittingAction(false); }
   };
@@ -2324,11 +2324,11 @@ export default function MatchRoomPage() {
     try {
       const { response, result } = await invokeMatchEngine({ action: 'finish_match', match_id: matchId });
       if (!response.ok || result?.error) {
-        throw new Error(String(result?.error || 'Erro ao finalizar'));
+        throw new Error(String(result?.error || i18n.t('match_room:toast.finish_error')));
       }
-      toast.success('Partida finalizada!');
+      toast.success(i18n.t('match_room:toast.match_finished'));
       void loadLiveSnapshot();
-    } catch { toast.error('Erro ao finalizar'); }
+    } catch { toast.error(i18n.t('match_room:toast.finish_error')); }
   };
 
   const exitToDashboard = () => {
@@ -2341,16 +2341,16 @@ export default function MatchRoomPage() {
       if (prev.some(s => s.outId === outPlayerId || s.inId === inPlayerId)) return prev;
       return [...prev, { outId: outPlayerId, inId: inPlayerId }];
     });
-    toast.success('Substituição agendada! Será aplicada na próxima parada de jogo.');
+    toast.success(i18n.t('match_room:toast.substitution_scheduled'));
   }, []);
 
   const handleToggleReady = useCallback(async (participantId: string, nextReady: boolean) => {
     if (!matchId) return;
     const { response, result } = await invokeMatchEngine({ action: 'toggle_ready', match_id: matchId, participant_id: participantId, ready: nextReady });
     if (!response.ok) {
-      toast.error((result as any)?.error || 'Erro ao marcar pronto');
+      toast.error((result as any)?.error || i18n.t('match_room:toast.ready_error'));
     } else if ((result as any)?.shortened) {
-      toast.success('Todos prontos! Segundo tempo em 5s.');
+      toast.success(i18n.t('match_room:toast.all_ready_second_half'));
     }
   }, [invokeMatchEngine, matchId]);
 
@@ -2358,9 +2358,9 @@ export default function MatchRoomPage() {
     if (!matchId) return;
     const { response, result } = await invokeMatchEngine({ action: 'toggle_ready', match_id: matchId, mark_team_club_id: clubId, ready: true });
     if (!response.ok) {
-      toast.error((result as any)?.error || 'Erro ao marcar time');
+      toast.error((result as any)?.error || i18n.t('match_room:toast.team_ready_error'));
     } else if ((result as any)?.shortened) {
-      toast.success('Todos prontos! Segundo tempo em 5s.');
+      toast.success(i18n.t('match_room:toast.all_ready_second_half'));
     }
   }, [invokeMatchEngine, matchId]);
 
@@ -2405,11 +2405,15 @@ export default function MatchRoomPage() {
         return p;
       }));
 
+      const defaultName = i18n.t('match_room:toast.default_player_name');
       await supabase.from('match_event_logs').insert({
         match_id: matchId,
         event_type: 'substitution',
-        title: '🔄 Substituição',
-        body: `${inPlayer.player_name || 'Jogador'} entra no lugar de ${outPlayer.player_name || 'Jogador'}`,
+        title: i18n.t('match_room:event.substitution_title'),
+        body: i18n.t('match_room:event.substitution_body', {
+          inName: inPlayer.player_name || defaultName,
+          outName: outPlayer.player_name || defaultName,
+        }),
         payload: {
           out_participant_id: outId,
           out_player_name: outPlayer.player_name ?? null,
@@ -2419,7 +2423,9 @@ export default function MatchRoomPage() {
         },
       });
 
-      toast.success(`Substituição: ${inPlayer.player_name?.split(' ')[0] || 'Jogador'} entrou!`);
+      toast.success(i18n.t('match_room:toast.substitution_applied', {
+        name: inPlayer.player_name?.split(' ')[0] || defaultName,
+      }));
     }
   }, [matchId]);
 
@@ -4913,7 +4919,7 @@ export default function MatchRoomPage() {
                     {/* Label */}
                     <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}
                       textAnchor="middle" fill="#22c55e" fontSize="8" fontWeight="bold" opacity={0.8}>
-                      ⚽ Inercia
+                      {i18n.t('match_room:ui.inertia_label')}
                     </text>
                   </g>
                 );
@@ -5144,7 +5150,7 @@ export default function MatchRoomPage() {
                         if (action.action_type === 'receive') {
                           // If BH is doing a move (dribble) and this player is opponent → "DESARME"
                           const bhAction = visibleActions.find(a => a.participant_id === activeTurn?.ball_holder_participant_id && (a.action_type === 'move'));
-                          if (bhAction && fromPart.club_id !== ballHolder?.club_id) return 'DESARME';
+                          if (bhAction && fromPart.club_id !== ballHolder?.club_id) return i18n.t('match_room:toast.tackle_label');
                           return ACTION_LABELS[action.action_type];
                         }
                         return ACTION_LABELS[action.action_type] || action.action_type;
@@ -5191,7 +5197,7 @@ export default function MatchRoomPage() {
                       <text x={(interceptPos.x + targetPos.x) / 2} y={(interceptPos.y + targetPos.y) / 2 - 6}
                         textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.8)"
                         fontFamily="'Barlow Condensed', sans-serif">
-                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} (1ª)
+                        {ACTION_LABELS[drawingAction.type] || drawingAction.type} {i18n.t('match_room:ui.one_touch_short')}
                       </text>
                     </g>
                   );
@@ -5666,7 +5672,7 @@ export default function MatchRoomPage() {
                   >
                     {/* Native tooltip on hover: jersey + name + position */}
                     <title>
-                      {`${p.jersey_number ? `#${p.jersey_number} ` : ''}${p.player_name ?? 'Jogador'}${p.field_pos ? ` (${p.field_pos})` : ''}`}
+                      {`${p.jersey_number ? `#${p.jersey_number} ` : ''}${p.player_name ?? i18n.t('match_room:toast.default_player_name')}${p.field_pos ? ` (${p.field_pos})` : ''}`}
                     </title>
                     {/* Positioning-phase cue on YOUR own avatar: pulsing amber ring + small
                         outward wave — makes it impossible to miss that it's your turn to act.
@@ -5927,8 +5933,8 @@ export default function MatchRoomPage() {
             <button
               onClick={() => setHelpOpen(true)}
               className="fixed top-2 right-12 z-50 bg-[hsl(220,20%,12%)]/90 border border-[hsl(220,10%,30%)] rounded-md w-7 h-7 flex items-center justify-center text-[12px] font-display font-bold text-[hsl(45,30%,80%)] shadow-lg hover:bg-[hsl(220,20%,18%)] md:right-14"
-              aria-label="Ajuda"
-              title="Como jogar"
+              aria-label={i18n.t('match_room:tooltips.help_aria')}
+              title={i18n.t('match_room:tooltips.help_button')}
             >
               ?
             </button>
@@ -5936,9 +5942,9 @@ export default function MatchRoomPage() {
             {/* Pass/Shot quality indicator */}
             {drawingAction && drawingFrom && mouseFieldPct && drawingAction.type !== 'move' && (() => {
               const color = getArrowQuality(drawingFrom.field_x!, drawingFrom.field_y!, mouseFieldPct.x, mouseFieldPct.y, drawingAction.type, drawingAction.fromParticipantId);
-              const label = color === '#22c55e' ? 'Boa' : color === '#f59e0b' ? 'Media' : 'Ruim';
+              const label = color === '#22c55e' ? i18n.t('match_room:ui.quality_good') : color === '#f59e0b' ? i18n.t('match_room:ui.quality_medium') : i18n.t('match_room:ui.quality_bad');
               const isShoot = isAnyShootAction(drawingAction.type);
-              const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? 'Chute' : 'Passe');
+              const actionName = ACTION_LABELS[drawingAction.type] || (isShoot ? i18n.t('match_room:ui.shot_generic') : i18n.t('match_room:ui.pass_generic'));
               return (
                 <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-[hsl(140,10%,8%)] rounded px-3 py-1.5 border border-[hsl(140,10%,20%)]">
                   <span className="text-[10px] font-display text-muted-foreground uppercase tracking-wide">
@@ -5991,7 +5997,7 @@ export default function MatchRoomPage() {
             {(animating || isPhaseProcessing) && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
                 <span className="text-[11px] font-display font-bold text-tactical animate-pulse">
-                  {isPhaseProcessing ? `⏸ ${processingLabel}` : '⚡ MOTION — Resolvendo jogada...'}
+                  {isPhaseProcessing ? `⏸ ${processingLabel}` : i18n.t('match_room:ui.motion_resolving')}
                 </span>
               </div>
             )}
@@ -6017,7 +6023,7 @@ export default function MatchRoomPage() {
             {isFinished && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
                 <p className="font-display font-extrabold text-xl text-white">
-                  ⏱ ENCERRADA — {match.home_score} × {match.away_score}
+                  {i18n.t('match_room:ui.finished_with_score', { home: match.home_score, away: match.away_score })}
                 </p>
               </div>
             )}
@@ -6029,7 +6035,7 @@ export default function MatchRoomPage() {
               onClick={() => { setDrawingAction(null); setMouseFieldPct(null); }}
               className="absolute top-3 left-3 bg-destructive/80 text-white text-[10px] font-display px-2 py-1 rounded hover:bg-destructive"
             >
-              ✕ Cancelar
+              {i18n.t('match_room:ui.cancel_drawing')}
             </button>
           )}
         </div>

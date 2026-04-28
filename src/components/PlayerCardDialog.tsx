@@ -79,10 +79,10 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
         supabase.from('player_attributes').select('*').eq('player_profile_id', playerId).maybeSingle(),
       ]);
       if (!active) return;
-      if (profileRes.error || !profileRes.data) { setError('Não foi possível carregar a ficha.'); setLoading(false); return; }
+      if (profileRes.error || !profileRes.data) { setError(t('errors.load_failed')); setLoading(false); return; }
       setPlayer(profileRes.data);
       setAttrs(attrsRes.data || null);
-      if (!attrsRes.data) setError('Atributos não cadastrados.');
+      if (!attrsRes.data) setError(t('errors.no_attrs'));
       setLoading(false);
     })();
 

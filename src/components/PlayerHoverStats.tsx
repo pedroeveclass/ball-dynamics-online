@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { PositionBadge } from '@/components/PositionBadge';
-import { ATTR_LABELS, getAttributeTier } from '@/lib/attributes';
+import { ATTR_LABELS, attrCategoryLabel, getAttributeTier } from '@/lib/attributes';
 import type { Tables } from '@/integrations/supabase/types';
 
 interface MinimalPlayer {
@@ -46,6 +47,7 @@ function AttrRow({ label, value }: { label: string; value: number }) {
 }
 
 export function PlayerHoverStats({ player, attrs, children, side = 'right' }: PlayerHoverStatsProps) {
+  const { t } = useTranslation('attributes');
   if (!player) return <>{children}</>;
   const isGK = player.primary_position === 'GK';
   const groups = isGK ? GK_GROUPS : FIELD_GROUPS;
@@ -79,7 +81,7 @@ export function PlayerHoverStats({ player, attrs, children, side = 'right' }: Pl
             {groups.map(g => (
               <div key={g.title}>
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {g.title}
+                  {attrCategoryLabel(g.title)}
                 </div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
                   {g.keys.map(k => {
@@ -92,7 +94,7 @@ export function PlayerHoverStats({ player, attrs, children, side = 'right' }: Pl
             ))}
           </div>
         ) : (
-          <div className="mt-3 text-center text-xs text-muted-foreground">Atributos não disponíveis.</div>
+          <div className="mt-3 text-center text-xs text-muted-foreground">{t('fallback_messages.no_attrs_short')}</div>
         )}
       </HoverCardContent>
     </HoverCard>

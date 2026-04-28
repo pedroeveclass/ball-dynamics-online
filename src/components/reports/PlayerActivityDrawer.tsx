@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
@@ -6,6 +7,10 @@ import { PositionBadge } from '@/components/PositionBadge';
 import { ActivityHeatmap, type DayActivity } from './ActivityHeatmap';
 import { NotifyPlayerDialog } from './NotifyPlayerDialog';
 import { Dumbbell, Trophy, ShoppingBag, Bell, Clock } from 'lucide-react';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { formatDate } from '@/lib/formatDate';
+import type { TFunction } from 'i18next';
+import type { SupportedLanguage } from '@/i18n';
 
 export interface ReportEvent {
   type: 'training' | 'match' | 'purchase';
@@ -45,18 +50,20 @@ interface PlayerActivityDrawerProps {
   periodDays: number;
 }
 
-function formatRelativeDate(iso: string): string {
+function formatRelativeDate(iso: string, t: TFunction, lang: SupportedLanguage): string {
   const d = new Date(iso);
   const diffMs = Date.now() - d.getTime();
   const diffH = Math.floor(diffMs / (1000 * 60 * 60));
-  if (diffH < 1) return 'agora há pouco';
-  if (diffH < 24) return `há ${diffH}h`;
+  if (diffH < 1) return t('relative_date.just_now');
+  if (diffH < 24) return t('relative_date.hours', { count: diffH });
   const diffD = Math.floor(diffH / 24);
-  if (diffD < 7) return `há ${diffD}d`;
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  if (diffD < 7) return t('relative_date.days', { count: diffD });
+  return formatDate(d, lang, 'date_short');
 }
 
 export function PlayerActivityDrawer({ open, onOpenChange, detail, periodDays }: PlayerActivityDrawerProps) {
+  const { t } = useTranslation('player_activity_drawer');
+  const { current: lang } = useAppLanguage();
   const [notifyOpen, setNotifyOpen] = useState(false);
 
   if (!detail) return null;
@@ -76,13 +83,15 @@ export function PlayerActivityDrawer({ open, onOpenChange, detail, periodDays }:
                 <SheetTitle className="truncate">{player.full_name}</SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-0.5">
                   <PositionBadge position={player.primary_position} />
-                  <span className="text-xs">{player.age} anos • OVR {player.overall}</span>
+                  <span className="text-xs">
+                    {t('header.years_old', { count: player.age })} • {t('header.ovr', { value: player.overall })}
+                  </span>
                 </SheetDescription>
               </div>
               {player.user_id && (
                 <Button size="sm" variant="outline" onClick={() => setNotifyOpen(true)}>
                   <Bell className="h-3.5 w-3.5 mr-1.5" />
-                  Notificar
+                  {t('header.notify')}
                 </Button>
               )}
             </div>
@@ -90,23 +99,31 @@ export function PlayerActivityDrawer({ open, onOpenChange, detail, periodDays }:
 
           {/* Quick stats */}
           <div className="grid grid-cols-4 gap-2 mt-5">
-            <StatBox label="Treinos" value={stats.trainings} sublabel={`${stats.daysTrained} dias`} />
-            <StatBox label="Jogos" value={stats.matchesPlayed} sublabel={`${stats.goals}G ${stats.assists}A`} />
-            <StatBox label="Compras" value={stats.purchases} />
-            <StatBox label="Score" value={stats.score} highlight />
+            <StatBox
+              label={t('stats.trainings')}
+              value={stats.trainings}
+              sublabel={t('stats.trainings_sublabel', { count: stats.daysTrained })}
+            />
+            <StatBox
+              label={t('stats.matches')}
+              value={stats.matchesPlayed}
+              sublabel={t('stats.matches_sublabel', { goals: stats.goals, assists: stats.assists })}
+            />
+            <StatBox label={t('stats.purchases')} value={stats.purchases} />
+            <StatBox label={t('stats.score')} value={stats.score} highlight />
           </div>
 
           {daysSinceLastTraining != null && daysSinceLastTraining >= 3 && (
             <div className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
               <Clock className="h-3.5 w-3.5" />
-              Sem treinar há {daysSinceLastTraining} dias.
+              {t('alerts.no_training', { count: daysSinceLastTraining })}
             </div>
           )}
 
           {/* Heatmap */}
           <div className="mt-5">
             <div className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Atividade diária — últimos 30 dias
+              {t('sections.heatmap_title')}
             </div>
             <ActivityHeatmap activity={activityByDay} days={30} />
           </div>
@@ -114,14 +131,14 @@ export function PlayerActivityDrawer({ open, onOpenChange, detail, periodDays }:
           {/* Timeline */}
           <div className="mt-5">
             <div className="text-xs font-display font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Histórico — últimos {periodDays} dias
+              {t('sections.history_title', { count: periodDays })}
             </div>
             {events.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">Nenhuma atividade no período.</p>
+              <p className="text-xs text-muted-foreground italic">{t('sections.history_empty')}</p>
             ) : (
               <ul className="space-y-1.5">
                 {events.map((ev, i) => (
-                  <TimelineRow key={i} event={ev} />
+                  <TimelineRow key={i} event={ev} t={t} lang={lang} />
                 ))}
               </ul>
             )}
@@ -150,16 +167,21 @@ function StatBox({ label, value, sublabel, highlight }: { label: string; value: 
   );
 }
 
-function TimelineRow({ event }: { event: ReportEvent }) {
-  const when = formatRelativeDate(event.date);
+function TimelineRow({ event, t, lang }: { event: ReportEvent; t: TFunction; lang: SupportedLanguage }) {
+  const when = formatRelativeDate(event.date, t, lang);
   if (event.type === 'training') {
     const growth = event.data.growth ?? 0;
     return (
       <li className="flex items-center gap-2 text-xs py-1 border-b border-border/40 last:border-b-0">
         <Dumbbell className="h-3.5 w-3.5 text-pitch shrink-0" />
         <span className="flex-1">
-          Treinou <strong>{event.data.attribute_key}</strong>
-          {growth > 0 && <span className="text-pitch"> (+{growth})</span>}
+          <Trans
+            i18nKey="events.training"
+            ns="player_activity_drawer"
+            values={{ attribute: event.data.attribute_key }}
+            components={[<strong />]}
+          />
+          {growth > 0 && <span className="text-pitch">{t('events.training_growth', { growth })}</span>}
         </span>
         <span className="text-muted-foreground tabular-nums">{when}</span>
       </li>
@@ -171,9 +193,14 @@ function TimelineRow({ event }: { event: ReportEvent }) {
       <li className="flex items-center gap-2 text-xs py-1 border-b border-border/40 last:border-b-0">
         <Trophy className="h-3.5 w-3.5 text-tactical shrink-0" />
         <span className="flex-1">
-          vs <strong>{opponent}</strong>
-          {result && <span className="text-muted-foreground"> ({result})</span>}
-          {(goals > 0 || assists > 0) && <span className="text-pitch"> — {goals}G {assists}A</span>}
+          <Trans
+            i18nKey="events.match_vs"
+            ns="player_activity_drawer"
+            values={{ opponent }}
+            components={[<strong />]}
+          />
+          {result && <span className="text-muted-foreground">{t('events.match_result', { result })}</span>}
+          {(goals > 0 || assists > 0) && <span className="text-pitch">{t('events.match_stats', { goals, assists })}</span>}
         </span>
         <span className="text-muted-foreground tabular-nums">{when}</span>
       </li>
@@ -184,8 +211,13 @@ function TimelineRow({ event }: { event: ReportEvent }) {
     <li className="flex items-center gap-2 text-xs py-1 border-b border-border/40 last:border-b-0">
       <ShoppingBag className="h-3.5 w-3.5 text-amber-400 shrink-0" />
       <span className="flex-1">
-        Comprou <strong>{event.data.name}</strong>
-        {event.data.category && <span className="text-muted-foreground"> ({event.data.category})</span>}
+        <Trans
+          i18nKey="events.purchase"
+          ns="player_activity_drawer"
+          values={{ name: event.data.name }}
+          components={[<strong />]}
+        />
+        {event.data.category && <span className="text-muted-foreground">{t('events.purchase_category', { category: event.data.category })}</span>}
       </span>
       <span className="text-muted-foreground tabular-nums">{when}</span>
     </li>

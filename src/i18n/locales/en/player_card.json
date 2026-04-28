@@ -18,5 +18,9 @@
     "right": "Right",
     "left": "Left",
     "both": "Both"
+  },
+  "errors": {
+    "load_failed": "Could not load player card.",
+    "no_attrs": "No attributes recorded."
   }
 }

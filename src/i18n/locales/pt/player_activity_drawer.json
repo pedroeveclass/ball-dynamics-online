@@ -1,0 +1,42 @@
+{
+  "header": {
+    "years_old": "{{count}} anos",
+    "ovr": "OVR {{value}}",
+    "notify": "Notificar"
+  },
+  "stats": {
+    "trainings": "Treinos",
+    "trainings_sublabel_one": "{{count}} dia",
+    "trainings_sublabel_other": "{{count}} dias",
+    "matches": "Jogos",
+    "matches_sublabel": "{{goals}}G {{assists}}A",
+    "purchases": "Compras",
+    "score": "Score"
+  },
+  "alerts": {
+    "no_training_one": "Sem treinar há {{count}} dia.",
+    "no_training_other": "Sem treinar há {{count}} dias."
+  },
+  "sections": {
+    "heatmap_title": "Atividade diária — últimos 30 dias",
+    "history_title_one": "Histórico — último {{count}} dia",
+    "history_title_other": "Histórico — últimos {{count}} dias",
+    "history_empty": "Nenhuma atividade no período."
+  },
+  "events": {
+    "training": "Treinou <1>{{attribute}}</1>",
+    "training_growth": " (+{{growth}})",
+    "match_vs": "vs <1>{{opponent}}</1>",
+    "match_result": " ({{result}})",
+    "match_stats": " — {{goals}}G {{assists}}A",
+    "purchase": "Comprou <1>{{name}}</1>",
+    "purchase_category": " ({{category}})"
+  },
+  "relative_date": {
+    "just_now": "agora há pouco",
+    "hours_one": "há {{count}}h",
+    "hours_other": "há {{count}}h",
+    "days_one": "há {{count}}d",
+    "days_other": "há {{count}}d"
+  }
+}

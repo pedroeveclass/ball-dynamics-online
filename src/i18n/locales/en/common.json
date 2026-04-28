@@ -41,5 +41,43 @@
   },
   "logout": "Sign out",
   "tutorial": "Tutorial",
-  "loading_screen": "Loading..."
+  "loading_screen": "Loading...",
+  "indeterminate": "Undefined",
+  "time_ago": {
+    "now": "just now",
+    "minutes": "{{count}}min ago",
+    "hours": "{{count}}h ago",
+    "days": "{{count}}d ago",
+    "month_one": "{{count}} month ago",
+    "month_other": "{{count}} months ago"
+  },
+  "position_field_selector": {
+    "legend_humans": "Human players",
+    "legend_clubs": "Clubs looking",
+    "legend_scarce": "Few players (<5)",
+    "selected_label": "Selected:",
+    "tooltip": "{{label}} — {{humans}} {{humansWord}}, {{demand}} {{demandWord}} looking",
+    "humans_one": "player",
+    "humans_other": "players",
+    "clubs_one": "club",
+    "clubs_other": "clubs"
+  },
+  "avatar_creator": {
+    "preview": {
+      "face": "Face",
+      "front": "Front",
+      "back": "Back"
+    },
+    "sections": {
+      "skinTone": "Skin",
+      "hair": "Hair",
+      "hairColor": "Hair Color",
+      "eyebrows": "Eyebrows",
+      "eyes": "Eyes",
+      "mouth": "Mouth",
+      "facialHair": "Beard"
+    },
+    "default_confirm": "Save Avatar",
+    "saving": "Saving..."
+  }
 }

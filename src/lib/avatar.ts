@@ -31,11 +31,24 @@ export type GadgetSlot = 'head' | 'face' | 'wrist' | 'feet' | 'back';
 
 // ── Option catalogs (what the user can pick in the creator) ──
 // Values map directly to DiceBear avataaars option ids so the lib
-// can consume them without translation.
+// can consume them without translation. Localized labels live at
+// `avatar:<category>.<id>` — call `avatarOptionLabel(category, id)`.
+
+import i18n from '@/i18n';
 
 export interface Option {
   id: string;
   label: string;
+}
+
+export type AvatarCategory =
+  | 'skin_tones' | 'hair_colors' | 'hair_styles'
+  | 'eyebrows' | 'eyes' | 'noses' | 'mouths'
+  | 'facial_hair' | 'accessories';
+
+export function avatarOptionLabel(category: AvatarCategory, id: string, fallback?: string): string {
+  const v = i18n.t(`avatar:${category}.${id}`, { defaultValue: '' });
+  return v || fallback || id;
 }
 
 export const SKIN_TONES: Option[] = [

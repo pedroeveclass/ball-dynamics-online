@@ -18,5 +18,9 @@
     "right": "Direito",
     "left": "Esquerdo",
     "both": "Ambos"
+  },
+  "errors": {
+    "load_failed": "Não foi possível carregar a ficha.",
+    "no_attrs": "Atributos não cadastrados."
   }
 }

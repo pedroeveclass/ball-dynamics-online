@@ -1,0 +1,110 @@
+{
+  "skin_tones": {
+    "FFDBB4": "Muito Claro",
+    "EDB98A": "Claro",
+    "D08B5B": "Médio",
+    "AE5D29": "Moreno",
+    "8D5524": "Escuro",
+    "614335": "Muito Escuro"
+  },
+  "hair_colors": {
+    "2C1B18": "Preto",
+    "4A312C": "Castanho Escuro",
+    "A55728": "Castanho",
+    "B58143": "Castanho Claro",
+    "D6B370": "Loiro",
+    "F59797": "Rosa",
+    "C93305": "Ruivo",
+    "E8E1E1": "Grisalho",
+    "ECDCBF": "Platinado"
+  },
+  "hair_styles": {
+    "shortFlat": "Curto Liso",
+    "shortRound": "Curto Redondo",
+    "shortCurly": "Curto Cacheado",
+    "shortWaved": "Curto Ondulado",
+    "shavedSides": "Raspado Lateral",
+    "theCaesar": "Caesar",
+    "theCaesarAndSidePart": "Caesar Lateral",
+    "sides": "Lateral Raspada",
+    "frizzle": "Volumoso",
+    "shaggy": "Desarrumado",
+    "shaggyMullet": "Mullet",
+    "dreads01": "Dreads Curtos",
+    "dreads02": "Dreads Médios",
+    "dreads": "Dreads Longos",
+    "straight01": "Liso Comprido 1",
+    "straight02": "Liso Comprido 2",
+    "straightAndStrand": "Liso com Mecha",
+    "longButNotTooLong": "Comprido",
+    "curly": "Cacheado Longo",
+    "curvy": "Curvy",
+    "miaWallace": "Franja Reta",
+    "fro": "Black Power",
+    "froBand": "Black Power + Faixa",
+    "bigHair": "Volume Alto",
+    "bun": "Coque",
+    "bob": "Bob",
+    "frida": "Frida",
+    "noHair": "Careca"
+  },
+  "eyebrows": {
+    "default": "Padrão",
+    "defaultNatural": "Natural",
+    "raisedExcited": "Animado",
+    "raisedExcitedNatural": "Animado Natural",
+    "sadConcerned": "Preocupado",
+    "sadConcernedNatural": "Preocupado Natural",
+    "upDown": "Assimétrica",
+    "upDownNatural": "Assimétrica Natural",
+    "angry": "Bravo",
+    "angryNatural": "Bravo Natural",
+    "flatNatural": "Reta",
+    "frownNatural": "Carranca"
+  },
+  "eyes": {
+    "default": "Padrão",
+    "happy": "Feliz",
+    "wink": "Piscando",
+    "squint": "Apertado",
+    "surprised": "Surpreso",
+    "side": "Desviado",
+    "eyeRoll": "Revirando",
+    "closed": "Fechado",
+    "hearts": "Apaixonado"
+  },
+  "noses": {
+    "default": "Padrão"
+  },
+  "mouths": {
+    "default": "Neutro",
+    "smile": "Sorriso",
+    "twinkle": "Brilho",
+    "serious": "Sério",
+    "concerned": "Preocupado",
+    "tongue": "Língua",
+    "eating": "Comendo",
+    "disbelief": "Incrédulo",
+    "grimace": "Esforço",
+    "sad": "Triste",
+    "screamOpen": "Grito"
+  },
+  "facial_hair": {
+    "none": "Nenhum",
+    "beardLight": "Barba por Fazer",
+    "beardMedium": "Barba Média",
+    "beardMajestic": "Barba Cheia",
+    "moustacheFancy": "Bigode Charmoso",
+    "moustacheMagnum": "Bigode Grosso"
+  },
+  "accessories": {
+    "none": "Nenhum",
+    "prescription01": "Óculos Redondo",
+    "prescription02": "Óculos Quadrado",
+    "round": "Óculos Fino",
+    "sunglasses": "Óculos de Sol",
+    "wayfarers": "Wayfarer",
+    "kurt": "Kurt",
+    "eyepatch": "Tapa-olho"
+  }
+}

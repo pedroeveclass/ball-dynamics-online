@@ -40,5 +40,17 @@
   },
   "score_explainer": "Score = (days trained × 2) + (matches played × 5) + (purchases) • Table sorted by score.",
   "fallback_opponent": "Opponent",
-  "fallback_item": "Item"
+  "fallback_item": "Item",
+  "heatmap": {
+    "tooltip": "{{label}} — {{trainings}} {{trainingsWord}}, {{matches}} {{matchesWord}}, {{purchases}} {{purchasesWord}}",
+    "trainings_one": "training",
+    "trainings_other": "trainings",
+    "matches_one": "match",
+    "matches_other": "matches",
+    "purchases_one": "purchase",
+    "purchases_other": "purchases",
+    "less": "less",
+    "more": "more",
+    "today": "today"
+  }
 }

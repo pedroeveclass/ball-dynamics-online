@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Swords, Users, Trophy, TrendingUp, Shield, DollarSign, ShoppingBag, MessageSquare,
   ArrowRight, UserPlus, Dumbbell, Gamepad2, ChevronRight,
@@ -13,26 +14,9 @@ const fadeUp = (delay = 0) => ({
   transition: { duration: 0.5, delay },
 });
 
-const features = [
-  { icon: Swords, title: 'Partidas Turn-Based', desc: 'Cada turno tem 3 fases: posicionamento, ação e resolução. Cada decisão importa.' },
-  { icon: Users, title: '22 Jogadores Humanos', desc: 'Cada posição no campo controlada por um jogador real. Futebol de verdade.' },
-  { icon: Shield, title: 'Gestão Completa de Clube', desc: 'Escalação, formação tática, contratações, finanças e estádio.' },
-  { icon: TrendingUp, title: '30+ Atributos Treináveis', desc: 'Velocidade, passe, chute, visão de jogo, força, resistência e muito mais.' },
-  { icon: Trophy, title: 'Liga Competitiva', desc: '20 clubes, 19 rodadas, classificação real, artilharia e premiações.' },
-  { icon: DollarSign, title: 'Economia Realista', desc: 'Salários semanais, transferências, bilheteria por jogo, instalações.' },
-  { icon: ShoppingBag, title: 'Loja de Itens', desc: 'Chuteiras, luvas, energéticos, treinador particular — tudo influencia em campo.' },
-  { icon: MessageSquare, title: 'Comunidade Ativa', desc: 'Fórum integrado com discussões, táticas, sugestões e reports.' },
-];
-
-const stats = [
-  { value: '22', label: 'jogadores por partida' },
-  { value: '30+', label: 'atributos treináveis' },
-  { value: '20', label: 'clubes na liga' },
-  { value: '3', label: 'fases por turno' },
-];
-
 // Simplified SVG pitch with players, arrows and ball
 function PitchMockup() {
+  const { t } = useTranslation('landing');
   const players = [
     // Home (yellow) — left side
     { x: 60, y: 160, num: 1, color: '#eab308' },
@@ -103,22 +87,58 @@ function PitchMockup() {
       ))}
 
       {/* Labels */}
-      <text x="340" y="145" fontSize="7" fill="rgba(255,255,255,0.5)" fontFamily="sans-serif">PASSE</text>
-      <text x="410" y="230" fontSize="7" fill="rgba(255,255,255,0.4)" fontFamily="sans-serif">CHUTE</text>
-      <text x="375" y="108" fontSize="6" fill="rgba(139,92,246,0.7)" fontFamily="sans-serif">INTERCEPTAR</text>
+      <text x="340" y="145" fontSize="7" fill="rgba(255,255,255,0.5)" fontFamily="sans-serif">{t('pitch_labels.pass')}</text>
+      <text x="410" y="230" fontSize="7" fill="rgba(255,255,255,0.4)" fontFamily="sans-serif">{t('pitch_labels.shot')}</text>
+      <text x="375" y="108" fontSize="6" fill="rgba(139,92,246,0.7)" fontFamily="sans-serif">{t('pitch_labels.intercept')}</text>
     </svg>
   );
 }
 
 export default function LandingPage() {
+  const { t } = useTranslation('landing');
+
+  const features = [
+    { icon: Swords, key: 'turn_based' },
+    { icon: Users, key: 'humans' },
+    { icon: Shield, key: 'club' },
+    { icon: TrendingUp, key: 'attributes' },
+    { icon: Trophy, key: 'league' },
+    { icon: DollarSign, key: 'economy' },
+    { icon: ShoppingBag, key: 'store' },
+    { icon: MessageSquare, key: 'community' },
+  ] as const;
+
+  const stats = [
+    { value: '22', labelKey: 'players_per_match' },
+    { value: '30+', labelKey: 'trainable_attributes' },
+    { value: '20', labelKey: 'league_clubs' },
+    { value: '3', labelKey: 'phases_per_turn' },
+  ] as const;
+
+  const steps = [
+    { icon: UserPlus, step: '01', key: 'create' },
+    { icon: Dumbbell, step: '02', key: 'train' },
+    { icon: Gamepad2, step: '03', key: 'play' },
+  ] as const;
+
+  const arrows = [
+    { color: 'text-green-400', key: 'green' },
+    { color: 'text-cyan-400', key: 'blue' },
+    { color: 'text-orange-400', key: 'orange' },
+    { color: 'text-purple-400', key: 'purple' },
+  ] as const;
+
+  const playerItems = [0, 1, 2, 3, 4] as const;
+  const managerItems = [0, 1, 2, 3, 4] as const;
+
   return (
     <div className="min-h-screen bg-primary text-primary-foreground">
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 md:px-8 py-4 max-w-6xl mx-auto">
-        <span className="font-display text-xl md:text-2xl font-bold tracking-tight">FOOTBALL IDENTITY</span>
+        <span className="font-display text-xl md:text-2xl font-bold tracking-tight">{t('nav.brand')}</span>
         <div className="flex gap-2">
-          <Link to="/login"><Button variant="ghost" className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 text-sm">Entrar</Button></Link>
-          <Link to="/register"><Button className="bg-pitch text-pitch-foreground hover:bg-pitch/90 text-sm">Criar Conta</Button></Link>
+          <Link to="/login"><Button variant="ghost" className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 text-sm">{t('nav.login')}</Button></Link>
+          <Link to="/register"><Button className="bg-pitch text-pitch-foreground hover:bg-pitch/90 text-sm">{t('nav.register')}</Button></Link>
         </div>
       </nav>
 
@@ -127,25 +147,27 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <motion.div {...fadeUp()}>
             <h1 className="font-display text-4xl md:text-6xl font-extrabold leading-tight">
-              FUTEBOL<br />
-              <span className="text-tactical">TATICO.</span>{' '}
-              <span className="text-pitch">ONLINE.</span>{' '}
-              <span className="text-warning">PERSISTENTE.</span>
+              {t('hero.title_line1')}<br />
+              <span className="text-tactical">{t('hero.title_tactical')}</span>{' '}
+              <span className="text-pitch">{t('hero.title_online')}</span>{' '}
+              <span className="text-warning">{t('hero.title_persistent')}</span>
             </h1>
             <p className="mt-5 text-base md:text-lg text-primary-foreground/60 max-w-lg leading-relaxed">
-              O unico jogo onde <strong className="text-primary-foreground">22 jogadores humanos</strong> controlam cada posicao em campo.
-              Cada turno voce decide: mover, passar, chutar, driblar ou interceptar.
-              Crie seu atleta ou assuma como tecnico — sua carreira comeca agora.
+              <Trans
+                i18nKey="hero.subtitle_html"
+                ns="landing"
+                components={[<strong className="text-primary-foreground" />]}
+              />
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/register">
                 <Button size="lg" className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-base px-7">
-                  COMECAR AGORA <ArrowRight className="ml-2 h-4 w-4" />
+                  {t('hero.cta_primary')} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link to="/league">
                 <Button size="lg" variant="outline" className="border-primary-foreground/20 bg-primary-foreground/5 text-primary-foreground hover:bg-primary-foreground/10 font-display text-base px-7">
-                  VER LIGA
+                  {t('hero.cta_league')}
                 </Button>
               </Link>
             </div>
@@ -159,18 +181,14 @@ export default function LandingPage() {
       {/* How it works */}
       <section className="px-6 md:px-8 py-16 bg-primary-foreground/[0.03]">
         <div className="max-w-6xl mx-auto">
-          <motion.h2 {...fadeUp()} className="font-display text-2xl md:text-3xl font-bold text-center mb-10">Como Funciona</motion.h2>
+          <motion.h2 {...fadeUp()} className="font-display text-2xl md:text-3xl font-bold text-center mb-10">{t('how_it_works.title')}</motion.h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { icon: UserPlus, step: '01', title: 'Crie seu Personagem', desc: 'Escolha ser Jogador ou Tecnico. Defina posicao, nome e comece sua jornada.' },
-              { icon: Dumbbell, step: '02', title: 'Treine e Evolua', desc: 'Gaste energia treinando 30+ atributos. Quanto mais treina, mais forte fica.' },
-              { icon: Gamepad2, step: '03', title: 'Jogue Partidas Reais', desc: 'Entre em campo com outros humanos. Cada turno: mova, passe, chute, intercepte.' },
-            ].map((s, i) => (
+            {steps.map((s, i) => (
               <motion.div key={s.step} {...fadeUp(0.1 * i)} className="relative rounded-lg border border-primary-foreground/10 bg-primary-foreground/5 p-6">
                 <span className="font-display text-3xl font-black text-tactical/20 absolute top-4 right-5">{s.step}</span>
                 <s.icon className="h-8 w-8 text-tactical mb-3" />
-                <h3 className="font-display text-lg font-bold">{s.title}</h3>
-                <p className="mt-2 text-sm text-primary-foreground/50">{s.desc}</p>
+                <h3 className="font-display text-lg font-bold">{t(`how_it_works.steps.${s.key}.title`)}</h3>
+                <p className="mt-2 text-sm text-primary-foreground/50">{t(`how_it_works.steps.${s.key}.desc`)}</p>
               </motion.div>
             ))}
           </div>
@@ -184,17 +202,14 @@ export default function LandingPage() {
             <PitchMockup />
           </motion.div>
           <motion.div {...fadeUp(0.15)} className="order-1 lg:order-2 space-y-5">
-            <h2 className="font-display text-2xl md:text-3xl font-bold">Cada Detalhe Importa</h2>
+            <h2 className="font-display text-2xl md:text-3xl font-bold">{t('details.title')}</h2>
             <div className="space-y-4">
-              {[
-                { color: 'text-green-400', label: 'Setas verdes', desc: 'indicam a movimentacao dos jogadores no campo.' },
-                { color: 'text-cyan-400', label: 'Setas azuis', desc: 'mostram passes para companheiros de equipe.' },
-                { color: 'text-orange-400', label: 'Setas laranjas', desc: 'representam chutes ao gol com direcao e forca.' },
-                { color: 'text-purple-400', label: 'Circulo roxo', desc: 'aparece quando voce pode interceptar a bola. Clique para agir!' },
-              ].map(a => (
-                <div key={a.label} className="flex items-start gap-3">
+              {arrows.map(a => (
+                <div key={a.key} className="flex items-start gap-3">
                   <ChevronRight className={`h-5 w-5 mt-0.5 shrink-0 ${a.color}`} />
-                  <p className="text-sm text-primary-foreground/60"><strong className={a.color}>{a.label}</strong> {a.desc}</p>
+                  <p className="text-sm text-primary-foreground/60">
+                    <strong className={a.color}>{t(`details.arrows.${a.key}.label`)}</strong> {t(`details.arrows.${a.key}.desc`)}
+                  </p>
                 </div>
               ))}
             </div>
@@ -205,32 +220,28 @@ export default function LandingPage() {
       {/* Two paths: Player vs Manager */}
       <section className="px-6 md:px-8 py-16 bg-primary-foreground/[0.03]">
         <div className="max-w-6xl mx-auto">
-          <motion.h2 {...fadeUp()} className="font-display text-2xl md:text-3xl font-bold text-center mb-10">Dois Caminhos, Uma Paixao</motion.h2>
+          <motion.h2 {...fadeUp()} className="font-display text-2xl md:text-3xl font-bold text-center mb-10">{t('paths.title')}</motion.h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <motion.div {...fadeUp(0.05)} className="rounded-lg border border-pitch/30 bg-pitch/5 p-6 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-pitch/20 flex items-center justify-center"><Gamepad2 className="h-5 w-5 text-pitch" /></div>
-                <h3 className="font-display text-xl font-bold text-pitch">Jogador</h3>
+                <h3 className="font-display text-xl font-bold text-pitch">{t('paths.player.title')}</h3>
               </div>
               <ul className="space-y-2 text-sm text-primary-foreground/60">
-                <li>Controle seu atleta em cada turno da partida</li>
-                <li>Treine atributos diariamente (velocidade, passe, chute...)</li>
-                <li>Negocie contratos e salarios com clubes</li>
-                <li>Compre itens na loja: chuteiras, energeticos, treinador</li>
-                <li>Construa reputacao e suba de overall</li>
+                {playerItems.map(i => (
+                  <li key={i}>{t(`paths.player.items.${i}`)}</li>
+                ))}
               </ul>
             </motion.div>
             <motion.div {...fadeUp(0.1)} className="rounded-lg border border-tactical/30 bg-tactical/5 p-6 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-tactical/20 flex items-center justify-center"><Shield className="h-5 w-5 text-tactical" /></div>
-                <h3 className="font-display text-xl font-bold text-tactical">Tecnico</h3>
+                <h3 className="font-display text-xl font-bold text-tactical">{t('paths.manager.title')}</h3>
               </div>
               <ul className="space-y-2 text-sm text-primary-foreground/60">
-                <li>Monte a escalacao e defina a formacao tatica</li>
-                <li>Contrate jogadores humanos no mercado</li>
-                <li>Gerencie financas: salarios, bilheteria, instalacoes</li>
-                <li>Evolua o estadio e centro de treino</li>
-                <li>Envie convites de amistoso e dispute a liga</li>
+                {managerItems.map(i => (
+                  <li key={i}>{t(`paths.manager.items.${i}`)}</li>
+                ))}
               </ul>
             </motion.div>
           </div>
@@ -239,13 +250,13 @@ export default function LandingPage() {
 
       {/* Features grid */}
       <section className="px-6 md:px-8 py-16 max-w-6xl mx-auto">
-        <motion.h2 {...fadeUp()} className="font-display text-2xl md:text-3xl font-bold text-center mb-10">Tudo Que Voce Precisa</motion.h2>
+        <motion.h2 {...fadeUp()} className="font-display text-2xl md:text-3xl font-bold text-center mb-10">{t('features.title')}</motion.h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {features.map((f, i) => (
-            <motion.div key={f.title} {...fadeUp(0.05 * i)} className="rounded-lg border border-primary-foreground/10 bg-primary-foreground/5 p-5">
+            <motion.div key={f.key} {...fadeUp(0.05 * i)} className="rounded-lg border border-primary-foreground/10 bg-primary-foreground/5 p-5">
               <f.icon className="h-6 w-6 text-tactical mb-2" />
-              <h3 className="font-display text-sm font-bold">{f.title}</h3>
-              <p className="mt-1 text-xs text-primary-foreground/50">{f.desc}</p>
+              <h3 className="font-display text-sm font-bold">{t(`features.${f.key}.title`)}</h3>
+              <p className="mt-1 text-xs text-primary-foreground/50">{t(`features.${f.key}.desc`)}</p>
             </motion.div>
           ))}
         </div>
@@ -255,9 +266,9 @@ export default function LandingPage() {
       <section className="px-6 md:px-8 py-12 bg-primary-foreground/[0.03]">
         <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6">
           {stats.map((s, i) => (
-            <motion.div key={s.label} {...fadeUp(0.08 * i)} className="text-center">
+            <motion.div key={s.labelKey} {...fadeUp(0.08 * i)} className="text-center">
               <p className="font-display text-4xl md:text-5xl font-black text-tactical">{s.value}</p>
-              <p className="text-xs text-primary-foreground/50 mt-1 uppercase tracking-wide">{s.label}</p>
+              <p className="text-xs text-primary-foreground/50 mt-1 uppercase tracking-wide">{t(`stats.${s.labelKey}`)}</p>
             </motion.div>
           ))}
         </div>
@@ -266,11 +277,11 @@ export default function LandingPage() {
       {/* Final CTA */}
       <section className="px-6 md:px-8 py-20 max-w-3xl mx-auto text-center">
         <motion.div {...fadeUp()}>
-          <h2 className="font-display text-3xl md:text-4xl font-extrabold">Pronto para criar sua<br /><span className="text-pitch">identidade no futebol?</span></h2>
-          <p className="mt-4 text-primary-foreground/50">Crie sua conta gratis e entre em campo agora mesmo.</p>
+          <h2 className="font-display text-3xl md:text-4xl font-extrabold">{t('final_cta.title_line1')}<br /><span className="text-pitch">{t('final_cta.title_line2')}</span></h2>
+          <p className="mt-4 text-primary-foreground/50">{t('final_cta.subtitle')}</p>
           <Link to="/register">
             <Button size="lg" className="mt-6 bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-lg px-10">
-              CRIAR CONTA GRATIS <ArrowRight className="ml-2 h-5 w-5" />
+              {t('final_cta.button')} <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
         </motion.div>
@@ -279,11 +290,11 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-primary-foreground/10 px-6 md:px-8 py-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-primary-foreground/30">2025 Football Identity. Todos os direitos reservados.</p>
+          <p className="text-xs text-primary-foreground/30">{t('footer.copyright')}</p>
           <div className="flex gap-4 text-xs text-primary-foreground/40">
-            <Link to="/league" className="hover:text-primary-foreground/70 transition-colors">Liga</Link>
-            <Link to="/forum" className="hover:text-primary-foreground/70 transition-colors">Forum</Link>
-            <Link to="/login" className="hover:text-primary-foreground/70 transition-colors">Login</Link>
+            <Link to="/league" className="hover:text-primary-foreground/70 transition-colors">{t('footer.league')}</Link>
+            <Link to="/forum" className="hover:text-primary-foreground/70 transition-colors">{t('footer.forum')}</Link>
+            <Link to="/login" className="hover:text-primary-foreground/70 transition-colors">{t('footer.login')}</Link>
           </div>
         </div>
       </footer>

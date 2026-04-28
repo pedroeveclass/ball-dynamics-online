@@ -40,5 +40,17 @@
   },
   "score_explainer": "Score = (dias treinados × 2) + (jogos disputados × 5) + (compras) • Tabela ordenada por score.",
   "fallback_opponent": "Adversário",
-  "fallback_item": "Item"
+  "fallback_item": "Item",
+  "heatmap": {
+    "tooltip": "{{label}} — {{trainings}} {{trainingsWord}}, {{matches}} {{matchesWord}}, {{purchases}} {{purchasesWord}}",
+    "trainings_one": "treino",
+    "trainings_other": "treinos",
+    "matches_one": "jogo",
+    "matches_other": "jogos",
+    "purchases_one": "compra",
+    "purchases_other": "compras",
+    "less": "menos",
+    "more": "mais",
+    "today": "hoje"
+  }
 }

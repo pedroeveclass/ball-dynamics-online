@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 
 export interface DayActivity {
   trainings: number;
@@ -20,6 +22,9 @@ function toLocalISODate(d: Date): string {
 }
 
 export function ActivityHeatmap({ activity, days = 30 }: ActivityHeatmapProps) {
+  const { t } = useTranslation('manager_reports');
+  const { current: lang } = useAppLanguage();
+  const dateLocale = lang === 'en' ? 'en-US' : 'pt-BR';
   const cells = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -32,12 +37,12 @@ export function ActivityHeatmap({ activity, days = 30 }: ActivityHeatmapProps) {
       out.push({
         date: key,
         total: data.trainings + data.matches + data.purchases,
-        label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+        label: d.toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' }),
         data,
       });
     }
     return out;
-  }, [activity, days]);
+  }, [activity, days, dateLocale]);
 
   const intensity = (total: number): string => {
     if (total === 0) return 'bg-muted/30';
@@ -54,22 +59,30 @@ export function ActivityHeatmap({ activity, days = 30 }: ActivityHeatmapProps) {
           <div
             key={c.date}
             className={`aspect-square rounded-sm ${intensity(c.total)} hover:ring-1 hover:ring-pitch/60 transition-all`}
-            title={`${c.label} — ${c.data.trainings} treino${c.data.trainings !== 1 ? 's' : ''}, ${c.data.matches} jogo${c.data.matches !== 1 ? 's' : ''}, ${c.data.purchases} compra${c.data.purchases !== 1 ? 's' : ''}`}
+            title={t('heatmap.tooltip', {
+              label: c.label,
+              trainings: c.data.trainings,
+              trainingsWord: c.data.trainings === 1 ? t('heatmap.trainings_one') : t('heatmap.trainings_other'),
+              matches: c.data.matches,
+              matchesWord: c.data.matches === 1 ? t('heatmap.matches_one') : t('heatmap.matches_other'),
+              purchases: c.data.purchases,
+              purchasesWord: c.data.purchases === 1 ? t('heatmap.purchases_one') : t('heatmap.purchases_other'),
+            })}
           />
         ))}
       </div>
       <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
         <span>{cells[0]?.label}</span>
         <div className="flex items-center gap-1">
-          <span>menos</span>
+          <span>{t('heatmap.less')}</span>
           <div className="w-2.5 h-2.5 rounded-sm bg-muted/30" />
           <div className="w-2.5 h-2.5 rounded-sm bg-pitch/30" />
           <div className="w-2.5 h-2.5 rounded-sm bg-pitch/55" />
           <div className="w-2.5 h-2.5 rounded-sm bg-pitch/75" />
           <div className="w-2.5 h-2.5 rounded-sm bg-pitch" />
-          <span>mais</span>
+          <span>{t('heatmap.more')}</span>
         </div>
-        <span>hoje</span>
+        <span>{t('heatmap.today')}</span>
       </div>
     </div>
   );

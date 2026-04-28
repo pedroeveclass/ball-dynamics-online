@@ -1,0 +1,135 @@
+{
+  "nav": {
+    "brand": "FOOTBALL IDENTITY",
+    "login": "Entrar",
+    "register": "Criar Conta"
+  },
+  "hero": {
+    "title_line1": "FUTEBOL",
+    "title_tactical": "TÁTICO.",
+    "title_online": "ONLINE.",
+    "title_persistent": "PERSISTENTE.",
+    "subtitle_html": "O único jogo onde <1>22 jogadores humanos</1> controlam cada posição em campo. Cada turno você decide: mover, passar, chutar, driblar ou interceptar. Crie seu atleta ou assuma como técnico — sua carreira começa agora.",
+    "cta_primary": "COMEÇAR AGORA",
+    "cta_league": "VER LIGA"
+  },
+  "how_it_works": {
+    "title": "Como Funciona",
+    "steps": {
+      "create": {
+        "title": "Crie seu Personagem",
+        "desc": "Escolha ser Jogador ou Técnico. Defina posição, nome e comece sua jornada."
+      },
+      "train": {
+        "title": "Treine e Evolua",
+        "desc": "Gaste energia treinando 30+ atributos. Quanto mais treina, mais forte fica."
+      },
+      "play": {
+        "title": "Jogue Partidas Reais",
+        "desc": "Entre em campo com outros humanos. Cada turno: mova, passe, chute, intercepte."
+      }
+    }
+  },
+  "details": {
+    "title": "Cada Detalhe Importa",
+    "arrows": {
+      "green": {
+        "label": "Setas verdes",
+        "desc": "indicam a movimentação dos jogadores no campo."
+      },
+      "blue": {
+        "label": "Setas azuis",
+        "desc": "mostram passes para companheiros de equipe."
+      },
+      "orange": {
+        "label": "Setas laranjas",
+        "desc": "representam chutes ao gol com direção e força."
+      },
+      "purple": {
+        "label": "Círculo roxo",
+        "desc": "aparece quando você pode interceptar a bola. Clique para agir!"
+      }
+    }
+  },
+  "paths": {
+    "title": "Dois Caminhos, Uma Paixão",
+    "player": {
+      "title": "Jogador",
+      "items": {
+        "0": "Controle seu atleta em cada turno da partida",
+        "1": "Treine atributos diariamente (velocidade, passe, chute...)",
+        "2": "Negocie contratos e salários com clubes",
+        "3": "Compre itens na loja: chuteiras, energéticos, treinador",
+        "4": "Construa reputação e suba de overall"
+      }
+    },
+    "manager": {
+      "title": "Técnico",
+      "items": {
+        "0": "Monte a escalação e defina a formação tática",
+        "1": "Contrate jogadores humanos no mercado",
+        "2": "Gerencie finanças: salários, bilheteria, instalações",
+        "3": "Evolua o estádio e centro de treino",
+        "4": "Envie convites de amistoso e dispute a liga"
+      }
+    }
+  },
+  "features": {
+    "title": "Tudo Que Você Precisa",
+    "turn_based": {
+      "title": "Partidas Turn-Based",
+      "desc": "Cada turno tem 3 fases: posicionamento, ação e resolução. Cada decisão importa."
+    },
+    "humans": {
+      "title": "22 Jogadores Humanos",
+      "desc": "Cada posição no campo controlada por um jogador real. Futebol de verdade."
+    },
+    "club": {
+      "title": "Gestão Completa de Clube",
+      "desc": "Escalação, formação tática, contratações, finanças e estádio."
+    },
+    "attributes": {
+      "title": "30+ Atributos Treináveis",
+      "desc": "Velocidade, passe, chute, visão de jogo, força, resistência e muito mais."
+    },
+    "league": {
+      "title": "Liga Competitiva",
+      "desc": "20 clubes, 19 rodadas, classificação real, artilharia e premiações."
+    },
+    "economy": {
+      "title": "Economia Realista",
+      "desc": "Salários semanais, transferências, bilheteria por jogo, instalações."
+    },
+    "store": {
+      "title": "Loja de Itens",
+      "desc": "Chuteiras, luvas, energéticos, treinador particular — tudo influencia em campo."
+    },
+    "community": {
+      "title": "Comunidade Ativa",
+      "desc": "Fórum integrado com discussões, táticas, sugestões e reports."
+    }
+  },
+  "stats": {
+    "players_per_match": "jogadores por partida",
+    "trainable_attributes": "atributos treináveis",
+    "league_clubs": "clubes na liga",
+    "phases_per_turn": "fases por turno"
+  },
+  "pitch_labels": {
+    "pass": "PASSE",
+    "shot": "CHUTE",
+    "intercept": "INTERCEPTAR"
+  },
+  "final_cta": {
+    "title_line1": "Pronto para criar sua",
+    "title_line2": "identidade no futebol?",
+    "subtitle": "Crie sua conta grátis e entre em campo agora mesmo.",
+    "button": "CRIAR CONTA GRÁTIS"
+  },
+  "footer": {
+    "copyright": "2025 Football Identity. Todos os direitos reservados.",
+    "league": "Liga",
+    "forum": "Fórum",
+    "login": "Login"
+  }
+}

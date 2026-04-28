@@ -41,5 +41,43 @@
   },
   "logout": "Sair",
   "tutorial": "Tutorial",
-  "loading_screen": "Carregando..."
+  "loading_screen": "Carregando...",
+  "indeterminate": "Indeterminado",
+  "time_ago": {
+    "now": "agora",
+    "minutes": "há {{count}}min",
+    "hours": "há {{count}}h",
+    "days": "há {{count}}d",
+    "month_one": "há {{count}} mês",
+    "month_other": "há {{count}} meses"
+  },
+  "position_field_selector": {
+    "legend_humans": "Jogadores humanos",
+    "legend_clubs": "Clubes procurando",
+    "legend_scarce": "Poucos jogadores (<5)",
+    "selected_label": "Selecionada:",
+    "tooltip": "{{label}} — {{humans}} {{humansWord}}, {{demand}} {{demandWord}} procurando",
+    "humans_one": "jogador",
+    "humans_other": "jogadores",
+    "clubs_one": "clube",
+    "clubs_other": "clubes"
+  },
+  "avatar_creator": {
+    "preview": {
+      "face": "Rosto",
+      "front": "Frente",
+      "back": "Costas"
+    },
+    "sections": {
+      "skinTone": "Pele",
+      "hair": "Cabelo",
+      "hairColor": "Cor do Cabelo",
+      "eyebrows": "Sobrancelha",
+      "eyes": "Olhos",
+      "mouth": "Boca",
+      "facialHair": "Barba"
+    },
+    "default_confirm": "Salvar Avatar",
+    "saving": "Salvando..."
+  }
 }

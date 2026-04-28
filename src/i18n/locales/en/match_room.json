@@ -79,5 +79,41 @@
     "submit": "Submit Action",
     "ready": "Ready",
     "cancel": "Cancel"
+  },
+  "toast": {
+    "session_expired": "Session expired. Please log in again.",
+    "halftime_locked": "Halftime in progress. Wait for it to end or click \"Ready\" to skip.",
+    "turn_in_transition": "Turn in transition, try again",
+    "submit_error": "Failed to submit action",
+    "match_finished": "Match finished!",
+    "finish_error": "Failed to finish match",
+    "ready_error": "Failed to mark ready",
+    "team_ready_error": "Failed to mark team ready",
+    "all_ready_second_half": "Everyone ready! Second half in 5s.",
+    "substitution_scheduled": "Substitution scheduled! It will apply at the next stoppage.",
+    "substitution_applied": "Substitution: {{name}} is on!",
+    "default_player_name": "Player",
+    "tackle_label": "TACKLE",
+    "gk_catch_label": "CATCH"
+  },
+  "event": {
+    "substitution_title": "🔄 Substitution",
+    "substitution_body": "{{inName}} replaces {{outName}}"
+  },
+  "tooltips": {
+    "help_button": "How to play",
+    "help_aria": "Help"
+  },
+  "ui": {
+    "quality_good": "Good",
+    "quality_medium": "Medium",
+    "quality_bad": "Poor",
+    "shot_generic": "Shot",
+    "pass_generic": "Pass",
+    "inertia_label": "⚽ Inertia",
+    "one_touch_short": "(1T)",
+    "motion_resolving": "⚡ MOTION — Resolving play...",
+    "finished_with_score": "⏱ FINISHED — {{home}} × {{away}}",
+    "cancel_drawing": "✕ Cancel"
   }
 }

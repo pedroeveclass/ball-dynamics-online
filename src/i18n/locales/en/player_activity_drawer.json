@@ -1,0 +1,42 @@
+{
+  "header": {
+    "years_old": "{{count}} years old",
+    "ovr": "OVR {{value}}",
+    "notify": "Notify"
+  },
+  "stats": {
+    "trainings": "Trainings",
+    "trainings_sublabel_one": "{{count}} day",
+    "trainings_sublabel_other": "{{count}} days",
+    "matches": "Matches",
+    "matches_sublabel": "{{goals}}G {{assists}}A",
+    "purchases": "Purchases",
+    "score": "Score"
+  },
+  "alerts": {
+    "no_training_one": "No training for {{count}} day.",
+    "no_training_other": "No training for {{count}} days."
+  },
+  "sections": {
+    "heatmap_title": "Daily activity — last 30 days",
+    "history_title_one": "History — last {{count}} day",
+    "history_title_other": "History — last {{count}} days",
+    "history_empty": "No activity in this period."
+  },
+  "events": {
+    "training": "Trained <1>{{attribute}}</1>",
+    "training_growth": " (+{{growth}})",
+    "match_vs": "vs <1>{{opponent}}</1>",
+    "match_result": " ({{result}})",
+    "match_stats": " — {{goals}}G {{assists}}A",
+    "purchase": "Bought <1>{{name}}</1>",
+    "purchase_category": " ({{category}})"
+  },
+  "relative_date": {
+    "just_now": "just now",
+    "hours_one": "{{count}}h ago",
+    "hours_other": "{{count}}h ago",
+    "days_one": "{{count}}d ago",
+    "days_other": "{{count}}d ago"
+  }
+}

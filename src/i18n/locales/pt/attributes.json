@@ -42,7 +42,13 @@
     "Técnico": "Técnico",
     "Mental": "Mental",
     "Chute": "Chute",
-    "Goleiro": "Goleiro"
+    "Goleiro": "Goleiro",
+    "Chute / Cabeceio": "Chute / Cabeceio",
+    "Defensivo": "Defensivo",
+    "Distribuição": "Distribuição"
+  },
+  "fallback_messages": {
+    "no_attrs_short": "Atributos não disponíveis."
   },
   "tiers": {
     "star_quality": "Qualidade Estrela ⭐",
@@ -74,5 +80,38 @@
     "Goleiro Felino": "Goleiro Felino",
     "Goleiro Muralha": "Goleiro Muralha"
   },
-  "energy": "Energia"
+  "energy": "Energia",
+  "archetype_descriptions": {
+    "All Around": "Equilibrado em todos os atributos. Um jogador versátil.",
+    "Condutor": "Mais controle de bola, passe e técnica refinada.",
+    "Chutador": "Potencializa atributos de chute e finalização.",
+    "Velocista": "Mais velocidade, aceleração e energia.",
+    "Torre": "Mais alto, melhor em salto, cabeceio e força.",
+    "Cão de Guarda": "Mais marcação, desarme e posicionamento defensivo.",
+    "Goleiro Completo": "Equilibrado em todos os atributos de goleiro. Versátil e confiável.",
+    "Goleiro Felino": "Ágil, reflexos rápidos, bom em saídas e duelos 1v1.",
+    "Goleiro Muralha": "Alto, dominante na área, forte em cruzamentos e defesa aérea."
+  },
+  "height_options": {
+    "Muito Baixo": {
+      "label": "Muito Baixo (≤168cm)",
+      "description": "Mais rápido e ágil, mas perde em cabeceio, pulo e força."
+    },
+    "Baixo": {
+      "label": "Baixo (169-174cm)",
+      "description": "Ligeiramente mais veloz e ágil, pequena desvantagem aérea."
+    },
+    "Médio": {
+      "label": "Médio (175-180cm)",
+      "description": "Equilibrado, sem bônus ou penalidades."
+    },
+    "Alto": {
+      "label": "Alto (181-187cm)",
+      "description": "Melhor no jogo aéreo e força, um pouco menos ágil."
+    },
+    "Muito Alto": {
+      "label": "Muito Alto (≥188cm)",
+      "description": "Dominante no ar e forte, mas perde velocidade e agilidade."
+    }
+  }
 }

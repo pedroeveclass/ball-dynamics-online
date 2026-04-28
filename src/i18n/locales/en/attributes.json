@@ -42,7 +42,13 @@
     "Técnico": "Technical",
     "Mental": "Mental",
     "Chute": "Shooting",
-    "Goleiro": "Goalkeeping"
+    "Goleiro": "Goalkeeping",
+    "Chute / Cabeceio": "Shooting / Heading",
+    "Defensivo": "Defensive",
+    "Distribuição": "Distribution"
+  },
+  "fallback_messages": {
+    "no_attrs_short": "No attributes available."
   },
   "tiers": {
     "star_quality": "Star Quality ⭐",
@@ -74,5 +80,38 @@
     "Goleiro Felino": "Cat-like Keeper",
     "Goleiro Muralha": "Wall Keeper"
   },
-  "energy": "Energy"
+  "energy": "Energy",
+  "archetype_descriptions": {
+    "All Around": "Balanced across all attributes. A versatile player.",
+    "Condutor": "Higher ball control, passing and refined technique.",
+    "Chutador": "Boosts shooting and finishing attributes.",
+    "Velocista": "More pace, acceleration and energy.",
+    "Torre": "Taller, better at jumping, heading and strength.",
+    "Cão de Guarda": "More marking, tackling and defensive positioning.",
+    "Goleiro Completo": "Balanced across all goalkeeping attributes. Versatile and reliable.",
+    "Goleiro Felino": "Agile, quick reflexes, good at sweeping and 1v1.",
+    "Goleiro Muralha": "Tall, dominant in the box, strong on crosses and aerial defense."
+  },
+  "height_options": {
+    "Muito Baixo": {
+      "label": "Very Short (≤168cm)",
+      "description": "Faster and more agile, but loses heading, jumping and strength."
+    },
+    "Baixo": {
+      "label": "Short (169-174cm)",
+      "description": "Slightly faster and more agile, small aerial disadvantage."
+    },
+    "Médio": {
+      "label": "Average (175-180cm)",
+      "description": "Balanced, no bonus or penalties."
+    },
+    "Alto": {
+      "label": "Tall (181-187cm)",
+      "description": "Better in the air and strength, slightly less agile."
+    },
+    "Muito Alto": {
+      "label": "Very Tall (≥188cm)",
+      "description": "Dominant in the air and strong, but loses pace and agility."
+    }
+  }
 }

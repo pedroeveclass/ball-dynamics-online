@@ -1,0 +1,110 @@
+{
+  "skin_tones": {
+    "FFDBB4": "Very Light",
+    "EDB98A": "Light",
+    "D08B5B": "Medium",
+    "AE5D29": "Tan",
+    "8D5524": "Dark",
+    "614335": "Very Dark"
+  },
+  "hair_colors": {
+    "2C1B18": "Black",
+    "4A312C": "Dark Brown",
+    "A55728": "Brown",
+    "B58143": "Light Brown",
+    "D6B370": "Blond",
+    "F59797": "Pink",
+    "C93305": "Red",
+    "E8E1E1": "Gray",
+    "ECDCBF": "Platinum"
+  },
+  "hair_styles": {
+    "shortFlat": "Short Flat",
+    "shortRound": "Short Round",
+    "shortCurly": "Short Curly",
+    "shortWaved": "Short Waved",
+    "shavedSides": "Shaved Sides",
+    "theCaesar": "Caesar",
+    "theCaesarAndSidePart": "Caesar Side Part",
+    "sides": "Sides",
+    "frizzle": "Frizzy",
+    "shaggy": "Shaggy",
+    "shaggyMullet": "Mullet",
+    "dreads01": "Short Dreads",
+    "dreads02": "Medium Dreads",
+    "dreads": "Long Dreads",
+    "straight01": "Long Straight 1",
+    "straight02": "Long Straight 2",
+    "straightAndStrand": "Straight w/ Strand",
+    "longButNotTooLong": "Mid Length",
+    "curly": "Long Curly",
+    "curvy": "Curvy",
+    "miaWallace": "Straight Bangs",
+    "fro": "Afro",
+    "froBand": "Afro + Headband",
+    "bigHair": "Big Hair",
+    "bun": "Bun",
+    "bob": "Bob",
+    "frida": "Frida",
+    "noHair": "Bald"
+  },
+  "eyebrows": {
+    "default": "Default",
+    "defaultNatural": "Natural",
+    "raisedExcited": "Excited",
+    "raisedExcitedNatural": "Excited Natural",
+    "sadConcerned": "Concerned",
+    "sadConcernedNatural": "Concerned Natural",
+    "upDown": "Up-Down",
+    "upDownNatural": "Up-Down Natural",
+    "angry": "Angry",
+    "angryNatural": "Angry Natural",
+    "flatNatural": "Flat",
+    "frownNatural": "Frown"
+  },
+  "eyes": {
+    "default": "Default",
+    "happy": "Happy",
+    "wink": "Wink",
+    "squint": "Squint",
+    "surprised": "Surprised",
+    "side": "Side Glance",
+    "eyeRoll": "Eye Roll",
+    "closed": "Closed",
+    "hearts": "Hearts"
+  },
+  "noses": {
+    "default": "Default"
+  },
+  "mouths": {
+    "default": "Neutral",
+    "smile": "Smile",
+    "twinkle": "Twinkle",
+    "serious": "Serious",
+    "concerned": "Concerned",
+    "tongue": "Tongue",
+    "eating": "Eating",
+    "disbelief": "Disbelief",
+    "grimace": "Grimace",
+    "sad": "Sad",
+    "screamOpen": "Scream"
+  },
+  "facial_hair": {
+    "none": "None",
+    "beardLight": "Stubble",
+    "beardMedium": "Medium Beard",
+    "beardMajestic": "Full Beard",
+    "moustacheFancy": "Fancy Moustache",
+    "moustacheMagnum": "Thick Moustache"
+  },
+  "accessories": {
+    "none": "None",
+    "prescription01": "Round Glasses",
+    "prescription02": "Square Glasses",
+    "round": "Thin Glasses",
+    "sunglasses": "Sunglasses",
+    "wayfarers": "Wayfarers",
+    "kurt": "Kurt",
+    "eyepatch": "Eyepatch"
+  }
+}

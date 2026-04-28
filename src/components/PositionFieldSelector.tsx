@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { POSITIONS } from '@/lib/attributes';
 import { positionToPT } from '@/lib/positions';
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function PositionFieldSelector({ value, onChange }: Props) {
+  const { t } = useTranslation('common');
   const [humanCounts, setHumanCounts] = useState<Record<string, number> | null>(null);
   const [demandCounts, setDemandCounts] = useState<Record<string, number> | null>(null);
 
@@ -58,9 +60,9 @@ export function PositionFieldSelector({ value, onChange }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> Jogadores humanos</span>
-        <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> Clubes procurando</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-pitch" /> Poucos jogadores (&lt;5)</span>
+        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {t('position_field_selector.legend_humans')}</span>
+        <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> {t('position_field_selector.legend_clubs')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-pitch" /> {t('position_field_selector.legend_scarce')}</span>
       </div>
 
       <div
@@ -98,7 +100,13 @@ export function PositionFieldSelector({ value, onChange }: Props) {
                     ? 'border-pitch/60 bg-pitch/10 text-foreground hover:bg-pitch/20'
                     : 'border-border bg-card text-muted-foreground hover:border-tactical/50'
               }`}
-              title={`${p.label} — ${humans} jogador${humans === 1 ? '' : 'es'}, ${demand} clube${demand === 1 ? '' : 's'} procurando`}
+              title={t('position_field_selector.tooltip', {
+                label: p.label,
+                humans,
+                humansWord: humans === 1 ? t('position_field_selector.humans_one') : t('position_field_selector.humans_other'),
+                demand,
+                demandWord: demand === 1 ? t('position_field_selector.clubs_one') : t('position_field_selector.clubs_other'),
+              })}
             >
               <div className="font-display text-[11px] font-bold leading-tight">
                 {positionToPT(p.value)}
@@ -124,7 +132,7 @@ export function PositionFieldSelector({ value, onChange }: Props) {
 
       {value && (
         <div className="flex items-center justify-between rounded-md border border-tactical/30 bg-tactical/5 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">Selecionada:</span>
+          <span className="text-muted-foreground">{t('position_field_selector.selected_label')}</span>
           <span className="font-display font-bold text-tactical">
             {POSITIONS.find(p => p.value === value)?.label}
           </span>

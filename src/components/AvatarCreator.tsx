@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   PlayerAppearance,
   DEFAULT_APPEARANCE,
@@ -10,6 +11,7 @@ import {
   MOUTHS,
   FACIAL_HAIR,
   Option,
+  avatarOptionLabel,
 } from '@/lib/avatar';
 import { PlayerAvatar, type AvatarOutfit } from './PlayerAvatar';
 import { Button } from '@/components/ui/button';
@@ -32,24 +34,38 @@ interface AvatarCreatorProps {
 // Accessories are intentionally NOT shown here — they'll become purchasable
 // gadgets in the store (hat, glasses, etc.) and apply on top of the saved
 // appearance via the `gadgets` array. Only core traits live in the creator.
+// Section labels resolve through i18n (`common:avatar_creator.sections.<key>`)
+// at render time, so PT/EN follow the active language.
+type SectionKey = 'skinTone' | 'hair' | 'hairColor' | 'eyebrows' | 'eyes' | 'mouth' | 'facialHair';
 type Section =
-  | { key: 'skinTone'; label: 'Pele'; options: Option[]; mode: 'swatch' }
-  | { key: 'hair'; label: 'Cabelo'; options: Option[]; mode: 'list' }
-  | { key: 'hairColor'; label: 'Cor do Cabelo'; options: Option[]; mode: 'swatch' }
-  | { key: 'eyebrows'; label: 'Sobrancelha'; options: Option[]; mode: 'list' }
-  | { key: 'eyes'; label: 'Olhos'; options: Option[]; mode: 'list' }
-  | { key: 'mouth'; label: 'Boca'; options: Option[]; mode: 'list' }
-  | { key: 'facialHair'; label: 'Barba'; options: Option[]; mode: 'list'; nullable: true };
+  | { key: 'skinTone'; options: Option[]; mode: 'swatch' }
+  | { key: 'hair'; options: Option[]; mode: 'list' }
+  | { key: 'hairColor'; options: Option[]; mode: 'swatch' }
+  | { key: 'eyebrows'; options: Option[]; mode: 'list' }
+  | { key: 'eyes'; options: Option[]; mode: 'list' }
+  | { key: 'mouth'; options: Option[]; mode: 'list' }
+  | { key: 'facialHair'; options: Option[]; mode: 'list'; nullable: true };
 
 const SECTIONS: Section[] = [
-  { key: 'skinTone', label: 'Pele', options: SKIN_TONES, mode: 'swatch' },
-  { key: 'hair', label: 'Cabelo', options: HAIR_STYLES, mode: 'list' },
-  { key: 'hairColor', label: 'Cor do Cabelo', options: HAIR_COLORS, mode: 'swatch' },
-  { key: 'eyebrows', label: 'Sobrancelha', options: EYEBROWS, mode: 'list' },
-  { key: 'eyes', label: 'Olhos', options: EYES, mode: 'list' },
-  { key: 'mouth', label: 'Boca', options: MOUTHS, mode: 'list' },
-  { key: 'facialHair', label: 'Barba', options: FACIAL_HAIR, mode: 'list', nullable: true },
+  { key: 'skinTone', options: SKIN_TONES, mode: 'swatch' },
+  { key: 'hair', options: HAIR_STYLES, mode: 'list' },
+  { key: 'hairColor', options: HAIR_COLORS, mode: 'swatch' },
+  { key: 'eyebrows', options: EYEBROWS, mode: 'list' },
+  { key: 'eyes', options: EYES, mode: 'list' },
+  { key: 'mouth', options: MOUTHS, mode: 'list' },
+  { key: 'facialHair', options: FACIAL_HAIR, mode: 'list', nullable: true },
 ];
+
+// Maps Section.key → avatar i18n category
+const SECTION_TO_CATEGORY: Record<string, import('@/lib/avatar').AvatarCategory> = {
+  skinTone: 'skin_tones',
+  hair: 'hair_styles',
+  hairColor: 'hair_colors',
+  eyebrows: 'eyebrows',
+  eyes: 'eyes',
+  mouth: 'mouths',
+  facialHair: 'facial_hair',
+};
 
 export function AvatarCreator({
   initial,
@@ -60,10 +76,13 @@ export function AvatarCreator({
   jerseyNumber,
   height,
   onConfirm,
-  confirmLabel = 'Salvar Avatar',
+  confirmLabel,
   submitting,
   outfit = 'player',
 }: AvatarCreatorProps) {
+  const { t } = useTranslation('common');
+  const resolvedConfirmLabel = confirmLabel ?? t('avatar_creator.default_confirm');
+  const sectionLabel = (key: SectionKey): string => t(`avatar_creator.sections.${key}`);
   const [app, setApp] = useState<PlayerAppearance>(initial ?? DEFAULT_APPEARANCE);
   const [activeSection, setActiveSection] = useState<Section['key']>('skinTone');
   const [previewVariant, setPreviewVariant] = useState<'full-front' | 'full-back' | 'face'>('full-front');
@@ -101,7 +120,7 @@ export function AvatarCreator({
                 previewVariant === v ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
               }`}
             >
-              {v === 'face' ? 'Rosto' : v === 'full-front' ? 'Frente' : 'Costas'}
+              {v === 'face' ? t('avatar_creator.preview.face') : v === 'full-front' ? t('avatar_creator.preview.front') : t('avatar_creator.preview.back')}
             </button>
           ))}
         </div>
@@ -121,14 +140,14 @@ export function AvatarCreator({
                   : 'border-border text-muted-foreground hover:border-tactical/40'
               }`}
             >
-              {s.label}
+              {sectionLabel(s.key)}
             </button>
           ))}
         </div>
 
         {/* Options grid */}
         <div className="rounded-lg bg-card border border-border p-4">
-          <Label className="text-xs text-muted-foreground mb-3 block">{currentSection.label}</Label>
+          <Label className="text-xs text-muted-foreground mb-3 block">{sectionLabel(currentSection.key)}</Label>
           {currentSection.mode === 'swatch' ? (
             <div className="flex flex-wrap gap-2">
               {currentSection.options.map(opt => {
@@ -137,7 +156,7 @@ export function AvatarCreator({
                   <button
                     key={opt.id}
                     onClick={() => setField(currentSection.key as any, opt.id as any)}
-                    title={opt.label}
+                    title={avatarOptionLabel(SECTION_TO_CATEGORY[currentSection.key], opt.id, opt.label)}
                     className={`h-10 w-10 rounded-full border-2 transition-all ${selected ? 'border-tactical scale-110' : 'border-border hover:border-tactical/50'}`}
                     style={{ backgroundColor: `#${opt.id}` }}
                   />
@@ -167,7 +186,7 @@ export function AvatarCreator({
                         : 'border-border text-muted-foreground hover:border-tactical/40'
                     }`}
                   >
-                    {opt.label}
+                    {avatarOptionLabel(SECTION_TO_CATEGORY[currentSection.key], opt.id, opt.label)}
                   </button>
                 );
               })}
@@ -180,7 +199,7 @@ export function AvatarCreator({
           disabled={submitting}
           className="w-full bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display"
         >
-          {submitting ? 'Salvando...' : confirmLabel}
+          {submitting ? t('avatar_creator.saving') : resolvedConfirmLabel}
         </Button>
       </div>
     </div>

@@ -2,6 +2,8 @@
 // Gols / Assistências / Cartões) always render; the extras block adds
 // position-specific metrics.
 
+import i18n from '@/i18n';
+
 export type PositionExtra =
   | 'clean_sheets'
   | 'goals_conceded'
@@ -35,7 +37,11 @@ export const POSITION_EXTRAS: Record<string, PositionExtra[]> = {
   ST: ['shots', 'shots_on_target', 'shot_accuracy', 'offsides'],
 };
 
-export const EXTRA_LABELS: Record<PositionExtra, string> = {
+// PT fallbacks — used only when i18n hasn't initialised yet. Real labels
+// resolve through `career_stats:extras.<key>` so PT/EN follow the active
+// language. Prefer using `useTranslation('career_stats')` directly in new
+// components; this Proxy is kept for backward compatibility.
+const EXTRA_FALLBACK_PT: Record<PositionExtra, string> = {
   clean_sheets: 'Clean Sheets',
   goals_conceded: 'Gols Sofridos',
   gk_saves: 'Defesas',
@@ -50,6 +56,15 @@ export const EXTRA_LABELS: Record<PositionExtra, string> = {
   shot_accuracy: 'Acerto de Chute',
   offsides: 'Impedimentos',
 };
+
+/** @deprecated Prefer `useTranslation('career_stats')` and `t('extras.<key>')`. */
+export const EXTRA_LABELS: Record<PositionExtra, string> = new Proxy({} as Record<PositionExtra, string>, {
+  get(_t, prop: string) {
+    if (typeof prop !== 'string') return undefined;
+    const v = i18n.t(`career_stats:extras.${prop}`, { defaultValue: '' });
+    return v || EXTRA_FALLBACK_PT[prop as PositionExtra] || prop;
+  },
+});
 
 export function extrasForPosition(position: string | null | undefined): PositionExtra[] {
   if (!position) return [];

@@ -79,5 +79,41 @@
     "submit": "Enviar Ação",
     "ready": "Pronto",
     "cancel": "Cancelar"
+  },
+  "toast": {
+    "session_expired": "Sessão expirada. Faça login novamente.",
+    "halftime_locked": "Intervalo em andamento. Aguarde o fim ou clique em \"Pronto\" para pular.",
+    "turn_in_transition": "Turno em transição, tente novamente",
+    "submit_error": "Erro ao enviar ação",
+    "match_finished": "Partida finalizada!",
+    "finish_error": "Erro ao finalizar",
+    "ready_error": "Erro ao marcar pronto",
+    "team_ready_error": "Erro ao marcar time",
+    "all_ready_second_half": "Todos prontos! Segundo tempo em 5s.",
+    "substitution_scheduled": "Substituição agendada! Será aplicada na próxima parada de jogo.",
+    "substitution_applied": "Substituição: {{name}} entrou!",
+    "default_player_name": "Jogador",
+    "tackle_label": "DESARME",
+    "gk_catch_label": "AGARRAR"
+  },
+  "event": {
+    "substitution_title": "🔄 Substituição",
+    "substitution_body": "{{inName}} entra no lugar de {{outName}}"
+  },
+  "tooltips": {
+    "help_button": "Como jogar",
+    "help_aria": "Ajuda"
+  },
+  "ui": {
+    "quality_good": "Boa",
+    "quality_medium": "Média",
+    "quality_bad": "Ruim",
+    "shot_generic": "Chute",
+    "pass_generic": "Passe",
+    "inertia_label": "⚽ Inércia",
+    "one_touch_short": "(1ª)",
+    "motion_resolving": "⚡ MOTION — Resolvendo jogada...",
+    "finished_with_score": "⏱ ENCERRADA — {{home}} × {{away}}",
+    "cancel_drawing": "✕ Cancelar"
   }
 }

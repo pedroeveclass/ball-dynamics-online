@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
+import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, archetypeDescription, heightLabel as heightLabelI18n, heightDescription } from '@/lib/attributes';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
@@ -155,8 +155,8 @@ export default function OnboardingPlayerPage() {
   };
 
   const posLabel = POSITIONS.find(p => p.value === primaryPosition)?.label || '';
-  const bodyLabel = [...BODY_TYPES, ...GK_BODY_TYPES].find(b => b.value === bodyType)?.label || '';
-  const heightLabel = HEIGHT_OPTIONS.find(h => h.value === height)?.label || height;
+  const bodyLabel = archetypeLabel(bodyType);
+  const heightLabel = heightLabelI18n(height, height);
 
   const distributableAttrs = isGK ? [...GK_ATTRS, ...FIELD_ATTRS] : [...FIELD_ATTRS, ...GK_ATTRS];
 
@@ -262,9 +262,9 @@ export default function OnboardingPlayerPage() {
                     }`}
                   >
                     <span className={`font-display text-lg font-bold ${height === h.value ? 'text-tactical' : 'text-foreground'}`}>
-                      {h.label}
+                      {heightLabelI18n(h.value, h.label)}
                     </span>
-                    <p className="text-xs text-muted-foreground mt-1">{h.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{heightDescription(h.value, h.description)}</p>
                   </button>
                 ))}
               </div>
@@ -288,9 +288,9 @@ export default function OnboardingPlayerPage() {
                     }`}
                   >
                     <span className={`font-display text-lg font-bold ${bodyType === bt.value ? 'text-tactical' : 'text-foreground'}`}>
-                      {bt.label}
+                      {archetypeLabel(bt.value)}
                     </span>
-                    <p className="text-xs text-muted-foreground mt-1">{bt.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{archetypeDescription(bt.value, bt.description)}</p>
                   </button>
                 ))}
               </div>

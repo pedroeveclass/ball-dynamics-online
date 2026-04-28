@@ -663,6 +663,24 @@ export function energyLabel(): string {
   return i18n.t('attributes:energy', { defaultValue: 'Energia' });
 }
 
+// Description text for an archetype (used in the onboarding archetype picker).
+export function archetypeDescription(archetype: string | null | undefined, fallback?: string): string {
+  if (!archetype) return '';
+  const v = i18n.t(`attributes:archetype_descriptions.${archetype}`, { defaultValue: '' });
+  return v || fallback || '';
+}
+
+// Localized height label/description (PT keys are the canonical values).
+export function heightLabel(value: string, fallback?: string): string {
+  const v = i18n.t(`attributes:height_options.${value}.label`, { defaultValue: '' });
+  return v || fallback || value;
+}
+
+export function heightDescription(value: string, fallback?: string): string {
+  const v = i18n.t(`attributes:height_options.${value}.description`, { defaultValue: '' });
+  return v || fallback || '';
+}
+
 // Read-only Proxy that resolves attribute labels through i18next on access.
 // Lets `ATTR_LABELS[key]` keep working everywhere without sweeping all callers.
 export const ATTR_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {
