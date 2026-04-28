@@ -24,6 +24,7 @@ import ptStore from './locales/pt/store.json';
 import ptLeague from './locales/pt/league.json';
 import ptLeagueVote from './locales/pt/league_vote.json';
 import ptMatchEvents from './locales/pt/match_events.json';
+import ptMatchRoom from './locales/pt/match_room.json';
 import ptManagerAvatar from './locales/pt/manager_avatar.json';
 import ptManagerClub from './locales/pt/manager_club.json';
 import ptManagerFacilities from './locales/pt/manager_facilities.json';
@@ -74,6 +75,7 @@ import enStore from './locales/en/store.json';
 import enLeague from './locales/en/league.json';
 import enLeagueVote from './locales/en/league_vote.json';
 import enMatchEvents from './locales/en/match_events.json';
+import enMatchRoom from './locales/en/match_room.json';
 import enManagerAvatar from './locales/en/manager_avatar.json';
 import enManagerClub from './locales/en/manager_club.json';
 import enManagerFacilities from './locales/en/manager_facilities.json';
@@ -145,6 +147,7 @@ i18n
         manager_stadium: ptManagerStadium,
         match_events: ptMatchEvents,
         match_replay: ptMatchReplay,
+        match_room: ptMatchRoom,
         nav: ptNav,
         notification_messages: ptNotificationMessages,
         notifications: ptNotifications,
@@ -196,6 +199,7 @@ i18n
         manager_stadium: enManagerStadium,
         match_events: enMatchEvents,
         match_replay: enMatchReplay,
+        match_room: enMatchRoom,
         nav: enNav,
         notification_messages: enNotificationMessages,
         notifications: enNotifications,

@@ -1,0 +1,83 @@
+{
+  "phases": {
+    "ball_holder": "Portador",
+    "attacking_support": "Ataque",
+    "defending_response": "Defesa",
+    "resolution": "Motion",
+    "pre_match": "Pré-jogo",
+    "processing": "Pausa",
+    "positioning_attack": "Posicionar ⚽",
+    "positioning_defense": "Posicionar 🛡️",
+    "positioning": "Posicionar",
+    "open_play": "Jogada"
+  },
+  "phase_short": {
+    "ball_holder": "Portador",
+    "attacking_support": "Ataque",
+    "defending_response": "Defesa",
+    "resolution": "Motion",
+    "positioning_attack": "ATK",
+    "positioning_defense": "DEF",
+    "positioning": "Posicionar",
+    "open_play": "Jogada"
+  },
+  "actions": {
+    "move": "MOVER",
+    "pass_low": "PASSE RASTEIRO",
+    "pass_high": "PASSE ALTO",
+    "pass_launch": "LANÇAMENTO",
+    "shoot": "CHUTAR",
+    "shoot_controlled": "CHUTE CONTROLADO",
+    "shoot_power": "CHUTE FORTE",
+    "header_low": "CABECEIO BAIXO",
+    "header_high": "CABECEIO ALTO",
+    "header_controlled": "CABECEIO CONTROLADO",
+    "header_power": "CABECEIO FORTE",
+    "press": "PRESSIONAR",
+    "intercept": "INTERCEPTAR",
+    "block_lane": "BLOQUEAR ROTA",
+    "block": "BLOQUEAR",
+    "no_action": "SEM AÇÃO",
+    "receive": "DOMINAR BOLA",
+    "receive_hard": "CARRINHO"
+  },
+  "actions_special": {
+    "gk_pass_short": "REPOSIÇÃO CURTA",
+    "gk_pass_medium": "REPOSIÇÃO MÉDIA",
+    "gk_pass_long": "REPOSIÇÃO LONGA",
+    "gk_block": "ESPALMAR",
+    "tackle": "DESARME",
+    "gk_catch": "AGARRAR",
+    "one_touch_suffix": "(1a)"
+  },
+  "status": {
+    "loose_ball": "BOLA SOLTA",
+    "halftime": "⏸ INTERVALO",
+    "live": "AO VIVO",
+    "finished": "ENCERRADA",
+    "scheduled": "AGENDADA",
+    "waiting_positioning": "Aguardando posicionamento...",
+    "waiting_next_turn": "Aguardando próximo turno...",
+    "waiting_server": "Aguardando servidor...",
+    "waiting_kickoff": "Aguardando início...",
+    "processing": "Processando todos os movimentos..."
+  },
+  "viewer_role": {
+    "player": "Jogador",
+    "manager": "Técnico",
+    "spectator": "Espectador"
+  },
+  "round_label": "Rodada {{round}}",
+  "finish_match": "Encerrar Partida",
+  "pre_match": {
+    "starts_at": "Começa: {{date}}",
+    "get_ready": "Preparar... {{seconds}}s",
+    "starting": "Iniciando partida..."
+  },
+  "buttons": {
+    "leave": "Sair",
+    "submit": "Enviar Ação",
+    "ready": "Pronto",
+    "cancel": "Cancelar"
+  }
+}

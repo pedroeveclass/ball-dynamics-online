@@ -1,0 +1,83 @@
+{
+  "phases": {
+    "ball_holder": "Ball Holder",
+    "attacking_support": "Attack",
+    "defending_response": "Defense",
+    "resolution": "Motion",
+    "pre_match": "Pre-match",
+    "processing": "Pause",
+    "positioning_attack": "Position ⚽",
+    "positioning_defense": "Position 🛡️",
+    "positioning": "Position",
+    "open_play": "Open Play"
+  },
+  "phase_short": {
+    "ball_holder": "Holder",
+    "attacking_support": "Attack",
+    "defending_response": "Defense",
+    "resolution": "Motion",
+    "positioning_attack": "ATK",
+    "positioning_defense": "DEF",
+    "positioning": "Position",
+    "open_play": "Play"
+  },
+  "actions": {
+    "move": "MOVE",
+    "pass_low": "GROUND PASS",
+    "pass_high": "HIGH PASS",
+    "pass_launch": "LONG BALL",
+    "shoot": "SHOOT",
+    "shoot_controlled": "CONTROLLED SHOT",
+    "shoot_power": "POWER SHOT",
+    "header_low": "LOW HEADER",
+    "header_high": "HIGH HEADER",
+    "header_controlled": "CONTROLLED HEADER",
+    "header_power": "POWER HEADER",
+    "press": "PRESS",
+    "intercept": "INTERCEPT",
+    "block_lane": "BLOCK LANE",
+    "block": "BLOCK",
+    "no_action": "NO ACTION",
+    "receive": "CONTROL BALL",
+    "receive_hard": "HARD TACKLE"
+  },
+  "actions_special": {
+    "gk_pass_short": "SHORT THROW",
+    "gk_pass_medium": "MID THROW",
+    "gk_pass_long": "LONG KICK",
+    "gk_block": "PARRY",
+    "tackle": "TACKLE",
+    "gk_catch": "CATCH",
+    "one_touch_suffix": "(1T)"
+  },
+  "status": {
+    "loose_ball": "LOOSE BALL",
+    "halftime": "⏸ HALF-TIME",
+    "live": "LIVE",
+    "finished": "FINISHED",
+    "scheduled": "SCHEDULED",
+    "waiting_positioning": "Waiting for positioning...",
+    "waiting_next_turn": "Waiting for next turn...",
+    "waiting_server": "Waiting for server...",
+    "waiting_kickoff": "Waiting for kickoff...",
+    "processing": "Processing all moves..."
+  },
+  "viewer_role": {
+    "player": "Player",
+    "manager": "Coach",
+    "spectator": "Spectator"
+  },
+  "round_label": "Round {{round}}",
+  "finish_match": "Finish Match",
+  "pre_match": {
+    "starts_at": "Starts: {{date}}",
+    "get_ready": "Get ready... {{seconds}}s",
+    "starting": "Starting match..."
+  },
+  "buttons": {
+    "leave": "Leave",
+    "submit": "Submit Action",
+    "ready": "Ready",
+    "cancel": "Cancel"
+  }
+}

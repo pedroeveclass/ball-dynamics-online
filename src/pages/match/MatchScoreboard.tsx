@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Square, LogOut, User } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ClubInfo, EventLog } from './types';
 import { computeMatchMinute, HALF_DURATION_MS_CLIENT } from './constants';
 import { ClubCrest } from '@/components/ClubCrest';
@@ -130,6 +131,7 @@ export interface MatchScoreboardProps {
 }
 
 export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchScoreboardProps) {
+  const { t } = useTranslation('match_room');
   const {
     isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
     homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
@@ -148,7 +150,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
     [events, awayClub?.id, halfStartedAt, currentHalf],
   );
 
-  const viewerRoleLabel = myRole === 'player' ? 'Jogador' : myRole === 'manager' ? 'Técnico' : 'Espectador';
+  const viewerRoleLabel = myRole === 'player' ? t('viewer_role.player') : myRole === 'manager' ? t('viewer_role.manager') : t('viewer_role.spectator');
   const viewerRoleClass =
     myRole === 'player' ? 'border-pitch/60 text-pitch' :
     myRole === 'manager' ? 'border-tactical/60 text-tactical' :
@@ -174,11 +176,11 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
         </Badge>
         <Badge variant="outline" className={`font-display text-[10px] ${isLive ? 'border-pitch/60 text-pitch animate-pulse' : 'border-border text-muted-foreground'}`}>
           {isLive && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-pitch inline-block" />}
-          {isLive ? 'AO VIVO' : isFinished ? 'ENCERRADA' : 'AGENDADA'}
+          {isLive ? t('status.live') : isFinished ? t('status.finished') : t('status.scheduled')}
         </Badge>
         {leagueRoundNumber !== null && (
           <Badge variant="outline" className="font-display text-[10px] border-border text-muted-foreground">
-            Rodada {leagueRoundNumber}
+            {t('round_label', { round: leagueRoundNumber })}
           </Badge>
         )}
         {isTestMatch && <Badge variant="secondary" className="text-[9px] font-display">5v5</Badge>}
@@ -257,14 +259,14 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
 
       <div className="flex items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onExit} className="h-8 text-[10px] font-display">
-          <LogOut className="h-3 w-3" /> Sair
+          <LogOut className="h-3 w-3" /> {t('buttons.leave')}
         </Button>
         {isManager && isTestMatch && isLive && (
           <button
             onClick={onFinishMatch}
             className="flex items-center gap-1 text-[10px] font-display bg-destructive/20 text-destructive border border-destructive/40 px-2 py-1 rounded hover:bg-destructive/30 transition-colors"
           >
-            <Square className="h-3 w-3" /> Finalizar
+            <Square className="h-3 w-3" /> {t('finish_match')}
           </button>
         )}
         {isBenchPlayer && <Badge className="bg-warning/20 text-warning text-[10px] border border-warning/40 font-display"><User className="h-3 w-3 mr-1" />No Banco</Badge>}
