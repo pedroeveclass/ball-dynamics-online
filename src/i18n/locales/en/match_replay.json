@@ -22,6 +22,7 @@
   },
   "overlay": {
     "halftime": "HALF-TIME",
+    "goal": "GOAL!",
     "set_piece": {
       "default": "SET PIECE",
       "corner": "CORNER",

@@ -130,6 +130,7 @@ interface MotionScene {
   actions: ActionRow[];        // arrows to draw during the motion
   scoresAfter: { home: number; away: number };
   endsHalf: boolean;            // pause 2s with halftime overlay after this motion
+  endsInGoal: boolean;          // pause ~1.5s with GOAL! overlay after this motion
   nextSetPieceType: string | null; // pause ~800ms with set-piece overlay before next motion
   matchMinute: number;          // approximate clock value to display
   currentHalf: 1 | 2;
@@ -157,6 +158,7 @@ const SPEED_OPTIONS = [
 
 const HALFTIME_PAUSE_MS = 2000;
 const SET_PIECE_PAUSE_MS = 800;
+const GOAL_PAUSE_MS = 1500;
 const INTER_SCENE_PAUSE_MS = 100;
 const LEGACY_TURN_DURATION_MS = 1000; // used only when falling back to per-turn snapshots
 // Replay plays each motion slower than the live engine so the action reads
@@ -168,7 +170,7 @@ const REPLAY_MOTION_SLOWDOWN = 2.0;
 const REPLAY_MOTION_MIN_MS = 2000;
 const REPLAY_MOTION_MAX_MS = 3000;
 
-type Phase = 'motion' | 'halftime_pause' | 'set_piece_pause' | 'idle_pause' | 'finished';
+type Phase = 'motion' | 'halftime_pause' | 'set_piece_pause' | 'goal_pause' | 'idle_pause' | 'finished';
 
 // ─── Main page component ────────────────────────────────────────
 export default function MatchReplayPage() {
@@ -349,13 +351,32 @@ export default function MatchReplayPage() {
           const ballStart = (holderId && initialPositions[holderId])
             ? { ...initialPositions[holderId] }
             : lastBallEnd;
-          const ballEnd = script?.ball_end_pos
+          let ballEnd = script?.ball_end_pos
             ? { x: script.ball_end_pos.x, y: script.ball_end_pos.y }
             : (tRow.ball_x != null && tRow.ball_y != null
                 ? { x: tRow.ball_x, y: tRow.ball_y }
                 : ballStart);
 
           const sceneEvents = scenesByTurnId.get(tRow.id) || [];
+
+          // Goal override: when a goal happens, script.ball_end_pos is already
+          // the centre kickoff spot. Pull the shot's actual target so the ball
+          // visibly travels into the net during the motion.
+          const goalEvent = sceneEvents.find(e => e.event_type === 'goal');
+          const endsInGoal = !!goalEvent;
+          if (endsInGoal) {
+            const sceneActions = actionsByTurn.get(tRow.id) || [];
+            const SHOT_TYPES = new Set(['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power']);
+            const shot = sceneActions.find(a =>
+              SHOT_TYPES.has(a.action_type) && a.target_x != null && a.target_y != null
+            );
+            if (shot && shot.target_x != null && shot.target_y != null) {
+              const ty = Math.min(58, Math.max(42, shot.target_y));
+              // Push X just past the goal line so the ball is clearly in the net.
+              const tx = shot.target_x > 50 ? Math.max(98, shot.target_x) : Math.min(2, shot.target_x);
+              ballEnd = { x: tx, y: ty };
+            }
+          }
           // Running score = scriptScore if provided, else accumulate goals.
           if (script?.scores) {
             runningHome = script.scores.home ?? runningHome;
@@ -409,6 +430,7 @@ export default function MatchReplayPage() {
             actions: actionsByTurn.get(tRow.id) || [],
             scoresAfter: { home: runningHome, away: runningAway },
             endsHalf,
+            endsInGoal,
             nextSetPieceType: nextSetPiece,
             matchMinute,
             currentHalf,
@@ -552,7 +574,8 @@ export default function MatchReplayPage() {
       // shows before the next motion plays.
       if (phase === 'idle_pause' && animProgress >= 1) {
         const sceneNow = usingLegacy ? null : scenes[currentSceneIdx];
-        if (sceneNow?.endsHalf) { setPhase('halftime_pause'); setPauseProgress(0); }
+        if (sceneNow?.endsInGoal) { setPhase('goal_pause'); setPauseProgress(0); }
+        else if (sceneNow?.endsHalf) { setPhase('halftime_pause'); setPauseProgress(0); }
         else if (sceneNow?.nextSetPieceType) { setPhase('set_piece_pause'); setPauseProgress(0); }
       }
       return true;
@@ -634,7 +657,8 @@ export default function MatchReplayPage() {
               return 1;
             }
             const sceneNow = usingLegacy ? null : scenes[currentSceneIdx];
-            if (sceneNow?.endsHalf) setPhase('halftime_pause');
+            if (sceneNow?.endsInGoal) setPhase('goal_pause');
+            else if (sceneNow?.endsHalf) setPhase('halftime_pause');
             else if (sceneNow?.nextSetPieceType) setPhase('set_piece_pause');
             else setPhase('idle_pause');
             setPauseProgress(0);
@@ -642,8 +666,9 @@ export default function MatchReplayPage() {
           return np;
         });
         if (transitioned) { stopped = true; return; }
-      } else if (phase === 'halftime_pause' || phase === 'set_piece_pause' || phase === 'idle_pause') {
+      } else if (phase === 'halftime_pause' || phase === 'set_piece_pause' || phase === 'goal_pause' || phase === 'idle_pause') {
         const dur = phase === 'halftime_pause' ? HALFTIME_PAUSE_MS
+                  : phase === 'goal_pause' ? GOAL_PAUSE_MS
                   : phase === 'set_piece_pause' ? SET_PIECE_PAUSE_MS
                   : INTER_SCENE_PAUSE_MS;
         let transitioned = false;
@@ -736,7 +761,10 @@ export default function MatchReplayPage() {
       }
       return currentScene.finalPositions[participantId] ?? currentScene.initialPositions[participantId] ?? null;
     }
-    if (phase === 'idle_pause' || phase === 'finished') {
+    // Goal pause: keep players where they ended (the moment of the goal),
+    // do NOT snap to the next scene yet — that would jump them to the
+    // kickoff formation while we still want to celebrate.
+    if (phase === 'goal_pause' || phase === 'idle_pause' || phase === 'finished') {
       return currentScene.finalPositions[participantId] ?? currentScene.initialPositions[participantId] ?? null;
     }
     const start = currentScene.initialPositions[participantId];
@@ -776,7 +804,7 @@ export default function MatchReplayPage() {
       };
     }
     if (!currentScene) return { x: 50, y: 50 };
-    if (phase === 'set_piece_pause' || phase === 'halftime_pause' || phase === 'idle_pause' || phase === 'finished') {
+    if (phase === 'set_piece_pause' || phase === 'halftime_pause' || phase === 'goal_pause' || phase === 'idle_pause' || phase === 'finished') {
       return currentScene.ballEnd;
     }
     return {
@@ -828,9 +856,10 @@ export default function MatchReplayPage() {
   const ballPos = getInterpolatedBall();
   const ballSvg = toSVG(ballPos.x, ballPos.y);
 
-  // Overlay text for halftime / set-piece pauses
+  // Overlay text for halftime / goal / set-piece pauses
   const overlayText: string | null = (() => {
     if (phase === 'halftime_pause') return t('overlay.halftime');
+    if (phase === 'goal_pause') return t('overlay.goal');
     if (phase === 'set_piece_pause' && currentScene?.nextSetPieceType) {
       const key = `overlay.set_piece.${currentScene.nextSetPieceType}`;
       const fallbackKey = 'overlay.set_piece.default';
@@ -1050,7 +1079,13 @@ export default function MatchReplayPage() {
             {overlayText && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div
-                  className={`px-6 py-3 rounded-lg font-display font-bold text-2xl tracking-wider border-2 backdrop-blur-sm ${phase === 'halftime_pause' ? 'bg-amber-500/30 border-amber-400 text-amber-100' : 'bg-blue-500/25 border-blue-400 text-blue-100'}`}
+                  className={`px-6 py-3 rounded-lg font-display font-bold tracking-wider border-2 backdrop-blur-sm ${
+                    phase === 'goal_pause'
+                      ? 'bg-green-500/35 border-green-300 text-green-50 text-4xl'
+                      : phase === 'halftime_pause'
+                        ? 'bg-amber-500/30 border-amber-400 text-amber-100 text-2xl'
+                        : 'bg-blue-500/25 border-blue-400 text-blue-100 text-2xl'
+                  }`}
                   style={{ animation: 'pulse 1.4s ease-in-out infinite' }}
                 >
                   {overlayText}
