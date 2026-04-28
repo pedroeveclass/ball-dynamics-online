@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { getStoreItemName } from '@/lib/storeItemLabel';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -33,7 +35,7 @@ interface TrainingRow {
 interface PurchaseRow {
   player_profile_id: string;
   created_at: string;
-  store_items: { name: string; category: string } | null;
+  store_items: { name: string; name_pt?: string | null; name_en?: string | null; category: string } | null;
 }
 
 interface MatchRow {
@@ -73,6 +75,7 @@ function daysSince(iso: string | null): number | null {
 
 export default function ManagerReportsPage() {
   const { t } = useTranslation('manager_reports');
+  const { current: lang } = useAppLanguage();
   const { managerProfile, club } = useAuth();
   const [periodDays, setPeriodDays] = useState(30);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
@@ -123,7 +126,7 @@ export default function ManagerReportsPage() {
       // 3. Purchases in period (join store_items, no price)
       const purchasesReq = supabase
         .from('store_purchases')
-        .select('player_profile_id, created_at, store_items(name, category)')
+        .select('player_profile_id, created_at, store_items(name, name_pt, name_en, category)')
         .in('player_profile_id', playerIds)
         .gte('created_at', periodStartISO);
 
@@ -241,7 +244,7 @@ export default function ManagerReportsPage() {
       ...pPurchases.map(pu => ({
         type: 'purchase' as const,
         date: pu.created_at,
-        data: { name: pu.store_items?.name ?? t('fallback_item'), category: pu.store_items?.category ?? null },
+        data: { name: pu.store_items ? (getStoreItemName(pu.store_items as any, lang) || t('fallback_item')) : t('fallback_item'), category: pu.store_items?.category ?? null },
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

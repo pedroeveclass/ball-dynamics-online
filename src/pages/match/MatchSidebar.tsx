@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight, Check, CheckCheck } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
 import { CountryFlag } from '@/components/CountryFlag';
+import { renderMatchEventTitle } from '@/lib/matchEventLabel';
 import type { ClubInfo, Participant, MatchTurn, EventLog, MatchData } from './types';
 import { HALF_DURATION_MS_CLIENT } from './constants';
 
@@ -606,7 +607,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
                 }`}>
                   <p className="font-display font-semibold">
                     {prefix && <span className="opacity-70 font-normal">{prefix}</span>}
-                    {e.title}
+                    {renderMatchEventTitle(e)}
                   </p>
                   {subject && (
                     <p className="opacity-95 text-[11px] font-semibold flex items-center gap-1 flex-wrap">

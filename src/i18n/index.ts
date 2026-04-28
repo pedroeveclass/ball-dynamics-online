@@ -12,8 +12,10 @@ import ptDashboard from './locales/pt/dashboard.json';
 import ptForum from './locales/pt/forum.json';
 import ptForumTopic from './locales/pt/forum_topic.json';
 import ptHelp from './locales/pt/help.json';
+import ptAttributes from './locales/pt/attributes.json';
 import ptLeague from './locales/pt/league.json';
 import ptLeagueVote from './locales/pt/league_vote.json';
+import ptMatchEvents from './locales/pt/match_events.json';
 import ptManagerAvatar from './locales/pt/manager_avatar.json';
 import ptManagerClub from './locales/pt/manager_club.json';
 import ptManagerFacilities from './locales/pt/manager_facilities.json';
@@ -52,8 +54,10 @@ import enDashboard from './locales/en/dashboard.json';
 import enForum from './locales/en/forum.json';
 import enForumTopic from './locales/en/forum_topic.json';
 import enHelp from './locales/en/help.json';
+import enAttributes from './locales/en/attributes.json';
 import enLeague from './locales/en/league.json';
 import enLeagueVote from './locales/en/league_vote.json';
+import enMatchEvents from './locales/en/match_events.json';
 import enManagerAvatar from './locales/en/manager_avatar.json';
 import enManagerClub from './locales/en/manager_club.json';
 import enManagerFacilities from './locales/en/manager_facilities.json';
@@ -101,6 +105,7 @@ i18n
       pt: {
         account_profile: ptAccountProfile,
         admin: ptAdmin,
+        attributes: ptAttributes,
         auth: ptAuth,
         bank: ptBank,
         coach: ptCoach,
@@ -120,6 +125,7 @@ i18n
         manager_match_create: ptManagerMatchCreate,
         manager_reports: ptManagerReports,
         manager_stadium: ptManagerStadium,
+        match_events: ptMatchEvents,
         match_replay: ptMatchReplay,
         nav: ptNav,
         notification_messages: ptNotificationMessages,
@@ -142,6 +148,7 @@ i18n
       en: {
         account_profile: enAccountProfile,
         admin: enAdmin,
+        attributes: enAttributes,
         auth: enAuth,
         bank: enBank,
         coach: enCoach,
@@ -161,6 +168,7 @@ i18n
         manager_match_create: enManagerMatchCreate,
         manager_reports: enManagerReports,
         manager_stadium: enManagerStadium,
+        match_events: enMatchEvents,
         match_replay: enMatchReplay,
         nav: enNav,
         notification_messages: enNotificationMessages,

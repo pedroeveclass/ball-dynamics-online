@@ -1,6 +1,7 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -56,7 +57,23 @@ interface Category {
   slug: string;
   name: string;
   description: string | null;
+  name_pt?: string | null;
+  name_en?: string | null;
+  description_pt?: string | null;
+  description_en?: string | null;
   sort_order: number;
+}
+
+function pickCatName(c: Category | undefined | null, lang: 'pt' | 'en'): string {
+  if (!c) return '';
+  if (lang === 'en') return c.name_en || c.name_pt || c.name;
+  return c.name_pt || c.name;
+}
+
+function pickCatDescription(c: Category | undefined | null, lang: 'pt' | 'en'): string {
+  if (!c) return '';
+  if (lang === 'en') return c.description_en || c.description_pt || c.description || '';
+  return c.description_pt || c.description || '';
 }
 
 interface Topic {
@@ -82,6 +99,7 @@ export default function ForumPage() {
   const { categorySlug } = useParams<{ categorySlug?: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation('forum');
+  const { current: lang } = useAppLanguage();
   const { profile, isAdmin } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -149,7 +167,7 @@ export default function ForumPage() {
     for (const tp of topicList) {
       tp.author_username = authorMap[tp.author_id] || t('anonymous');
       tp.category_slug = catMap[tp.category_id]?.slug;
-      tp.category_name = catMap[tp.category_id]?.name;
+      tp.category_name = pickCatName(catMap[tp.category_id], lang);
     }
 
     setTopics(topicList);
@@ -256,17 +274,21 @@ export default function ForumPage() {
             {/* Category grid (only on main forum page) */}
             {!categorySlug && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                {categories.map(cat => (
+                {categories.map(cat => {
+                  const catName = pickCatName(cat, lang);
+                  const catDesc = pickCatDescription(cat, lang);
+                  return (
                   <Link key={cat.slug} to={`/forum/${cat.slug}`}>
                     <Card className="hover:border-tactical/50 transition-colors cursor-pointer h-full">
                       <CardContent className="p-3 flex flex-col items-center text-center gap-1.5">
                         <div className="text-tactical">{CATEGORY_ICONS[cat.slug] || <MessageSquare className="h-5 w-5" />}</div>
-                        <span className="font-display text-sm font-semibold">{cat.name}</span>
-                        {cat.description && <span className="text-[10px] text-muted-foreground leading-tight">{cat.description}</span>}
+                        <span className="font-display text-sm font-semibold">{catName}</span>
+                        {catDesc && <span className="text-[10px] text-muted-foreground leading-tight">{catDesc}</span>}
                       </CardContent>
                     </Card>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -347,7 +369,7 @@ export default function ForumPage() {
                   <SelectTrigger><SelectValue placeholder={t('new_topic_dialog.category_placeholder')} /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      <SelectItem key={c.id} value={c.id}>{pickCatName(c, lang)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

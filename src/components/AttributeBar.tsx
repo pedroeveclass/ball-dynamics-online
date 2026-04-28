@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { getAttributeTier } from '@/lib/attributes';
+import { getAttributeTier, tierLabel } from '@/lib/attributes';
 import { ArrowUp, Lock } from 'lucide-react';
 
 interface AttributeBarProps {
@@ -61,7 +61,7 @@ export function AttributeBar({ label, value, max = 99, cap, showTier = false, ev
       )}
       {showTier && (
         <span className={cn('text-[10px] font-display font-semibold w-20 text-right truncate', tier.color)}>
-          {tier.label}
+          {tierLabel(tier)}
         </span>
       )}
     </div>

@@ -203,6 +203,15 @@ export function getAttributeTier(value: number): AttributeTier {
   return ATTRIBUTE_TIERS[ATTRIBUTE_TIERS.length - 1];
 }
 
+// Localized label for an AttributeTier — reads through i18next.
+// Use this in JSX instead of `tier.label` when you want PT/EN to follow
+// the active language.
+export function tierLabel(tier: AttributeTier | { name: string; label?: string } | null | undefined): string {
+  if (!tier) return '';
+  const translated = i18n.t(`attributes:tiers.${tier.name}`, { defaultValue: '' });
+  return translated || tier.label || tier.name;
+}
+
 export function getTrainingTierMultiplier(value: number): number {
   return getAttributeTier(value).trainingMultiplier;
 }
@@ -605,8 +614,13 @@ export const POSITIONS = [
   { value: 'ST', label: 'Atacante', category: 'FWD' },
 ] as const;
 
-// Attribute labels for display
-export const ATTR_LABELS: Record<string, string> = {
+// Attribute labels for display.
+// `ATTR_LABELS` is kept as a legacy proxy so existing callers continue to
+// work — but each lookup now resolves through i18next so PT/EN are honored
+// automatically. The PT JSON values match the historical strings 1:1.
+import i18n from '@/i18n';
+
+const FALLBACK_ATTR_LABELS: Record<string, string> = {
   velocidade: 'Velocidade', aceleracao: 'Aceleração', agilidade: 'Agilidade',
   forca: 'Força', equilibrio: 'Equilíbrio', resistencia: 'Resistência',
   pulo: 'Pulo', stamina: 'Stamina',
@@ -623,6 +637,39 @@ export const ATTR_LABELS: Record<string, string> = {
   distribuicao_curta: 'Distribuição Curta', distribuicao_longa: 'Distribuição Longa',
   tempo_reacao: 'Tempo de Reação', comando_area: 'Comando de Área',
 };
+
+export function attrLabel(key: string): string {
+  if (!key) return '';
+  const translated = i18n.t(`attributes:labels.${key}`, { defaultValue: '' });
+  return translated || FALLBACK_ATTR_LABELS[key] || key;
+}
+
+export function attrCategoryLabel(category: string): string {
+  if (!category) return '';
+  const translated = i18n.t(`attributes:categories.${category}`, { defaultValue: '' });
+  return translated || category;
+}
+
+// Read-only Proxy that resolves attribute labels through i18next on access.
+// Lets `ATTR_LABELS[key]` keep working everywhere without sweeping all callers.
+export const ATTR_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_target, prop: string) {
+    if (typeof prop !== 'string') return undefined;
+    return attrLabel(prop);
+  },
+  has(_target, prop) {
+    return typeof prop === 'string' && prop in FALLBACK_ATTR_LABELS;
+  },
+  ownKeys() {
+    return Object.keys(FALLBACK_ATTR_LABELS);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    if (typeof prop === 'string' && prop in FALLBACK_ATTR_LABELS) {
+      return { configurable: true, enumerable: true, writable: false, value: attrLabel(prop) };
+    }
+    return undefined;
+  },
+});
 
 // ══════════════════════════════════════════════════════════════
 // Training FIT multiplier
@@ -653,13 +700,18 @@ export interface TrainingFitBreakdown {
   tone: TrainingFitTone;
 }
 
-const FIT_TABLE: Record<TrainingFitScore, { multiplier: number; label: string; tone: TrainingFitTone }> = {
-  [2]:  { multiplier: 1.50, label: 'Treino FIT TOP', tone: 'positive' },
-  [1]:  { multiplier: 1.20, label: 'Treino BOM',     tone: 'positive' },
-  [0]:  { multiplier: 1.00, label: 'Treino NORMAL',  tone: 'neutral' },
-  [-1]: { multiplier: 0.60, label: 'Treino RUIM',    tone: 'negative' },
-  [-2]: { multiplier: 0.30, label: 'Treino CONTRA',  tone: 'negative' },
+// Maps FIT score → JSON key in attributes:training_fit. Values resolved via i18n.
+const FIT_TABLE: Record<TrainingFitScore, { multiplier: number; key: 'top' | 'good' | 'normal' | 'bad' | 'counter'; tone: TrainingFitTone }> = {
+  [2]:  { multiplier: 1.50, key: 'top',     tone: 'positive' },
+  [1]:  { multiplier: 1.20, key: 'good',    tone: 'positive' },
+  [0]:  { multiplier: 1.00, key: 'normal',  tone: 'neutral' },
+  [-1]: { multiplier: 0.60, key: 'bad',     tone: 'negative' },
+  [-2]: { multiplier: 0.30, key: 'counter', tone: 'negative' },
 };
+
+function fitLabel(key: 'top' | 'good' | 'normal' | 'bad' | 'counter'): string {
+  return i18n.t(`attributes:training_fit.${key}`, { defaultValue: '' }) || key;
+}
 
 export function getTrainingFit(
   archetype: string | null | undefined,
@@ -678,7 +730,7 @@ export function getTrainingFit(
       height_fit: 0,
       position_fit: 0,
       multiplier: 1.0,
-      label: FIT_TABLE[0].label,
+      label: fitLabel(FIT_TABLE[0].key),
       tone: FIT_TABLE[0].tone,
     };
   }
@@ -737,7 +789,7 @@ export function getTrainingFit(
     height_fit: heightFit,
     position_fit: positionFit,
     multiplier: FIT_TABLE[fitClamped].multiplier,
-    label: FIT_TABLE[fitClamped].label,
+    label: fitLabel(FIT_TABLE[fitClamped].key),
     tone: FIT_TABLE[fitClamped].tone,
   };
 }

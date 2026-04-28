@@ -1,6 +1,7 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -71,6 +72,7 @@ export default function ForumTopicPage() {
   const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation('forum_topic');
+  const { current: lang } = useAppLanguage();
   const { profile, isAdmin } = useAuth();
   const [topic, setTopic] = useState<Topic | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -110,13 +112,14 @@ export default function ForumTopicPage() {
     if (!topicData) { setLoading(false); return; }
     setTopic(topicData as Topic);
 
-    // Fetch category name
+    // Fetch category name (localized)
     const { data: cat } = await (supabase as any)
       .from('forum_categories')
-      .select('name, slug')
+      .select('name, name_pt, name_en, slug')
       .eq('id', topicData.category_id)
       .single();
-    setCategoryName(cat?.name || '');
+    const isEn = lang === 'en';
+    setCategoryName((isEn ? cat?.name_en : cat?.name_pt) || cat?.name || '');
     setCategorySlug(cat?.slug || '');
 
     // Fetch comments
