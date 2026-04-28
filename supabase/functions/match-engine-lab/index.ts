@@ -7850,8 +7850,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const inAwayGoal = crossingSide === 'away' && trajectoryInGoal;
 
       if (inHomeGoal || inAwayGoal) {
+        // Prefer the BH's ball action (shoot/pass) over their move when checking
+        // over_goal. allActions is sorted by created_at DESC, so the move from
+        // attacking_support comes BEFORE the shoot from ball_holder; a plain
+        // find that accepts either would return the move (no over_goal flag)
+        // and incorrectly count an over-the-bar shot as a goal.
         const ballAction = ballHolder
-          ? allActions.find(a => a.participant_id === ballHolder.id && (isBallActionType(a.action_type) || a.action_type === 'move'))
+          ? (allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
+             ?? allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move'))
           : null;
         const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, bhStartX);
         if (!isOverGoal) {
