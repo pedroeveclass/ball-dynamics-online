@@ -936,58 +936,13 @@ export default function MatchReplayPage() {
     <ReplayLayout>
       <div
         ref={playerRootRef}
-        className={`flex flex-col gap-3 ${isFullscreen ? 'h-screen w-screen bg-background p-4 overflow-hidden' : ''}`}
+        className={`flex flex-col gap-2 ${isFullscreen ? 'h-screen w-screen bg-background p-3 overflow-hidden' : 'h-full min-h-[600px]'}`}
       >
-        {/* ── Top bar: clubs + score + clock ── */}
-        <div className="bg-card border rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 flex-1 justify-end">
-            <span className="font-display font-bold text-sm">{homeClub?.name}</span>
-            <div
-              className="h-7 w-7 rounded flex items-center justify-center text-[9px] font-bold shrink-0"
-              style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
-            >
-              {homeClub?.short_name}
-            </div>
-          </div>
-          <div className="px-4 flex flex-col items-center">
-            <span className="font-display font-bold text-2xl tabular-nums">
-              {scoreNow.home} - {scoreNow.away}
-            </span>
-            <div className="flex items-center gap-1 mt-1">
-              <Badge variant="secondary" className="text-[10px]">
-                <Film className="h-3 w-3 mr-1" />
-                {t('badge')}
-              </Badge>
-              {minuteLabel && (
-                <Badge variant="outline" className="text-[10px] font-mono">{minuteLabel}</Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-1">
-            <div
-              className="h-7 w-7 rounded flex items-center justify-center text-[9px] font-bold shrink-0"
-              style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
-            >
-              {awayClub?.short_name}
-            </div>
-            <span className="font-display font-bold text-sm">{awayClub?.name}</span>
-          </div>
-        </div>
-
-        {/* ── Scene indicator ── */}
-        <div className="flex items-center justify-center gap-2">
-          <Badge variant="outline" className="font-mono text-xs">
-            {t('scene_label', { current: currentSceneIdx + 1, total: totalScenes })}
-          </Badge>
-        </div>
-
-        {/* ── Field + events area ── */}
-        <div className={`flex gap-3 ${isFullscreen ? 'flex-1 min-h-0' : ''}`}>
-          {/* Field */}
-          <div className="flex-1 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
+        {/* ── Field (fills available space; scoreboard + events overlay on top) ── */}
+        <div className="flex-1 min-h-0 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
             <svg
               viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
-              className={isFullscreen ? 'h-full w-full rounded-lg' : 'w-full rounded-lg'}
+              className="h-full w-full rounded-lg"
               preserveAspectRatio="xMidYMid meet"
             >
               <defs>
@@ -1082,7 +1037,55 @@ export default function MatchReplayPage() {
               <circle cx={ballSvg.x - 1.5} cy={ballSvg.y - 1.5} r={1.5} fill="rgba(0,0,0,0.08)" />
             </svg>
 
-            {/* Pause overlay (halftime / set-piece) */}
+            {/* Scoreboard overlay (top center) */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 shadow-lg">
+              <div className="flex items-center gap-1.5">
+                <span className="font-display font-bold text-xs text-white/90">{homeClub?.short_name}</span>
+                <div
+                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                  style={{ backgroundColor: homeActiveUniform.shirt_color, color: homeActiveUniform.number_color }}
+                >
+                  {homeClub?.short_name}
+                </div>
+              </div>
+              <span className="font-display font-bold text-lg tabular-nums text-white">
+                {scoreNow.home} - {scoreNow.away}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <div
+                  className="h-5 w-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0"
+                  style={{ backgroundColor: awayActiveUniform.shirt_color, color: awayActiveUniform.number_color }}
+                >
+                  {awayClub?.short_name}
+                </div>
+                <span className="font-display font-bold text-xs text-white/90">{awayClub?.short_name}</span>
+              </div>
+              {minuteLabel && (
+                <Badge variant="outline" className="text-[10px] font-mono ml-1 border-white/20 text-white/90">{minuteLabel}</Badge>
+              )}
+              <Badge variant="outline" className="text-[10px] font-mono border-white/20 text-white/70">
+                {currentSceneIdx + 1}/{totalScenes}
+              </Badge>
+            </div>
+
+            {/* MatchFlow events overlay (right side, inside the field) */}
+            <div className="absolute top-14 bottom-2 right-2 w-52 hidden md:flex flex-col gap-1 bg-black/45 backdrop-blur-sm border border-white/10 rounded-lg p-2 overflow-y-auto shadow-lg">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">{t('events.title')}</span>
+              {eventLog.length === 0 && (
+                <span className="text-[10px] text-white/50">{t('events.empty_total')}</span>
+              )}
+              {eventLog.slice().reverse().map((ev) => (
+                <div
+                  key={ev.id}
+                  className={`text-[11px] rounded px-1.5 py-1 ${ev.event_type === 'goal' ? 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-100 font-bold' : ev.event_type === 'red_card' ? 'bg-red-500/20 border border-red-500/40 text-red-200' : ev.event_type === 'yellow_card' ? 'bg-yellow-500/15 border border-yellow-500/30 text-yellow-200' : 'bg-white/5 text-white/80'}`}
+                >
+                  <div className="font-semibold leading-tight">{ev.title}</div>
+                  {ev.body && <div className="opacity-70 mt-0.5 leading-tight">{ev.body}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Pause overlay (halftime / set-piece / goal) */}
             {overlayText && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div
@@ -1099,24 +1102,6 @@ export default function MatchReplayPage() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* MatchFlow events sidebar (accumulating, like the live match) */}
-          <div className={`w-56 shrink-0 bg-card border rounded-lg p-3 flex-col gap-1 overflow-y-auto hidden md:flex ${isFullscreen ? 'h-full' : 'max-h-[480px]'}`}>
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{t('events.title')}</span>
-            {eventLog.length === 0 && (
-              <span className="text-xs text-muted-foreground">{t('events.empty_total')}</span>
-            )}
-            {eventLog.slice().reverse().map((ev) => (
-              <div
-                key={ev.id}
-                className={`text-xs rounded px-2 py-1.5 ${ev.event_type === 'goal' ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 font-bold' : ev.event_type === 'red_card' ? 'bg-red-500/10 border border-red-500/30 text-red-300' : ev.event_type === 'yellow_card' ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-300' : 'bg-muted/50 text-muted-foreground'}`}
-              >
-                <div className="font-semibold">{ev.title}</div>
-                {ev.body && <div className="opacity-70 mt-0.5">{ev.body}</div>}
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* ── Controls bar ── */}
