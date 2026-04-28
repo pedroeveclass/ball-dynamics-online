@@ -11,8 +11,25 @@
     "player_name": "Player"
   },
   "turn_label": "Turn {{current}} / {{total}}",
+  "scene_label": "Play {{current}} / {{total}}",
+  "clock": {
+    "minute": "{{minute}}'"
+  },
   "events": {
     "title": "Events",
-    "empty": "No events on this turn"
+    "empty": "No events on this turn",
+    "empty_total": "No events yet"
+  },
+  "overlay": {
+    "halftime": "HALF-TIME",
+    "set_piece": {
+      "default": "SET PIECE",
+      "corner": "CORNER",
+      "throw_in": "THROW-IN",
+      "free_kick": "FREE KICK",
+      "goal_kick": "GOAL KICK",
+      "kick_off": "KICK-OFF",
+      "penalty": "PENALTY"
+    }
   }
 }

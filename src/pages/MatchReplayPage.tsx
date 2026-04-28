@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, ReactNode } from 'react';
+import React, { useEffect, useState, useRef, useCallback, ReactNode, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
@@ -79,6 +79,10 @@ interface TurnRow {
   possession_club_id: string | null;
   ball_holder_participant_id: string | null;
   status: string;
+  set_piece_type: string | null;
+  ball_x: number | null;
+  ball_y: number | null;
+  resolution_script: any;
 }
 
 interface ActionRow {
@@ -110,7 +114,29 @@ interface EventRow {
   payload: any;
 }
 
-interface Snapshot {
+// Scene = one motion clip built from a resolution_script row.
+// Pauses (halftime / set-piece preview) are applied AFTER the motion finishes,
+// before the next scene begins.
+interface MotionScene {
+  turnNumber: number;
+  turnId: string;
+  durationMs: number;
+  initialPositions: Record<string, { x: number; y: number }>;
+  finalPositions: Record<string, { x: number; y: number }>;
+  ballStart: { x: number; y: number };
+  ballEnd: { x: number; y: number };
+  ballHolderParticipantId: string | null;
+  events: EventRow[];
+  actions: ActionRow[];        // arrows to draw during the motion
+  scoresAfter: { home: number; away: number };
+  endsHalf: boolean;            // pause 2s with halftime overlay after this motion
+  nextSetPieceType: string | null; // pause ~800ms with set-piece overlay before next motion
+  matchMinute: number;          // approximate clock value to display
+  currentHalf: 1 | 2;
+}
+
+// Legacy snapshot (used as fallback when no scene has a resolution_script).
+interface LegacySnapshot {
   turnNumber: number;
   turnId: string;
   phase: string;
@@ -122,12 +148,19 @@ interface Snapshot {
   actions: ActionRow[];
 }
 
-// ─── Speed options ───────────────────────────────────────────────
+// ─── Speed options (multiplier on the script's natural duration) ─
 const SPEED_OPTIONS = [
-  { label: '1x', value: 1, ms: 1000 },
-  { label: '2x', value: 2, ms: 500 },
-  { label: '4x', value: 4, ms: 250 },
+  { label: '1x', value: 1 },
+  { label: '2x', value: 2 },
+  { label: '4x', value: 4 },
 ];
+
+const HALFTIME_PAUSE_MS = 2000;
+const SET_PIECE_PAUSE_MS = 800;
+const INTER_SCENE_PAUSE_MS = 100;
+const LEGACY_TURN_DURATION_MS = 1000; // used only when falling back to per-turn snapshots
+
+type Phase = 'motion' | 'halftime_pause' | 'set_piece_pause' | 'idle_pause' | 'finished';
 
 // ─── Main page component ────────────────────────────────────────
 export default function MatchReplayPage() {
@@ -143,19 +176,25 @@ export default function MatchReplayPage() {
   const [homeUniforms, setHomeUniforms] = useState<ClubUniform[]>([]);
   const [awayUniforms, setAwayUniforms] = useState<ClubUniform[]>([]);
   const [participants, setParticipants] = useState<ParticipantRow[]>([]);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
+  const [scenes, setScenes] = useState<MotionScene[]>([]);
+  const [legacySnapshots, setLegacySnapshots] = useState<LegacySnapshot[]>([]);
+  const [usingLegacy, setUsingLegacy] = useState(false);
   const [slotPositions, setSlotPositions] = useState<Record<string, string>>({});
 
-  const [currentTurn, setCurrentTurn] = useState(0);
+  // Playback state
+  const [currentSceneIdx, setCurrentSceneIdx] = useState(0);
+  const [phase, setPhase] = useState<Phase>('idle_pause');
+  const [animProgress, setAnimProgress] = useState(0); // 0..1 within current motion
+  const [pauseProgress, setPauseProgress] = useState(0); // 0..1 within pause
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
 
-  // Animation state
-  const [animProgress, setAnimProgress] = useState(1); // 0..1 interpolation between prev and current
+  // Live, accumulating event log + running score (mirrors live match feel)
+  const [eventLog, setEventLog] = useState<EventRow[]>([]);
+  const [scoreNow, setScoreNow] = useState<{ home: number; away: number }>({ home: 0, away: 0 });
+  const flushedSceneIdxRef = useRef(-1); // last scene whose events/score have been pushed
+
   const animFrameRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(0);
-  const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Data loading ──────────────────────────────────────────────
   useEffect(() => {
@@ -169,7 +208,6 @@ export default function MatchReplayPage() {
     setError(null);
 
     try {
-      // 1. Fetch match
       const { data: matchRow, error: matchErr } = await supabase
         .from('matches')
         .select('id, status, home_score, away_score, home_club_id, away_club_id, home_uniform, away_uniform, current_turn_number')
@@ -179,7 +217,6 @@ export default function MatchReplayPage() {
       const matchData = matchRow as MatchData;
       setMatch(matchData);
 
-      // 2. Fetch clubs + uniforms in parallel
       const [homeClubRes, awayClubRes, homeUniformsRes, awayUniformsRes] = await Promise.all([
         supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.home_club_id).single(),
         supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').eq('id', matchData.away_club_id).single(),
@@ -191,13 +228,9 @@ export default function MatchReplayPage() {
       if (homeUniformsRes.data) setHomeUniforms(homeUniformsRes.data as ClubUniform[]);
       if (awayUniformsRes.data) setAwayUniforms(awayUniformsRes.data as ClubUniform[]);
 
-      const hClub = homeClubRes.data as ClubInfo | null;
-      const aClub = awayClubRes.data as ClubInfo | null;
-
-      // 3. Fetch participants, turns, actions, events in parallel
       const [participantsRes, turnsRes, actionsRes, eventsRes] = await Promise.all([
         supabase.from('match_participants').select('id, club_id, role_type, pos_x, pos_y, player_profile_id, lineup_slot_id').eq('match_id', matchId!),
-        supabase.from('match_turns').select('id, turn_number, phase, possession_club_id, ball_holder_participant_id, status').eq('match_id', matchId!).order('turn_number', { ascending: true }),
+        supabase.from('match_turns').select('id, turn_number, phase, possession_club_id, ball_holder_participant_id, status, set_piece_type, ball_x, ball_y, resolution_script').eq('match_id', matchId!).order('turn_number', { ascending: true }),
         supabase.from('match_actions').select('id, match_turn_id, participant_id, action_type, target_x, target_y, status').eq('match_id', matchId!),
         supabase.from('match_event_logs').select('id, event_type, title, body, created_at, payload').eq('match_id', matchId!).order('created_at', { ascending: true }),
       ]);
@@ -208,11 +241,10 @@ export default function MatchReplayPage() {
       const events = (eventsRes.data || []) as EventRow[];
       setParticipants(parts);
 
-      // 4. Fetch player names and slot positions
       const playerIds = [...new Set(parts.filter(p => p.player_profile_id).map(p => p.player_profile_id!))];
       const slotIds = [...new Set(parts.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id!))];
 
-      const [playersRes, slotsRes] = await Promise.all([
+      const [, slotsRes] = await Promise.all([
         playerIds.length > 0
           ? supabase.from('player_profiles').select('id, full_name, primary_position').in('id', playerIds)
           : Promise.resolve({ data: [] as any[] }),
@@ -221,19 +253,11 @@ export default function MatchReplayPage() {
           : Promise.resolve({ data: [] as any[] }),
       ]);
 
-      const nameMap: Record<string, string> = {};
       const posMap: Record<string, string> = {};
-      for (const pp of (playersRes.data || [])) {
-        nameMap[pp.id] = pp.full_name || t('fallbacks.player_name');
-      }
-      for (const sl of (slotsRes.data || [])) {
-        posMap[sl.id] = sl.slot_position;
-      }
-      setPlayerNames(nameMap);
+      for (const sl of (slotsRes.data || [])) posMap[sl.id] = sl.slot_position;
       setSlotPositions(posMap);
 
-      // 5. Build snapshots from turns + actions
-      // Group actions by turn ID
+      // ── Try to build motion-script scenes ──
       const actionsByTurn = new Map<string, ActionRow[]>();
       for (const a of actions) {
         const list = actionsByTurn.get(a.match_turn_id) || [];
@@ -241,85 +265,213 @@ export default function MatchReplayPage() {
         actionsByTurn.set(a.match_turn_id, list);
       }
 
-      // Build jersey number map: sort participants by club and assign numbers
       const fieldParts = parts.filter(p => p.role_type === 'player');
-      const homeParts = fieldParts.filter(p => p.club_id === matchData.home_club_id);
-      const awayParts = fieldParts.filter(p => p.club_id === matchData.away_club_id);
+      const initialMap: Record<string, { x: number; y: number }> = {};
+      for (const p of fieldParts) initialMap[p.id] = { x: p.pos_x ?? 50, y: p.pos_y ?? 50 };
 
-      // Start with initial positions from participants
-      const currentPositions: Record<string, { x: number; y: number }> = {};
-      for (const p of fieldParts) {
-        currentPositions[p.id] = { x: p.pos_x ?? 50, y: p.pos_y ?? 50 };
-      }
+      const resolutionTurns = turns.filter(t => t.phase === 'resolution' && t.resolution_script);
+      const builtScenes: MotionScene[] = [];
 
-      // Map events to turns approximately by created_at ordering
-      // We associate events with turns based on timeline
-      const turnEventMap = new Map<number, EventRow[]>();
-      let eventIdx = 0;
-      for (let i = 0; i < turns.length; i++) {
-        const turnEvents: EventRow[] = [];
-        // Associate events that happened around this turn
-        // Simple heuristic: partition events evenly or by created_at ordering
-        turnEventMap.set(turns[i].turn_number, turnEvents);
-      }
-      // Distribute events across turns based on order
-      if (turns.length > 0 && events.length > 0) {
-        const eventsPerTurn = Math.max(1, Math.ceil(events.length / turns.length));
-        let ei = 0;
-        for (const turn of turns) {
-          const turnEvents = turnEventMap.get(turn.turn_number) || [];
-          for (let j = 0; j < eventsPerTurn && ei < events.length; j++, ei++) {
-            turnEvents.push(events[ei]);
+      if (resolutionTurns.length > 0) {
+        // Index events to scenes by event creation order: events emitted between
+        // resolution N-1 and resolution N belong to scene N. We don't have a
+        // reliable per-event timestamp tied to ticks, so we partition events by
+        // resolved_at ordering: each scene grabs all events whose created_at <=
+        // its resolved_at and > previous scene's resolved_at.
+        const scenesByTurnId = new Map<string, EventRow[]>();
+        let eventCursor = 0;
+        for (let i = 0; i < resolutionTurns.length; i++) {
+          const tRow = resolutionTurns[i];
+          const cutoffMs = tRow.resolution_script?.resolved_at
+            ? new Date(tRow.resolution_script.resolved_at).getTime()
+            : Number.POSITIVE_INFINITY;
+          const list: EventRow[] = [];
+          while (eventCursor < events.length) {
+            const ev = events[eventCursor];
+            const evMs = new Date(ev.created_at).getTime();
+            // Use turn_number from payload if available; otherwise rely on time ordering.
+            const evTurn = ev.payload?.turn_number;
+            if (typeof evTurn === 'number') {
+              if (evTurn <= tRow.turn_number) {
+                list.push(ev);
+                eventCursor++;
+                continue;
+              }
+              break;
+            }
+            if (evMs <= cutoffMs) {
+              list.push(ev);
+              eventCursor++;
+              continue;
+            }
+            break;
           }
-          turnEventMap.set(turn.turn_number, turnEvents);
+          scenesByTurnId.set(tRow.id, list);
         }
-        // Remaining events go to last turn
-        const lastTurn = turns[turns.length - 1];
-        const lastEvents = turnEventMap.get(lastTurn.turn_number) || [];
-        while (ei < events.length) {
-          lastEvents.push(events[ei++]);
+        // Drain any leftovers into the last scene.
+        if (eventCursor < events.length && resolutionTurns.length > 0) {
+          const last = scenesByTurnId.get(resolutionTurns[resolutionTurns.length - 1].id)!;
+          while (eventCursor < events.length) last.push(events[eventCursor++]);
         }
-        turnEventMap.set(lastTurn.turn_number, lastEvents);
-      }
 
-      const builtSnapshots: Snapshot[] = [];
+        // Detect halftime: any non-resolution turn between this resolution and
+        // the next that has phase='halftime' marks endsHalf on the current scene.
+        const halftimeTurnNumbers = new Set<number>();
+        for (const tRow of turns) if (tRow.phase === 'halftime') halftimeTurnNumbers.add(tRow.turn_number);
 
-      for (const turn of turns) {
-        const turnActions = actionsByTurn.get(turn.id) || [];
+        let runningHome = 0;
+        let runningAway = 0;
+        let currentHalf: 1 | 2 = 1;
+        let lastBallEnd: { x: number; y: number } = { x: 50, y: 50 };
 
-        // Apply actions: only move/receive/block update player positions.
-        // Pass and shoot actions move the BALL, not the player.
-        const ballMovingTypes = new Set(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power']);
-        for (const action of turnActions) {
-          if (action.target_x != null && action.target_y != null && currentPositions[action.participant_id]) {
-            if (!ballMovingTypes.has(action.action_type)) {
-              currentPositions[action.participant_id] = { x: action.target_x, y: action.target_y };
+        for (let i = 0; i < resolutionTurns.length; i++) {
+          const tRow = resolutionTurns[i];
+          const script = tRow.resolution_script;
+          const initialPositions: Record<string, { x: number; y: number }> = {
+            ...initialMap,
+            ...(script?.initial_positions || {}),
+          };
+          const finalPositions: Record<string, { x: number; y: number }> = {
+            ...initialPositions,
+            ...(script?.final_positions || {}),
+          };
+
+          // Ball start: holder pos in initial_positions, or last frame's ball end.
+          const holderId = tRow.ball_holder_participant_id;
+          const ballStart = (holderId && initialPositions[holderId])
+            ? { ...initialPositions[holderId] }
+            : lastBallEnd;
+          const ballEnd = script?.ball_end_pos
+            ? { x: script.ball_end_pos.x, y: script.ball_end_pos.y }
+            : (tRow.ball_x != null && tRow.ball_y != null
+                ? { x: tRow.ball_x, y: tRow.ball_y }
+                : ballStart);
+
+          const sceneEvents = scenesByTurnId.get(tRow.id) || [];
+          // Running score = scriptScore if provided, else accumulate goals.
+          if (script?.scores) {
+            runningHome = script.scores.home ?? runningHome;
+            runningAway = script.scores.away ?? runningAway;
+          } else {
+            for (const e of sceneEvents) {
+              if (e.event_type === 'goal') {
+                if (e.payload?.scoring_club_id === matchData.home_club_id) runningHome++;
+                else if (e.payload?.scoring_club_id === matchData.away_club_id) runningAway++;
+              }
             }
           }
-        }
 
-        // Determine ball position (at ball holder or last known)
-        let ballPosition = { x: 50, y: 50 };
-        if (turn.ball_holder_participant_id && currentPositions[turn.ball_holder_participant_id]) {
-          ballPosition = { ...currentPositions[turn.ball_holder_participant_id] };
-        }
+          // Halftime detection: is there a halftime turn between this and next resolution?
+          const nextResTurnNumber = i + 1 < resolutionTurns.length ? resolutionTurns[i + 1].turn_number : Infinity;
+          let endsHalf = false;
+          for (const ht of halftimeTurnNumbers) {
+            if (ht > tRow.turn_number && ht < nextResTurnNumber) { endsHalf = true; break; }
+          }
 
-        builtSnapshots.push({
-          turnNumber: turn.turn_number,
-          turnId: turn.id,
-          phase: turn.phase,
-          possessionClubId: turn.possession_club_id,
-          ballHolderParticipantId: turn.ball_holder_participant_id,
-          positions: { ...currentPositions },
-          ballPosition,
-          events: turnEventMap.get(turn.turn_number) || [],
-          actions: turnActions,
-        });
+          // Set-piece detection: script.next_turn.set_piece_type, fallback to next resolution's turn flag
+          let nextSetPiece: string | null = script?.next_turn?.set_piece_type ?? null;
+          if (!nextSetPiece && i + 1 < resolutionTurns.length) {
+            // Look at any positioning turn between this and next resolution; if any has set_piece_type, use it.
+            for (const tt of turns) {
+              if (tt.turn_number > tRow.turn_number && tt.turn_number < nextResTurnNumber && tt.set_piece_type) {
+                nextSetPiece = tt.set_piece_type;
+                break;
+              }
+            }
+          }
+
+          // Approximate clock minute by linear distribution of motion index across the half.
+          // First half = scenes 0..halftimeIdx; second half = rest.
+          const matchMinute = currentHalf === 1
+            ? Math.min(45, Math.max(1, Math.round((i + 1) * 45 / Math.max(1, resolutionTurns.length / 2))))
+            : 45 + Math.min(45, Math.max(1, Math.round((i + 1) * 45 / Math.max(1, resolutionTurns.length))));
+
+          builtScenes.push({
+            turnNumber: tRow.turn_number,
+            turnId: tRow.id,
+            durationMs: typeof script?.duration_ms === 'number' && script.duration_ms > 0
+              ? script.duration_ms
+              : 2000,
+            initialPositions,
+            finalPositions,
+            ballStart,
+            ballEnd,
+            ballHolderParticipantId: tRow.ball_holder_participant_id,
+            events: sceneEvents,
+            actions: actionsByTurn.get(tRow.id) || [],
+            scoresAfter: { home: runningHome, away: runningAway },
+            endsHalf,
+            nextSetPieceType: nextSetPiece,
+            matchMinute,
+            currentHalf,
+          });
+
+          // Hand-off positions for next scene: final_positions become next initial source
+          for (const pid of Object.keys(finalPositions)) initialMap[pid] = finalPositions[pid];
+          lastBallEnd = ballEnd;
+          if (endsHalf) currentHalf = 2;
+        }
       }
 
-      setSnapshots(builtSnapshots);
-      setCurrentTurn(0);
-      setAnimProgress(1);
+      if (builtScenes.length > 0) {
+        setScenes(builtScenes);
+        setUsingLegacy(false);
+      } else {
+        // Fallback: rebuild legacy per-turn snapshots (old behavior)
+        const ballMovingTypes = new Set(['pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power', 'header_low', 'header_high', 'header_controlled', 'header_power']);
+        const cur: Record<string, { x: number; y: number }> = { ...initialMap };
+        const turnEventMap = new Map<number, EventRow[]>();
+        for (const tRow of turns) turnEventMap.set(tRow.turn_number, []);
+        if (turns.length > 0 && events.length > 0) {
+          const eventsPerTurn = Math.max(1, Math.ceil(events.length / turns.length));
+          let ei = 0;
+          for (const tRow of turns) {
+            const list = turnEventMap.get(tRow.turn_number)!;
+            for (let j = 0; j < eventsPerTurn && ei < events.length; j++, ei++) list.push(events[ei]);
+          }
+          // Drain leftovers into the last turn
+          if (ei < events.length) {
+            const last = turnEventMap.get(turns[turns.length - 1].turn_number)!;
+            while (ei < events.length) last.push(events[ei++]);
+          }
+        }
+        const built: LegacySnapshot[] = [];
+        for (const tRow of turns) {
+          const tActions = actionsByTurn.get(tRow.id) || [];
+          for (const action of tActions) {
+            if (action.target_x != null && action.target_y != null && cur[action.participant_id]) {
+              if (!ballMovingTypes.has(action.action_type)) {
+                cur[action.participant_id] = { x: action.target_x, y: action.target_y };
+              }
+            }
+          }
+          let ballPosition = { x: 50, y: 50 };
+          if (tRow.ball_holder_participant_id && cur[tRow.ball_holder_participant_id]) {
+            ballPosition = { ...cur[tRow.ball_holder_participant_id] };
+          }
+          built.push({
+            turnNumber: tRow.turn_number,
+            turnId: tRow.id,
+            phase: tRow.phase,
+            possessionClubId: tRow.possession_club_id,
+            ballHolderParticipantId: tRow.ball_holder_participant_id,
+            positions: { ...cur },
+            ballPosition,
+            events: turnEventMap.get(tRow.turn_number) || [],
+            actions: tActions,
+          });
+        }
+        setLegacySnapshots(built);
+        setUsingLegacy(true);
+      }
+
+      setCurrentSceneIdx(0);
+      setAnimProgress(0);
+      setPauseProgress(0);
+      setPhase('motion');
+      setEventLog([]);
+      setScoreNow({ home: 0, away: 0 });
+      flushedSceneIdxRef.current = -1;
     } catch (err) {
       console.error('Replay load error:', err);
       setError(t('errors.load_failed'));
@@ -328,145 +480,284 @@ export default function MatchReplayPage() {
     }
   }
 
-  // ─── Playback controls ─────────────────────────────────────────
-  const speedMs = SPEED_OPTIONS[speedIndex].ms;
+  // ─── Playback driver ─────────────────────────────────────────
+  const speedMul = SPEED_OPTIONS[speedIndex].value;
+  const totalScenes = usingLegacy ? legacySnapshots.length : scenes.length;
 
-  const advanceTurn = useCallback(() => {
-    setCurrentTurn(prev => {
-      if (prev >= snapshots.length - 1) {
-        setIsPlaying(false);
-        return prev;
+  // Flush a scene's events + score into the live log when the motion completes.
+  const flushScene = useCallback((idx: number) => {
+    if (usingLegacy) {
+      const snap = legacySnapshots[idx];
+      if (!snap) return;
+      if (flushedSceneIdxRef.current >= idx) return;
+      setEventLog(prev => mergeEvents(prev, snap.events));
+      flushedSceneIdxRef.current = idx;
+      return;
+    }
+    const scene = scenes[idx];
+    if (!scene) return;
+    if (flushedSceneIdxRef.current >= idx) return;
+    setEventLog(prev => mergeEvents(prev, scene.events));
+    setScoreNow(scene.scoresAfter);
+    flushedSceneIdxRef.current = idx;
+  }, [usingLegacy, scenes, legacySnapshots]);
+
+  // When user seeks backwards via slider, rebuild the cumulative log up to that point.
+  const rebuildLogUpTo = useCallback((idx: number) => {
+    if (usingLegacy) {
+      const merged: EventRow[] = [];
+      for (let i = 0; i <= idx && i < legacySnapshots.length; i++) {
+        for (const e of legacySnapshots[i].events) merged.push(e);
       }
-      setAnimProgress(0);
-      return prev + 1;
-    });
-  }, [snapshots.length]);
-
-  const prevTurn = useCallback(() => {
-    setIsPlaying(false);
-    setCurrentTurn(prev => Math.max(0, prev - 1));
-    setAnimProgress(1);
-  }, []);
-
-  const nextTurn = useCallback(() => {
-    setIsPlaying(false);
-    setCurrentTurn(prev => Math.min(snapshots.length - 1, prev + 1));
-    setAnimProgress(1);
-  }, [snapshots.length]);
+      setEventLog(dedupe(merged));
+      return;
+    }
+    const merged: EventRow[] = [];
+    let h = 0, a = 0;
+    for (let i = 0; i <= idx && i < scenes.length; i++) {
+      for (const e of scenes[i].events) merged.push(e);
+      h = scenes[i].scoresAfter.home;
+      a = scenes[i].scoresAfter.away;
+    }
+    setEventLog(dedupe(merged));
+    setScoreNow({ home: h, away: a });
+    flushedSceneIdxRef.current = idx;
+  }, [usingLegacy, scenes, legacySnapshots]);
 
   const togglePlay = useCallback(() => {
     setIsPlaying(prev => {
-      if (!prev && currentTurn >= snapshots.length - 1) {
-        // Restart from beginning
-        setCurrentTurn(0);
+      if (prev) return false;
+      // Restart from the top once playback has finished.
+      if (phase === 'finished') {
+        setCurrentSceneIdx(0);
         setAnimProgress(0);
+        setPauseProgress(0);
+        setPhase('motion');
+        setEventLog([]);
+        setScoreNow({ home: 0, away: 0 });
+        flushedSceneIdxRef.current = -1;
         return true;
       }
-      return !prev;
+      // Resuming after a manual scrub: the user is sitting at the end of a
+      // scene (animProgress=1, idle_pause). Promote the pause to halftime /
+      // set-piece if the current scene transitions into one, so the overlay
+      // shows before the next motion plays.
+      if (phase === 'idle_pause' && animProgress >= 1) {
+        const sceneNow = usingLegacy ? null : scenes[currentSceneIdx];
+        if (sceneNow?.endsHalf) { setPhase('halftime_pause'); setPauseProgress(0); }
+        else if (sceneNow?.nextSetPieceType) { setPhase('set_piece_pause'); setPauseProgress(0); }
+      }
+      return true;
     });
-  }, [currentTurn, snapshots.length]);
+  }, [phase, animProgress, currentSceneIdx, scenes, usingLegacy]);
+
+  // For step / seek operations, jump to the END state of the selected scene:
+  // events + score reflect "after this play", positions show finalPositions.
+  // From there, pressing Play advances naturally to the next scene's motion.
+  const prevTurn = useCallback(() => {
+    setIsPlaying(false);
+    setCurrentSceneIdx(prev => {
+      const next = Math.max(0, prev - 1);
+      rebuildLogUpTo(next);
+      setAnimProgress(1);
+      setPauseProgress(0);
+      setPhase('idle_pause');
+      return next;
+    });
+  }, [rebuildLogUpTo]);
+
+  const nextTurn = useCallback(() => {
+    setIsPlaying(false);
+    setCurrentSceneIdx(prev => {
+      const next = Math.min(totalScenes - 1, prev + 1);
+      rebuildLogUpTo(next);
+      setAnimProgress(1);
+      setPauseProgress(0);
+      setPhase('idle_pause');
+      return next;
+    });
+  }, [totalScenes, rebuildLogUpTo]);
 
   const seekToTurn = useCallback((turn: number) => {
     setIsPlaying(false);
-    setCurrentTurn(Math.min(Math.max(0, turn), snapshots.length - 1));
+    const next = Math.min(Math.max(0, turn), totalScenes - 1);
+    setCurrentSceneIdx(next);
+    rebuildLogUpTo(next);
     setAnimProgress(1);
-  }, [snapshots.length]);
+    setPauseProgress(0);
+    setPhase('idle_pause');
+  }, [totalScenes, rebuildLogUpTo]);
 
   const cycleSpeed = useCallback(() => {
     setSpeedIndex(prev => (prev + 1) % SPEED_OPTIONS.length);
   }, []);
 
-  // ─── Animation loop ────────────────────────────────────────────
-  const animDone = animProgress >= 1;
+  // ─── Single RAF loop driving motion + pauses ─────────────────
   useEffect(() => {
-    if (animDone) return;
-    const duration = speedMs;
-    let startTime: number | null = null;
+    if (!isPlaying) return;
+    if (phase === 'finished') { setIsPlaying(false); return; }
 
-    function animate(time: number) {
-      if (startTime === null) startTime = time;
-      const elapsed = time - startTime;
-      const progress = Math.min(1, elapsed / duration);
-      setAnimProgress(progress);
-      if (progress < 1) {
-        animFrameRef.current = requestAnimationFrame(animate);
+    let last = performance.now();
+    let stopped = false; // local latch: stop scheduling more RAF after a phase transition
+
+    const tick = (now: number) => {
+      if (stopped) return;
+      const dt = now - last;
+      last = now;
+
+      if (phase === 'motion') {
+        const scene = usingLegacy ? null : scenes[currentSceneIdx];
+        const dur = (scene ? scene.durationMs : LEGACY_TURN_DURATION_MS) / Math.max(1, speedMul);
+        let transitioned = false;
+        setAnimProgress(prev => {
+          const np = Math.min(1, prev + dt / Math.max(1, dur));
+          if (np >= 1) {
+            // Motion complete: flush this scene's events/score, then decide next phase.
+            // Mark transitioned so we stop scheduling — the effect will re-mount on the
+            // new phase and pick up from there.
+            transitioned = true;
+            flushScene(currentSceneIdx);
+            const isLast = currentSceneIdx >= totalScenes - 1;
+            if (isLast) {
+              setPhase('finished');
+              setIsPlaying(false);
+              return 1;
+            }
+            const sceneNow = usingLegacy ? null : scenes[currentSceneIdx];
+            if (sceneNow?.endsHalf) setPhase('halftime_pause');
+            else if (sceneNow?.nextSetPieceType) setPhase('set_piece_pause');
+            else setPhase('idle_pause');
+            setPauseProgress(0);
+          }
+          return np;
+        });
+        if (transitioned) { stopped = true; return; }
+      } else if (phase === 'halftime_pause' || phase === 'set_piece_pause' || phase === 'idle_pause') {
+        const dur = phase === 'halftime_pause' ? HALFTIME_PAUSE_MS
+                  : phase === 'set_piece_pause' ? SET_PIECE_PAUSE_MS
+                  : INTER_SCENE_PAUSE_MS;
+        let transitioned = false;
+        setPauseProgress(prev => {
+          const np = Math.min(1, prev + dt / Math.max(1, dur / Math.max(1, speedMul)));
+          if (np >= 1) {
+            transitioned = true;
+            setCurrentSceneIdx(idx => {
+              const next = idx + 1;
+              if (next >= totalScenes) {
+                setPhase('finished');
+                setIsPlaying(false);
+                return idx;
+              }
+              setAnimProgress(0);
+              setPauseProgress(0);
+              setPhase('motion');
+              return next;
+            });
+          }
+          return np;
+        });
+        if (transitioned) { stopped = true; return; }
       }
-    }
 
-    animFrameRef.current = requestAnimationFrame(animate);
+      animFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    animFrameRef.current = requestAnimationFrame(tick);
     return () => {
+      stopped = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [currentTurn, animDone, speedMs]);
-
-  // Auto-advance when animation completes and playing
-  useEffect(() => {
-    if (!isPlaying || animProgress < 1) return;
-    if (currentTurn >= snapshots.length - 1) {
-      setIsPlaying(false);
-      return;
-    }
-    playTimerRef.current = setTimeout(() => {
-      advanceTurn();
-    }, 100); // Small pause between turns
-    return () => { if (playTimerRef.current) clearTimeout(playTimerRef.current); };
-  }, [isPlaying, animProgress, currentTurn, snapshots.length, advanceTurn]);
+  }, [isPlaying, phase, currentSceneIdx, totalScenes, scenes, usingLegacy, speedMul, flushScene]);
 
   // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (playTimerRef.current) clearTimeout(playTimerRef.current);
-    };
-  }, []);
+  useEffect(() => () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); }, []);
 
-  // ─── Compute interpolated positions ─────────────────────────────
-  const fieldParts = participants.filter(p => p.role_type === 'player');
-  const homeParts = fieldParts.filter(p => match && p.club_id === match.home_club_id);
-  const awayParts = fieldParts.filter(p => match && p.club_id === match.away_club_id);
+  // ─── Derived participants/jersey lookup ───────────────────────
+  const fieldParts = useMemo(() => participants.filter(p => p.role_type === 'player'), [participants]);
+  const homeParts = useMemo(() => fieldParts.filter(p => match && p.club_id === match.home_club_id), [fieldParts, match]);
+  const awayParts = useMemo(() => fieldParts.filter(p => match && p.club_id === match.away_club_id), [fieldParts, match]);
 
-  // Jersey number assignment
-  const jerseyMap = new Map<string, number>();
-  [...homeParts, ...awayParts].forEach((p, i) => {
-    const isHome = match ? p.club_id === match.home_club_id : false;
-    const teamParts = isHome ? homeParts : awayParts;
-    const idx = teamParts.indexOf(p);
-    jerseyMap.set(p.id, idx + 1);
-  });
+  const jerseyMap = useMemo(() => {
+    const m = new Map<string, number>();
+    homeParts.forEach((p, i) => m.set(p.id, i + 1));
+    awayParts.forEach((p, i) => m.set(p.id, i + 1));
+    return m;
+  }, [homeParts, awayParts]);
 
-  // Position of a field_pos for each participant
-  const getFieldPos = (partId: string): string => {
+  const getFieldPos = useCallback((partId: string): string => {
     const part = participants.find(p => p.id === partId);
     if (!part) return '?';
     if (part.lineup_slot_id && slotPositions[part.lineup_slot_id]) return slotPositions[part.lineup_slot_id];
     return '?';
-  };
+  }, [participants, slotPositions]);
 
-  const currentSnapshot = snapshots[currentTurn] ?? null;
-  const prevSnapshot = currentTurn > 0 ? snapshots[currentTurn - 1] : null;
+  // ─── Compute on-screen positions for current frame ───────────
+  const currentScene = !usingLegacy ? scenes[currentSceneIdx] : null;
+  const currentLegacy = usingLegacy ? legacySnapshots[currentSceneIdx] : null;
+  const prevLegacy = usingLegacy && currentSceneIdx > 0 ? legacySnapshots[currentSceneIdx - 1] : null;
 
-  function getInterpolatedPos(participantId: string): { x: number; y: number } | null {
-    if (!currentSnapshot) return null;
-    const curr = currentSnapshot.positions[participantId];
-    if (!curr) return null;
-    if (animProgress >= 1 || !prevSnapshot) return curr;
-    const prev = prevSnapshot.positions[participantId] ?? curr;
+  const easedProgress = useMemo(() => {
+    // Same easing as the live match (ease-in then ease-out) to match feel
+    const r = animProgress;
+    if (r < 0.4) return (r / 0.4) ** 2 * 0.4;
+    return 0.4 + (1 - Math.pow(1 - (r - 0.4) / 0.6, 2)) * 0.6;
+  }, [animProgress]);
+
+  const getInterpolatedPos = useCallback((participantId: string): { x: number; y: number } | null => {
+    if (usingLegacy) {
+      if (!currentLegacy) return null;
+      const curr = currentLegacy.positions[participantId];
+      if (!curr) return null;
+      if (animProgress >= 1 || !prevLegacy) return curr;
+      const prev = prevLegacy.positions[participantId] ?? curr;
+      return {
+        x: prev.x + (curr.x - prev.x) * easedProgress,
+        y: prev.y + (curr.y - prev.y) * easedProgress,
+      };
+    }
+    if (!currentScene) return null;
+    // During halftime / set-piece pauses we render the scene's FINAL positions
+    // (or the NEXT scene's INITIAL positions if there is one) so the field
+    // already shows the snap-back for the upcoming kick.
+    if (phase === 'set_piece_pause' || phase === 'halftime_pause') {
+      const nextScene = scenes[currentSceneIdx + 1];
+      if (nextScene && nextScene.initialPositions[participantId]) {
+        return nextScene.initialPositions[participantId];
+      }
+      return currentScene.finalPositions[participantId] ?? currentScene.initialPositions[participantId] ?? null;
+    }
+    if (phase === 'idle_pause' || phase === 'finished') {
+      return currentScene.finalPositions[participantId] ?? currentScene.initialPositions[participantId] ?? null;
+    }
+    const start = currentScene.initialPositions[participantId];
+    const end = currentScene.finalPositions[participantId] ?? start;
+    if (!start) return end ?? null;
     return {
-      x: prev.x + (curr.x - prev.x) * animProgress,
-      y: prev.y + (curr.y - prev.y) * animProgress,
+      x: start.x + (end.x - start.x) * easedProgress,
+      y: start.y + (end.y - start.y) * easedProgress,
     };
-  }
+  }, [usingLegacy, currentLegacy, prevLegacy, currentScene, scenes, currentSceneIdx, animProgress, easedProgress, phase]);
 
-  function getInterpolatedBall(): { x: number; y: number } {
-    if (!currentSnapshot) return { x: 50, y: 50 };
-    if (animProgress >= 1 || !prevSnapshot) return currentSnapshot.ballPosition;
-    const prev = prevSnapshot.ballPosition;
-    const curr = currentSnapshot.ballPosition;
+  const getInterpolatedBall = useCallback((): { x: number; y: number } => {
+    if (usingLegacy) {
+      if (!currentLegacy) return { x: 50, y: 50 };
+      if (animProgress >= 1 || !prevLegacy) return currentLegacy.ballPosition;
+      const prev = prevLegacy.ballPosition;
+      const curr = currentLegacy.ballPosition;
+      return {
+        x: prev.x + (curr.x - prev.x) * easedProgress,
+        y: prev.y + (curr.y - prev.y) * easedProgress,
+      };
+    }
+    if (!currentScene) return { x: 50, y: 50 };
+    if (phase === 'set_piece_pause' || phase === 'halftime_pause' || phase === 'idle_pause' || phase === 'finished') {
+      return currentScene.ballEnd;
+    }
     return {
-      x: prev.x + (curr.x - prev.x) * animProgress,
-      y: prev.y + (curr.y - prev.y) * animProgress,
+      x: currentScene.ballStart.x + (currentScene.ballEnd.x - currentScene.ballStart.x) * easedProgress,
+      y: currentScene.ballStart.y + (currentScene.ballEnd.y - currentScene.ballStart.y) * easedProgress,
     };
-  }
+  }, [usingLegacy, currentLegacy, prevLegacy, currentScene, animProgress, easedProgress, phase]);
 
   // ─── Uniform colors ────────────────────────────────────────────
   const homeActiveUniform = homeUniforms.find(u => u.uniform_number === (match?.home_uniform ?? 1))
@@ -474,7 +765,7 @@ export default function MatchReplayPage() {
   const awayActiveUniform = awayUniforms.find(u => u.uniform_number === (match?.away_uniform ?? 2))
     || { shirt_color: awayClub?.primary_color ?? '#16a34a', number_color: awayClub?.secondary_color ?? '#fff' };
 
-  // ─── Render ────────────────────────────────────────────────────
+  // ─── Render guards ────────────────────────────────────────────
   if (loading) {
     return (
       <ReplayLayout>
@@ -496,7 +787,7 @@ export default function MatchReplayPage() {
     );
   }
 
-  if (snapshots.length === 0) {
+  if (totalScenes === 0) {
     return (
       <ReplayLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -508,19 +799,29 @@ export default function MatchReplayPage() {
     );
   }
 
-  const totalTurns = snapshots.length;
   const ballPos = getInterpolatedBall();
   const ballSvg = toSVG(ballPos.x, ballPos.y);
 
-  // Current events
-  const currentEvents = currentSnapshot?.events || [];
-  const goalEvents = currentEvents.filter(e => e.event_type === 'goal');
-  const otherEvents = currentEvents.filter(e => e.event_type !== 'goal');
+  // Overlay text for halftime / set-piece pauses
+  const overlayText: string | null = (() => {
+    if (phase === 'halftime_pause') return t('overlay.halftime');
+    if (phase === 'set_piece_pause' && currentScene?.nextSetPieceType) {
+      const key = `overlay.set_piece.${currentScene.nextSetPieceType}`;
+      const fallbackKey = 'overlay.set_piece.default';
+      const v = t(key, { defaultValue: '' });
+      return v || t(fallbackKey);
+    }
+    return null;
+  })();
+
+  const minuteLabel = !usingLegacy && currentScene
+    ? t('clock.minute', { minute: currentScene.matchMinute, half: currentScene.currentHalf })
+    : null;
 
   return (
     <ReplayLayout>
       <div className="flex flex-col gap-3">
-        {/* ── Top bar: clubs + score ── */}
+        {/* ── Top bar: clubs + score + clock ── */}
         <div className="bg-card border rounded-lg p-3 flex items-center justify-between">
           <div className="flex items-center gap-2 flex-1 justify-end">
             <span className="font-display font-bold text-sm">{homeClub?.name}</span>
@@ -532,13 +833,18 @@ export default function MatchReplayPage() {
             </div>
           </div>
           <div className="px-4 flex flex-col items-center">
-            <span className="font-display font-bold text-2xl">
-              {match.home_score} - {match.away_score}
+            <span className="font-display font-bold text-2xl tabular-nums">
+              {scoreNow.home} - {scoreNow.away}
             </span>
-            <Badge variant="secondary" className="text-[10px] mt-1">
-              <Film className="h-3 w-3 mr-1" />
-              {t('badge')}
-            </Badge>
+            <div className="flex items-center gap-1 mt-1">
+              <Badge variant="secondary" className="text-[10px]">
+                <Film className="h-3 w-3 mr-1" />
+                {t('badge')}
+              </Badge>
+              {minuteLabel && (
+                <Badge variant="outline" className="text-[10px] font-mono">{minuteLabel}</Badge>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-1">
             <div
@@ -551,32 +857,27 @@ export default function MatchReplayPage() {
           </div>
         </div>
 
-        {/* ── Turn indicator ── */}
+        {/* ── Scene indicator ── */}
         <div className="flex items-center justify-center gap-2">
           <Badge variant="outline" className="font-mono text-xs">
-            {t('turn_label', { current: currentSnapshot?.turnNumber ?? 0, total: snapshots[snapshots.length - 1]?.turnNumber ?? 0 })}
+            {t('scene_label', { current: currentSceneIdx + 1, total: totalScenes })}
           </Badge>
-          {currentSnapshot?.phase && (
-            <Badge variant="secondary" className="text-[10px]">{currentSnapshot.phase}</Badge>
-          )}
         </div>
 
         {/* ── Field + events area ── */}
         <div className="flex gap-3">
           {/* Field */}
-          <div className="flex-1" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
+          <div className="flex-1 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
             <svg
               viewBox={`0 0 ${FIELD_W + PAD * 2} ${FIELD_H + PAD * 2}`}
               className="w-full rounded-lg"
             >
-              {/* Defs */}
               <defs>
                 <pattern id="rp-grass" x="0" y="0" width="80" height={INNER_H} patternUnits="userSpaceOnUse">
                   <rect x="0" y="0" width="40" height={INNER_H} fill="hsl(100,45%,28%)" />
                   <rect x="40" y="0" width="40" height={INNER_H} fill="hsl(100,42%,25%)" />
                 </pattern>
                 <filter id="rp-shadow"><feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.5" /></filter>
-                {/* Arrow markers */}
                 <marker id="rp-ah-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#22c55e" /></marker>
                 <marker id="rp-ah-yellow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#f59e0b" /></marker>
                 <marker id="rp-ah-red" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#ef4444" /></marker>
@@ -584,41 +885,32 @@ export default function MatchReplayPage() {
                 <marker id="rp-ah-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#06b6d4" /></marker>
               </defs>
 
-              {/* Border */}
               <rect x="0" y="0" width={FIELD_W + PAD * 2} height={FIELD_H + PAD * 2} fill="hsl(140,10%,15%)" rx="8" />
-
-              {/* Grass */}
               <rect x={PAD} y={PAD} width={INNER_W} height={INNER_H} fill="url(#rp-grass)" />
 
-              {/* Field lines */}
               <g stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" fill="none">
                 <rect x={PAD + 2} y={PAD + 2} width={INNER_W - 4} height={INNER_H - 4} />
                 <line x1={PAD + INNER_W / 2} y1={PAD + 2} x2={PAD + INNER_W / 2} y2={PAD + INNER_H - 2} />
                 <circle cx={PAD + INNER_W / 2} cy={PAD + INNER_H / 2} r={INNER_H * 0.15} />
                 <circle cx={PAD + INNER_W / 2} cy={PAD + INNER_H / 2} r={3} fill="rgba(255,255,255,0.6)" />
-                {/* Left penalty area */}
                 <rect x={PAD + 2} y={PAD + INNER_H * 0.22} width={INNER_W * 0.16} height={INNER_H * 0.56} />
                 <rect x={PAD + 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
                 <path d={`M ${PAD + 2 + INNER_W * 0.16} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 1 ${PAD + 2 + INNER_W * 0.16} ${PAD + INNER_H * 0.62}`} />
-                {/* Right penalty area */}
                 <rect x={PAD + INNER_W - INNER_W * 0.16 - 2} y={PAD + INNER_H * 0.22} width={INNER_W * 0.16} height={INNER_H * 0.56} />
                 <rect x={PAD + INNER_W - INNER_W * 0.06 - 2} y={PAD + INNER_H * 0.35} width={INNER_W * 0.06} height={INNER_H * 0.30} />
                 <path d={`M ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.38} A ${INNER_H * 0.12} ${INNER_H * 0.12} 0 0 0 ${PAD + INNER_W - INNER_W * 0.16 - 2} ${PAD + INNER_H * 0.62}`} />
               </g>
 
-              {/* Penalty spots (11m from each goal line) */}
               <g fill="rgba(255,255,255,0.6)">
                 <circle cx={PAD + INNER_W * 0.13} cy={PAD + INNER_H / 2} r={3} />
                 <circle cx={PAD + INNER_W - INNER_W * 0.13} cy={PAD + INNER_H / 2} r={3} />
               </g>
 
-              {/* Goals (25% smaller: y 0.41..0.59, height 0.18) */}
               <g stroke="rgba(255,255,255,0.7)" strokeWidth="2" fill="rgba(255,255,255,0.08)">
                 <rect x={PAD - 8} y={PAD + INNER_H * 0.41} width={10} height={INNER_H * 0.18} rx="1" />
                 <rect x={PAD + INNER_W - 2} y={PAD + INNER_H * 0.41} width={10} height={INNER_H * 0.18} rx="1" />
               </g>
 
-              {/* Goal nets */}
               <g stroke="rgba(255,255,255,0.15)" strokeWidth="0.5">
                 {[0, 1, 2, 3].map(i => (
                   <g key={`net-${i}`}>
@@ -628,63 +920,61 @@ export default function MatchReplayPage() {
                 ))}
               </g>
 
-              {/* Action arrows */}
-              {currentSnapshot?.actions.map((action) => {
-                if (action.target_x == null || action.target_y == null) return null;
-                const startPositions = prevSnapshot?.positions ?? currentSnapshot.positions;
-                const startPos = startPositions[action.participant_id];
-                if (!startPos) return null;
+              {/* Action arrows (only during motion) */}
+              {phase === 'motion' && (() => {
+                const acts = usingLegacy ? (currentLegacy?.actions ?? []) : (currentScene?.actions ?? []);
+                const startMap = usingLegacy
+                  ? (prevLegacy?.positions ?? currentLegacy?.positions ?? {})
+                  : (currentScene?.initialPositions ?? {});
+                return acts.map((action) => {
+                  if (action.target_x == null || action.target_y == null) return null;
+                  const startPos = startMap[action.participant_id];
+                  if (!startPos) return null;
+                  const from = toSVG(startPos.x, startPos.y);
+                  const to = toSVG(action.target_x, action.target_y);
+                  const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
+                  if (dist < 3) return null;
 
-                const from = toSVG(startPos.x, startPos.y);
-                const to = toSVG(action.target_x, action.target_y);
+                  const isPass = ['pass_low', 'pass_high', 'pass_launch', 'header_low', 'header_high'].includes(action.action_type);
+                  const isShoot = ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'].includes(action.action_type);
+                  const isReceive = action.action_type === 'receive';
+                  const isBlock = action.action_type === 'block';
+                  const isMove = action.action_type === 'move';
 
-                // Skip tiny moves (already at target)
-                const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
-                if (dist < 3) return null;
+                  let stroke = '#1a1a2e';
+                  let marker = 'rp-ah-black';
+                  let strokeW = 1.5;
+                  let dashArray = 'none';
 
-                const isPass = ['pass_low', 'pass_high', 'pass_launch', 'header_low', 'header_high'].includes(action.action_type);
-                const isShoot = ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'].includes(action.action_type);
-                const isReceive = action.action_type === 'receive';
-                const isBlock = action.action_type === 'block';
-                const isMove = action.action_type === 'move';
-
-                let stroke = '#1a1a2e'; // move = dark
-                let marker = 'rp-ah-black';
-                let strokeW = 1.5;
-                let dashArray = 'none';
-
-                if (isPass) {
-                  stroke = '#22c55e'; marker = 'rp-ah-green'; strokeW = 2.5;
-                  if (action.action_type === 'pass_high' || action.action_type === 'header_high') {
-                    stroke = '#f59e0b'; marker = 'rp-ah-green'; // yellow→green for high passes
+                  if (isPass) {
+                    stroke = '#22c55e'; marker = 'rp-ah-green'; strokeW = 2.5;
+                    if (action.action_type === 'pass_high' || action.action_type === 'header_high' || action.action_type === 'pass_launch') {
+                      stroke = '#f59e0b';
+                    }
+                  } else if (isShoot) {
+                    stroke = '#f59e0b'; marker = 'rp-ah-green'; strokeW = 3;
+                  } else if (isReceive) {
+                    stroke = '#06b6d4'; marker = 'rp-ah-cyan'; strokeW = 1.5; dashArray = '3,2';
+                  } else if (isBlock) {
+                    stroke = '#f59e0b'; marker = 'rp-ah-yellow'; strokeW = 2; dashArray = '3,2';
+                  } else if (isMove) {
+                    dashArray = '4,3';
                   }
-                  if (action.action_type === 'pass_launch') {
-                    stroke = '#f59e0b'; marker = 'rp-ah-green';
-                  }
-                } else if (isShoot) {
-                  stroke = '#f59e0b'; marker = 'rp-ah-green'; strokeW = 3;
-                } else if (isReceive) {
-                  stroke = '#06b6d4'; marker = 'rp-ah-cyan'; strokeW = 1.5; dashArray = '3,2';
-                } else if (isBlock) {
-                  stroke = '#f59e0b'; marker = 'rp-ah-yellow'; strokeW = 2; dashArray = '3,2';
-                } else if (isMove) {
-                  dashArray = '4,3';
-                }
 
-                // Fade arrows as animation progresses
-                const opacity = animProgress < 1 ? 0.7 : 0.35;
+                  const opacity = animProgress < 1 ? 0.7 : 0.35;
 
-                return (
-                  <line
-                    key={action.id}
-                    x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                    stroke={stroke} strokeWidth={strokeW}
-                    strokeLinecap="round" opacity={opacity}
-                    strokeDasharray={dashArray}
-                    markerEnd={`url(#${marker})`}
-                  />
-                );
-              })}
+                  return (
+                    <line
+                      key={action.id}
+                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                      stroke={stroke} strokeWidth={strokeW}
+                      strokeLinecap="round" opacity={opacity}
+                      strokeDasharray={dashArray}
+                      markerEnd={`url(#${marker})`}
+                    />
+                  );
+                });
+              })()}
 
               {/* Players */}
               {fieldParts.map((p) => {
@@ -696,7 +986,8 @@ export default function MatchReplayPage() {
                 const jersey = jerseyMap.get(p.id) ?? 0;
                 const fieldPos = getFieldPos(p.id);
                 const isGK = fieldPos === 'GK' || jersey === 1;
-                const isBH = currentSnapshot?.ballHolderParticipantId === p.id;
+                const bhId = usingLegacy ? currentLegacy?.ballHolderParticipantId : currentScene?.ballHolderParticipantId;
+                const isBH = bhId === p.id && phase === 'motion';
 
                 return (
                   <g key={p.id}>
@@ -728,15 +1019,27 @@ export default function MatchReplayPage() {
               <circle cx={ballSvg.x} cy={ballSvg.y} r={5.5} fill="#fff" stroke="#333" strokeWidth={0.8} />
               <circle cx={ballSvg.x - 1.5} cy={ballSvg.y - 1.5} r={1.5} fill="rgba(0,0,0,0.08)" />
             </svg>
+
+            {/* Pause overlay (halftime / set-piece) */}
+            {overlayText && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div
+                  className={`px-6 py-3 rounded-lg font-display font-bold text-2xl tracking-wider border-2 backdrop-blur-sm ${phase === 'halftime_pause' ? 'bg-amber-500/30 border-amber-400 text-amber-100' : 'bg-blue-500/25 border-blue-400 text-blue-100'}`}
+                  style={{ animation: 'pulse 1.4s ease-in-out infinite' }}
+                >
+                  {overlayText}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Events sidebar */}
-          <div className="w-56 shrink-0 bg-card border rounded-lg p-3 flex flex-col gap-1 max-h-[480px] overflow-y-auto hidden md:flex">
+          {/* MatchFlow events sidebar (accumulating, like the live match) */}
+          <div className="w-56 shrink-0 bg-card border rounded-lg p-3 flex-col gap-1 max-h-[480px] overflow-y-auto hidden md:flex">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{t('events.title')}</span>
-            {currentEvents.length === 0 && (
-              <span className="text-xs text-muted-foreground">{t('events.empty')}</span>
+            {eventLog.length === 0 && (
+              <span className="text-xs text-muted-foreground">{t('events.empty_total')}</span>
             )}
-            {currentEvents.map((ev) => (
+            {eventLog.slice().reverse().map((ev) => (
               <div
                 key={ev.id}
                 className={`text-xs rounded px-2 py-1.5 ${ev.event_type === 'goal' ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 font-bold' : ev.event_type === 'red_card' ? 'bg-red-500/10 border border-red-500/30 text-red-300' : ev.event_type === 'yellow_card' ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-300' : 'bg-muted/50 text-muted-foreground'}`}
@@ -750,19 +1053,17 @@ export default function MatchReplayPage() {
 
         {/* ── Controls bar ── */}
         <div className="bg-card border rounded-lg p-3 flex flex-col gap-3">
-          {/* Progress bar */}
           <Slider
-            value={[currentTurn]}
+            value={[currentSceneIdx]}
             min={0}
-            max={Math.max(0, totalTurns - 1)}
+            max={Math.max(0, totalScenes - 1)}
             step={1}
             onValueChange={([val]) => seekToTurn(val)}
             className="w-full"
           />
 
-          {/* Buttons */}
           <div className="flex items-center justify-center gap-3">
-            <Button variant="ghost" size="icon" onClick={prevTurn} disabled={currentTurn <= 0}>
+            <Button variant="ghost" size="icon" onClick={prevTurn} disabled={currentSceneIdx <= 0}>
               <SkipBack className="h-4 w-4" />
             </Button>
             <Button
@@ -773,25 +1074,25 @@ export default function MatchReplayPage() {
             >
               {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={nextTurn} disabled={currentTurn >= totalTurns - 1}>
+            <Button variant="ghost" size="icon" onClick={nextTurn} disabled={currentSceneIdx >= totalScenes - 1}>
               <SkipForward className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" onClick={cycleSpeed} className="ml-4 font-mono text-xs min-w-[40px]">
               {SPEED_OPTIONS[speedIndex].label}
             </Button>
             <span className="text-xs text-muted-foreground ml-2 font-mono">
-              {currentSnapshot?.turnNumber ?? 0} / {snapshots[snapshots.length - 1]?.turnNumber ?? 0}
+              {currentSceneIdx + 1} / {totalScenes}
             </span>
           </div>
         </div>
 
-        {/* Mobile events (shown below on small screens) */}
+        {/* Mobile events */}
         <div className="md:hidden bg-card border rounded-lg p-3">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">{t('events.title')}</span>
-          {currentEvents.length === 0 && (
-            <span className="text-xs text-muted-foreground">{t('events.empty')}</span>
+          {eventLog.length === 0 && (
+            <span className="text-xs text-muted-foreground">{t('events.empty_total')}</span>
           )}
-          {currentEvents.map((ev) => (
+          {eventLog.slice().reverse().map((ev) => (
             <div
               key={ev.id}
               className={`text-xs rounded px-2 py-1.5 mb-1 ${ev.event_type === 'goal' ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 font-bold' : 'bg-muted/50 text-muted-foreground'}`}
@@ -804,4 +1105,20 @@ export default function MatchReplayPage() {
       </div>
     </ReplayLayout>
   );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────
+function mergeEvents(prev: EventRow[], incoming: EventRow[]): EventRow[] {
+  if (incoming.length === 0) return prev;
+  const seen = new Set(prev.map(e => e.id));
+  const out = prev.slice();
+  for (const e of incoming) if (!seen.has(e.id)) { seen.add(e.id); out.push(e); }
+  return out;
+}
+
+function dedupe(list: EventRow[]): EventRow[] {
+  const seen = new Set<string>();
+  const out: EventRow[] = [];
+  for (const e of list) if (!seen.has(e.id)) { seen.add(e.id); out.push(e); }
+  return out;
 }

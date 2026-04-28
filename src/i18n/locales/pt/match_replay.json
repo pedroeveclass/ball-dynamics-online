@@ -11,8 +11,25 @@
     "player_name": "Jogador"
   },
   "turn_label": "Turno {{current}} / {{total}}",
+  "scene_label": "Lance {{current}} / {{total}}",
+  "clock": {
+    "minute": "{{minute}}'"
+  },
   "events": {
     "title": "Eventos",
-    "empty": "Nenhum evento neste turno"
+    "empty": "Nenhum evento neste turno",
+    "empty_total": "Nenhum evento ainda"
+  },
+  "overlay": {
+    "halftime": "INTERVALO",
+    "set_piece": {
+      "default": "BOLA PARADA",
+      "corner": "ESCANTEIO",
+      "throw_in": "LATERAL",
+      "free_kick": "FALTA",
+      "goal_kick": "TIRO DE META",
+      "kick_off": "SAÍDA DE BOLA",
+      "penalty": "PÊNALTI"
+    }
   }
 }
