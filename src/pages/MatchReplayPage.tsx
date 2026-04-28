@@ -950,7 +950,7 @@ export default function MatchReplayPage() {
     <ReplayLayout>
       <div
         ref={playerRootRef}
-        className={`flex flex-col gap-2 overflow-hidden ${isFullscreen ? 'h-screen w-screen bg-background p-3' : 'h-full min-h-[600px]'}`}
+        className={`flex flex-col gap-2 overflow-hidden ${isFullscreen ? 'h-screen w-screen bg-background p-3' : 'h-[calc(100vh-7rem)] min-h-[500px]'}`}
       >
         {/* ── Field box (field area + collapsible side panel share the same gradient) ── */}
         <div className="flex-1 min-h-0 flex gap-2" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
