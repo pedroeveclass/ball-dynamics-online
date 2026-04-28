@@ -420,6 +420,7 @@ export default function PlayerMatchesPage() {
 
 function MatchCard({ entry }: { entry: MatchEntry }) {
   const { t } = useTranslation('player_matches');
+  const { current: lang } = useAppLanguage();
   const { match: m, home_club, away_club, is_bot } = entry;
   const statusLabel = t(`status.${m.status}`, { defaultValue: m.status });
   const statusClassName = STATUS_CLASS[m.status] || 'bg-muted text-muted-foreground';
