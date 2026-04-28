@@ -741,9 +741,28 @@ export default function MatchReplayPage() {
     const start = currentScene.initialPositions[participantId];
     const end = currentScene.finalPositions[participantId] ?? start;
     if (!start) return end ?? null;
+
+    // Per-player arrival timing (mirrors MatchRoomPage.getAnimatedPos):
+    // each player reaches their target at (moveFraction × 100%) of the clip,
+    // where moveFraction = displacement / MAX_RANGE_APPROX. Players who barely
+    // moved arrive in the first 10% and then stand still; players who covered
+    // the full range take the entire clip. This conveys per-player speed
+    // instead of everyone gliding at the same pace.
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const Y_SCALE = INNER_H / INNER_W; // physical Y axis is shorter than X
+    const moveDist = Math.sqrt(dx * dx + (dy * Y_SCALE) * (dy * Y_SCALE));
+    const MAX_RANGE_APPROX = 6;
+    const moveFraction = Math.min(1, moveDist / MAX_RANGE_APPROX);
+    const arrivalTime = Math.max(0.1, moveFraction);
+    const scaled = Math.min(1, animProgress / arrivalTime);
+    const t = scaled < 0.4
+      ? (scaled / 0.4) ** 2 * 0.4
+      : 0.4 + (1 - Math.pow(1 - (scaled - 0.4) / 0.6, 2)) * 0.6;
+
     return {
-      x: start.x + (end.x - start.x) * easedProgress,
-      y: start.y + (end.y - start.y) * easedProgress,
+      x: start.x + dx * t,
+      y: start.y + dy * t,
     };
   }, [usingLegacy, currentLegacy, prevLegacy, currentScene, scenes, currentSceneIdx, animProgress, easedProgress, phase]);
 
