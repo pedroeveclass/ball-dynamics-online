@@ -1,0 +1,38 @@
+{
+  "short": {
+    "GK": "GOL",
+    "CB": "ZAG",
+    "LB": "LE",
+    "RB": "LD",
+    "LWB": "ALE",
+    "RWB": "ALD",
+    "DM": "VOL",
+    "CDM": "VOL",
+    "CM": "MC",
+    "LM": "ME",
+    "RM": "MD",
+    "CAM": "MEI",
+    "LW": "PE",
+    "RW": "PD",
+    "CF": "SA",
+    "ST": "ATA"
+  },
+  "long": {
+    "GK": "Goleiro",
+    "CB": "Zagueiro",
+    "LB": "Lateral Esquerdo",
+    "RB": "Lateral Direito",
+    "LWB": "Ala Esquerdo",
+    "RWB": "Ala Direito",
+    "DM": "Volante",
+    "CDM": "Volante",
+    "CM": "Meio-campo Central",
+    "LM": "Meia Esquerda",
+    "RM": "Meia Direita",
+    "CAM": "Meia-armador",
+    "LW": "Ponta Esquerda",
+    "RW": "Ponta Direita",
+    "CF": "Segundo Atacante",
+    "ST": "Atacante"
+  }
+}

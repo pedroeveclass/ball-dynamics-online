@@ -1,0 +1,47 @@
+{
+  "title": "Coach Training",
+  "subtitle": "Train one skill per week. Training unlocks every Monday at 00:00.",
+  "trained_this_week": "Weekly training already done. Next available: Monday {{date}} at 00:00",
+  "skills": {
+    "tactics": {
+      "label": "Tactics",
+      "description": "Reduces out-of-position penalty.",
+      "bonus": "-0.7% penalty/level (7% max)"
+    },
+    "formation": {
+      "label": "Formation",
+      "description": "Attribute bonus when using the trained formation.",
+      "bonus": "+0.5% attributes/level (5% max)"
+    },
+    "fitness": {
+      "label": "Fitness",
+      "description": "Reduces stamina loss per turn.",
+      "bonus": "-0.5% stamina/level (5% max)"
+    },
+    "set_piece": {
+      "label": "Set Pieces",
+      "description": "Improves accuracy on free kicks, corners and penalties.",
+      "bonus": "-1% deviation/level (10% max)"
+    },
+    "mentality": {
+      "label": "Mentality",
+      "description": "Mental attribute bonus when losing.",
+      "bonus": "+0.5% mental/level (5% max)"
+    },
+    "high_press": {
+      "label": "High Press",
+      "description": "Increases ball-recovery chance.",
+      "bonus": "+0.5% steal/level (5% max)"
+    }
+  },
+  "trained_formation_label": "Trained formation: {{formation}}",
+  "buttons": {
+    "max_level": "Max Level",
+    "waiting": "Locked",
+    "train_level": "Train Level {{level}}"
+  },
+  "toast": {
+    "trained_ok": "{{skill}} training done!",
+    "error": "Error training"
+  }
+}

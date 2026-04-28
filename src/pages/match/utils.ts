@@ -87,6 +87,7 @@ export function buildParticipantLayout(
     player_name: participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.full_name ?? undefined : undefined,
     overall: participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.overall ?? undefined : undefined,
     slot_position: participant.lineup_slot_id ? slotMap.get(participant.lineup_slot_id)?.slot_position ?? undefined : undefined,
+    country_code: participant.player_profile_id ? playerMap.get(participant.player_profile_id)?.country_code ?? null : null,
   }));
 
   const homeParts = enriched.filter(participant => participant.club_id === matchData.home_club_id && participant.role_type === 'player');

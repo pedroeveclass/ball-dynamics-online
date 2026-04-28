@@ -8,17 +8,21 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, Shield, Building2, Eye, Swords, Brain, CircleDot, Frown, Loader2 } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
+import { CountrySelect } from '@/components/CountrySelect';
+import { CountryFlag } from '@/components/CountryFlag';
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { getCountry, getCountryName } from '@/lib/countries';
 
 const CREST_EMOJI_PRESETS = ['⚽', '🦁', '🦅', '🐺', '🐉', '🐻', '🐯', '🦈', '⭐', '🔥', '🛡️', '⚓', '👑', '🌪️', '🦊', '🐍'];
 
-const STEPS = ['Manager', 'Time', 'Personalizar', 'Revisão'];
 const STEP_ICONS = [User, Shield, Building2, Eye];
 
-const COACH_TYPES = [
-  { value: 'defensive', label: 'Defensivo', description: '+15% treino defesa', icon: Shield },
-  { value: 'offensive', label: 'Ofensivo', description: '+15% treino ataque', icon: Swords },
-  { value: 'technical', label: 'Técnico', description: '+15% treino técnica', icon: Brain },
-  { value: 'complete', label: 'Completo', description: '+10% em tudo', icon: CircleDot },
+const COACH_TYPE_VALUES = [
+  { value: 'defensive', icon: Shield },
+  { value: 'offensive', icon: Swords },
+  { value: 'technical', icon: Brain },
+  { value: 'complete', icon: CircleDot },
 ] as const;
 
 const PRESET_COLORS = [
@@ -26,7 +30,7 @@ const PRESET_COLORS = [
   '#2c3e50', '#e74c3c', '#3498db', '#1abc9c', '#d35400',
 ];
 
-type CoachType = typeof COACH_TYPES[number]['value'];
+type CoachType = typeof COACH_TYPE_VALUES[number]['value'];
 
 interface AvailableClub {
   id: string;
@@ -41,14 +45,36 @@ interface AvailableClub {
 }
 
 export default function OnboardingManagerPage() {
-  const { user, refreshManagerProfile } = useAuth();
+  const { user, profile, refreshManagerProfile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation(['onboarding', 'common']);
+  const { current: lang } = useAppLanguage();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+
+  const STEPS = [
+    t('onboarding:manager.steps.manager'),
+    t('onboarding:manager.steps.team'),
+    t('onboarding:manager.steps.customize'),
+    t('onboarding:manager.steps.review'),
+  ];
+
+  const COACH_TYPES = COACH_TYPE_VALUES.map(c => ({
+    value: c.value,
+    icon: c.icon,
+    label: t(`onboarding:manager.coach.${c.value}` as any),
+    description: t(`onboarding:manager.coach.${c.value}_hint` as any),
+  }));
 
   // Step 0: Manager profile
   const [managerName, setManagerName] = useState('');
   const [coachType, setCoachType] = useState<CoachType | null>(null);
+  const [countryCode, setCountryCode] = useState<string>(((profile as any)?.country_code as string) || 'BR');
+
+  useEffect(() => {
+    const fromProfile = ((profile as any)?.country_code as string) || null;
+    if (fromProfile) setCountryCode(fromProfile);
+  }, [profile]);
 
   // Step 1: Select team
   const [availableClubs, setAvailableClubs] = useState<AvailableClub[]>([]);
@@ -86,7 +112,7 @@ export default function OnboardingManagerPage() {
       setNoTeamsAvailable(!data || data.length === 0);
     } catch (err: any) {
       console.error(err);
-      toast.error('Erro ao buscar times disponíveis');
+      toast.error(t('onboarding:manager.error_no_teams'));
       setAvailableClubs([]);
       setNoTeamsAvailable(true);
     } finally {
@@ -131,7 +157,7 @@ export default function OnboardingManagerPage() {
       if (existingManager) {
         const { error: updateError } = await supabase
           .from('manager_profiles')
-          .update({ full_name: managerName.trim(), coach_type: coachType })
+          .update({ full_name: managerName.trim(), coach_type: coachType, country_code: countryCode } as any)
           .eq('id', existingManager.id);
         if (updateError) throw updateError;
       } else {
@@ -143,16 +169,17 @@ export default function OnboardingManagerPage() {
             coach_type: coachType,
             reputation: 30,
             money: 50000,
-          });
+            country_code: countryCode,
+          } as any);
         if (managerError) throw managerError;
       }
 
       await refreshManagerProfile();
-      toast.success('Perfil criado com sucesso! Você será notificado quando houver vagas.');
+      toast.success(t('onboarding:manager.success_without_team'));
       navigate('/manager', { replace: true });
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Erro ao criar perfil');
+      toast.error(err.message || t('onboarding:manager.error_generic'));
     } finally {
       setSubmitting(false);
     }
@@ -179,7 +206,7 @@ export default function OnboardingManagerPage() {
         // Reuse existing — update name and coach type
         const { data: updated, error: updateError } = await supabase
           .from('manager_profiles')
-          .update({ full_name: managerName.trim(), coach_type: coachType })
+          .update({ full_name: managerName.trim(), coach_type: coachType, country_code: countryCode } as any)
           .eq('id', existingManager.id)
           .select()
           .single();
@@ -194,7 +221,8 @@ export default function OnboardingManagerPage() {
             coach_type: coachType,
             reputation: 30,
             money: 50000,
-          })
+            country_code: countryCode,
+          } as any)
           .select()
           .single();
         if (managerError) throw managerError;
@@ -246,11 +274,11 @@ export default function OnboardingManagerPage() {
       }
 
       await refreshManagerProfile();
-      toast.success('Time assumido com sucesso!');
+      toast.success(t('onboarding:manager.success_with_team'));
       navigate('/manager', { replace: true });
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Erro ao assumir time');
+      toast.error(err.message || t('onboarding:manager.error_generic'));
     } finally {
       setSubmitting(false);
     }
@@ -260,8 +288,8 @@ export default function OnboardingManagerPage() {
     <div className="min-h-screen bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="font-display text-3xl font-bold text-primary-foreground">NOVO MANAGER</h1>
-          <p className="mt-1 text-sm text-primary-foreground/60">Monte seu perfil e assuma um time</p>
+          <h1 className="font-display text-3xl font-bold text-primary-foreground">{t('onboarding:manager.title')}</h1>
+          <p className="mt-1 text-sm text-primary-foreground/60">{t('onboarding:manager.subtitle')}</p>
         </div>
 
         {/* Steps */}
@@ -288,12 +316,18 @@ export default function OnboardingManagerPage() {
           {step === 0 && (
             <div className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="managerName">Nome do Manager</Label>
-                <Input id="managerName" value={managerName} onChange={e => setManagerName(e.target.value)} placeholder="Ex: José Mourinho" maxLength={50} />
+                <Label htmlFor="managerName">{t('onboarding:manager.name_label')}</Label>
+                <Input id="managerName" value={managerName} onChange={e => setManagerName(e.target.value)} placeholder={t('onboarding:manager.name_placeholder')} maxLength={50} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t('onboarding:manager.country_label')}</Label>
+                <CountrySelect value={countryCode} onChange={setCountryCode} />
+                <p className="text-[11px] text-muted-foreground">{t('onboarding:manager.country_hint')}</p>
               </div>
 
               <div className="space-y-3">
-                <Label>Tipo de Treinador</Label>
+                <Label>{t('onboarding:manager.coach_label')}</Label>
                 <div className="grid grid-cols-2 gap-3">
                   {COACH_TYPES.map(ct => {
                     const Icon = ct.icon;
@@ -326,7 +360,7 @@ export default function OnboardingManagerPage() {
           {/* Step 1: Select Team */}
           {step === 1 && (
             <div className="space-y-4">
-              <h2 className="font-display text-lg font-bold text-foreground">Escolha um Time</h2>
+              <h2 className="font-display text-lg font-bold text-foreground">{t('onboarding:manager.team.title')}</h2>
 
               {loadingClubs && (
                 <div className="flex items-center justify-center py-8">
@@ -337,16 +371,13 @@ export default function OnboardingManagerPage() {
               {!loadingClubs && noTeamsAvailable && (
                 <div className="text-center py-8 space-y-4">
                   <Frown className="h-12 w-12 mx-auto text-muted-foreground/50" />
-                  <p className="text-muted-foreground text-sm">
-                    Nenhum time disponível no momento.<br />
-                    Você será notificado quando houver vagas.
-                  </p>
+                  <p className="text-muted-foreground text-sm">{t('onboarding:manager.team.no_teams')}</p>
                   <Button
                     onClick={handleCreateProfileWithoutTeam}
                     disabled={submitting}
                     className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
                   >
-                    {submitting ? 'Criando...' : 'Criar Perfil sem Time'}
+                    {submitting ? t('onboarding:manager.submitting') : t('onboarding:manager.team.create_without_team')}
                   </Button>
                 </div>
               )}
@@ -375,7 +406,7 @@ export default function OnboardingManagerPage() {
                         className="w-full text-xs font-display"
                         onClick={() => handleSelectClub(club)}
                       >
-                        {selectedClub?.id === club.id ? 'Selecionado' : 'Selecionar'}
+                        {selectedClub?.id === club.id ? t('onboarding:manager.team.selected') : t('onboarding:manager.team.select')}
                       </Button>
                     </div>
                   ))}
@@ -388,15 +419,15 @@ export default function OnboardingManagerPage() {
           {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="clubName">Nome do Clube</Label>
-                <Input id="clubName" value={clubName} onChange={e => setClubName(e.target.value)} placeholder="Ex: FC United" maxLength={50} />
+                <Label htmlFor="clubName">{t('onboarding:manager.customize.club_name')}</Label>
+                <Input id="clubName" value={clubName} onChange={e => setClubName(e.target.value)} placeholder={t('onboarding:manager.customize.club_name_placeholder')} maxLength={50} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shortName">Sigla (3 letras)</Label>
+                <Label htmlFor="shortName">{t('onboarding:manager.customize.short_name')}</Label>
                 <Input id="shortName" value={shortName} onChange={e => setShortName(e.target.value.slice(0, 3).toUpperCase())} placeholder="FCU" maxLength={3} className="uppercase" />
               </div>
               <div className="space-y-2">
-                <Label>Cor Principal</Label>
+                <Label>{t('onboarding:manager.customize.primary_color')}</Label>
                 <div className="flex gap-2 flex-wrap">
                   {PRESET_COLORS.map(c => (
                     <button key={c} onClick={() => setPrimaryColor(c)}
@@ -408,7 +439,7 @@ export default function OnboardingManagerPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Cor Secundária</Label>
+                <Label>{t('onboarding:manager.customize.secondary_color')}</Label>
                 <div className="flex gap-2 flex-wrap">
                   {['#ffffff', '#000000', '#f1c40f', '#ecf0f1', '#bdc3c7', ...PRESET_COLORS.slice(0, 5)].map(c => (
                     <button key={c} onClick={() => setSecondaryColor(c)}
@@ -434,12 +465,12 @@ export default function OnboardingManagerPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Escudo (opcional)</Label>
+                <Label>{t('onboarding:manager.customize.crest_label')}</Label>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
                     onClick={() => setCrestUrl(null)}
-                    title="Usar sigla"
+                    title={t('onboarding:manager.customize.crest_use_initials')}
                     className={`h-9 w-9 rounded border flex items-center justify-center text-[10px] font-display font-bold ${!crestUrl ? 'border-tactical bg-tactical/10 text-tactical' : 'border-border text-muted-foreground hover:border-tactical/40'}`}
                   >
                     ABC
@@ -459,30 +490,39 @@ export default function OnboardingManagerPage() {
                     );
                   })}
                 </div>
-                <p className="text-[10px] text-muted-foreground">Escolha um emoji agora. Upload de imagem fica disponível depois em "Editar Clube".</p>
+                <p className="text-[10px] text-muted-foreground">{t('onboarding:manager.customize.crest_hint')}</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="city">Cidade</Label>
-                <Input id="city" value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: São Paulo" maxLength={50} />
+                <Label htmlFor="city">{t('onboarding:manager.customize.city')}</Label>
+                <Input id="city" value={city} onChange={e => setCity(e.target.value)} placeholder={t('onboarding:manager.customize.city_placeholder')} maxLength={50} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="stadiumName">Nome do Estádio</Label>
-                <Input id="stadiumName" value={stadiumName} onChange={e => setStadiumName(e.target.value)} placeholder="Ex: Arena do Povo" maxLength={50} />
+                <Label htmlFor="stadiumName">{t('onboarding:manager.customize.stadium')}</Label>
+                <Input id="stadiumName" value={stadiumName} onChange={e => setStadiumName(e.target.value)} placeholder={t('onboarding:manager.customize.stadium_placeholder')} maxLength={50} />
               </div>
             </div>
           )}
 
           {/* Step 3: Review */}
-          {step === 3 && (
+          {step === 3 && (() => {
+            const country = getCountry(countryCode);
+            return (
             <div className="space-y-4">
-              <h2 className="font-display text-xl font-bold text-foreground">Confirmar</h2>
+              <h2 className="font-display text-xl font-bold text-foreground">{t('onboarding:manager.review.title')}</h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Manager</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.manager')}</span>
                   <p className="font-display font-bold">{managerName}</p>
                 </div>
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Tipo</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.country')}</span>
+                  <p className="font-display font-bold flex items-center gap-1.5">
+                    <CountryFlag code={countryCode} size="xs" />
+                    <span>{country ? getCountryName(country, lang) : countryCode}</span>
+                  </p>
+                </div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.type')}</span>
                   <div className="flex items-center gap-1.5">
                     {(() => {
                       const ct = COACH_TYPES.find(c => c.value === coachType);
@@ -498,22 +538,22 @@ export default function OnboardingManagerPage() {
                   </div>
                 </div>
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Clube</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.club')}</span>
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: primaryColor, color: secondaryColor }}>{shortName}</div>
                     <p className="font-display font-bold">{clubName}</p>
                   </div>
                 </div>
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Estádio</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.stadium')}</span>
                   <p className="font-display font-bold">{stadiumName}</p>
                 </div>
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Cidade</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.city')}</span>
                   <p className="font-display font-bold">{city || '—'}</p>
                 </div>
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Cores</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:manager.review.colors')}</span>
                   <div className="flex items-center gap-1.5">
                     <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: primaryColor }} />
                     <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: secondaryColor }} />
@@ -521,44 +561,44 @@ export default function OnboardingManagerPage() {
                 </div>
               </div>
             </div>
-          )}
+          );
+          })()}
 
           {/* Navigation */}
           <div className="flex justify-between pt-2">
             {step > 0 ? (
               <Button variant="ghost" onClick={() => {
                 if (step === 2 && selectedClub) {
-                  // Going back from customize to team selection - keep selection but go back
                   setStep(1);
                 } else {
                   setStep(s => s - 1);
                 }
               }} className="text-muted-foreground">
-                <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
+                <ChevronLeft className="h-4 w-4 mr-1" /> {t('common:actions.back')}
               </Button>
             ) : <div />}
 
             {step === 0 && (
               <Button onClick={() => setStep(1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-                Próximo <ChevronRight className="h-4 w-4 ml-1" />
+                {t('common:actions.next')} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             )}
 
             {step === 1 && !noTeamsAvailable && selectedClub && (
               <Button onClick={() => setStep(2)} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-                Próximo <ChevronRight className="h-4 w-4 ml-1" />
+                {t('common:actions.next')} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             )}
 
             {step === 2 && (
               <Button onClick={() => setStep(3)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-                Próximo <ChevronRight className="h-4 w-4 ml-1" />
+                {t('common:actions.next')} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             )}
 
             {step === 3 && (
               <Button onClick={handleSubmit} disabled={submitting} className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
-                {submitting ? 'Criando...' : <><Check className="h-4 w-4 mr-1" /> Confirmar</>}
+                {submitting ? t('onboarding:manager.submitting') : <><Check className="h-4 w-4 mr-1" /> {t('onboarding:manager.submit')}</>}
               </Button>
             )}
           </div>

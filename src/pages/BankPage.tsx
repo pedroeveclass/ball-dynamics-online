@@ -9,6 +9,7 @@ import { Slider } from '@/components/ui/slider';
 import { Landmark, Wallet, Calendar, Percent, CreditCard, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
+import { useTranslation } from 'react-i18next';
 
 interface Loan {
   id: string;
@@ -26,6 +27,7 @@ interface Loan {
 
 function BankContent() {
   const { playerProfile, managerProfile, club, refreshPlayerProfile } = useAuth();
+  const { t } = useTranslation('bank');
 
   const [loading, setLoading] = useState(true);
   const [activeLoan, setActiveLoan] = useState<Loan | null>(null);
@@ -128,13 +130,13 @@ function BankContent() {
 
       if (isPlayer) await refreshPlayerProfile();
 
-      toast.success('Emprestimo aprovado!', {
-        description: `${formatBRL(loanAmount)} creditado na sua conta.`,
+      toast.success(t('toast.approved_title'), {
+        description: t('toast.approved_desc', { amount: formatBRL(loanAmount) }),
       });
       setLoanAmount(0);
       await fetchData();
     } catch (err: any) {
-      toast.error('Erro ao solicitar emprestimo', { description: err.message });
+      toast.error(t('toast.approve_error'), { description: err.message });
     }
     setSubmitting(false);
   }
@@ -142,7 +144,7 @@ function BankContent() {
   async function handlePayOff() {
     if (!activeLoan) return;
     if (activeLoan.remaining > currentBalance) {
-      toast.error('Saldo insuficiente para quitar o emprestimo.');
+      toast.error(t('toast.insufficient_payoff'));
       return;
     }
     setPayingOff(true);
@@ -158,10 +160,10 @@ function BankContent() {
 
       if (isPlayer) await refreshPlayerProfile();
 
-      toast.success('Emprestimo quitado!');
+      toast.success(t('toast.paid_off'));
       await fetchData();
     } catch (err: any) {
-      toast.error('Erro ao quitar emprestimo', { description: err.message });
+      toast.error(t('toast.payoff_error'), { description: err.message });
     }
     setPayingOff(false);
   }
@@ -181,25 +183,25 @@ function BankContent() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Landmark className="h-7 w-7 text-amber-500" />
-        <h1 className="font-display text-2xl font-bold">Banco</h1>
+        <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
       </div>
 
       {/* Top stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <StatCard
-          label="Saldo Atual"
+          label={t('stats.current_balance')}
           value={formatBRL(currentBalance)}
           icon={<Wallet className="h-5 w-5" />}
         />
         <StatCard
-          label={isManager ? 'Receita Semanal' : 'Salario Semanal'}
+          label={isManager ? t('stats.weekly_revenue') : t('stats.weekly_salary')}
           value={formatBRL(isManager ? weeklyRevenue : weeklySalary)}
           icon={<CreditCard className="h-5 w-5" />}
         />
         <StatCard
-          label="Limite de Emprestimo"
+          label={t('stats.loan_limit')}
           value={formatBRL(maxLoan)}
-          subtitle="5x receita semanal"
+          subtitle={t('stats.loan_limit_subtitle')}
           icon={<Landmark className="h-5 w-5" />}
         />
       </div>
@@ -209,30 +211,30 @@ function BankContent() {
         <div className="stat-card border-2 border-amber-500/30 bg-amber-500/5">
           <h2 className="font-display font-semibold text-sm mb-4 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
-            Emprestimo Ativo
+            {t('active_loan.title')}
           </h2>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Valor Principal</span>
+              <span className="text-muted-foreground">{t('active_loan.principal')}</span>
               <span className="font-display font-bold">{formatBRL(activeLoan.principal)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Saldo Devedor</span>
+              <span className="text-muted-foreground">{t('active_loan.remaining')}</span>
               <span className="font-display font-bold text-amber-500">{formatBRL(activeLoan.remaining)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Pagamento Semanal</span>
+              <span className="text-muted-foreground">{t('active_loan.weekly_payment')}</span>
               <span className="font-display font-bold">{formatBRL(activeLoan.weekly_payment)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground flex items-center gap-1">
-                <Percent className="h-3 w-3" /> Taxa de Juros
+                <Percent className="h-3 w-3" /> {t('active_loan.interest_rate')}
               </span>
-              <span className="font-display font-bold">2% / semana</span>
+              <span className="font-display font-bold">{t('active_loan.interest_rate_value')}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground flex items-center gap-1">
-                <Calendar className="h-3 w-3" /> Semanas Restantes (est.)
+                <Calendar className="h-3 w-3" /> {t('active_loan.weeks_remaining')}
               </span>
               <span className="font-display font-bold">{weeksRemaining}</span>
             </div>
@@ -246,11 +248,11 @@ function BankContent() {
                 {payingOff ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}
-                Pagar Antecipado ({formatBRL(activeLoan.remaining)})
+                {t('active_loan.pay_off', { amount: formatBRL(activeLoan.remaining) })}
               </Button>
               {activeLoan.remaining > currentBalance && (
                 <p className="text-xs text-destructive mt-2 text-center">
-                  Saldo insuficiente para quitacao antecipada.
+                  {t('active_loan.insufficient_balance')}
                 </p>
               )}
             </div>
@@ -263,21 +265,19 @@ function BankContent() {
         <div className="stat-card">
           <h2 className="font-display font-semibold text-sm mb-4 flex items-center gap-2">
             <Landmark className="h-4 w-4 text-amber-500" />
-            Pedir Emprestimo
+            {t('request.title')}
           </h2>
 
           {maxLoan <= 0 ? (
             <p className="text-sm text-muted-foreground">
-              {isManager
-                ? 'Sem receita semanal registrada. Nao e possivel solicitar emprestimo.'
-                : 'Sem contrato ativo. Nao e possivel solicitar emprestimo.'}
+              {isManager ? t('request.no_revenue_manager') : t('request.no_contract_player')}
             </p>
           ) : (
             <div className="space-y-5">
               {/* Slider */}
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Valor do Emprestimo</span>
+                  <span className="text-muted-foreground">{t('request.amount_label')}</span>
                   <span className="font-display font-bold text-lg">{formatBRL(loanAmount)}</span>
                 </div>
                 <Slider
@@ -298,23 +298,23 @@ function BankContent() {
               {loanAmount > 0 && (
                 <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Valor Principal</span>
+                    <span className="text-muted-foreground">{t('active_loan.principal')}</span>
                     <span className="font-display font-bold">{formatBRL(loanAmount)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Prazo</span>
-                    <span className="font-display font-bold">12 semanas</span>
+                    <span className="text-muted-foreground">{t('request.term_label')}</span>
+                    <span className="font-display font-bold">{t('request.term_value')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Taxa de Juros</span>
-                    <span className="font-display font-bold">2% / semana</span>
+                    <span className="text-muted-foreground">{t('active_loan.interest_rate')}</span>
+                    <span className="font-display font-bold">{t('active_loan.interest_rate_value')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Pagamento Semanal</span>
+                    <span className="text-muted-foreground">{t('active_loan.weekly_payment')}</span>
                     <span className="font-display font-bold">{formatBRL(weeklyPayment)}</span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-2">
-                    <span className="font-semibold">Total a Pagar</span>
+                    <span className="font-semibold">{t('request.total_to_pay')}</span>
                     <span className="font-display font-bold text-amber-500">
                       {formatBRL(totalWithInterest)}
                     </span>
@@ -332,7 +332,7 @@ function BankContent() {
                 ) : (
                   <Landmark className="h-4 w-4 mr-2" />
                 )}
-                Solicitar Emprestimo
+                {t('request.submit')}
               </Button>
             </div>
           )}
@@ -344,9 +344,7 @@ function BankContent() {
         <div className="stat-card text-center py-8">
           <Landmark className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">
-            {isManager
-              ? 'Seu clube precisa de receita semanal para solicitar emprestimos.'
-              : 'Voce precisa de um contrato ativo para solicitar emprestimos.'}
+            {isManager ? t('no_loan_no_credit.manager') : t('no_loan_no_credit.player')}
           </p>
         </div>
       )}

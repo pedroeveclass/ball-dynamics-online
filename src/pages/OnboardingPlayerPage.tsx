@@ -10,21 +10,43 @@ import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
 import { PositionFieldSelector } from '@/components/PositionFieldSelector';
+import { CountrySelect } from '@/components/CountrySelect';
+import { CountryFlag } from '@/components/CountryFlag';
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { getCountry, getCountryName } from '@/lib/countries';
 
-const STEPS = ['Identidade', 'Posição', 'Tamanho', 'Tipo Físico', 'Atributos', 'Revisão'];
 const STEP_ICONS = [User, MapPin, Ruler, Shield, Dumbbell, Eye];
 
 export default function OnboardingPlayerPage() {
-  const { user, refreshPlayerProfile } = useAuth();
+  const { user, profile, refreshPlayerProfile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation(['onboarding', 'common']);
+  const { current: lang } = useAppLanguage();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+
+  const STEPS = [
+    t('onboarding:player.steps.identity'),
+    t('onboarding:player.steps.position'),
+    t('onboarding:player.steps.height'),
+    t('onboarding:player.steps.body'),
+    t('onboarding:player.steps.attributes'),
+    t('onboarding:player.steps.review'),
+  ];
 
   const [fullName, setFullName] = useState('');
   const [dominantFoot, setDominantFoot] = useState<'right' | 'left'>('right');
   const [primaryPosition, setPrimaryPosition] = useState('');
   const [height, setHeight] = useState('Médio');
   const [bodyType, setBodyType] = useState('');
+  const [countryCode, setCountryCode] = useState<string>(((profile as any)?.country_code as string) || 'BR');
+
+  // When profile loads, sync the default country (only if user hasn't picked yet)
+  useEffect(() => {
+    const fromProfile = ((profile as any)?.country_code as string) || null;
+    if (fromProfile) setCountryCode(fromProfile);
+  }, [profile]);
 
   // Attribute distribution
   const [extraPoints, setExtraPoints] = useState<Record<string, number>>({});
@@ -116,16 +138,17 @@ export default function OnboardingPlayerPage() {
         p_height: height,
         p_body_type: bodyType,
         p_extra_points: extra,
-      });
+        p_country_code: countryCode,
+      } as any);
 
       if (error) throw error;
 
       await refreshPlayerProfile();
-      toast.success('Atleta criado com sucesso!');
+      toast.success(t('onboarding:player.success'));
       navigate('/player', { replace: true });
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Erro ao criar atleta');
+      toast.error(err.message || t('onboarding:player.error_generic'));
     } finally {
       setSubmitting(false);
     }
@@ -142,8 +165,8 @@ export default function OnboardingPlayerPage() {
       <div className="w-full max-w-lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="font-display text-3xl font-bold text-primary-foreground">CRIAR ATLETA</h1>
-          <p className="mt-1 text-sm text-primary-foreground/60">Dê vida ao seu jogador</p>
+          <h1 className="font-display text-3xl font-bold text-primary-foreground">{t('onboarding:player.title')}</h1>
+          <p className="mt-1 text-sm text-primary-foreground/60">{t('onboarding:player.subtitle')}</p>
         </div>
 
         {/* Step indicators */}
@@ -171,21 +194,26 @@ export default function OnboardingPlayerPage() {
           {step === 0 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nome do Jogador</Label>
-                <Input id="name" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Ex: Carlos Mendes" maxLength={50} />
+                <Label htmlFor="name">{t('onboarding:player.identity.name_label')}</Label>
+                <Input id="name" value={fullName} onChange={e => setFullName(e.target.value)} placeholder={t('onboarding:player.identity.name_placeholder')} maxLength={50} />
               </div>
               <div className="space-y-2">
-                <Label>Idade</Label>
-                <p className="text-sm text-muted-foreground">Seu atleta começa com <span className="font-bold text-foreground">18 anos</span>.</p>
-                <p className="text-xs text-muted-foreground">Idades maiores estarão disponíveis com créditos do jogo.</p>
+                <Label>{t('onboarding:player.identity.country_label')}</Label>
+                <CountrySelect value={countryCode} onChange={setCountryCode} />
+                <p className="text-[11px] text-muted-foreground">{t('onboarding:player.identity.country_hint')}</p>
               </div>
               <div className="space-y-2">
-                <Label>Pé Dominante</Label>
+                <Label>{t('onboarding:player.identity.age_label')}</Label>
+                <p className="text-sm text-muted-foreground">{t('onboarding:player.identity.age_text')} <span className="font-bold text-foreground">{t('onboarding:player.identity.age_value')}</span>.</p>
+                <p className="text-xs text-muted-foreground">{t('onboarding:player.identity.age_hint')}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>{t('onboarding:player.identity.foot_label')}</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  {([['right', 'Direito'], ['left', 'Esquerdo']] as const).map(([val, label]) => (
+                  {([['right', t('onboarding:player.identity.foot_right')], ['left', t('onboarding:player.identity.foot_left')]] as const).map(([val, label]) => (
                     <button
                       key={val}
-                      onClick={() => setDominantFoot(val)}
+                      onClick={() => setDominantFoot(val as 'right' | 'left')}
                       className={`px-3 py-2 rounded-md text-sm font-display font-semibold border transition-colors ${
                         dominantFoot === val
                           ? 'border-tactical bg-tactical/10 text-tactical'
@@ -202,11 +230,9 @@ export default function OnboardingPlayerPage() {
           {step === 1 && (
             <div className="space-y-4">
               <div className="space-y-1">
-                <Label>Posição Principal</Label>
-                <p className="text-xs text-muted-foreground">
-                  Escolha sua posição no campo. O número mostra quantos <span className="text-foreground font-semibold">jogadores humanos</span> já existem ali — posições com menos de 5 jogadores aparecem destacadas.
-                </p>
-                <p className="text-[11px] text-muted-foreground">Posição secundária pode ser desbloqueada com créditos do jogo.</p>
+                <Label>{t('onboarding:player.position.label')}</Label>
+                <p className="text-xs text-muted-foreground">{t('onboarding:player.position.hint')}</p>
+                <p className="text-[11px] text-muted-foreground">{t('onboarding:player.position.secondary_hint')}</p>
               </div>
               <PositionFieldSelector
                 value={primaryPosition}
@@ -222,8 +248,8 @@ export default function OnboardingPlayerPage() {
           {/* Step 2: Height */}
           {step === 2 && (
             <div className="space-y-4">
-              <Label>Tamanho do Jogador</Label>
-              <p className="text-xs text-muted-foreground">O tamanho impacta diretamente nos atributos físicos e aéreos.</p>
+              <Label>{t('onboarding:player.height.label')}</Label>
+              <p className="text-xs text-muted-foreground">{t('onboarding:player.height.hint')}</p>
               <div className="space-y-2">
                 {HEIGHT_OPTIONS.map(h => (
                   <button
@@ -248,8 +274,8 @@ export default function OnboardingPlayerPage() {
           {/* Step 3: Body Type */}
           {step === 3 && (
             <div className="space-y-4">
-              <Label>Tipo Físico</Label>
-              {isGK && <p className="text-xs text-muted-foreground">Tipos físicos específicos para goleiro.</p>}
+              <Label>{t('onboarding:player.body.label')}</Label>
+              {isGK && <p className="text-xs text-muted-foreground">{t('onboarding:player.body.gk_hint')}</p>}
               <div className="space-y-2">
                 {availableBodyTypes.map(bt => (
                   <button
@@ -310,12 +336,12 @@ export default function OnboardingPlayerPage() {
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label>Distribua seus pontos</Label>
+                  <Label>{t('onboarding:player.attributes.label')}</Label>
                   <span className={`font-display text-lg font-bold ${remainingPoints === 0 ? 'text-pitch' : 'text-tactical'}`}>
-                    {remainingPoints} pts restantes
+                    {t('onboarding:player.attributes.remaining', { count: remainingPoints })}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">Clique em + para adicionar pontos ou - para remover.</p>
+                <p className="text-xs text-muted-foreground">{t('onboarding:player.attributes.hint')}</p>
                 <div className="space-y-5">
                   {sections.map(section => (
                     <div key={section.title}>
@@ -331,42 +357,52 @@ export default function OnboardingPlayerPage() {
           })()}
 
           {/* Step 5: Review */}
-          {step === 5 && (
+          {step === 5 && (() => {
+            const country = getCountry(countryCode);
+            return (
             <div className="space-y-4">
-              <h2 className="font-display text-xl font-bold text-foreground">Confirmar Criação</h2>
+              <h2 className="font-display text-xl font-bold text-foreground">{t('onboarding:player.review.title')}</h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Nome</span><p className="font-display font-bold">{fullName}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Idade</span><p className="font-display font-bold">18 anos</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Pé</span><p className="font-display font-bold">{dominantFoot === 'right' ? 'Direito' : 'Esquerdo'}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Posição</span><p className="font-display font-bold">{posLabel}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Tamanho</span><p className="font-display font-bold">{heightLabel}</p></div>
-                <div className="stat-card"><span className="text-muted-foreground text-xs">Tipo Físico</span><p className="font-display font-bold">{bodyLabel}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">{t('onboarding:player.review.name')}</span><p className="font-display font-bold">{fullName}</p></div>
+                <div className="stat-card">
+                  <span className="text-muted-foreground text-xs">{t('onboarding:player.review.country')}</span>
+                  <p className="font-display font-bold flex items-center gap-1.5">
+                    <CountryFlag code={countryCode} size="xs" />
+                    <span>{country ? getCountryName(country, lang) : countryCode}</span>
+                  </p>
+                </div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">{t('onboarding:player.review.age')}</span><p className="font-display font-bold">{t('onboarding:player.identity.age_value')}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">{t('onboarding:player.review.foot')}</span><p className="font-display font-bold">{dominantFoot === 'right' ? t('onboarding:player.identity.foot_right') : t('onboarding:player.identity.foot_left')}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">{t('onboarding:player.review.position')}</span><p className="font-display font-bold">{posLabel}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">{t('onboarding:player.review.height')}</span><p className="font-display font-bold">{heightLabel}</p></div>
+                <div className="stat-card"><span className="text-muted-foreground text-xs">{t('onboarding:player.review.body')}</span><p className="font-display font-bold">{bodyLabel}</p></div>
               </div>
               {finalAttrs && (
                 <div className="stat-card">
-                  <span className="text-muted-foreground text-xs">Overall estimado</span>
+                  <span className="text-muted-foreground text-xs">{t('onboarding:player.review.overall')}</span>
                   <p className="font-display text-3xl font-extrabold text-tactical">{calculateOverall(finalAttrs, primaryPosition)}</p>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">Você começa como agente livre com 18 anos.</p>
+              <p className="text-xs text-muted-foreground">{t('onboarding:player.review.footer')}</p>
             </div>
-          )}
+          );
+          })()}
 
           {/* Navigation */}
           <div className="flex justify-between pt-2">
             {step > 0 ? (
               <Button variant="ghost" onClick={() => setStep(s => s - 1)} className="text-muted-foreground">
-                <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
+                <ChevronLeft className="h-4 w-4 mr-1" /> {t('common:actions.back')}
               </Button>
             ) : <div />}
 
             {step < 5 ? (
               <Button onClick={() => setStep(s => s + 1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
-                Próximo <ChevronRight className="h-4 w-4 ml-1" />
+                {t('common:actions.next')} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             ) : (
               <Button onClick={handleSubmit} disabled={submitting} className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
-                {submitting ? 'Criando...' : <><Check className="h-4 w-4 mr-1" /> Criar Atleta</>}
+                {submitting ? t('onboarding:player.submitting') : <><Check className="h-4 w-4 mr-1" /> {t('onboarding:player.submit')}</>}
               </Button>
             )}
           </div>

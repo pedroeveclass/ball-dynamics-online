@@ -1,0 +1,45 @@
+{
+  "app_name": "Football Identity",
+  "actions": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "previous": "Anterior",
+    "close": "Fechar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "create": "Criar",
+    "select": "Selecionar",
+    "submit": "Enviar",
+    "search": "Buscar",
+    "loading": "Carregando...",
+    "saving": "Salvando...",
+    "creating": "Criando...",
+    "deleting": "Excluindo...",
+    "retry": "Tentar novamente"
+  },
+  "feedback": {
+    "saved": "Salvo com sucesso",
+    "created": "Criado com sucesso",
+    "deleted": "Excluído",
+    "error_generic": "Algo deu errado. Tente novamente.",
+    "no_data": "Sem dados para mostrar",
+    "loading": "Carregando..."
+  },
+  "language": {
+    "label": "Idioma",
+    "pt": "Português",
+    "en": "English"
+  },
+  "country": {
+    "label": "País",
+    "select_placeholder": "Selecione seu país",
+    "detected_via_ip": "Detectado pela sua localização",
+    "override_hint": "Você pode trocar caso esteja errado"
+  },
+  "logout": "Sair",
+  "tutorial": "Tutorial",
+  "loading_screen": "Carregando..."
+}

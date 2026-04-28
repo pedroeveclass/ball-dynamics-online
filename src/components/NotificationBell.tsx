@@ -4,6 +4,8 @@ import { Bell } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { getNotificationLink } from '@/lib/notificationLinks';
+import { renderNotificationTitle, renderNotificationBody } from '@/lib/notificationRender';
+import { useTranslation } from 'react-i18next';
 
 interface Notification {
   id: string;
@@ -13,11 +15,14 @@ interface Notification {
   read: boolean;
   created_at: string;
   link?: string | null;
+  i18n_key?: string | null;
+  i18n_params?: Record<string, unknown> | null;
 }
 
 export function NotificationBell() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation('notifications');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -81,7 +86,7 @@ export function NotificationBell() {
   function timeAgo(dateStr: string) {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'agora';
+    if (mins < 1) return t('time_now');
     if (mins < 60) return `${mins}min`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `${hours}h`;
@@ -108,14 +113,14 @@ export function NotificationBell() {
           className="fixed left-1/2 -translate-x-1/2 top-14 w-[min(calc(100vw-1rem),380px)] sm:absolute sm:translate-x-0 sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-80 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden"
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border gap-2">
-            <span className="font-display font-bold text-sm">Notificações</span>
+            <span className="font-display font-bold text-sm">{t('title')}</span>
             <div className="flex items-center gap-3">
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
                   className="text-xs text-muted-foreground hover:text-foreground hover:underline"
                 >
-                  Marcar lidas
+                  {t('mark_read_short')}
                 </button>
               )}
               <Link
@@ -123,16 +128,19 @@ export function NotificationBell() {
                 onClick={() => setOpen(false)}
                 className="text-xs text-tactical hover:underline"
               >
-                Ver todas
+                {t('see_all')}
               </Link>
             </div>
           </div>
 
           <div className="max-h-[70vh] sm:max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
-              <p className="text-center text-muted-foreground text-xs py-6">Sem notificações</p>
+              <p className="text-center text-muted-foreground text-xs py-6">{t('empty_short')}</p>
             ) : (
-              notifications.map(n => (
+              notifications.map(n => {
+                const title = renderNotificationTitle(n);
+                const body = renderNotificationBody(n);
+                return (
                 <button
                   key={n.id}
                   onClick={() => {
@@ -145,15 +153,16 @@ export function NotificationBell() {
                   <div className="flex items-start gap-2">
                     {!n.read && <span className="mt-1.5 h-2 w-2 rounded-full bg-tactical shrink-0" />}
                     <div className="flex-1 min-w-0 overflow-hidden">
-                      <p className={`text-[13px] font-semibold break-words line-clamp-2 ${!n.read ? 'text-foreground' : 'text-muted-foreground'}`}>{n.title}</p>
-                      {n.body && (
-                        <p className="text-[11px] text-muted-foreground break-words line-clamp-2 mt-0.5">{n.body}</p>
+                      <p className={`text-[13px] font-semibold break-words line-clamp-2 ${!n.read ? 'text-foreground' : 'text-muted-foreground'}`}>{title}</p>
+                      {body && (
+                        <p className="text-[11px] text-muted-foreground break-words line-clamp-2 mt-0.5">{body}</p>
                       )}
                       <p className="text-[10px] text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                   </div>
                 </button>
-              ))
+                );
+              })
             )}
           </div>
         </div>

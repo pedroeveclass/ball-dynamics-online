@@ -4,6 +4,7 @@ import { StatCard } from '@/components/StatCard';
 import { EnergyBar } from '@/components/EnergyBar';
 import { PositionBadge } from '@/components/PositionBadge';
 import { ClubCrest } from '@/components/ClubCrest';
+import { CountryFlag } from '@/components/CountryFlag';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Zap, DollarSign, Star, Bell, Swords, CalendarClock, Play } from 'lucide-react';
@@ -12,17 +13,12 @@ import { getNotificationLink } from '@/lib/notificationLinks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Tables } from '@/integrations/supabase/types';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { formatDate } from '@/lib/formatDate';
 import { formatBRL } from '@/lib/formatting';
 import { ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
-
-const STATUS_INFO: Record<string, { label: string; className: string }> = {
-  scheduled: { label: 'Agendada', className: 'bg-secondary text-secondary-foreground' },
-  waiting: { label: 'Aguardando', className: 'bg-warning/20 text-warning border-warning/30' },
-  live: { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
-  finished: { label: 'Encerrada', className: 'bg-muted text-muted-foreground' },
-};
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { renderNotificationTitle, renderNotificationBody } from '@/lib/notificationRender';
 
 interface NextMatch {
   id: string;
@@ -35,6 +31,8 @@ interface NextMatch {
 export default function PlayerDashboard() {
   const { user, playerProfile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('dashboard');
+  const { current: lang } = useAppLanguage();
   const [contract, setContract] = useState<Tables<'contracts'> | null>(null);
   const [notifications, setNotifications] = useState<Tables<'notifications'>[]>([]);
   const [attributes, setAttributes] = useState<Tables<'player_attributes'> | null>(null);
@@ -66,7 +64,6 @@ export default function PlayerDashboard() {
     const fetchNextMatch = async () => {
       if (!user) return;
 
-      // Method 1: Direct participation via match_participants
       const { data: parts } = await supabase
         .from('match_participants')
         .select('match_id')
@@ -75,7 +72,6 @@ export default function PlayerDashboard() {
 
       let directMatchIds = (parts || []).map(p => p.match_id);
 
-      // Method 2: Club's scheduled league matches (player may not be in match_participants yet)
       let clubMatchIds: string[] = [];
       if (playerProfile.club_id) {
         const { data: clubMatches } = await supabase
@@ -88,11 +84,9 @@ export default function PlayerDashboard() {
         clubMatchIds = (clubMatches || []).map(m => m.id);
       }
 
-      // Merge and deduplicate
       const allMatchIds = [...new Set([...directMatchIds, ...clubMatchIds])];
       if (allMatchIds.length === 0) return;
 
-      // Filter: only real matches (with lineups, not test/bot-only)
       const { data: allMatches } = await supabase
         .from('matches')
         .select('id, status, scheduled_at, home_club_id, away_club_id, home_lineup_id, away_lineup_id')
@@ -127,6 +121,14 @@ export default function PlayerDashboard() {
   if (!playerProfile) return null;
 
   const p = playerProfile;
+  const statusKey = (s: string) => `player.next_match.status.${s}` as const;
+
+  const STATUS_CLASS: Record<string, string> = {
+    scheduled: 'bg-secondary text-secondary-foreground',
+    waiting: 'bg-warning/20 text-warning border-warning/30',
+    live: 'bg-pitch/20 text-pitch border-pitch/30',
+    finished: 'bg-muted text-muted-foreground',
+  };
 
   return (
     <AppLayout>
@@ -134,40 +136,43 @@ export default function PlayerDashboard() {
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="font-display text-3xl font-bold">{p.full_name}</h1>
+            <h1 className="font-display text-3xl font-bold flex items-center gap-2">
+              {(p as any).country_code && <CountryFlag code={(p as any).country_code} size="md" />}
+              <span>{p.full_name}</span>
+            </h1>
             <div className="flex items-center gap-3 mt-1">
               <PositionBadge position={p.primary_position} />
               {p.secondary_position && <PositionBadge position={p.secondary_position} />}
               <span className="text-sm text-muted-foreground">{p.archetype}</span>
               <span className="text-sm text-muted-foreground">•</span>
-              <span className="text-sm text-muted-foreground">{p.dominant_foot === 'right' ? 'Pé Direito' : 'Pé Esquerdo'}</span>
+              <span className="text-sm text-muted-foreground">{p.dominant_foot === 'right' ? t('player.header.right_foot') : t('player.header.left_foot')}</span>
               <span className="text-sm text-muted-foreground">•</span>
-              <span className="text-sm text-muted-foreground">{p.age} anos</span>
+              <span className="text-sm text-muted-foreground">{t('player.header.years_old', { count: p.age })}</span>
             </div>
           </div>
           <div className="text-right">
             <span className="font-display text-4xl font-extrabold text-tactical">{p.overall}</span>
-            <p className="text-xs text-muted-foreground">OVR</p>
+            <p className="text-xs text-muted-foreground">{t('player.header.ovr')}</p>
           </div>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Reputação" value={p.reputation} icon={<Star className="h-5 w-5" />} />
-          <StatCard label="Dinheiro" value={formatBRL(p.money)} icon={<DollarSign className="h-5 w-5" />} />
-          <StatCard label="Salario/Sem" value={contract?.status === 'active' ? formatBRL(contract.weekly_salary) : 'Sem contrato'} />
-          <StatCard label="Clube" value={clubName || 'Sem clube'} subtitle={!p.club_id ? 'Agente Livre' : undefined} />
+          <StatCard label={t('player.stats.reputation')} value={p.reputation} icon={<Star className="h-5 w-5" />} />
+          <StatCard label={t('player.stats.money')} value={formatBRL(p.money)} icon={<DollarSign className="h-5 w-5" />} />
+          <StatCard label={t('player.stats.weekly_salary')} value={contract?.status === 'active' ? formatBRL(contract.weekly_salary) : t('player.stats.no_contract')} />
+          <StatCard label={t('player.stats.club')} value={clubName || t('player.stats.no_club')} subtitle={!p.club_id ? t('player.stats.free_agent') : undefined} />
         </div>
 
         {/* Energy */}
         <div className="stat-card">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="h-4 w-4 text-warning" />
-            <span className="font-display font-semibold text-sm">Estado Físico</span>
+            <span className="font-display font-semibold text-sm">{t('player.energy.title')}</span>
           </div>
           <EnergyBar current={p.energy_current} max={p.energy_max} />
           <p className="mt-2 text-xs text-muted-foreground">
-            {p.energy_current >= 80 ? 'Pronto para jogar' : p.energy_current >= 50 ? 'Considere descansar' : 'Necessita recuperação'}
+            {p.energy_current >= 80 ? t('player.energy.ready') : p.energy_current >= 50 ? t('player.energy.consider_rest') : t('player.energy.needs_recovery')}
           </p>
         </div>
 
@@ -176,9 +181,9 @@ export default function PlayerDashboard() {
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-3">
               <Swords className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Próxima Partida</span>
-              <Badge variant="outline" className={`text-xs ml-auto ${STATUS_INFO[nextMatch.status]?.className || ''}`}>
-                {STATUS_INFO[nextMatch.status]?.label || nextMatch.status}
+              <span className="font-display font-semibold text-sm">{t('player.next_match.title')}</span>
+              <Badge variant="outline" className={`text-xs ml-auto ${STATUS_CLASS[nextMatch.status] || ''}`}>
+                {t(statusKey(nextMatch.status), { defaultValue: nextMatch.status })}
               </Badge>
             </div>
             <div className="flex items-center justify-between gap-4">
@@ -186,7 +191,7 @@ export default function PlayerDashboard() {
                 <ClubCrest crestUrl={(nextMatch.home_club as any).crest_url} primaryColor={nextMatch.home_club.primary_color} secondaryColor={nextMatch.home_club.secondary_color} shortName={nextMatch.home_club.short_name} className="w-8 h-8 rounded text-xs shrink-0" />
                 <span className="font-display font-bold text-sm hidden sm:block truncate">{nextMatch.home_club.name}</span>
               </div>
-              <span className="font-display font-bold text-muted-foreground shrink-0">vs</span>
+              <span className="font-display font-bold text-muted-foreground shrink-0">{t('player.next_match.vs')}</span>
               <div className="flex items-center gap-2 min-w-0">
                 <ClubCrest crestUrl={(nextMatch.away_club as any).crest_url} primaryColor={nextMatch.away_club.primary_color} secondaryColor={nextMatch.away_club.secondary_color} shortName={nextMatch.away_club.short_name} className="w-8 h-8 rounded text-xs shrink-0" />
                 <span className="font-display font-bold text-sm hidden sm:block truncate">{nextMatch.away_club.name}</span>
@@ -195,12 +200,12 @@ export default function PlayerDashboard() {
             <div className="flex items-center justify-between mt-3">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <CalendarClock className="h-3 w-3" />
-                {format(new Date(nextMatch.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                {formatDate(nextMatch.scheduled_at, lang, 'datetime_long')}
               </div>
               <Link to={`/match/${nextMatch.id}`}>
                 <Button size="sm" className="text-xs font-display bg-pitch text-pitch-foreground hover:bg-pitch/90">
                   <Play className="h-3 w-3 mr-1" />
-                  {nextMatch.status === 'live' || nextMatch.status === 'waiting' ? 'Entrar na Partida' : 'Ver Partida'}
+                  {nextMatch.status === 'live' || nextMatch.status === 'waiting' ? t('player.next_match.enter') : t('player.next_match.watch')}
                 </Button>
               </Link>
             </div>
@@ -209,12 +214,12 @@ export default function PlayerDashboard() {
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-3">
               <Swords className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Próxima Partida</span>
+              <span className="font-display font-semibold text-sm">{t('player.next_match.title')}</span>
             </div>
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Nenhuma partida agendada.</p>
+              <p className="text-sm text-muted-foreground">{t('player.next_match.none')}</p>
               <Link to="/player/matches" className="text-xs text-tactical hover:underline">
-                Ver todas →
+                {t('player.next_match.see_all')}
               </Link>
             </div>
           </div>
@@ -225,10 +230,13 @@ export default function PlayerDashboard() {
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-3">
               <Bell className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Notificações</span>
+              <span className="font-display font-semibold text-sm">{t('player.notifications.title')}</span>
             </div>
             <div className="space-y-2">
-              {notifications.map(n => (
+              {notifications.map(n => {
+                const title = renderNotificationTitle(n as any);
+                const body = renderNotificationBody(n as any);
+                return (
                 <button
                   key={n.id}
                   type="button"
@@ -240,11 +248,12 @@ export default function PlayerDashboard() {
                 >
                   <span className="h-2 w-2 rounded-full bg-tactical mt-1.5 shrink-0" />
                   <div>
-                    <p className="font-medium text-foreground">{n.title}</p>
-                    <p className="text-xs text-muted-foreground">{n.body}</p>
+                    <p className="font-medium text-foreground">{title}</p>
+                    <p className="text-xs text-muted-foreground">{body}</p>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -281,8 +290,8 @@ export default function PlayerDashboard() {
           return (
             <div className="stat-card">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-display font-semibold text-sm">Atributos por Categoria</span>
-                <Link to="/player/attributes" className="text-xs text-tactical hover:underline">Ver todos →</Link>
+                <span className="font-display font-semibold text-sm">{t('player.attributes.title')}</span>
+                <Link to="/player/attributes" className="text-xs text-tactical hover:underline">{t('player.attributes.see_all')}</Link>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 {cards.map(a => (

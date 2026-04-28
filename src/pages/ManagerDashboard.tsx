@@ -7,6 +7,7 @@ import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield,
 import { Link } from 'react-router-dom';
 import { formatBRL } from '@/lib/formatting';
 import { ClubCrest } from '@/components/ClubCrest';
+import { CountryFlag } from '@/components/CountryFlag';
 
 const COACH_TYPE_MAP: Record<string, { label: string; icon: typeof Shield }> = {
   defensive: { label: 'Defensivo', icon: Shield },
@@ -121,10 +122,14 @@ export default function ManagerDashboard() {
           <div className="flex items-center gap-4">
             <ClubCrest crestUrl={(club as any).crest_url} primaryColor={club.primary_color} secondaryColor={club.secondary_color} shortName={club.short_name} className="w-14 h-14 rounded-lg text-xl" />
             <div>
-              <h1 className="font-display text-3xl font-bold">{club.name}</h1>
-              <p className="text-sm text-muted-foreground">
-                Manager: {managerProfile.full_name}
-                {club.city && <> • {club.city}</>}
+              <h1 className="font-display text-3xl font-bold flex items-center gap-2">
+                <span>{club.name}</span>
+                {(club as any).country && <CountryFlag code={(club as any).country} size="sm" />}
+              </h1>
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <span>Manager: {managerProfile.full_name}</span>
+                {(managerProfile as any).country_code && <CountryFlag code={(managerProfile as any).country_code} size="xs" />}
+                {club.city && <span>• {club.city}</span>}
               </p>
               {managerProfile.coach_type && COACH_TYPE_MAP[managerProfile.coach_type] && (() => {
                 const ct = COACH_TYPE_MAP[managerProfile.coach_type];

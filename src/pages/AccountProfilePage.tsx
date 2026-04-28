@@ -13,7 +13,13 @@ import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { seededAppearance, type PlayerAppearance } from '@/lib/avatar';
 import { buildCharRef, invalidateCharAvatar } from '@/lib/charAvatar';
 import { toast } from 'sonner';
-import { User, Lock, Mail, Upload, Check, UserCircle } from 'lucide-react';
+import { User, Lock, Mail, Upload, Check, UserCircle, Globe } from 'lucide-react';
+import { CountrySelect } from '@/components/CountrySelect';
+import { CountryFlag } from '@/components/CountryFlag';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { getCountry, getCountryName } from '@/lib/countries';
 
 const PRESET_AVATARS = [
   '⚽', '🏟️', '🥅', '🏆', '⭐', '🦁', '🐺', '🦅',
@@ -40,6 +46,8 @@ type OwnedChar = PlayerOwned | ManagerOwned;
 
 export default function AccountProfilePage() {
   const { user, profile } = useAuth();
+  const { t } = useTranslation('common');
+  const { current: lang } = useAppLanguage();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -50,6 +58,29 @@ export default function AccountProfilePage() {
   const [charsLoading, setCharsLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [countryCode, setCountryCode] = useState<string>(((profile as any)?.country_code as string) || 'BR');
+  const [countrySaving, setCountrySaving] = useState(false);
+
+  useEffect(() => {
+    const c = (profile as any)?.country_code as string | undefined;
+    if (c) setCountryCode(c);
+  }, [profile]);
+
+  const saveCountry = async (code: string) => {
+    if (!user || code === ((profile as any)?.country_code)) { setCountryCode(code); return; }
+    setCountrySaving(true);
+    setCountryCode(code);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ country_code: code } as any)
+      .eq('id', user.id);
+    setCountrySaving(false);
+    if (error) {
+      toast.error(t('feedback.error_generic'));
+    } else {
+      toast.success(t('feedback.saved'));
+    }
+  };
 
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
@@ -286,6 +317,33 @@ export default function AccountProfilePage() {
         <h1 className="font-display text-2xl font-bold flex items-center gap-2">
           <User className="h-6 w-6 text-tactical" /> Perfil da Conta
         </h1>
+
+        {/* ── Localization (country + language) ── */}
+        <div className="stat-card space-y-4">
+          <h2 className="font-display font-semibold text-sm flex items-center gap-1">
+            <Globe className="h-4 w-4 text-tactical" /> {t('country.label')} & {t('language.label')}
+          </h2>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">{t('country.label')}</Label>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const c = getCountry(countryCode);
+                return (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <CountryFlag code={countryCode} size="sm" />
+                    {c ? getCountryName(c, lang) : countryCode}
+                  </span>
+                );
+              })()}
+            </div>
+            <CountrySelect value={countryCode} onChange={saveCountry} disabled={countrySaving} />
+            <p className="text-[11px] text-muted-foreground">{t('country.override_hint')}.</p>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">{t('language.label')}</Label>
+            <div><LanguageSwitcher /></div>
+          </div>
+        </div>
 
         {/* Avatar Section */}
         <div className="stat-card space-y-4">

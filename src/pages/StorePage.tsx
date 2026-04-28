@@ -16,11 +16,17 @@ import {
   AlertTriangle, RefreshCw, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
+import { getStoreItemName, getStoreItemDescription } from '@/lib/storeItemLabel';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 
 interface StoreItem {
   id: string;
   name: string;
   description: string | null;
+  name_pt: string | null;
+  name_en: string | null;
+  description_pt: string | null;
+  description_en: string | null;
   category: string;
   level: number | null;
   max_level: number | null;
@@ -82,6 +88,7 @@ function getDurationLabel(duration: string | null): string | null {
 
 export default function StorePage() {
   const { profile, playerProfile, managerProfile, club, refreshPlayerProfile } = useAuth();
+  const { current: lang } = useAppLanguage();
   const [items, setItems] = useState<StoreItem[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -336,7 +343,7 @@ export default function StorePage() {
             <div className="flex items-center gap-2">
               {getItemIcon(item.category)}
               <CardTitle className="text-sm font-display leading-tight">
-                {item.name}
+                {getStoreItemName(item, lang)}
                 {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">Nv. {item.level}</span>}
               </CardTitle>
             </div>
@@ -347,7 +354,7 @@ export default function StorePage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-2 pb-3">
-          {item.description && <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>}
+          {(() => { const d = getStoreItemDescription(item, lang); return d ? <p className="text-xs text-muted-foreground leading-relaxed">{d}</p> : null; })()}
           {item.bonus_type && item.bonus_value != null && (
             <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {item.bonus_type}</Badge>
           )}
@@ -440,7 +447,7 @@ export default function StorePage() {
                             <div className="flex items-center gap-2">
                               {getItemIcon(item.category)}
                               <CardTitle className="text-sm font-display leading-tight">
-                                {item.name}
+                                {getStoreItemName(item, lang)}
                                 {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">Nv. {item.level}</span>}
                               </CardTitle>
                             </div>
@@ -450,7 +457,7 @@ export default function StorePage() {
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-2 pb-3">
-                          {item.description && <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>}
+                          {(() => { const d = getStoreItemDescription(item, lang); return d ? <p className="text-xs text-muted-foreground leading-relaxed">{d}</p> : null; })()}
                           {item.bonus_type && item.bonus_value != null && (
                             <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {item.bonus_type}</Badge>
                           )}

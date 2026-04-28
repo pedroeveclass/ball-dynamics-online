@@ -1,0 +1,43 @@
+{
+  "title": "Banco",
+  "stats": {
+    "current_balance": "Saldo Atual",
+    "weekly_revenue": "Receita Semanal",
+    "weekly_salary": "Salário Semanal",
+    "loan_limit": "Limite de Empréstimo",
+    "loan_limit_subtitle": "5x receita semanal"
+  },
+  "active_loan": {
+    "title": "Empréstimo Ativo",
+    "principal": "Valor Principal",
+    "remaining": "Saldo Devedor",
+    "weekly_payment": "Pagamento Semanal",
+    "interest_rate": "Taxa de Juros",
+    "interest_rate_value": "2% / semana",
+    "weeks_remaining": "Semanas Restantes (est.)",
+    "pay_off": "Pagar Antecipado ({{amount}})",
+    "insufficient_balance": "Saldo insuficiente para quitação antecipada."
+  },
+  "request": {
+    "title": "Pedir Empréstimo",
+    "no_revenue_manager": "Sem receita semanal registrada. Não é possível solicitar empréstimo.",
+    "no_contract_player": "Sem contrato ativo. Não é possível solicitar empréstimo.",
+    "amount_label": "Valor do Empréstimo",
+    "term_label": "Prazo",
+    "term_value": "12 semanas",
+    "total_to_pay": "Total a Pagar",
+    "submit": "Solicitar Empréstimo"
+  },
+  "no_loan_no_credit": {
+    "manager": "Seu clube precisa de receita semanal para solicitar empréstimos.",
+    "player": "Você precisa de um contrato ativo para solicitar empréstimos."
+  },
+  "toast": {
+    "approved_title": "Empréstimo aprovado!",
+    "approved_desc": "{{amount}} creditado na sua conta.",
+    "approve_error": "Erro ao solicitar empréstimo",
+    "insufficient_payoff": "Saldo insuficiente para quitar o empréstimo.",
+    "paid_off": "Empréstimo quitado!",
+    "payoff_error": "Erro ao quitar empréstimo"
+  }
+}

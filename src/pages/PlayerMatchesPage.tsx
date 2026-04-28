@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Swords, CalendarClock, Bot, User, Play, Radio, ChevronDown, RotateCcw, FlaskConical, Loader2, Trophy, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { formatDate } from '@/lib/formatDate';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { toast } from 'sonner';
 import { ClubCrest } from '@/components/ClubCrest';
 import {
@@ -42,6 +42,7 @@ const STATUS_INFO: Record<string, { label: string; className: string }> = {
 export default function PlayerMatchesPage() {
   const { user, playerProfile } = useAuth();
   const navigate = useNavigate();
+  const { current: lang } = useAppLanguage();
   const [matches, setMatches] = useState<MatchEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating5v5, setCreating5v5] = useState(false);
@@ -438,7 +439,7 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <CalendarClock className="h-3 w-3" />
-            {format(new Date(m.scheduled_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
+            {formatDate(m.scheduled_at, lang, 'datetime_long')}
           </div>
           {is_bot ? (
             <span className="flex items-center gap-1 text-xs text-amber-500"><Bot className="h-3 w-3" /> Bot</span>

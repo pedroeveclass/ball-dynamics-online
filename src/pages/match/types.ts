@@ -33,6 +33,7 @@ export interface Participant {
   is_ready?: boolean;
   yellow_cards?: number;
   is_sent_off?: boolean;
+  country_code?: string | null;
 }
 
 export interface MatchTurn {
@@ -117,6 +118,7 @@ export interface PlayerProfileSummary {
   secondary_position?: string | null;
   overall: number | null;
   jersey_number?: number | null;
+  country_code?: string | null;
 }
 
 export interface LineupSlotSummary {

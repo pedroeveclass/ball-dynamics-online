@@ -1,0 +1,70 @@
+{
+  "welcome": {
+    "title": "Bem-vindo ao Football Identity!",
+    "body": "Seu atleta foi criado com sucesso. Explore o dashboard e prepare-se para sua carreira."
+  },
+  "training_available": {
+    "title": "Treino Disponível",
+    "body": "Clique nos atributos na tela de Atributos para treinar e evoluir."
+  },
+  "forum_comment": {
+    "title": "Nova resposta no fórum",
+    "body": "{{actor}} comentou em \"{{topic}}\""
+  },
+  "agreement_proposed": {
+    "title": "🤝 Proposta de Comum Acordo",
+    "body": "Seu clube propôs rescisão por comum acordo."
+  },
+  "exit_rejected": {
+    "title": "❌ Saída recusada",
+    "body": "{{club}} recusou sua solicitação de saída por comum acordo."
+  },
+  "fired": {
+    "title": "Dispensado",
+    "body": "{{club}} encerrou seu contrato. Você é agente livre."
+  },
+  "mutual_exit_accepted": {
+    "title": "Saida aceita!",
+    "body": "{{club}} aceitou sua saída por comum acordo. Você é agente livre."
+  },
+  "store_gift": {
+    "title": "🎁 Presente da diretoria",
+    "body": "{{club}} comprou {{item}} para você."
+  },
+  "contract_offer": {
+    "title": "Nova proposta de contrato",
+    "body": "{{club}} fez uma proposta de contrato."
+  },
+  "contract_accepted": {
+    "title": "Contrato assinado",
+    "body": "{{player}} assinou contrato com {{club}}."
+  },
+  "match_scheduled": {
+    "title": "Nova partida agendada",
+    "body": "{{home}} x {{away}} marcada para {{date}}."
+  },
+  "player_sold": {
+    "title": "💰 Venda de Jogador",
+    "body": "{{player}} foi vendido por {{amount}}. Valor creditado nas finanças do clube."
+  },
+  "player_bought": {
+    "title": "💸 Compra de Jogador",
+    "body": "{{player}} contratado por {{amount}} de multa rescisória."
+  },
+  "contract_offer_accepted": {
+    "title": "Proposta aceita!",
+    "body": "{{player}} aceitou sua proposta de contrato."
+  },
+  "contract_offer_rejected": {
+    "title": "Proposta recusada",
+    "body": "{{player}} recusou sua proposta de contrato."
+  },
+  "challenge_accepted": {
+    "title": "✅ Convite aceito!",
+    "body": "{{club}} aceitou o amistoso."
+  },
+  "challenge_rejected": {
+    "title": "❌ Convite recusado",
+    "body": "{{club}} recusou o amistoso."
+  }
+}

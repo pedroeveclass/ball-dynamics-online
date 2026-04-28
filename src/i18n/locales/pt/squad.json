@@ -1,0 +1,72 @@
+{
+  "title": "Elenco",
+  "summary": "{{count}} jogadores • Folha semanal: {{wages}}",
+  "humans": "{{count}} humano",
+  "humans_plural": "{{count}} humanos",
+  "loading": "Carregando elenco...",
+  "empty": {
+    "title": "Nenhum jogador no elenco",
+    "hint": "Contrate jogadores no Mercado de Agentes Livres para montar seu time."
+  },
+  "columns": {
+    "ovr": "OVR",
+    "jersey": "Nº",
+    "name": "Nome",
+    "position": "Posição",
+    "type": "Tipo",
+    "age": "Idade",
+    "energy": "Energia",
+    "salary": "Salário/Sem"
+  },
+  "human_label": "Humano",
+  "bot_label": "Bot",
+  "wants_to_leave": "⚠️ Quer Sair",
+  "agreement_sent": "Acordo Enviado",
+  "actions": {
+    "accept_exit": "✅ Aceitar Saída",
+    "reject_exit": "❌ Recusar Saída",
+    "just_cause": "Justa Causa (sem multa)",
+    "fire": "Demitir",
+    "mutual": "Comum Acordo"
+  },
+  "fire_dialog": {
+    "title": "Demitir Jogador",
+    "description": "Confirme a demissão do jogador. O clube arcará com o custo da rescisão.",
+    "player": "Jogador",
+    "weekly_salary": "Salário semanal",
+    "rescission": "Custo da rescisão",
+    "club_balance": "Saldo do clube",
+    "insufficient": "Saldo insuficiente para rescisão",
+    "submit": "Confirmar Demissão",
+    "submitting": "Processando..."
+  },
+  "agreement_dialog": {
+    "title": "Rescisão por Comum Acordo",
+    "description": "Proposta de rescisão por comum acordo com {{name}}.",
+    "explanation": "Proposta de rescisão por comum acordo. O jogador precisa aceitar. Não há custo para nenhuma das partes.",
+    "submit": "Enviar Proposta",
+    "submitting": "Enviando..."
+  },
+  "toast": {
+    "fired": "{{name}} foi dispensado.",
+    "fired_just_cause": "{{name}} dispensado por justa causa (sem multa).",
+    "agreement_sent_ok": "Proposta de comum acordo enviada.",
+    "exit_accepted": "{{name}} saiu do clube por comum acordo.",
+    "exit_rejected": "Solicitação de saída recusada.",
+    "exit_not_found": "Solicitação de saída não encontrada.",
+    "fire_error": "Erro ao demitir jogador.",
+    "agreement_error": "Erro ao enviar proposta.",
+    "accept_error": "Erro ao aceitar saída.",
+    "reject_error": "Erro ao recusar.",
+    "jersey_invalid": "Número inválido — precisa estar entre 0 e 99.",
+    "jersey_save_error": "Não foi possível salvar o número da camisa.",
+    "jersey_removed": "Número removido.",
+    "jersey_saved": "Número {{n}} salvo."
+  },
+  "notifications": {
+    "agreement_proposed_title": "🤝 Proposta de Comum Acordo",
+    "agreement_proposed_body": "Seu clube propôs rescisão por comum acordo.",
+    "exit_rejected_title": "❌ Saída recusada",
+    "exit_rejected_body": "{{club}} recusou sua solicitação de saída por comum acordo."
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "title": "Notifications",
+  "mark_all_read": "Mark all as read",
+  "mark_all_read_short": "Read all",
+  "mark_read_short": "Mark read",
+  "see_all": "See all",
+  "empty": "No notifications",
+  "empty_short": "No notifications",
+  "loading": "Loading notifications...",
+  "time_now": "now"
+}

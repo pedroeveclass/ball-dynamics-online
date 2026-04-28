@@ -1,0 +1,63 @@
+{
+  "player": {
+    "header": {
+      "right_foot": "Pé Direito",
+      "left_foot": "Pé Esquerdo",
+      "years_old": "{{count}} anos",
+      "ovr": "OVR"
+    },
+    "stats": {
+      "reputation": "Reputação",
+      "money": "Dinheiro",
+      "weekly_salary": "Salário/Sem",
+      "no_contract": "Sem contrato",
+      "club": "Clube",
+      "no_club": "Sem clube",
+      "free_agent": "Agente Livre"
+    },
+    "energy": {
+      "title": "Estado Físico",
+      "ready": "Pronto para jogar",
+      "consider_rest": "Considere descansar",
+      "needs_recovery": "Necessita recuperação"
+    },
+    "next_match": {
+      "title": "Próxima Partida",
+      "none": "Nenhuma partida agendada.",
+      "see_all": "Ver todas →",
+      "enter": "Entrar na Partida",
+      "watch": "Ver Partida",
+      "vs": "vs",
+      "status": {
+        "scheduled": "Agendada",
+        "waiting": "Aguardando",
+        "live": "🔴 Ao Vivo",
+        "finished": "Encerrada"
+      }
+    },
+    "notifications": {
+      "title": "Notificações"
+    },
+    "attributes": {
+      "title": "Atributos por Categoria",
+      "see_all": "Ver todos →"
+    }
+  },
+  "manager": {
+    "title": "Painel do Manager",
+    "club_label": "Clube",
+    "no_club": "Sem clube",
+    "stats": {
+      "balance": "Saldo",
+      "wage_bill": "Folha Semanal",
+      "squad_size": "Elenco",
+      "reputation": "Reputação"
+    },
+    "next_match": "Próxima Partida",
+    "no_next_match": "Nenhuma partida agendada.",
+    "recent_matches": "Resultados Recentes",
+    "no_recent_matches": "Sem partidas recentes.",
+    "notifications": "Notificações",
+    "no_notifications": "Sem notificações novas."
+  }
+}

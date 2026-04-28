@@ -1,0 +1,72 @@
+{
+  "title": "Squad",
+  "summary": "{{count}} players • Weekly wages: {{wages}}",
+  "humans": "{{count}} human",
+  "humans_plural": "{{count}} humans",
+  "loading": "Loading squad...",
+  "empty": {
+    "title": "No players in your squad",
+    "hint": "Sign players from the Free Agent Market to build your team."
+  },
+  "columns": {
+    "ovr": "OVR",
+    "jersey": "#",
+    "name": "Name",
+    "position": "Position",
+    "type": "Type",
+    "age": "Age",
+    "energy": "Energy",
+    "salary": "Weekly Wage"
+  },
+  "human_label": "Human",
+  "bot_label": "Bot",
+  "wants_to_leave": "⚠️ Wants to Leave",
+  "agreement_sent": "Agreement Sent",
+  "actions": {
+    "accept_exit": "✅ Accept Exit",
+    "reject_exit": "❌ Reject Exit",
+    "just_cause": "Just Cause (no fine)",
+    "fire": "Release",
+    "mutual": "Mutual Agreement"
+  },
+  "fire_dialog": {
+    "title": "Release Player",
+    "description": "Confirm release. The club will pay the rescission cost.",
+    "player": "Player",
+    "weekly_salary": "Weekly wage",
+    "rescission": "Rescission cost",
+    "club_balance": "Club balance",
+    "insufficient": "Not enough funds to release",
+    "submit": "Confirm Release",
+    "submitting": "Processing..."
+  },
+  "agreement_dialog": {
+    "title": "Mutual Agreement Termination",
+    "description": "Mutual agreement proposal for {{name}}.",
+    "explanation": "The player must accept. No cost to either side.",
+    "submit": "Send Proposal",
+    "submitting": "Sending..."
+  },
+  "toast": {
+    "fired": "{{name}} has been released.",
+    "fired_just_cause": "{{name}} released by just cause (no fine).",
+    "agreement_sent_ok": "Mutual agreement proposal sent.",
+    "exit_accepted": "{{name}} left the club by mutual agreement.",
+    "exit_rejected": "Exit request rejected.",
+    "exit_not_found": "Exit request not found.",
+    "fire_error": "Error releasing player.",
+    "agreement_error": "Error sending proposal.",
+    "accept_error": "Error accepting exit.",
+    "reject_error": "Error rejecting.",
+    "jersey_invalid": "Invalid number — must be between 0 and 99.",
+    "jersey_save_error": "Couldn't save the jersey number.",
+    "jersey_removed": "Number cleared.",
+    "jersey_saved": "Number {{n}} saved."
+  },
+  "notifications": {
+    "agreement_proposed_title": "🤝 Mutual Agreement Proposal",
+    "agreement_proposed_body": "Your club proposed a mutual agreement termination.",
+    "exit_rejected_title": "❌ Exit rejected",
+    "exit_rejected_body": "{{club}} rejected your mutual exit request."
+  }
+}

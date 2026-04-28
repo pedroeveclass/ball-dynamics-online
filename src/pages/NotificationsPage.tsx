@@ -7,6 +7,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Bell, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getNotificationLink } from '@/lib/notificationLinks';
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { formatDate } from '@/lib/formatDate';
+import { renderNotificationTitle, renderNotificationBody } from '@/lib/notificationRender';
 
 interface Notification {
   id: string;
@@ -16,11 +20,15 @@ interface Notification {
   read: boolean;
   created_at: string;
   link?: string | null;
+  i18n_key?: string | null;
+  i18n_params?: Record<string, unknown> | null;
 }
 
 export default function NotificationsPage() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('notifications');
+  const { current: lang } = useAppLanguage();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const Layout = profile?.role_selected === 'manager' ? ManagerLayout : AppLayout;
@@ -59,13 +67,13 @@ export default function NotificationsPage() {
       <div className="space-y-5 max-w-2xl px-1 sm:px-0">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h1 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
-            <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-tactical" /> Notificações
+            <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-tactical" /> {t('title')}
           </h1>
           {unreadCount > 0 && (
             <Button size="sm" variant="outline" onClick={markAllAsRead} className="text-xs font-display shrink-0">
               <Check className="h-3 w-3 mr-1" />
-              <span className="hidden sm:inline">Marcar todas como lidas</span>
-              <span className="sm:hidden">Ler todas</span>
+              <span className="hidden sm:inline">{t('mark_all_read')}</span>
+              <span className="sm:hidden">{t('mark_all_read_short')}</span>
             </Button>
           )}
         </div>
@@ -77,11 +85,14 @@ export default function NotificationsPage() {
         ) : notifications.length === 0 ? (
           <div className="stat-card text-center py-12">
             <Bell className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="font-display font-semibold text-muted-foreground">Nenhuma notificação</p>
+            <p className="font-display font-semibold text-muted-foreground">{t('empty')}</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {notifications.map(n => (
+            {notifications.map(n => {
+              const title = renderNotificationTitle(n);
+              const body = renderNotificationBody(n);
+              return (
               <div
                 key={n.id}
                 className={`stat-card flex items-start gap-3 cursor-pointer transition-colors overflow-hidden ${
@@ -94,14 +105,15 @@ export default function NotificationsPage() {
               >
                 <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${!n.read ? 'bg-tactical' : 'bg-transparent'}`} />
                 <div className="flex-1 min-w-0 overflow-hidden">
-                  <p className="font-display font-bold text-sm break-words">{n.title}</p>
-                  {n.body && <p className="text-xs text-muted-foreground mt-0.5 break-words">{n.body}</p>}
+                  <p className="font-display font-bold text-sm break-words">{title}</p>
+                  {body && <p className="text-xs text-muted-foreground mt-0.5 break-words">{body}</p>}
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    {new Date(n.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                    {formatDate(n.created_at, lang, 'datetime_short')}
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

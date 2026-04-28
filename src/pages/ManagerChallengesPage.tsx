@@ -15,6 +15,8 @@ import { toast } from 'sonner';
 import { useNavigate, Link } from 'react-router-dom';
 import { ClubCrest } from '@/components/ClubCrest';
 import { format } from 'date-fns';
+import { formatDate } from '@/lib/formatDate';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { FORMATION_POSITIONS, getFormationPositions } from '@/lib/formations';
 import {
   groupFromPos,
@@ -23,7 +25,6 @@ import {
   COORD_GROUPS,
   type GroupKey,
 } from '@/lib/fivePickup';
-import { ptBR } from 'date-fns/locale';
 import { formatBRTDateTime, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
 
 interface Challenge {
@@ -55,6 +56,7 @@ const STATUS_INFO: Record<string, { label: string; className: string }> = {
 
 export default function ManagerChallengesPage() {
   const { club, managerProfile } = useAuth();
+  const { current: lang } = useAppLanguage();
   const navigate = useNavigate();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,7 +304,7 @@ export default function ManagerChallengesPage() {
       await supabase.from('match_challenges').update({ status: 'accepted', match_id: match!.id }).eq('id', challenge.id);
 
       if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso 5x5.`, type: 'match', link: `/match/${match!.id}` });
+        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso 5x5.`, type: 'match', link: `/match/${match!.id}`, i18n_key: 'challenge_accepted', i18n_params: { club: challenge.challenged_club?.name ?? '' } } as any);
       }
       toast.success('Amistoso 5x5 aceito!');
       loadChallenges();
@@ -421,7 +423,7 @@ export default function ManagerChallengesPage() {
       await supabase.from('match_challenges').update({ status: 'accepted', match_id: match!.id }).eq('id', challenge.id);
 
       if (challengerMgr?.user_id) {
-        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso.`, type: 'match', link: `/match/${match!.id}` });
+        await supabase.from('notifications').insert({ user_id: challengerMgr.user_id, title: '✅ Convite aceito!', body: `${challenge.challenged_club?.name} aceitou o amistoso.`, type: 'match', link: `/match/${match!.id}`, i18n_key: 'challenge_accepted', i18n_params: { club: challenge.challenged_club?.name ?? '' } } as any);
       }
       toast.success('Amistoso aceito!');
       loadChallenges();
@@ -434,7 +436,7 @@ export default function ManagerChallengesPage() {
     try {
       await supabase.from('match_challenges').update({ status: 'rejected' }).eq('id', c.id);
       const { data: mgr } = await supabase.from('manager_profiles').select('user_id').eq('id', c.challenger_manager_profile_id).single();
-      if (mgr?.user_id) await supabase.from('notifications').insert({ user_id: mgr.user_id, title: '❌ Convite recusado', body: `${c.challenged_club?.name} recusou o amistoso.`, type: 'match', link: '/manager/challenges' });
+      if (mgr?.user_id) await supabase.from('notifications').insert({ user_id: mgr.user_id, title: '❌ Convite recusado', body: `${c.challenged_club?.name} recusou o amistoso.`, type: 'match', link: '/manager/challenges', i18n_key: 'challenge_rejected', i18n_params: { club: c.challenged_club?.name ?? '' } } as any);
       toast.success('Convite recusado.');
       loadChallenges();
     } catch (err: any) { toast.error(err.message || 'Erro'); }
@@ -916,7 +918,7 @@ function ChallengeCard({ challenge: c, direction, isActing, onAccept, onReject, 
             <p className="font-display font-bold text-sm">{opponent?.name || '—'}</p>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
               <CalendarClock className="h-3 w-3" />
-              {format(new Date(c.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              {formatDate(c.scheduled_at, lang, 'datetime_long')}
             </div>
           </div>
         </div>

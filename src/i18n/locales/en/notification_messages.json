@@ -1,0 +1,70 @@
+{
+  "welcome": {
+    "title": "Welcome to Football Identity!",
+    "body": "Your athlete was created. Explore the dashboard and start your career."
+  },
+  "training_available": {
+    "title": "Training Available",
+    "body": "Click on the attributes in the Attributes screen to train and improve."
+  },
+  "forum_comment": {
+    "title": "New forum reply",
+    "body": "{{actor}} replied to \"{{topic}}\""
+  },
+  "agreement_proposed": {
+    "title": "🤝 Mutual Agreement Proposal",
+    "body": "Your club proposed a mutual agreement termination."
+  },
+  "exit_rejected": {
+    "title": "❌ Exit rejected",
+    "body": "{{club}} rejected your mutual exit request."
+  },
+  "fired": {
+    "title": "Released",
+    "body": "{{club}} terminated your contract. You're a free agent."
+  },
+  "mutual_exit_accepted": {
+    "title": "Exit accepted!",
+    "body": "{{club}} accepted your mutual exit. You're a free agent."
+  },
+  "store_gift": {
+    "title": "🎁 Gift from the board",
+    "body": "{{club}} bought you {{item}}."
+  },
+  "contract_offer": {
+    "title": "New contract offer",
+    "body": "{{club}} sent a contract offer."
+  },
+  "contract_accepted": {
+    "title": "Contract signed",
+    "body": "{{player}} signed with {{club}}."
+  },
+  "match_scheduled": {
+    "title": "New match scheduled",
+    "body": "{{home}} vs {{away}} on {{date}}."
+  },
+  "player_sold": {
+    "title": "💰 Player Sold",
+    "body": "{{player}} sold for {{amount}}. Amount credited to the club's finances."
+  },
+  "player_bought": {
+    "title": "💸 Player Signed",
+    "body": "{{player}} signed for {{amount}} (release clause)."
+  },
+  "contract_offer_accepted": {
+    "title": "Offer accepted!",
+    "body": "{{player}} accepted your contract offer."
+  },
+  "contract_offer_rejected": {
+    "title": "Offer rejected",
+    "body": "{{player}} rejected your contract offer."
+  },
+  "challenge_accepted": {
+    "title": "✅ Friendly accepted!",
+    "body": "{{club}} accepted the friendly."
+  },
+  "challenge_rejected": {
+    "title": "❌ Friendly rejected",
+    "body": "{{club}} rejected the friendly."
+  }
+}

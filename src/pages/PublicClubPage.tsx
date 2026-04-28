@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { PositionBadge } from '@/components/PositionBadge';
 import { ClubCrest } from '@/components/ClubCrest';
+import { CountryFlag } from '@/components/CountryFlag';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -382,7 +383,10 @@ export default function PublicClubPage() {
               className="w-20 h-20 rounded-xl text-2xl shadow-lg shrink-0"
             />
             <div className="min-w-0">
-              <h1 className="font-display text-3xl font-bold truncate">{clubData.name}</h1>
+              <h1 className="font-display text-3xl font-bold truncate flex items-center gap-2">
+                <span className="truncate">{clubData.name}</span>
+                {(clubData as any).country && <CountryFlag code={(clubData as any).country} size="sm" />}
+              </h1>
               <p className="text-muted-foreground text-sm">
                 {clubData.short_name} {clubData.city && `• ${clubData.city}`}
               </p>

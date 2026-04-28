@@ -8,28 +8,9 @@ import {
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from '@/components/ui/sidebar';
 import { useAuth } from '@/hooks/useAuth';
-import { positionToPT } from '@/lib/positions';
-
-const playerNav = [
-  { title: 'Dashboard', url: '/player', icon: LayoutDashboard },
-  { title: 'Perfil', url: '/player/profile', icon: User },
-  { title: 'Atributos & Treino', url: '/player/attributes', icon: TrendingUp },
-  { title: 'Treino Automático', url: '/player/training-plan', icon: CalendarClock },
-  { title: 'Meu Clube', url: '/player/club', icon: Shield },
-  { title: 'Partidas', url: '/player/matches', icon: Swords },
-  { title: 'Jogos de Várzea', url: '/varzea', icon: Users2 },
-  { title: 'Liga', url: '/league', icon: Trophy },
-  { title: 'Contrato', url: '/player/contract', icon: FileText },
-  { title: 'Propostas', url: '/player/offers', icon: Inbox },
-  { title: 'Banco', url: '/bank', icon: Landmark },
-  { title: 'Loja', url: '/store', icon: Store },
-  { title: 'Fórum', url: '/forum', icon: MessageSquare },
-];
-
-const accountNav = [
-  { title: 'Notificações', url: '/notifications', icon: Bell },
-  { title: 'Perfil da Conta', url: '/account/profile', icon: Settings },
-];
+import { positionLabel } from '@/lib/positions';
+import { useTranslation } from 'react-i18next';
+import { CountryFlag } from '@/components/CountryFlag';
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -37,6 +18,28 @@ export function AppSidebar() {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { playerProfile } = useAuth();
+  const { t } = useTranslation(['nav', 'common']);
+
+  const playerNav = [
+    { title: t('nav:player.dashboard'), url: '/player', icon: LayoutDashboard },
+    { title: t('nav:player.profile'), url: '/player/profile', icon: User },
+    { title: t('nav:player.attributes'), url: '/player/attributes', icon: TrendingUp },
+    { title: t('nav:player.training_plan'), url: '/player/training-plan', icon: CalendarClock },
+    { title: t('nav:player.club'), url: '/player/club', icon: Shield },
+    { title: t('nav:player.matches'), url: '/player/matches', icon: Swords },
+    { title: t('nav:player.pickup'), url: '/varzea', icon: Users2 },
+    { title: t('nav:player.league'), url: '/league', icon: Trophy },
+    { title: t('nav:player.contract'), url: '/player/contract', icon: FileText },
+    { title: t('nav:player.offers'), url: '/player/offers', icon: Inbox },
+    { title: t('nav:player.bank'), url: '/bank', icon: Landmark },
+    { title: t('nav:player.store'), url: '/store', icon: Store },
+    { title: t('nav:player.forum'), url: '/forum', icon: MessageSquare },
+  ];
+
+  const accountNav = [
+    { title: t('nav:account.notifications'), url: '/notifications', icon: Bell },
+    { title: t('nav:account.profile'), url: '/account/profile', icon: Settings },
+  ];
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -47,7 +50,7 @@ export function AppSidebar() {
               {collapsed ? (
                 <Link
                   to="/player/profile"
-                  title={`${playerProfile.full_name} • ${positionToPT(playerProfile.primary_position)}`}
+                  title={`${playerProfile.full_name} • ${positionLabel(playerProfile.primary_position)}`}
                   className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-tactical/15 text-tactical hover:bg-tactical/25 transition-colors"
                 >
                   <UserCircle2 className="h-5 w-5" />
@@ -56,18 +59,19 @@ export function AppSidebar() {
                 <Link
                   to="/player/profile"
                   className="mx-2 flex items-center gap-2 rounded-md border border-tactical/20 bg-tactical/10 px-2.5 py-2 hover:bg-tactical/20 transition-colors"
-                  title="Trocar jogador ativo"
+                  title={t('nav:active_player.switch_hint')}
                 >
                   <UserCircle2 className="h-5 w-5 shrink-0 text-tactical" />
                   <div className="min-w-0 flex-1">
                     <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">
-                      Jogando como
+                      {t('nav:active_player.label')}
                     </div>
-                    <div className="text-sm font-display font-semibold leading-tight truncate">
-                      {playerProfile.full_name}
+                    <div className="text-sm font-display font-semibold leading-tight truncate flex items-center gap-1.5">
+                      <span className="truncate">{playerProfile.full_name}</span>
+                      {(playerProfile as any).country_code && <CountryFlag code={(playerProfile as any).country_code} size="xs" />}
                     </div>
                     <div className="text-[11px] text-muted-foreground leading-tight truncate">
-                      {positionToPT(playerProfile.primary_position)}
+                      {positionLabel(playerProfile.primary_position)}
                     </div>
                   </div>
                 </Link>
@@ -76,7 +80,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
         <SidebarGroup>
-          <SidebarGroupLabel>Jogador</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('nav:groups.player')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {playerNav.map(item => (
@@ -93,7 +97,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>Conta</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('nav:account.label')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {accountNav.map(item => (

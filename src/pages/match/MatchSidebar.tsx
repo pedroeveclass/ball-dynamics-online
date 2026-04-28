@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight, Check, CheckCheck } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
+import { CountryFlag } from '@/components/CountryFlag';
 import type { ClubInfo, Participant, MatchTurn, EventLog, MatchData } from './types';
 import { HALF_DURATION_MS_CLIENT } from './constants';
 
@@ -217,6 +218,7 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
                 : <User className="h-3 w-3 text-pitch shrink-0" />}
               <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
               <span className="font-display w-7 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
+              {p.country_code && <CountryFlag code={p.country_code} size="xs" />}
               <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
               {ballHolderId === p.id && <span className="text-[10px]">{'\u26BD'}</span>}
               {submittedIds.has(p.id) && <span className="text-[10px] text-pitch">{'\u2713'}</span>}
@@ -277,6 +279,7 @@ function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubs
                   ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
                   : <User className="h-3 w-3 text-pitch shrink-0" />}
                 <span className="font-display w-7 text-white/50 shrink-0">{positionToPT((p.field_pos || p.slot_position || '').replace(/^BENCH_?/i, '')) || 'RES'}</span>
+                {p.country_code && <CountryFlag code={p.country_code} size="xs" />}
                 <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
                 {isPendingIn && (
                   <span className="text-[7px] font-display text-amber-400 bg-amber-400/10 px-1 rounded">Aguardando...</span>
@@ -305,6 +308,7 @@ function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubs
                     >
                       <span className="font-display w-5 shrink-0 text-white/50">{s.jersey_number || '?'}</span>
                       <span className="font-display w-6 text-white/40 shrink-0">{positionToPT(s.field_pos)}</span>
+                      {s.country_code && <CountryFlag code={s.country_code} size="xs" />}
                       <span className="truncate flex-1">{s.player_name?.split(' ')[0] || 'Bot'}</span>
                     </button>
                   ))}

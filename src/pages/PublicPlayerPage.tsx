@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
+import { CountryFlag } from '@/components/CountryFlag';
+import { getCountry, getCountryName } from '@/lib/countries';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 
 interface AttrRow { label: string; key: string }
 
@@ -106,6 +109,7 @@ export default function PublicPlayerPage() {
   const { playerId } = useParams<{ playerId: string }>();
   const navigate = useNavigate();
   const { managerProfile, club } = useAuth();
+  const { current: lang } = useAppLanguage();
   const [player, setPlayer] = useState<any>(null);
   const [attrs, setAttrs] = useState<any>(null);
   const [clubInfo, setClubInfo] = useState<{ name: string; primary: string; secondary: string; crestUrl: string | null } | null>(null);
@@ -187,6 +191,7 @@ export default function PublicPlayerPage() {
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
+                {(player as any).country_code && <CountryFlag code={(player as any).country_code} size="sm" />}
                 <h1 className="font-display text-2xl font-bold truncate">{player.full_name}</h1>
                 {(player as any).retirement_status === 'retired' && (
                   <Badge variant="outline" className="gap-1 text-xs border-amber-500/60 text-amber-700 dark:text-amber-400">
@@ -201,6 +206,12 @@ export default function PublicPlayerPage() {
                 <PositionBadge position={player.primary_position} />
                 {player.secondary_position && <PositionBadge position={player.secondary_position} />}
                 {player.archetype && <Badge variant="outline" className="text-xs">{player.archetype}</Badge>}
+                {(player as any).country_code && (() => {
+                  const c = getCountry((player as any).country_code);
+                  return c ? (
+                    <Badge variant="outline" className="text-xs">{getCountryName(c, lang)}</Badge>
+                  ) : null;
+                })()}
               </div>
               <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground flex-wrap">
                 <span>{player.age} anos</span>

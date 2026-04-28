@@ -1,0 +1,48 @@
+{
+  "player": {
+    "dashboard": "Dashboard",
+    "profile": "Perfil",
+    "attributes": "Atributos & Treino",
+    "training_plan": "Treino Automático",
+    "club": "Meu Clube",
+    "matches": "Partidas",
+    "pickup": "Jogos de Várzea",
+    "league": "Liga",
+    "contract": "Contrato",
+    "offers": "Propostas",
+    "bank": "Banco",
+    "store": "Loja",
+    "forum": "Fórum"
+  },
+  "manager": {
+    "dashboard": "Dashboard",
+    "club": "Clube",
+    "squad": "Elenco",
+    "lineup": "Escalação",
+    "market": "Mercado",
+    "finance": "Finanças",
+    "stadium": "Estádio",
+    "facilities": "Facilities",
+    "training": "Treinamento",
+    "reports": "Relatórios",
+    "league": "Liga",
+    "vote": "Votação Liga",
+    "matches": "Jogos",
+    "bank": "Banco",
+    "store": "Loja",
+    "forum": "Fórum"
+  },
+  "account": {
+    "label": "Conta",
+    "notifications": "Notificações",
+    "profile": "Perfil da Conta"
+  },
+  "groups": {
+    "player": "Jogador",
+    "manager": "Manager"
+  },
+  "active_player": {
+    "label": "Jogando como",
+    "switch_hint": "Trocar jogador ativo"
+  }
+}

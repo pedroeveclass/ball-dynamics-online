@@ -1,0 +1,123 @@
+{
+  "player": {
+    "title": "CRIAR ATLETA",
+    "subtitle": "Dê vida ao seu jogador",
+    "steps": {
+      "identity": "Identidade",
+      "position": "Posição",
+      "height": "Tamanho",
+      "body": "Tipo Físico",
+      "attributes": "Atributos",
+      "review": "Revisão"
+    },
+    "identity": {
+      "name_label": "Nome do Jogador",
+      "name_placeholder": "Ex: Carlos Mendes",
+      "age_label": "Idade",
+      "age_text": "Seu atleta começa com",
+      "age_value": "18 anos",
+      "age_hint": "Idades maiores estarão disponíveis com créditos do jogo.",
+      "country_label": "Nacionalidade",
+      "country_hint": "Pré-selecionada pela sua localização. Você pode trocar.",
+      "foot_label": "Pé Dominante",
+      "foot_right": "Direito",
+      "foot_left": "Esquerdo"
+    },
+    "position": {
+      "label": "Posição Principal",
+      "hint": "Escolha sua posição no campo. O número mostra quantos jogadores humanos já existem ali — posições com menos de 5 jogadores aparecem destacadas.",
+      "secondary_hint": "Posição secundária pode ser desbloqueada com créditos do jogo."
+    },
+    "height": {
+      "label": "Tamanho do Jogador",
+      "hint": "O tamanho impacta diretamente nos atributos físicos e aéreos."
+    },
+    "body": {
+      "label": "Tipo Físico",
+      "gk_hint": "Tipos físicos específicos para goleiro."
+    },
+    "attributes": {
+      "label": "Distribua seus pontos",
+      "remaining": "{{count}} pts restantes",
+      "hint": "Clique em + para adicionar pontos ou - para remover."
+    },
+    "review": {
+      "title": "Confirmar Criação",
+      "name": "Nome",
+      "age": "Idade",
+      "country": "País",
+      "foot": "Pé",
+      "position": "Posição",
+      "height": "Tamanho",
+      "body": "Tipo Físico",
+      "overall": "Overall estimado",
+      "footer": "Você começa como agente livre com 18 anos."
+    },
+    "submit": "Criar Atleta",
+    "submitting": "Criando...",
+    "success": "Atleta criado com sucesso!",
+    "error_generic": "Erro ao criar atleta"
+  },
+  "manager": {
+    "title": "NOVO MANAGER",
+    "subtitle": "Monte seu perfil e assuma um time",
+    "steps": {
+      "manager": "Manager",
+      "team": "Time",
+      "customize": "Personalizar",
+      "review": "Revisão"
+    },
+    "name_label": "Nome do Manager",
+    "name_placeholder": "Ex: José Mourinho",
+    "country_label": "Nacionalidade",
+    "country_hint": "Pré-selecionada pela sua localização. Você pode trocar.",
+    "coach_label": "Tipo de Treinador",
+    "coach": {
+      "defensive": "Defensivo",
+      "defensive_hint": "+15% treino defesa",
+      "offensive": "Ofensivo",
+      "offensive_hint": "+15% treino ataque",
+      "technical": "Técnico",
+      "technical_hint": "+15% treino técnica",
+      "complete": "Completo",
+      "complete_hint": "+10% em tudo"
+    },
+    "team": {
+      "title": "Escolha um Time",
+      "no_teams": "Nenhum time disponível no momento. Você será notificado quando houver vagas.",
+      "create_without_team": "Criar Perfil sem Time",
+      "selected": "Selecionado",
+      "select": "Selecionar"
+    },
+    "customize": {
+      "club_name": "Nome do Clube",
+      "club_name_placeholder": "Ex: FC United",
+      "short_name": "Sigla (3 letras)",
+      "primary_color": "Cor Principal",
+      "secondary_color": "Cor Secundária",
+      "crest_label": "Escudo (opcional)",
+      "crest_use_initials": "Usar sigla",
+      "crest_hint": "Escolha um emoji agora. Upload de imagem fica disponível depois em \"Editar Clube\".",
+      "city": "Cidade",
+      "city_placeholder": "Ex: São Paulo",
+      "stadium": "Nome do Estádio",
+      "stadium_placeholder": "Ex: Arena do Povo"
+    },
+    "review": {
+      "title": "Confirmar",
+      "manager": "Manager",
+      "country": "País",
+      "type": "Tipo",
+      "club": "Clube",
+      "stadium": "Estádio",
+      "city": "Cidade",
+      "colors": "Cores"
+    },
+    "submit": "Confirmar",
+    "submitting": "Criando...",
+    "success_with_team": "Time assumido com sucesso!",
+    "success_without_team": "Perfil criado com sucesso! Você será notificado quando houver vagas.",
+    "error_no_teams": "Erro ao buscar times disponíveis",
+    "error_generic": "Erro ao assumir time"
+  }
+}

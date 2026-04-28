@@ -1,0 +1,123 @@
+{
+  "player": {
+    "title": "CREATE ATHLETE",
+    "subtitle": "Bring your player to life",
+    "steps": {
+      "identity": "Identity",
+      "position": "Position",
+      "height": "Height",
+      "body": "Body Type",
+      "attributes": "Attributes",
+      "review": "Review"
+    },
+    "identity": {
+      "name_label": "Player Name",
+      "name_placeholder": "e.g. Carlos Mendes",
+      "age_label": "Age",
+      "age_text": "Your athlete starts at",
+      "age_value": "18 years old",
+      "age_hint": "Older starting ages will be available with in-game credits.",
+      "country_label": "Nationality",
+      "country_hint": "Pre-selected from your location. You can change it.",
+      "foot_label": "Dominant Foot",
+      "foot_right": "Right",
+      "foot_left": "Left"
+    },
+    "position": {
+      "label": "Primary Position",
+      "hint": "Choose your position on the pitch. The number shows how many human players already play there — positions with fewer than 5 players are highlighted.",
+      "secondary_hint": "Secondary position can be unlocked with in-game credits."
+    },
+    "height": {
+      "label": "Player Height",
+      "hint": "Height directly impacts physical and aerial attributes."
+    },
+    "body": {
+      "label": "Body Type",
+      "gk_hint": "Goalkeeper-specific body types."
+    },
+    "attributes": {
+      "label": "Distribute your points",
+      "remaining": "{{count}} pts remaining",
+      "hint": "Click + to add points or − to remove."
+    },
+    "review": {
+      "title": "Confirm Creation",
+      "name": "Name",
+      "age": "Age",
+      "country": "Country",
+      "foot": "Foot",
+      "position": "Position",
+      "height": "Height",
+      "body": "Body Type",
+      "overall": "Estimated Overall",
+      "footer": "You start as a free agent at 18 years old."
+    },
+    "submit": "Create Athlete",
+    "submitting": "Creating...",
+    "success": "Athlete created successfully!",
+    "error_generic": "Error creating athlete"
+  },
+  "manager": {
+    "title": "NEW MANAGER",
+    "subtitle": "Build your profile and take over a club",
+    "steps": {
+      "manager": "Manager",
+      "team": "Team",
+      "customize": "Customize",
+      "review": "Review"
+    },
+    "name_label": "Manager Name",
+    "name_placeholder": "e.g. José Mourinho",
+    "country_label": "Nationality",
+    "country_hint": "Pre-selected from your location. You can change it.",
+    "coach_label": "Coach Type",
+    "coach": {
+      "defensive": "Defensive",
+      "defensive_hint": "+15% defense training",
+      "offensive": "Offensive",
+      "offensive_hint": "+15% attack training",
+      "technical": "Technical",
+      "technical_hint": "+15% technique training",
+      "complete": "Complete",
+      "complete_hint": "+10% on everything"
+    },
+    "team": {
+      "title": "Choose a Team",
+      "no_teams": "No teams available right now. You'll be notified when openings appear.",
+      "create_without_team": "Create Profile Without Team",
+      "selected": "Selected",
+      "select": "Select"
+    },
+    "customize": {
+      "club_name": "Club Name",
+      "club_name_placeholder": "e.g. FC United",
+      "short_name": "Short Name (3 letters)",
+      "primary_color": "Primary Color",
+      "secondary_color": "Secondary Color",
+      "crest_label": "Crest (optional)",
+      "crest_use_initials": "Use initials",
+      "crest_hint": "Pick an emoji for now. Image upload is available later in \"Edit Club\".",
+      "city": "City",
+      "city_placeholder": "e.g. São Paulo",
+      "stadium": "Stadium Name",
+      "stadium_placeholder": "e.g. Arena do Povo"
+    },
+    "review": {
+      "title": "Confirm",
+      "manager": "Manager",
+      "country": "Country",
+      "type": "Type",
+      "club": "Club",
+      "stadium": "Stadium",
+      "city": "City",
+      "colors": "Colors"
+    },
+    "submit": "Confirm",
+    "submitting": "Creating...",
+    "success_with_team": "Team taken over successfully!",
+    "success_without_team": "Profile created! You'll be notified when openings appear.",
+    "error_no_teams": "Failed to load available teams",
+    "error_generic": "Error taking over the team"
+  }
+}

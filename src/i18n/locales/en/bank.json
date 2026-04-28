@@ -1,0 +1,43 @@
+{
+  "title": "Bank",
+  "stats": {
+    "current_balance": "Current Balance",
+    "weekly_revenue": "Weekly Revenue",
+    "weekly_salary": "Weekly Salary",
+    "loan_limit": "Loan Limit",
+    "loan_limit_subtitle": "5x weekly revenue"
+  },
+  "active_loan": {
+    "title": "Active Loan",
+    "principal": "Principal",
+    "remaining": "Remaining Balance",
+    "weekly_payment": "Weekly Payment",
+    "interest_rate": "Interest Rate",
+    "interest_rate_value": "2% / week",
+    "weeks_remaining": "Weeks Remaining (est.)",
+    "pay_off": "Pay Off ({{amount}})",
+    "insufficient_balance": "Not enough balance to pay off early."
+  },
+  "request": {
+    "title": "Request Loan",
+    "no_revenue_manager": "No weekly revenue. Cannot request a loan.",
+    "no_contract_player": "No active contract. Cannot request a loan.",
+    "amount_label": "Loan Amount",
+    "term_label": "Term",
+    "term_value": "12 weeks",
+    "total_to_pay": "Total to Pay",
+    "submit": "Request Loan"
+  },
+  "no_loan_no_credit": {
+    "manager": "Your club needs weekly revenue to request a loan.",
+    "player": "You need an active contract to request a loan."
+  },
+  "toast": {
+    "approved_title": "Loan approved!",
+    "approved_desc": "{{amount}} credited to your account.",
+    "approve_error": "Error requesting loan",
+    "insufficient_payoff": "Not enough balance to pay off the loan.",
+    "paid_off": "Loan paid off!",
+    "payoff_error": "Error paying off loan"
+  }
+}

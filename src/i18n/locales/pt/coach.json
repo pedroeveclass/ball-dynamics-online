@@ -1,0 +1,47 @@
+{
+  "title": "Treinamento do Técnico",
+  "subtitle": "Treine uma habilidade por semana. O treino libera toda segunda-feira às 00:00.",
+  "trained_this_week": "Treino semanal já realizado. Próximo disponível: segunda-feira {{date}} às 00:00",
+  "skills": {
+    "tactics": {
+      "label": "Tática",
+      "description": "Reduz penalização de jogador fora de posição.",
+      "bonus": "-0.7% penalidade/nível (7% max)"
+    },
+    "formation": {
+      "label": "Formação",
+      "description": "Bônus de atributos ao usar a formação treinada.",
+      "bonus": "+0.5% atributos/nível (5% max)"
+    },
+    "fitness": {
+      "label": "Preparação Física",
+      "description": "Reduz perda de stamina por turno.",
+      "bonus": "-0.5% stamina/nível (5% max)"
+    },
+    "set_piece": {
+      "label": "Bola Parada",
+      "description": "Melhora precisão em cobranças (falta, escanteio, pênalti).",
+      "bonus": "-1% desvio/nível (10% max)"
+    },
+    "mentality": {
+      "label": "Mentalidade",
+      "description": "Bônus em atributos mentais quando perdendo.",
+      "bonus": "+0.5% mentais/nível (5% max)"
+    },
+    "high_press": {
+      "label": "Pressão Alta",
+      "description": "Aumenta chance de roubar a bola.",
+      "bonus": "+0.5% roubo/nível (5% max)"
+    }
+  },
+  "trained_formation_label": "Formação treinada: {{formation}}",
+  "buttons": {
+    "max_level": "Nível Máximo",
+    "waiting": "Aguardando",
+    "train_level": "Treinar Nível {{level}}"
+  },
+  "toast": {
+    "trained_ok": "Treino de {{skill}} realizado!",
+    "error": "Erro ao treinar"
+  }
+}

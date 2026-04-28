@@ -18,6 +18,8 @@ import { Users, MoreVertical, AlertTriangle, Loader2, User, Bot } from 'lucide-r
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { sortPlayersByPosition } from '@/lib/positions';
+import { CountryFlag } from '@/components/CountryFlag';
+import { useTranslation } from 'react-i18next';
 
 interface SquadPlayer {
   id: string;
@@ -37,10 +39,12 @@ interface SquadPlayer {
   pending_agreement_from: 'club' | 'player' | null;
   jersey_number: number | null;
   appearance: any;
+  country_code: string | null;
 }
 
 export default function ManagerSquadPage() {
   const { club, managerProfile } = useAuth();
+  const { t } = useTranslation(['squad', 'common']);
   const [players, setPlayers] = useState<SquadPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingJerseyIds, setSavingJerseyIds] = useState<Set<string>>(new Set());
@@ -74,7 +78,7 @@ export default function ManagerSquadPage() {
 
     const { data: playerData } = await supabase
       .from('player_profiles')
-      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max, user_id, jersey_number, appearance')
+      .select('id, full_name, age, primary_position, secondary_position, archetype, overall, weekly_salary, energy_current, energy_max, user_id, jersey_number, appearance, country_code')
       .in('id', playerIds)
       .order('overall', { ascending: false });
 
@@ -102,6 +106,7 @@ export default function ManagerSquadPage() {
         pending_agreement_from: pendingPlayerAgreements.has(contract?.id ?? '') ? 'player' : pendingClubAgreements.has(contract?.id ?? '') ? 'club' : null,
         jersey_number: p.jersey_number ?? null,
         appearance: (p as any).appearance ?? null,
+        country_code: (p as any).country_code ?? null,
       };
     })));
     setLoading(false);
@@ -154,12 +159,12 @@ export default function ManagerSquadPage() {
       });
       if (error) throw error;
 
-      toast.success(`${fireTarget.full_name} foi dispensado.`);
+      toast.success(t('squad:toast.fired', { name: fireTarget.full_name }));
       setFireDialogOpen(false);
       setFireTarget(null);
       fetchSquad();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao demitir jogador.');
+      toast.error(err.message || t('squad:toast.fire_error'));
     } finally {
       setFiring(false);
     }
@@ -173,10 +178,10 @@ export default function ManagerSquadPage() {
         p_club_id: club.id,
       });
       if (error) throw error;
-      toast.success(`${player.full_name} dispensado por justa causa (sem multa).`);
+      toast.success(t('squad:toast.fired_just_cause', { name: player.full_name }));
       fetchSquad();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao demitir jogador.');
+      toast.error(err.message || t('squad:toast.fire_error'));
     }
   };
 
@@ -194,23 +199,25 @@ export default function ManagerSquadPage() {
       });
       if (error) throw error;
 
-      // 2. Notify player if human-controlled
+      // 2. Notify player if human-controlled (i18n_key — renders in target user's locale)
       if (agreementTarget.user_id) {
         await supabase.from('notifications').insert({
           user_id: agreementTarget.user_id,
-          title: '🤝 Proposta de Comum Acordo',
-          body: `Seu clube propôs rescisão por comum acordo.`,
+          title: t('squad:notifications.agreement_proposed_title'),
+          body: t('squad:notifications.agreement_proposed_body'),
           type: 'contract',
           link: '/player/contract',
-        });
+          i18n_key: 'agreement_proposed',
+          i18n_params: {},
+        } as any);
       }
 
-      toast.success('Proposta de comum acordo enviada.');
+      toast.success(t('squad:toast.agreement_sent_ok'));
       setAgreementDialogOpen(false);
       setAgreementTarget(null);
       fetchSquad();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao enviar proposta.');
+      toast.error(err.message || t('squad:toast.agreement_error'));
     } finally {
       setSendingAgreement(false);
     }
@@ -228,7 +235,7 @@ export default function ManagerSquadPage() {
         .maybeSingle();
 
       if (!agreement?.id) {
-        toast.error('Solicitação de saída não encontrada.');
+        toast.error(t('squad:toast.exit_not_found'));
         return;
       }
 
@@ -239,10 +246,10 @@ export default function ManagerSquadPage() {
       });
       if (error) throw error;
 
-      toast.success(`${player.full_name} saiu do clube por comum acordo.`);
+      toast.success(t('squad:toast.exit_accepted', { name: player.full_name }));
       fetchSquad();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao aceitar saída.');
+      toast.error(err.message || t('squad:toast.accept_error'));
     }
   };
 
@@ -257,7 +264,7 @@ export default function ManagerSquadPage() {
     } else {
       const parsed = parseInt(trimmed, 10);
       if (!Number.isFinite(parsed) || parsed < 0 || parsed > 99) {
-        toast.error('Número inválido — precisa estar entre 0 e 99.');
+        toast.error(t('squad:toast.jersey_invalid'));
         return;
       }
       nextNumber = parsed;
@@ -276,11 +283,11 @@ export default function ManagerSquadPage() {
       return n;
     });
     if (error) {
-      toast.error(error.message || 'Não foi possível salvar o número da camisa.');
+      toast.error(error.message || t('squad:toast.jersey_save_error'));
       setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, jersey_number: previous } : p));
       return;
     }
-    toast.success(nextNumber == null ? 'Número removido.' : `Número ${nextNumber} salvo.`);
+    toast.success(nextNumber == null ? t('squad:toast.jersey_removed') : t('squad:toast.jersey_saved', { n: nextNumber }));
   };
 
   const handleRejectPlayerExit = async (player: SquadPlayer) => {
@@ -295,17 +302,19 @@ export default function ManagerSquadPage() {
       if (player.user_id) {
         await supabase.from('notifications').insert({
           user_id: player.user_id,
-          title: '❌ Saída recusada',
-          body: `${club.name} recusou sua solicitação de saída por comum acordo.`,
+          title: t('squad:notifications.exit_rejected_title'),
+          body: t('squad:notifications.exit_rejected_body', { club: club.name }),
           type: 'contract',
           link: '/player/contract',
-        });
+          i18n_key: 'exit_rejected',
+          i18n_params: { club: club.name },
+        } as any);
       }
 
-      toast.success('Solicitação de saída recusada.');
+      toast.success(t('squad:toast.exit_rejected'));
       fetchSquad();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao recusar.');
+      toast.error(err.message || t('squad:toast.reject_error'));
     }
   };
 
@@ -317,15 +326,17 @@ export default function ManagerSquadPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-2xl font-bold">Elenco</h1>
+            <h1 className="font-display text-2xl font-bold">{t('squad:title')}</h1>
             <p className="text-sm text-muted-foreground">
-              {players.length} jogadores • Folha semanal: {formatBRL(totalWages)}
+              {t('squad:summary', { count: players.length, wages: formatBRL(totalWages) })}
               {players.filter(p => p.user_id).length > 0 && (
                 <>
                   {' • '}
                   <span className="text-pitch inline-flex items-center gap-1 align-middle">
                     <User className="h-3 w-3" />
-                    {players.filter(p => p.user_id).length} humano{players.filter(p => p.user_id).length > 1 ? 's' : ''}
+                    {players.filter(p => p.user_id).length === 1
+                      ? t('squad:humans', { count: 1 })
+                      : t('squad:humans_plural', { count: players.filter(p => p.user_id).length })}
                   </span>
                 </>
               )}
@@ -334,12 +345,12 @@ export default function ManagerSquadPage() {
         </div>
 
         {loading ? (
-          <p className="text-muted-foreground text-sm">Carregando elenco...</p>
+          <p className="text-muted-foreground text-sm">{t('squad:loading')}</p>
         ) : players.length === 0 ? (
           <div className="stat-card text-center py-12">
             <Users className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="font-display font-semibold">Nenhum jogador no elenco</p>
-            <p className="text-xs text-muted-foreground mt-1">Contrate jogadores no Mercado de Agentes Livres para montar seu time.</p>
+            <p className="font-display font-semibold">{t('squad:empty.title')}</p>
+            <p className="text-xs text-muted-foreground mt-1">{t('squad:empty.hint')}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -347,14 +358,14 @@ export default function ManagerSquadPage() {
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-2 pr-3 w-10"></th>
-                  <th className="py-2 pr-3">OVR</th>
-                  <th className="py-2 pr-3 w-16">Nº</th>
-                  <th className="py-2 pr-3">Nome</th>
-                  <th className="py-2 pr-3">Posição</th>
-                  <th className="py-2 pr-3">Tipo</th>
-                  <th className="py-2 pr-3">Idade</th>
-                  <th className="py-2 pr-3">Energia</th>
-                  <th className="py-2 pr-3 text-right">Salário/Sem</th>
+                  <th className="py-2 pr-3">{t('squad:columns.ovr')}</th>
+                  <th className="py-2 pr-3 w-16">{t('squad:columns.jersey')}</th>
+                  <th className="py-2 pr-3">{t('squad:columns.name')}</th>
+                  <th className="py-2 pr-3">{t('squad:columns.position')}</th>
+                  <th className="py-2 pr-3">{t('squad:columns.type')}</th>
+                  <th className="py-2 pr-3">{t('squad:columns.age')}</th>
+                  <th className="py-2 pr-3">{t('squad:columns.energy')}</th>
+                  <th className="py-2 pr-3 text-right">{t('squad:columns.salary')}</th>
                   <th className="py-2 pr-3 w-10"></th>
                 </tr>
               </thead>
@@ -414,19 +425,20 @@ export default function ManagerSquadPage() {
                     >
                       <div className="flex items-center gap-2">
                         {p.user_id ? (
-                          <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label="Humano" />
+                          <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label={t('squad:human_label')} />
                         ) : (
-                          <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label="Bot" />
+                          <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label={t('squad:bot_label')} />
                         )}
+                        {p.country_code && <CountryFlag code={p.country_code} size="xs" />}
                         {p.full_name}
                         {p.pending_agreement_from === 'player' && (
                           <span className="inline-flex items-center rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-600">
-                            ⚠️ Quer Sair
+                            {t('squad:wants_to_leave')}
                           </span>
                         )}
                         {p.pending_agreement_from === 'club' && (
                           <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-semibold text-yellow-600">
-                            Acordo Enviado
+                            {t('squad:agreement_sent')}
                           </span>
                         )}
                       </div>
@@ -460,35 +472,34 @@ export default function ManagerSquadPage() {
                                 className="text-pitch focus:text-pitch"
                                 onClick={() => handleAcceptPlayerExit(p)}
                               >
-                                ✅ Aceitar Saída
+                                {t('squad:actions.accept_exit')}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleRejectPlayerExit(p)}
                               >
-                                ❌ Recusar Saída
+                                {t('squad:actions.reject_exit')}
                               </DropdownMenuItem>
                             </>
                           )}
-                          {/* Just cause: bots always, humans after 30d inactive */}
                           {(p.user_id === null) && (
                             <DropdownMenuItem
                               className="text-amber-500 focus:text-amber-500"
                               onClick={() => handleFireJustCause(p)}
                             >
-                              Justa Causa (sem multa)
+                              {t('squad:actions.just_cause')}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => openFireDialog(p)}
                           >
-                            Demitir
+                            {t('squad:actions.fire')}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openAgreementDialog(p)}
                             disabled={p.has_pending_agreement}
                           >
-                            Comum Acordo
+                            {t('squad:actions.mutual')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -507,29 +518,27 @@ export default function ManagerSquadPage() {
       <Dialog open={fireDialogOpen} onOpenChange={setFireDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Demitir Jogador</DialogTitle>
-            <DialogDescription>
-              Confirme a demissão do jogador. O clube arcará com o custo da rescisão.
-            </DialogDescription>
+            <DialogTitle>{t('squad:fire_dialog.title')}</DialogTitle>
+            <DialogDescription>{t('squad:fire_dialog.description')}</DialogDescription>
           </DialogHeader>
 
           {fireTarget && (
             <div className="space-y-4">
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Jogador</span>
+                  <span className="text-muted-foreground">{t('squad:fire_dialog.player')}</span>
                   <span className="font-semibold">{fireTarget.full_name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Salário semanal</span>
+                  <span className="text-muted-foreground">{t('squad:fire_dialog.weekly_salary')}</span>
                   <span>{formatBRL(fireTarget.weekly_salary)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Custo da rescisão</span>
+                  <span className="text-muted-foreground">{t('squad:fire_dialog.rescission')}</span>
                   <span className="font-bold text-destructive">{formatBRL(getRecissionCost(fireTarget))}</span>
                 </div>
                 <div className="border-t pt-2 flex justify-between">
-                  <span className="text-muted-foreground">Saldo do clube</span>
+                  <span className="text-muted-foreground">{t('squad:fire_dialog.club_balance')}</span>
                   <span className="font-semibold">{formatBRL(clubBalance)}</span>
                 </div>
               </div>
@@ -537,7 +546,7 @@ export default function ManagerSquadPage() {
               {clubBalance < getRecissionCost(fireTarget) && (
                 <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>Saldo insuficiente para rescisão</span>
+                  <span>{t('squad:fire_dialog.insufficient')}</span>
                 </div>
               )}
             </div>
@@ -545,14 +554,14 @@ export default function ManagerSquadPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setFireDialogOpen(false)}>
-              Cancelar
+              {t('common:actions.cancel')}
             </Button>
             <Button
               variant="destructive"
               onClick={handleFire}
               disabled={firing || !fireTarget || clubBalance < getRecissionCost(fireTarget!)}
             >
-              {firing ? 'Processando...' : 'Confirmar Demissão'}
+              {firing ? t('squad:fire_dialog.submitting') : t('squad:fire_dialog.submit')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -562,27 +571,25 @@ export default function ManagerSquadPage() {
       <Dialog open={agreementDialogOpen} onOpenChange={setAgreementDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rescisão por Comum Acordo</DialogTitle>
+            <DialogTitle>{t('squad:agreement_dialog.title')}</DialogTitle>
             <DialogDescription>
-              Proposta de rescisão por comum acordo com {agreementTarget?.full_name}.
+              {t('squad:agreement_dialog.description', { name: agreementTarget?.full_name ?? '' })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground">
-              Proposta de rescisão por comum acordo. O jogador precisa aceitar. Não há custo para nenhuma das partes.
-            </p>
+            <p className="text-muted-foreground">{t('squad:agreement_dialog.explanation')}</p>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAgreementDialogOpen(false)}>
-              Cancelar
+              {t('common:actions.cancel')}
             </Button>
             <Button
               onClick={handleMutualAgreement}
               disabled={sendingAgreement}
             >
-              {sendingAgreement ? 'Enviando...' : 'Enviar Proposta'}
+              {sendingAgreement ? t('squad:agreement_dialog.submitting') : t('squad:agreement_dialog.submit')}
             </Button>
           </DialogFooter>
         </DialogContent>

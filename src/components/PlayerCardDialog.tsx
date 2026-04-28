@@ -3,9 +3,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AttributeBar } from '@/components/AttributeBar';
 import { PositionBadge } from '@/components/PositionBadge';
 import { EnergyBar } from '@/components/EnergyBar';
+import { CountryFlag } from '@/components/CountryFlag';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { ATTR_LABELS, ATTRIBUTE_CATEGORIES } from '@/lib/attributes';
+import { getCountry, getCountryName } from '@/lib/countries';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 
 interface PlayerCardDialogProps {
   playerId: string | null;
@@ -16,7 +19,7 @@ interface PlayerCardDialogProps {
 type PlayerProfileSummary = Pick<
   Tables<'player_profiles'>,
   'id' | 'full_name' | 'age' | 'primary_position' | 'secondary_position' | 'archetype' | 'overall' | 'dominant_foot' | 'reputation' | 'energy_current' | 'energy_max'
->;
+> & { country_code?: string | null };
 
 const physicalKeys = ATTRIBUTE_CATEGORIES['Físico'];
 const technicalKeys = ATTRIBUTE_CATEGORIES['Técnico'];
@@ -58,6 +61,7 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
   const [attrs, setAttrs] = useState<Tables<'player_attributes'> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { current: lang } = useAppLanguage();
 
   useEffect(() => {
     if (!playerId) { setPlayer(null); setAttrs(null); return; }
@@ -67,7 +71,7 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
     (async () => {
       const [profileRes, attrsRes] = await Promise.all([
         supabase.from('player_profiles')
-          .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, reputation, energy_current, energy_max')
+          .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, reputation, energy_current, energy_max, country_code')
           .eq('id', playerId).maybeSingle(),
         supabase.from('player_attributes').select('*').eq('player_profile_id', playerId).maybeSingle(),
       ]);
@@ -104,11 +108,22 @@ export function PlayerCardDialog({ playerId, onClose, clubName }: PlayerCardDial
                   <span className="font-display text-2xl font-bold text-primary-foreground">{player.full_name[0]}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate font-display text-xl font-bold">{player.full_name}</h2>
+                  <h2 className="truncate font-display text-xl font-bold flex items-center gap-2">
+                    {player.country_code && <CountryFlag code={player.country_code} size="sm" />}
+                    <span className="truncate">{player.full_name}</span>
+                  </h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <PositionBadge position={player.primary_position} />
                     {player.secondary_position && <PositionBadge position={player.secondary_position} />}
                     <span className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">{player.archetype}</span>
+                    {player.country_code && (() => {
+                      const country = getCountry(player.country_code);
+                      return country ? (
+                        <span className="rounded-full border border-border/60 px-2 py-1 text-xs text-muted-foreground">
+                          {getCountryName(country, lang)}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
                 <div className="text-left sm:text-right">

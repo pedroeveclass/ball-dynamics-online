@@ -163,7 +163,9 @@ export default function PlayerOffersPage() {
                 body: `${playerProfile.full_name} foi vendido por ${formatBRL(clause)}. Valor creditado nas finanças do clube.`,
                 type: 'transfer',
                 link: '/manager/finance',
-              });
+                i18n_key: 'player_sold',
+                i18n_params: { player: playerProfile.full_name, amount: formatBRL(clause) },
+              } as any);
             }
           }
           // Notify buying club manager
@@ -177,7 +179,9 @@ export default function PlayerOffersPage() {
                 body: `${playerProfile.full_name} contratado por ${formatBRL(clause)} de multa rescisória.`,
                 type: 'transfer',
                 link: '/manager/squad',
-              });
+                i18n_key: 'player_bought',
+                i18n_params: { player: playerProfile.full_name, amount: formatBRL(clause) },
+              } as any);
             }
           }
         }
@@ -191,7 +195,9 @@ export default function PlayerOffersPage() {
           body: `${playerProfile.full_name} aceitou sua proposta de contrato.`,
           type: 'contract',
           link: '/manager/squad',
-        });
+          i18n_key: 'contract_offer_accepted',
+          i18n_params: { player: playerProfile.full_name },
+        } as any);
       }
 
       toast.success(`Contrato assinado! Você agora faz parte do ${actionOffer.club_name}.`);
@@ -207,7 +213,9 @@ export default function PlayerOffersPage() {
           body: `${playerProfile.full_name} recusou sua proposta de contrato.`,
           type: 'contract',
           link: '/manager/market',
-        });
+          i18n_key: 'contract_offer_rejected',
+          i18n_params: { player: playerProfile.full_name },
+        } as any);
       }
 
       toast.success('Proposta recusada: A proposta foi recusada com sucesso.');

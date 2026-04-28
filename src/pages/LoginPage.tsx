@@ -6,9 +6,12 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export default function LoginPage() {
-  const { user, profile, playerProfile, managerProfile, club, loading } = useAuth();
+  const { user, profile, playerProfile, managerProfile, loading } = useAuth();
+  const { t } = useTranslation('auth');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -35,34 +38,34 @@ export default function LoginPage() {
     if (error) {
       toast.error(error.message);
       setSubmitting(false);
-      return;
     }
-
-    toast.success('Login realizado!');
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-primary p-4">
       <div className="w-full max-w-sm">
+        <div className="flex justify-end mb-2">
+          <LanguageSwitcher />
+        </div>
         <div className="text-center mb-8">
           <h1 className="font-display text-3xl font-bold text-primary-foreground">FOOTBALL IDENTITY</h1>
-          <p className="mt-2 text-sm text-primary-foreground/60">Entre na sua conta</p>
+          <p className="mt-2 text-sm text-primary-foreground/60">{t('login.title')}</p>
         </div>
         <form onSubmit={handleLogin} className="rounded-lg bg-card p-6 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required />
+            <Label htmlFor="email">{t('login.email')}</Label>
+            <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t('login.email_placeholder')} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Senha</Label>
-            <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} />
+            <Label htmlFor="password">{t('login.password')}</Label>
+            <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={t('login.password_placeholder')} required minLength={6} />
           </div>
           <Button type="submit" disabled={submitting} className="w-full bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display">
-            {submitting ? 'Entrando...' : 'ENTRAR'}
+            {submitting ? t('login.submitting') : t('login.submit')}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            Não tem conta?{' '}
-            <Link to="/register" className="text-tactical hover:underline">Criar conta</Link>
+            {t('login.no_account')}{' '}
+            <Link to="/register" className="text-tactical hover:underline">{t('login.create_account')}</Link>
           </p>
         </form>
       </div>

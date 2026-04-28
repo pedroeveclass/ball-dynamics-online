@@ -1,4 +1,8 @@
-// Position translation: EN (database) → PT-BR (display)
+import i18n from '@/i18n';
+
+// Position translation: EN (database code) → PT-BR (legacy direct map)
+// Kept as a compatibility shim. Prefer `positionLabel(pos)` which reads
+// the active i18n language ('pt' | 'en') and resolves via positions.json.
 export const POSITION_PT: Record<string, string> = {
   GK: 'GOL',
   CB: 'ZAG',
@@ -18,11 +22,26 @@ export const POSITION_PT: Record<string, string> = {
   RWB: 'ALD',
 };
 
-// Translate a position code to Portuguese
+function cleanPos(pos: string | null | undefined): string {
+  if (!pos) return '';
+  return pos.replace(/[0-9]/g, '').toUpperCase();
+}
+
+// Resolve a position code to its short label in the active language.
+// Falls back to the EN code if the lookup misses (defensive).
+export function positionLabel(pos: string | null | undefined, variant: 'short' | 'long' = 'short'): string {
+  const clean = cleanPos(pos);
+  if (!clean) return '?';
+  const key = `positions:${variant}.${clean}`;
+  const translated = i18n.t(key, { defaultValue: clean });
+  return translated || clean;
+}
+
+// Legacy: kept so existing imports keep working. Always returns the
+// active-language short label (matches the function's prior behavior
+// when only PT existed).
 export function positionToPT(pos: string | null | undefined): string {
-  if (!pos) return '?';
-  const clean = pos.replace(/[0-9]/g, '').toUpperCase();
-  return POSITION_PT[clean] || clean;
+  return positionLabel(pos, 'short');
 }
 
 // Reverse: PT → EN (for onboarding etc.)

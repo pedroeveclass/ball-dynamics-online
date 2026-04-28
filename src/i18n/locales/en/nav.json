@@ -1,0 +1,48 @@
+{
+  "player": {
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "attributes": "Attributes & Training",
+    "training_plan": "Auto Training",
+    "club": "My Club",
+    "matches": "Matches",
+    "pickup": "Pickup Games",
+    "league": "League",
+    "contract": "Contract",
+    "offers": "Offers",
+    "bank": "Bank",
+    "store": "Store",
+    "forum": "Forum"
+  },
+  "manager": {
+    "dashboard": "Dashboard",
+    "club": "Club",
+    "squad": "Squad",
+    "lineup": "Lineup",
+    "market": "Market",
+    "finance": "Finance",
+    "stadium": "Stadium",
+    "facilities": "Facilities",
+    "training": "Training",
+    "reports": "Reports",
+    "league": "League",
+    "vote": "League Vote",
+    "matches": "Matches",
+    "bank": "Bank",
+    "store": "Store",
+    "forum": "Forum"
+  },
+  "account": {
+    "label": "Account",
+    "notifications": "Notifications",
+    "profile": "Account Profile"
+  },
+  "groups": {
+    "player": "Player",
+    "manager": "Manager"
+  },
+  "active_player": {
+    "label": "Playing as",
+    "switch_hint": "Switch active player"
+  }
+}

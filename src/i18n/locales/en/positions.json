@@ -1,0 +1,38 @@
+{
+  "short": {
+    "GK": "GK",
+    "CB": "CB",
+    "LB": "LB",
+    "RB": "RB",
+    "LWB": "LWB",
+    "RWB": "RWB",
+    "DM": "DM",
+    "CDM": "DM",
+    "CM": "CM",
+    "LM": "LM",
+    "RM": "RM",
+    "CAM": "CAM",
+    "LW": "LW",
+    "RW": "RW",
+    "CF": "CF",
+    "ST": "ST"
+  },
+  "long": {
+    "GK": "Goalkeeper",
+    "CB": "Centre-back",
+    "LB": "Left-back",
+    "RB": "Right-back",
+    "LWB": "Left Wing-back",
+    "RWB": "Right Wing-back",
+    "DM": "Defensive Midfielder",
+    "CDM": "Defensive Midfielder",
+    "CM": "Central Midfielder",
+    "LM": "Left Midfielder",
+    "RM": "Right Midfielder",
+    "CAM": "Attacking Midfielder",
+    "LW": "Left Winger",
+    "RW": "Right Winger",
+    "CF": "Centre Forward",
+    "ST": "Striker"
+  }
+}

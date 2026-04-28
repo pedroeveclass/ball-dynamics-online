@@ -8,11 +8,17 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
 import { NotificationBell } from '@/components/NotificationBell';
 import { HelpModal } from '@/components/HelpModal';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { CountryFlag } from '@/components/CountryFlag';
+import { useTranslation } from 'react-i18next';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 
 export function ManagerLayout({ children }: { children: ReactNode }) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [helpOpen, setHelpOpen] = useState(false);
+  const { t } = useTranslation('common');
+  useAppLanguage();
 
   const handleLogout = async () => {
     await signOut();
@@ -29,8 +35,9 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
               <SidebarTrigger />
               <span className="font-display text-lg font-bold tracking-tight text-foreground">FOOTBALL IDENTITY</span>
             </div>
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => setHelpOpen(true)} className="text-muted-foreground hover:text-foreground" title="Tutorial / Como jogar">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <LanguageSwitcher />
+              <Button variant="ghost" size="icon" onClick={() => setHelpOpen(true)} className="text-muted-foreground hover:text-foreground" title={t('tutorial')}>
                 <HelpCircle className="h-5 w-5" />
               </Button>
               <NotificationBell />
@@ -42,9 +49,12 @@ export function ManagerLayout({ children }: { children: ReactNode }) {
                   bgClass="bg-tactical"
                   fgClass="text-tactical-foreground"
                 />
-                <span className="text-sm font-medium hidden sm:inline">{profile?.username || 'Manager'}</span>
+                <span className="text-sm font-medium hidden sm:flex items-center gap-1.5">
+                  <span>{profile?.username || 'Manager'}</span>
+                  {(profile as any)?.country_code && <CountryFlag code={(profile as any).country_code} size="xs" />}
+                </span>
               </Link>
-              <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive">
+              <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive" title={t('logout')}>
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>

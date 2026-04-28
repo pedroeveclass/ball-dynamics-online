@@ -1,0 +1,63 @@
+{
+  "player": {
+    "header": {
+      "right_foot": "Right Foot",
+      "left_foot": "Left Foot",
+      "years_old": "{{count}} years old",
+      "ovr": "OVR"
+    },
+    "stats": {
+      "reputation": "Reputation",
+      "money": "Money",
+      "weekly_salary": "Weekly Wage",
+      "no_contract": "No contract",
+      "club": "Club",
+      "no_club": "No club",
+      "free_agent": "Free Agent"
+    },
+    "energy": {
+      "title": "Fitness",
+      "ready": "Ready to play",
+      "consider_rest": "Consider resting",
+      "needs_recovery": "Needs recovery"
+    },
+    "next_match": {
+      "title": "Next Match",
+      "none": "No match scheduled.",
+      "see_all": "See all →",
+      "enter": "Enter Match",
+      "watch": "View Match",
+      "vs": "vs",
+      "status": {
+        "scheduled": "Scheduled",
+        "waiting": "Waiting",
+        "live": "🔴 Live",
+        "finished": "Finished"
+      }
+    },
+    "notifications": {
+      "title": "Notifications"
+    },
+    "attributes": {
+      "title": "Attributes by Category",
+      "see_all": "See all →"
+    }
+  },
+  "manager": {
+    "title": "Manager Dashboard",
+    "club_label": "Club",
+    "no_club": "No club",
+    "stats": {
+      "balance": "Balance",
+      "wage_bill": "Weekly Wages",
+      "squad_size": "Squad",
+      "reputation": "Reputation"
+    },
+    "next_match": "Next Match",
+    "no_next_match": "No match scheduled.",
+    "recent_matches": "Recent Results",
+    "no_recent_matches": "No recent matches.",
+    "notifications": "Notifications",
+    "no_notifications": "No new notifications."
+  }
+}

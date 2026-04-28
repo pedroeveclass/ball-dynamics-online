@@ -788,7 +788,7 @@ export default function MatchRoomPage() {
 
     const [playersRes, slotsRes] = await Promise.all([
       playerIds.length > 0
-        ? supabase.from('player_profiles').select('id, full_name, primary_position, secondary_position, overall, jersey_number').in('id', playerIds)
+        ? supabase.from('player_profiles').select('id, full_name, primary_position, secondary_position, overall, jersey_number, country_code').in('id', playerIds)
         : Promise.resolve({ data: [] as PlayerProfileSummary[] }),
       slotIds.length > 0
         ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds)
@@ -816,7 +816,7 @@ export default function MatchRoomPage() {
       // Load player user_ids for connected_user_id
       const profileIds = slots.filter(s => s.player_profile_id).map(s => s.player_profile_id!);
       const { data: profiles } = profileIds.length > 0
-        ? await supabase.from('player_profiles').select('id, user_id, full_name, primary_position, secondary_position, overall').in('id', profileIds)
+        ? await supabase.from('player_profiles').select('id, user_id, full_name, primary_position, secondary_position, overall, country_code').in('id', profileIds)
         : { data: [] as any[] };
       const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
 

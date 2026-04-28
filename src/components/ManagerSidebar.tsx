@@ -7,42 +7,44 @@ import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from '@/components/ui/sidebar';
-
-const managerNav = [
-  { title: 'Dashboard', url: '/manager', icon: LayoutDashboard },
-  { title: 'Clube', url: '/manager/club', icon: Shield },
-  { title: 'Elenco', url: '/manager/squad', icon: Users },
-  { title: 'Escalação', url: '/manager/lineup', icon: ClipboardList },
-  { title: 'Mercado', url: '/manager/market', icon: ShoppingCart },
-  { title: 'Finanças', url: '/manager/finance', icon: DollarSign },
-  { title: 'Estádio', url: '/manager/stadium', icon: Building2 },
-  { title: 'Facilities', url: '/manager/facilities', icon: Wrench },
-  { title: 'Treinamento', url: '/manager/coach', icon: Brain },
-  { title: 'Relatórios', url: '/manager/relatorios', icon: BarChart3 },
-  { title: 'Liga', url: '/league', icon: Trophy },
-  { title: 'Votação Liga', url: '/league/vote', icon: Vote },
-  { title: 'Jogos', url: '/manager/challenges', icon: CalendarDays },
-  { title: 'Banco', url: '/bank', icon: Landmark },
-  { title: 'Loja', url: '/store', icon: Store },
-  { title: 'Fórum', url: '/forum', icon: MessageSquare },
-];
-
-const accountNav = [
-  { title: 'Notificações', url: '/notifications', icon: Bell },
-  { title: 'Perfil da Conta', url: '/account/profile', icon: Settings },
-];
+import { useTranslation } from 'react-i18next';
 
 export function ManagerSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
+  const { t } = useTranslation('nav');
+
+  const managerNav = [
+    { title: t('manager.dashboard'), url: '/manager', icon: LayoutDashboard },
+    { title: t('manager.club'), url: '/manager/club', icon: Shield },
+    { title: t('manager.squad'), url: '/manager/squad', icon: Users },
+    { title: t('manager.lineup'), url: '/manager/lineup', icon: ClipboardList },
+    { title: t('manager.market'), url: '/manager/market', icon: ShoppingCart },
+    { title: t('manager.finance'), url: '/manager/finance', icon: DollarSign },
+    { title: t('manager.stadium'), url: '/manager/stadium', icon: Building2 },
+    { title: t('manager.facilities'), url: '/manager/facilities', icon: Wrench },
+    { title: t('manager.training'), url: '/manager/coach', icon: Brain },
+    { title: t('manager.reports'), url: '/manager/relatorios', icon: BarChart3 },
+    { title: t('manager.league'), url: '/league', icon: Trophy },
+    { title: t('manager.vote'), url: '/league/vote', icon: Vote },
+    { title: t('manager.matches'), url: '/manager/challenges', icon: CalendarDays },
+    { title: t('manager.bank'), url: '/bank', icon: Landmark },
+    { title: t('manager.store'), url: '/store', icon: Store },
+    { title: t('manager.forum'), url: '/forum', icon: MessageSquare },
+  ];
+
+  const accountNav = [
+    { title: t('account.notifications'), url: '/notifications', icon: Bell },
+    { title: t('account.profile'), url: '/account/profile', icon: Settings },
+  ];
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Manager</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('groups.manager')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {managerNav.map(item => (
@@ -59,7 +61,7 @@ export function ManagerSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>Conta</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('account.label')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {accountNav.map(item => (
