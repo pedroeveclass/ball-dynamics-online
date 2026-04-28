@@ -756,10 +756,7 @@ export default function MatchReplayPage() {
     const MAX_RANGE_APPROX = 6;
     const moveFraction = Math.min(1, moveDist / MAX_RANGE_APPROX);
     const arrivalTime = Math.max(0.1, moveFraction);
-    const scaled = Math.min(1, animProgress / arrivalTime);
-    const t = scaled < 0.4
-      ? (scaled / 0.4) ** 2 * 0.4
-      : 0.4 + (1 - Math.pow(1 - (scaled - 0.4) / 0.6, 2)) * 0.6;
+    const t = Math.min(1, animProgress / arrivalTime);
 
     return {
       x: start.x + dx * t,
