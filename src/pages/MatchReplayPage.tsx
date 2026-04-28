@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, ReactNode, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,15 +13,23 @@ import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Film, Maximize,
 function ReplayLayout({ children }: { children: ReactNode }) {
   const { managerProfile, loading } = useAuth();
   const { t } = useTranslation('match_replay');
+  const navigate = useNavigate();
+  // The back arrow returns to the previous route in history (league, dashboard,
+  // match list, etc). If the replay is the very first entry in history (rare —
+  // direct link), fall back to "/".
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
+  };
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-card">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={goBack} className="text-muted-foreground hover:text-foreground transition-colors" aria-label={t('back')}>
             <ArrowLeft className="h-5 w-5" />
-          </Link>
+          </button>
           <Film className="h-5 w-5 text-tactical" />
           <span className="font-display text-lg font-bold">{t('title')}</span>
         </div>
@@ -176,6 +184,11 @@ type Phase = 'motion' | 'halftime_pause' | 'set_piece_pause' | 'goal_pause' | 'i
 export default function MatchReplayPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const { t } = useTranslation('match_replay');
+  const navigate = useNavigate();
+  const goBack = useCallback(() => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
+  }, [navigate]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -894,7 +907,7 @@ export default function MatchReplayPage() {
       <ReplayLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <p className="text-muted-foreground">{error || t('errors.match_not_found')}</p>
-          <Link to="/league"><Button variant="outline">{t('back')}</Button></Link>
+          <Button variant="outline" onClick={goBack}>{t('back')}</Button>
         </div>
       </ReplayLayout>
     );
@@ -906,7 +919,7 @@ export default function MatchReplayPage() {
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <Film className="h-12 w-12 text-muted-foreground" />
           <p className="text-muted-foreground text-lg">{t('errors.no_replay')}</p>
-          <Link to="/league"><Button variant="outline">{t('back')}</Button></Link>
+          <Button variant="outline" onClick={goBack}>{t('back')}</Button>
         </div>
       </ReplayLayout>
     );
@@ -1036,6 +1049,17 @@ export default function MatchReplayPage() {
               <circle cx={ballSvg.x} cy={ballSvg.y} r={5.5} fill="#fff" stroke="#333" strokeWidth={0.8} />
               <circle cx={ballSvg.x - 1.5} cy={ballSvg.y - 1.5} r={1.5} fill="rgba(0,0,0,0.08)" />
             </svg>
+
+            {/* Back button (top-left, returns to previous route) */}
+            <button
+              onClick={goBack}
+              className="absolute top-2 left-2 flex items-center gap-1 bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg px-2 py-1.5 text-white/85 hover:text-white hover:bg-black/70 transition-colors shadow-lg"
+              title={t('back')}
+              aria-label={t('back')}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="text-xs font-medium hidden sm:inline">{t('back')}</span>
+            </button>
 
             {/* Scoreboard overlay (top center) */}
             <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 shadow-lg">
