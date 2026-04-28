@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Participant, MatchAction, PendingInterceptChoice, MatchData } from './types';
 import { ACTION_LABELS, isShootAction, isAnyShootAction, isHeaderAction, getBallZoneAtProgress } from './constants';
+import i18n from '@/i18n';
 
 // ─── MatchActionMenu (extracted, memoized) ─────────────────────
 export interface MatchActionMenuProps {
@@ -55,9 +56,9 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
         else if (a === 'no_action') icon = '\u2298';
 
         // ── Pass actions ──
-        else if (a === 'pass_low') { icon = '\u27A1'; if (isGKBH) label = 'REPOSIÇÃO CURTA'; }
-        else if (a === 'pass_high') { icon = '\u2934'; if (isGKBH) label = 'REPOSIÇÃO MÉDIA'; }
-        else if (a === 'pass_launch') { icon = '\uD83D\uDE80'; if (isGKBH) label = 'REPOSIÇÃO LONGA'; }
+        else if (a === 'pass_low') { icon = '\u27A1'; if (isGKBH) label = i18n.t('match_room:actions_special.gk_pass_short'); }
+        else if (a === 'pass_high') { icon = '\u2934'; if (isGKBH) label = i18n.t('match_room:actions_special.gk_pass_medium'); }
+        else if (a === 'pass_launch') { icon = '\uD83D\uDE80'; if (isGKBH) label = i18n.t('match_room:actions_special.gk_pass_long'); }
 
         // ── Shoot actions ──
         else if (a === 'shoot_controlled') icon = '\uD83C\uDFAF';
@@ -71,8 +72,8 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
 
         // ── Block (GK: Espalmar / outfield: Bloquear) ──
         else if (a === 'block') {
-          if (isGK) { label = 'ESPALMAR'; icon = '\uD83E\uDDE4'; }
-          else { label = 'BLOQUEAR'; icon = '\uD83D\uDEE1\uFE0F'; }
+          if (isGK) { label = i18n.t('match_room:actions_special.gk_block'); icon = '\uD83E\uDDE4'; }
+          else { label = i18n.t('match_room:actions.block'); icon = '\uD83D\uDEE1\uFE0F'; }
         }
 
         // ── Receive (context-dependent label) ──
@@ -83,15 +84,15 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
           if (bhAction && bhPlayer && menuPlayer) {
             const isOpponent = menuPlayer.club_id !== bhPlayer.club_id;
             if (bhAction.action_type === 'move' && isOpponent) {
-              label = 'DESARME'; icon = '\uD83E\uDDB5';
+              label = i18n.t('match_room:actions_special.tackle'); icon = '\uD83E\uDDB5';
             } else if (isAnyShootAction(bhAction.action_type) && isGK) {
-              label = 'AGARRAR'; icon = '\uD83E\uDDE4';
+              label = i18n.t('match_room:actions_special.gk_catch'); icon = '\uD83E\uDDE4';
             }
           }
         }
         // ── Receive hard (Carrinho) — aggressive tackle variant ──
         else if (a === 'receive_hard') {
-          label = 'CARRINHO';
+          label = i18n.t('match_room:actions_special.tackle');
           icon = '\uD83E\uDDB5\uD83D\uDCA5'; // 🦵💥
         }
 
@@ -100,7 +101,7 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
           (a === 'pass_low' || a === 'pass_high' || a === 'pass_launch' || a === 'shoot_controlled' || a === 'shoot_power' ||
            a === 'header_low' || a === 'header_high' || a === 'header_controlled' || a === 'header_power');
         if (isOneTouchOption) {
-          label = `${label} (1a)`;
+          label = `${label} ${i18n.t('match_room:actions_special.one_touch_suffix')}`;
           icon = `\u26A1${icon}`;
         }
 
@@ -118,7 +119,6 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
         return (
           <button
             key={a}
-            disabled={submittingAction}
             onClick={() => onSelect(a, showActionMenu)}
             className="w-full text-left px-3 py-1 text-xs font-display font-bold text-[hsl(220,20%,20%)] hover:bg-[hsl(45,30%,80%)] transition-colors flex items-center gap-2"
           >
