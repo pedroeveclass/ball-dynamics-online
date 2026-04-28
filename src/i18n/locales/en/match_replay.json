@@ -15,6 +15,10 @@
   "clock": {
     "minute": "{{minute}}'"
   },
+  "fullscreen": {
+    "enter": "Fullscreen",
+    "exit": "Exit fullscreen"
+  },
   "events": {
     "title": "Events",
     "empty": "No events on this turn",

@@ -15,6 +15,10 @@
   "clock": {
     "minute": "{{minute}}'"
   },
+  "fullscreen": {
+    "enter": "Tela cheia",
+    "exit": "Sair da tela cheia"
+  },
   "events": {
     "title": "Eventos",
     "empty": "Nenhum evento neste turno",

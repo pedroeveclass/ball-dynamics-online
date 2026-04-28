@@ -7,7 +7,7 @@ import { ManagerLayout } from '@/components/ManagerLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Film } from 'lucide-react';
+import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Film, Maximize, Minimize } from 'lucide-react';
 
 // ─── Layout wrapper (same pattern as LeaguePage) ──────────────────
 function ReplayLayout({ children }: { children: ReactNode }) {
@@ -205,6 +205,25 @@ export default function MatchReplayPage() {
   const flushedSceneIdxRef = useRef(-1); // last scene whose events/score have been pushed
 
   const animFrameRef = useRef<number>(0);
+  const playerRootRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sync state if the user leaves fullscreen via ESC or browser UI
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = playerRootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => { /* ignore */ });
+    } else {
+      el.requestFullscreen().catch(() => { /* ignore */ });
+    }
+  }, []);
 
   // ─── Data loading ──────────────────────────────────────────────
   useEffect(() => {
@@ -915,7 +934,10 @@ export default function MatchReplayPage() {
 
   return (
     <ReplayLayout>
-      <div className="flex flex-col gap-3">
+      <div
+        ref={playerRootRef}
+        className={`flex flex-col gap-3 ${isFullscreen ? 'h-screen w-screen bg-background p-4 overflow-hidden' : ''}`}
+      >
         {/* ── Top bar: clubs + score + clock ── */}
         <div className="bg-card border rounded-lg p-3 flex items-center justify-between">
           <div className="flex items-center gap-2 flex-1 justify-end">
@@ -960,12 +982,13 @@ export default function MatchReplayPage() {
         </div>
 
         {/* ── Field + events area ── */}
-        <div className="flex gap-3">
+        <div className={`flex gap-3 ${isFullscreen ? 'flex-1 min-h-0' : ''}`}>
           {/* Field */}
           <div className="flex-1 relative" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
             <svg
-              viewBox={`0 0 ${FIELD_W + PAD * 2} ${FIELD_H + PAD * 2}`}
-              className="w-full rounded-lg"
+              viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
+              className={isFullscreen ? 'h-full w-full rounded-lg' : 'w-full rounded-lg'}
+              preserveAspectRatio="xMidYMid meet"
             >
               <defs>
                 <pattern id="rp-grass" x="0" y="0" width="80" height={INNER_H} patternUnits="userSpaceOnUse">
@@ -980,7 +1003,7 @@ export default function MatchReplayPage() {
                 <marker id="rp-ah-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#06b6d4" /></marker>
               </defs>
 
-              <rect x="0" y="0" width={FIELD_W + PAD * 2} height={FIELD_H + PAD * 2} fill="hsl(140,10%,15%)" rx="8" />
+              <rect x="0" y="0" width={FIELD_W} height={FIELD_H} fill="hsl(140,10%,15%)" rx="8" />
               <rect x={PAD} y={PAD} width={INNER_W} height={INNER_H} fill="url(#rp-grass)" />
 
               <g stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" fill="none">
@@ -1079,7 +1102,7 @@ export default function MatchReplayPage() {
           </div>
 
           {/* MatchFlow events sidebar (accumulating, like the live match) */}
-          <div className="w-56 shrink-0 bg-card border rounded-lg p-3 flex-col gap-1 max-h-[480px] overflow-y-auto hidden md:flex">
+          <div className={`w-56 shrink-0 bg-card border rounded-lg p-3 flex-col gap-1 overflow-y-auto hidden md:flex ${isFullscreen ? 'h-full' : 'max-h-[480px]'}`}>
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{t('events.title')}</span>
             {eventLog.length === 0 && (
               <span className="text-xs text-muted-foreground">{t('events.empty_total')}</span>
@@ -1124,6 +1147,15 @@ export default function MatchReplayPage() {
             </Button>
             <Button variant="outline" size="sm" onClick={cycleSpeed} className="ml-4 font-mono text-xs min-w-[40px]">
               {SPEED_OPTIONS[speedIndex].label}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleFullscreen}
+              title={t(isFullscreen ? 'fullscreen.exit' : 'fullscreen.enter')}
+              aria-label={t(isFullscreen ? 'fullscreen.exit' : 'fullscreen.enter')}
+            >
+              {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
             </Button>
             <span className="text-xs text-muted-foreground ml-2 font-mono">
               {currentSceneIdx + 1} / {totalScenes}
