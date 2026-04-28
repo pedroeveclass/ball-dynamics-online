@@ -11,7 +11,13 @@ const RESOLUTION_PHASE_DURATION_MS = 2000; // 2s for client animation
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
 const MAX_TURNS = 144;
 const TURNS_PER_HALF = 72;
-const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
+// Merged phase model (vs lab):
+//   positioning_attack + positioning_defense → 'positioning' (single simultaneous phase)
+//   attacking_support + defending_response → 'open_play' (single simultaneous phase)
+// In each merged phase BOTH teams act in the same tick. Bot scoping below selects
+// attackers and defenders together, and exclusion zones run at the end of the
+// merged 'positioning' phase (instead of at end of legacy positioning_defense).
+const PHASES = ['ball_holder', 'open_play', 'resolution'] as const;
 
 // ─── Real-time clock constants ──────────────────────────────
 const HALF_DURATION_MS = 25 * 60 * 1000;       // 25 real minutes per half
@@ -1973,10 +1979,12 @@ async function generateBotActions(
     const isBH = p.id === ballHolderId;
 
     if (phase === 'ball_holder' && isBH) botsToAct.push(p);
-    else if (phase === 'attacking_support' && isAttacker) botsToAct.push(p);
-    else if (phase === 'defending_response' && !isAttacker) botsToAct.push(p);
-    else if (phase === 'positioning_attack' && isAttacker && !isBH) botsToAct.push(p);
-    else if (phase === 'positioning_defense' && !isAttacker) botsToAct.push(p);
+    // Merged 'open_play': BOTH teams act simultaneously (attackers ex-BH + defenders).
+    // BH is excluded — they'll keep their pre-set move from ball_holder phase
+    // unless the receive flow already swapped possession.
+    else if (phase === 'open_play' && !isBH) botsToAct.push(p);
+    // Merged 'positioning': BOTH teams reposition simultaneously, BH excluded.
+    else if (phase === 'positioning' && !isBH) botsToAct.push(p);
   }
 
   if (botsToAct.length === 0) return;
@@ -2066,7 +2074,7 @@ async function generateBotActions(
   let bhTargetX: number | null = null;
   let bhTargetY: number | null = null;
   let bhTargetParticipantId: string | null = null;
-  if ((phase === 'defending_response' || phase === 'attacking_support') && ballHolderId) {
+  if (phase === 'open_play' && ballHolderId) {
     const { data: bhActions } = await supabase
       .from('match_actions')
       .select('action_type, target_x, target_y, target_participant_id')
@@ -2195,6 +2203,7 @@ async function generateBotActions(
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
     const isBH = bot.id === ballHolderId;
+    const isAttacker = bot.club_id === possClubId;
     // In 2nd half, sides are flipped (home plays on right, away on left)
     const isHomeRaw = bot.club_id === homeClubId;
     const isHome = isSecondHalfBot ? !isHomeRaw : isHomeRaw;
@@ -2471,8 +2480,8 @@ async function generateBotActions(
       continue;
     }
 
-    // ── Defending Response ──
-    if (phase === 'defending_response') {
+    // ── Defending Response (legacy phase OR merged 'open_play' for defenders) ──
+    if (phase === 'defending_response' || (phase === 'open_play' && !isAttacker)) {
       if (ballHolderId) {
         const bhDist = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
 
@@ -2754,8 +2763,8 @@ async function generateBotActions(
           target_x: target.x, target_y: target.y, status: 'pending',
         });
       }
-    } else if (phase === 'attacking_support') {
-      // ── Attacking Support ──
+    } else if (phase === 'attacking_support' || (phase === 'open_play' && isAttacker)) {
+      // ── Attacking Support (legacy phase OR merged 'open_play' for attackers) ──
       // Skip the ball holder — they already have their action from ball_holder phase
       if (isBH) continue;
       if (isGK) {
@@ -2797,7 +2806,9 @@ async function generateBotActions(
       }
     } else {
       // ── Positioning phases or fallback ──
-      const isDefending = phase === 'positioning_defense';
+      // Legacy positioning_attack/positioning_defense use phase to detect the side;
+      // merged 'positioning' has both sides simultaneous, so derive from team membership.
+      const isDefending = phase === 'positioning_defense' || (phase === 'positioning' && !isAttacker);
       let target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex, undefined, undefined, tickCache);
 
       // ── Set piece specific positioning ──
@@ -2925,7 +2936,7 @@ async function generateBotActions(
   }
 
   // ── Post-processing: validate receive/block targets are near ball/trajectory ──
-  if (phase === 'defending_response' && ballHolderId) {
+  if ((phase === 'defending_response' || phase === 'open_play') && ballHolderId) {
     for (const action of actions) {
       if (action.action_type !== 'receive' && action.action_type !== 'block') continue;
       const botPart = participants.find((p: any) => p.id === action.participant_id);
@@ -2992,7 +3003,7 @@ async function generateBotActions(
 type Phase = typeof PHASES[number];
 
 function isPositioningPhase(phase: string): boolean {
-  return phase === 'positioning_attack' || phase === 'positioning_defense';
+  return phase === 'positioning_attack' || phase === 'positioning_defense' || phase === 'positioning';
 }
 
 // ─── Accuracy deviation ─────────────────────────────────────────
@@ -4733,7 +4744,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     const { data: claimedMatch } = await supabase.from('matches').update({
       status: 'live',
       started_at: now,
-      current_phase: 'positioning_attack',
+      current_phase: 'positioning',
       current_turn_number: 1,
       possession_club_id: possessionClubId,
       half_started_at: now,
@@ -5290,7 +5301,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
     await supabase.from('match_turns').insert({
       match_id: m.id,
       turn_number: 1,
-      phase: 'positioning_attack',
+      phase: 'positioning',
       possession_club_id: possessionClubId,
       ball_holder_participant_id: ballHolderParticipantId,
       started_at: now,
@@ -5650,6 +5661,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     const possClubId = activeTurn.possession_club_id;
     const isAttackPhase = activeTurn.phase === 'positioning_attack';
+    // Merged 'positioning' folds attack+defense sub-phases into one tick:
+    // both teams move simultaneously, exclusion zones apply, and we transition
+    // straight to ball_holder (no second positioning sub-phase).
+    const isMergedPositioning = activeTurn.phase === 'positioning';
 
     // Dedup: keep highest-priority action per participant (human > bot)
     const priorityByCtrl: Record<string, number> = { player: 3, manager: 2, bot: 1 };
@@ -5699,9 +5714,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (part.id === bhId) continue;
 
       // Check team phase constraint
+      // Legacy positioning_attack/positioning_defense restrict to one side;
+      // merged 'positioning' lets both sides move simultaneously (no filter).
       const isAttacker = part.club_id === possClubId;
-      if (isAttackPhase && !isAttacker) continue;
-      if (!isAttackPhase && isAttacker) continue;
+      if (!isMergedPositioning) {
+        if (isAttackPhase && !isAttacker) continue;
+        if (!isAttackPhase && isAttacker) continue;
+      }
 
       let targetX = Number(a.target_x ?? part.pos_x ?? 50);
       let targetY = Number(a.target_y ?? part.pos_y ?? 50);
@@ -5761,11 +5780,16 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // Batch: mark actions used + resolve turn + create next turn + log event (all in parallel)
     const actionIds = moveActions.map(a => a.id);
     const nextPhaseStart = new Date().toISOString();
+    // Legacy positioning_attack → positioning_defense → ball_holder.
+    // Legacy positioning_defense → ball_holder.
+    // Merged 'positioning' → ball_holder (single phase, no second sub-phase).
     const nextPhase = isAttackPhase ? 'positioning_defense' : 'ball_holder';
     const nextPhaseEnd = new Date(Date.now() + (isAttackPhase ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS)).toISOString();
 
     // ── Enforce exclusion zones BEFORE ball_holder starts ──
-    if (!isAttackPhase) {
+    // Fires at the end of the last positioning step: legacy positioning_defense
+    // OR merged 'positioning' (both transition to ball_holder next).
+    if (!isAttackPhase || isMergedPositioning) {
       const { data: allParts } = await supabase
         .from('match_participants')
         .select('id, club_id, pos_x, pos_y, role_type, is_sent_off, lineup_slot_id, player_profile_id')
@@ -7850,8 +7874,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const inAwayGoal = crossingSide === 'away' && trajectoryInGoal;
 
       if (inHomeGoal || inAwayGoal) {
+        // Prefer the BH's ball action (shoot/pass) over their move when checking
+        // over_goal. allActions is sorted by created_at DESC, so the move from
+        // attacking_support comes BEFORE the shoot from ball_holder; a plain
+        // find that accepts either would return the move (no over_goal flag)
+        // and incorrectly count an over-the-bar shot as a goal.
         const ballAction = ballHolder
-          ? allActions.find(a => a.participant_id === ballHolder.id && (isBallActionType(a.action_type) || a.action_type === 'move'))
+          ? (allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
+             ?? allActions.find(a => a.participant_id === ballHolder.id && a.action_type === 'move'))
           : null;
         const isOverGoal = Boolean(ballAction?.payload && typeof ballAction.payload === 'object' && (ballAction.payload as any).over_goal) || doesAerialBallGoOverGoal(ballAction, bhStartX);
         if (!isOverGoal) {
@@ -8216,8 +8246,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       initial_ball_pos: initialBallPos,
       next_turn: {
         phase: (nextBallHolderParticipantId === null
-          ? 'attacking_support'
-          : (nextSetPieceType ? 'positioning_attack' : 'ball_holder')),
+          ? 'open_play'
+          : (nextSetPieceType ? 'positioning' : 'ball_holder')),
         possession_club_id: newPossessionClubId,
         ball_holder_participant_id: nextBallHolderParticipantId,
         set_piece_type: nextSetPieceType,
@@ -8306,7 +8336,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       await supabase.from('matches').update({
         current_turn_number: newTurnNumber,
-        current_phase: 'positioning_attack',
+        current_phase: 'positioning',
         possession_club_id: secondHalfPossession,
         home_score: homeScore, away_score: awayScore,
         current_half: 2,
@@ -8317,7 +8347,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       await supabase.from('match_turns').insert({
         match_id, turn_number: newTurnNumber,
-        phase: 'positioning_attack',
+        phase: 'positioning',
         possession_club_id: secondHalfPossession,
         ball_holder_participant_id: secondHalfKicker,
         started_at: halftimeStart, ends_at: halftimeEnd,
@@ -8813,7 +8843,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const isPenalty = nextSetPieceType === 'penalty';
       const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType);
       const usePositioning = hasDeadBallRestart;
-      const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
+      const nextPhase = isNextLooseBall ? 'open_play' : (usePositioning ? 'positioning' : 'ball_holder');
       const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
       const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
 
@@ -8946,11 +8976,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const nextPhaseStart = new Date().toISOString();
     const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
 
-    await supabase.from('matches').update({ current_phase: 'attacking_support' }).eq('id', match_id);
+    await supabase.from('matches').update({ current_phase: 'open_play' }).eq('id', match_id);
 
     await supabase.from('match_turns').insert({
       match_id, turn_number: activeTurn.turn_number,
-      phase: 'attacking_support',
+      phase: 'open_play',
       possession_club_id: possClubId,
       ball_holder_participant_id: null,
       started_at: nextPhaseStart, ends_at: nextPhaseEnd,
@@ -9063,14 +9093,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     });
 
     // ── Immediate resolution chaining ──
-    // When we just advanced from defending_response into resolution, run the
+    // When we just advanced from open_play into resolution, run the
     // resolution tick synchronously in the same HTTP round-trip. The
     // resolution phase's timer (RESOLUTION_PHASE_DURATION_MS) becomes a pure
     // animation window driven by the client's resolution_script consumer —
     // the server no longer waits for it to expire before computing the
     // outcome. Guarded so a recursion loop can't happen (resolution only
-    // chains from defending_response).
-    if (nextPhase === 'resolution' && activeTurn.phase === 'defending_response') {
+    // chains from open_play).
+    if (nextPhase === 'resolution' && activeTurn.phase === 'open_play') {
       mark('advance_persist');
       try {
         console.log(`[ENGINE] Chaining immediate resolution tick for match=${match_id.slice(0,8)} turn=${activeTurn.turn_number}`);
@@ -9460,6 +9490,13 @@ Deno.serve(async (req) => {
         } else if (phase === 'defending_response' || phase === 'positioning_defense') {
           // Defending team (opposite club)
           expectedHumans = humanParts.filter((p: any) => p.club_id !== possClubId);
+        } else if (phase === 'positioning') {
+          // Merged positioning: BOTH teams reposition simultaneously, BH excluded.
+          expectedHumans = humanParts.filter((p: any) => p.id !== bhPartId);
+        } else if (phase === 'open_play') {
+          // Merged open_play: BOTH teams act simultaneously. BH excluded — they
+          // already submitted their ball action in ball_holder phase.
+          expectedHumans = humanParts.filter((p: any) => p.id !== bhPartId);
         }
 
         if (expectedHumans.length > 0) {

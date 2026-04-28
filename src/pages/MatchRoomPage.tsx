@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { sounds } from '@/lib/sounds';
 import { useNavigate, useParams } from 'react-router-dom';
+import i18n from '@/i18n';
 import { supabase } from '@/integrations/supabase/client';
 import { getInitialMatchEngineFunction, invokeConfiguredMatchEngine } from '@/lib/matchEngine';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState, ResolutionScript } from './match/types';
-import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, GOAL_Y_MIN, GOAL_Y_MAX, SET_PIECE_EXCLUSION_RADIUS, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor } from './match/constants';
+import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, GOAL_Y_MIN, GOAL_Y_MAX, SET_PIECE_EXCLUSION_RADIUS, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor, isPositioningPhase, isOpenPlayPhase, attackersActInPhase, defendersActInPhase } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
@@ -276,7 +277,7 @@ export default function MatchRoomPage() {
   // might not have flushed yet in React state).
   const menuAutoOpenedRef = useRef<Set<string>>(new Set());
   const [isPhaseProcessing, setIsPhaseProcessing] = useState(false);
-  const [processingLabel, setProcessingLabel] = useState('Processando todos os movimientos...');
+  const [processingLabel, setProcessingLabel] = useState(() => i18n.t('match_room:status.processing'));
   // Server clock offset: serverTime ≈ Date.now() + serverClockOffset
   const serverClockOffsetRef = useRef(0);
   const serverNow = useCallback(() => Date.now() + serverClockOffsetRef.current, []);
@@ -1205,7 +1206,7 @@ export default function MatchRoomPage() {
 
     const isBallHolder = activeTurn?.ball_holder_participant_id === participantId;
     if (isBallHolder) {
-      if (activeTurn?.phase === 'attacking_support') {
+      if (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'open_play') {
         range *= 0.50; // BH move while passing/shooting
       } else if (activeTurn?.phase === 'ball_holder') {
         range *= 0.85; // BH conducting ball — 15% penalty
@@ -1360,7 +1361,7 @@ export default function MatchRoomPage() {
       if (timerBarRef.current) {
         const phase = activeTurnRef.current?.phase;
         const dur = phase === 'resolution' ? RESOLUTION_PHASE_DURATION
-          : (phase === 'positioning_attack' || phase === 'positioning_defense') ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
+          : isPositioningPhase(phase) ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
         const pct = dur > 0 ? (seconds / dur) * 100 : 0;
         timerBarRef.current.style.width = `${pct}%`;
         timerBarRef.current.style.background = seconds <= 2
@@ -1513,7 +1514,7 @@ export default function MatchRoomPage() {
     // Track if this turn follows a positioning turn (dead ball)
     if (activeTurn?.phase === 'ball_holder') {
       // prevTurnWasPositioningRef is already set from the previous phase
-    } else if (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense') {
+    } else if (isPositioningPhase(activeTurn?.phase)) {
       prevTurnWasPositioningRef.current = true;
       // Entering a positioning phase means the ball was dead (kick-off, goal kick,
       // throw-in, etc.). Zero ALL player inertia and ball inertia so the restart
@@ -1534,9 +1535,11 @@ export default function MatchRoomPage() {
     && !!match?.half_started_at
     && new Date(match.half_started_at).getTime() > Date.now();
   // A positioning turn is "active for the user" only when we're not mid-halftime.
-  const isPositioningTurn = !isHalftimeNow && (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense');
-  const isPositioningAttack = activeTurn?.phase === 'positioning_attack';
-  const isPositioningDefense = activeTurn?.phase === 'positioning_defense';
+  const isPositioningTurn = !isHalftimeNow && isPositioningPhase(activeTurn?.phase);
+  // In merged 'positioning' phase, both flags are true (simultaneous). Legacy
+  // sub-phases keep the original single-side semantics.
+  const isPositioningAttack = activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning';
+  const isPositioningDefense = activeTurn?.phase === 'positioning_defense' || activeTurn?.phase === 'positioning';
   // True only when the current positioning phase belongs to the viewer's team
   // (attack phase → user's team has possession; defense phase → user's team doesn't).
   // Used to scope the pulsing "act now" cue so the defending side doesn't flash during
@@ -1710,12 +1713,20 @@ export default function MatchRoomPage() {
     // Manager: opens for the currently selected participant (defaulting to the
     // ball holder carried over from phase 1) when that player's team is acting.
     {
-      const isAttackingPhase = activeTurn.phase === 'attacking_support';
-      const isDefendingPhase = activeTurn.phase === 'defending_response';
+      // In merged 'open_play', BOTH attacker and defender act simultaneously, so
+      // both flags are true. In legacy attacking_support/defending_response, only
+      // one side acts. The old `phaseIsAttacking` semantics (whose-side-acts)
+      // still applies for the auto-open gating below — see uses.
+      const isAttackingPhase = activeTurn.phase === 'attacking_support' || activeTurn.phase === 'open_play';
+      const isDefendingPhase = activeTurn.phase === 'defending_response' || activeTurn.phase === 'open_play';
       if (!isAttackingPhase && !isDefendingPhase) return;
 
       const possClubId = activeTurn.possession_club_id;
-      const phaseIsAttacking = isAttackingPhase;
+      // Legacy: in attacking_support only attackers act, in defending_response only defenders.
+      // Merged open_play: both sides act, so the "whose side" gate must pass for both.
+      const isMergedOpen = activeTurn.phase === 'open_play';
+      const phaseIsAttacking = activeTurn.phase === 'attacking_support';
+      const phaseIsDefending = activeTurn.phase === 'defending_response';
       // In loose-ball turns both teams act in BOTH phases (see the filter in
       // getActionsForParticipant). The regular attacking/defending phase gate
       // would skip the non-possession team's menu, so relax it when loose.
@@ -1724,9 +1735,10 @@ export default function MatchRoomPage() {
       let targetPid: string | null = null;
       if (myRole === 'player' && myParticipant?.id) {
         const isMyTeamAttacking = myClubId === possClubId;
-        const shouldActInThisPhase = isLooseBallTurn
+        // Merged 'open_play': both sides act, gate trivially passes. Legacy: only the side whose phase it is.
+        const shouldActInThisPhase = isLooseBallTurn || isMergedOpen
           || (phaseIsAttacking && isMyTeamAttacking)
-          || (!phaseIsAttacking && !isMyTeamAttacking);
+          || (phaseIsDefending && !isMyTeamAttacking);
         if (shouldActInThisPhase) targetPid = myParticipant.id;
       } else if (myRole === 'manager') {
         const parts = participantsRef.current;
@@ -1742,9 +1754,9 @@ export default function MatchRoomPage() {
         if (candidate && candidate.role_type === 'player') {
           const candidateIsAttacking = candidate.club_id === possClubId;
           const managerControlsCandidate = isTest || candidate.club_id === myClubId;
-          const candidateShouldAct = isLooseBallTurn
+          const candidateShouldAct = isLooseBallTurn || isMergedOpen
             || (phaseIsAttacking && candidateIsAttacking)
-            || (!phaseIsAttacking && !candidateIsAttacking);
+            || (phaseIsDefending && !candidateIsAttacking);
           if (managerControlsCandidate && candidateShouldAct) targetPid = candidate.id;
         }
       }
@@ -1768,7 +1780,7 @@ export default function MatchRoomPage() {
         );
         const bhHasPhase2Action = turnActions.some(a =>
           a.participant_id === targetPid
-          && a.turn_phase === 'attacking_support'
+          && (a.turn_phase === 'attacking_support' || a.turn_phase === 'open_play')
           && a.action_type !== 'receive'
         );
         if (bhHasPhase2Action) {
@@ -1949,10 +1961,10 @@ export default function MatchRoomPage() {
     setIsPhaseProcessing(true);
     setProcessingLabel(
       isPositioningTurn
-        ? 'Aguardando posicionamento...'
+        ? i18n.t('match_room:status.waiting_positioning')
         : activeTurn.phase === 'resolution'
-          ? 'Aguardando proximo turno...'
-          : 'Aguardando servidor...'
+          ? i18n.t('match_room:status.waiting_next_turn')
+          : i18n.t('match_room:status.waiting_server')
     );
   }, [activeTurn?.id, activeTurn?.phase, isPositioningTurn, match?.status, phaseTimeLeft]);
   useEffect(() => {
@@ -2814,7 +2826,7 @@ export default function MatchRoomPage() {
         const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
         let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
         // Apply ballSpeedFactor when there's an active ball trajectory (match ball preview limit)
-        if ((activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && ballTrajectoryAction?.action_type) {
+        if ((isOpenPlayPhase(activeTurn?.phase)) && ballTrajectoryAction?.action_type) {
           maxRange = applyBallSpeedFactor(maxRange, drawingAction.fromParticipantId, ballTrajectoryAction.action_type);
         }
         if (dist > maxRange) {
@@ -2930,7 +2942,7 @@ export default function MatchRoomPage() {
         // Positioning turn: directly start move drawing (skip action menu)
         if (isPositioningTurn) {
           if (isBH) return; // Ball holder can't reposition
-          if ((phase === 'positioning_attack' && isAttacking) || (phase === 'positioning_defense' && !isAttacking)) {
+          if ((phase === 'positioning_attack' && isAttacking) || (phase === 'positioning_defense' && !isAttacking) || phase === 'positioning') {
             setDrawingAction({ type: 'move', fromParticipantId: participantId });
             setShowActionMenu(null);
           }
@@ -2947,7 +2959,8 @@ export default function MatchRoomPage() {
         if (
           (phase === 'ball_holder' && isBH) ||
           (phase === 'attacking_support' && isAttacking) ||
-          (phase === 'defending_response' && !isAttacking)
+          (phase === 'defending_response' && !isAttacking) ||
+          phase === 'open_play'
         ) {
           // Auto-detect trajectory overlap before opening menu.
           tryAutoDetectIntercept(participantId);
@@ -3690,7 +3703,7 @@ export default function MatchRoomPage() {
     if (!animating || activeTurn?.phase !== 'resolution') {
       // During positioning, if this player has submitted a move, render them
       // directly at the target (no arrow/dot — the sprite itself moves).
-      if (activeTurn?.phase === 'positioning_attack' || activeTurn?.phase === 'positioning_defense') {
+      if (isPositioningPhase(activeTurn?.phase)) {
         const posMove = turnActions.find(a =>
           a.participant_id === p.id && a.action_type === 'move'
           && a.target_x != null && a.target_y != null
@@ -3970,19 +3983,26 @@ export default function MatchRoomPage() {
       ? [...headerOneTouchActions, ...footOneTouchActions]
       : footOneTouchActions;
 
-    // Positioning turn: move only, ball holder can't move
+    // Positioning turn: move only, ball holder can't move.
+    // Merged 'positioning' phase: both attackers and defenders can move (gated by role here);
+    // legacy positioning_attack/positioning_defense restrict to one side.
     if (isPositioningTurn) {
       if (isBH) return []; // Ball holder (kicker) can't reposition
       if (phase === 'positioning_attack' && isAttacking) return ['move'];
       if (phase === 'positioning_defense' && !isAttacking) return ['move'];
+      if (phase === 'positioning') return ['move'];
       return [];
     }
 
-    // Loose ball: skip phase 1, both teams move in phase 2/3
+    // Loose ball: skip phase 1, both teams move in phase 2/3.
+    // Merged 'open_play' folds attacking_support + defending_response.
     if (isLooseBall) {
       if (phase === 'ball_holder') return []; // Skipped
-      if (phase === 'attacking_support' && isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
-      if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
+      if ((phase === 'attacking_support' && isAttacking)
+        || (phase === 'defending_response' && !isAttacking)
+        || phase === 'open_play') {
+        return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
+      }
       return [];
     }
 
@@ -3996,15 +4016,15 @@ export default function MatchRoomPage() {
     if (phase === 'ball_holder' && isBH) return filterShots(['move', 'pass_low', 'pass_high', 'pass_launch', 'shoot_controlled', 'shoot_power']);
     // Ball holder in phase 2: can mini-move ONLY if they submitted a ball action
     // (pass/shoot/header) in phase 1. If they dribbled, no further action allowed.
-    if (phase === 'attacking_support' && isBH) {
+    if ((phase === 'attacking_support' || phase === 'open_play') && isBH) {
       const bhHasBallAction = turnActions.some(a =>
         a.participant_id === participantId &&
         (isPassAction(a.action_type) || isShootAction(a.action_type) || isHeaderAction(a.action_type))
       );
       return bhHasBallAction ? ['move', 'no_action'] : [];
     }
-    if (phase === 'attacking_support' && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
-    if (phase === 'defending_response' && !isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
+    if ((phase === 'attacking_support' || phase === 'open_play') && isAttacking && !isBH) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
+    if ((phase === 'defending_response' || phase === 'open_play') && !isAttacking) return hasReceivePrompt ? filterShots([...receiveActions, ...(canOneTouch ? oneTouchActions : []), 'move', 'no_action']) : ['no_action', 'move'];
     return [];
   };
 
@@ -4114,7 +4134,7 @@ export default function MatchRoomPage() {
           const dist = Math.sqrt(dx * dx + dy * dy);
           const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
           let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
-          if ((activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && ballTrajectoryAction?.action_type) {
+          if ((isOpenPlayPhase(activeTurn?.phase)) && ballTrajectoryAction?.action_type) {
             maxRange = applyBallSpeedFactor(maxRange, drawingAction.fromParticipantId, ballTrajectoryAction.action_type);
           }
           if (dist > maxRange) {
@@ -4621,7 +4641,7 @@ export default function MatchRoomPage() {
   const tryAutoDetectIntercept = (participantId: string) => {
     if (!activeTurn) return;
     const phase = activeTurn.phase;
-    if (phase !== 'attacking_support' && phase !== 'defending_response') return;
+    if (!isOpenPlayPhase(phase)) return;
 
     const bta = getBallTrajectoryAction();
     if (!bta || bta.target_x == null || bta.target_y == null) return;
@@ -4860,7 +4880,7 @@ export default function MatchRoomPage() {
 
               {/* ── Loose ball intercept zone (circle around loose ball) ── */}
               {isLooseBall && looseBallPos && !animating &&
-                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                (isOpenPlayPhase(activeTurn?.phase)) && (() => {
                 const ballSvg = toSVG(looseBallPos.x, looseBallPos.y);
                 const zoneR = (INTERCEPT_RADIUS / 100) * INNER_W * 1.15;
                 return (
@@ -4878,7 +4898,7 @@ export default function MatchRoomPage() {
               {isLooseBall && looseBallPos && ballInertiaDir && !animating &&
                 ballTrajectoryAction?.id === '__inertia__' &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                (isOpenPlayPhase(activeTurn?.phase)) && (() => {
                 const from = toSVG(looseBallPos.x, looseBallPos.y);
                 const to = toSVG(ballTrajectoryAction.target_x!, ballTrajectoryAction.target_y!);
                 return (
@@ -4930,7 +4950,7 @@ export default function MatchRoomPage() {
                 if (isPositioningTurn && action.action_type === 'move') return null;
 
                 // Hide positioning phase arrows once we've moved past positioning
-                if (!isPositioningTurn && (action.turn_phase === 'positioning_attack' || action.turn_phase === 'positioning_defense')) return null;
+                if (!isPositioningTurn && isPositioningPhase(action.turn_phase)) return null;
 
                 // Hide bot receive/block arrows that are clearly impossible
                 if (action.controlled_by_type === 'bot' && (action.action_type === 'receive' || action.action_type === 'block')) {
@@ -5200,7 +5220,7 @@ export default function MatchRoomPage() {
                     const mdy = toFieldY - drawingFrom.field_y;
                     const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
                     let arrowMaxRange = computeMaxMoveRange(drawingAction.fromParticipantId, mdist > 0.1 ? { x: mdx, y: mdy } : undefined);
-                    if ((activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && ballTrajectoryAction?.action_type) {
+                    if ((isOpenPlayPhase(activeTurn?.phase)) && ballTrajectoryAction?.action_type) {
                       arrowMaxRange = applyBallSpeedFactor(arrowMaxRange, drawingAction.fromParticipantId, ballTrajectoryAction.action_type);
                     }
                     if (mdist > arrowMaxRange) {
@@ -5383,7 +5403,7 @@ export default function MatchRoomPage() {
                 if (isMove && !isBHSelf && effectiveBallTrajectoryAction && effectiveHolder &&
                     effectiveHolder.field_x != null && effectiveHolder.field_y != null &&
                     effectiveBallTrajectoryAction.target_x != null && effectiveBallTrajectoryAction.target_y != null &&
-                    (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response')) {
+                    (isOpenPlayPhase(activeTurn?.phase))) {
                   const bfx = effectiveHolder.field_x!;
                   const bfy = effectiveHolder.field_y!;
                   const btx = effectiveBallTrajectoryAction.target_x!;
@@ -5556,7 +5576,7 @@ export default function MatchRoomPage() {
                 ballTrajectoryAction && ballTrajectoryHolder &&
                 ballTrajectoryHolder.field_x != null && ballTrajectoryHolder.field_y != null &&
                 ballTrajectoryAction.target_x != null && ballTrajectoryAction.target_y != null &&
-                (activeTurn?.phase === 'attacking_support' || activeTurn?.phase === 'defending_response') && (() => {
+                (isOpenPlayPhase(activeTurn?.phase)) && (() => {
                   const mdx = mouseFieldPct.x - drawingFrom.field_x!;
                   const mdy = mouseFieldPct.y - drawingFrom.field_y!;
                   const moveDist = getFieldMoveDist(mdx, mdy);
@@ -5983,13 +6003,13 @@ export default function MatchRoomPage() {
                 <p className="font-display text-lg text-white/80">
                   {(() => {
                     const scheduledDate = new Date(match.scheduled_at);
-                    if (isNaN(scheduledDate.getTime())) return 'Aguardando início...';
+                    if (isNaN(scheduledDate.getTime())) return i18n.t('match_room:status.waiting_kickoff');
                     const now = serverNow();
                     const countdownStart = scheduledDate.getTime();
                     const countdownEnd = countdownStart + PRE_MATCH_COUNTDOWN_MS;
-                    if (now < countdownStart) return `Começa: ${formatScheduledDate(match.scheduled_at)}`;
-                    if (now < countdownEnd) return `Preparar... ${preMatchCountdownLeft}s`;
-                    return 'Iniciando partida...';
+                    if (now < countdownStart) return i18n.t('match_room:pre_match.starts_at', { date: formatScheduledDate(match.scheduled_at), defaultValue: `Começa: ${formatScheduledDate(match.scheduled_at)}` });
+                    if (now < countdownEnd) return i18n.t('match_room:pre_match.get_ready', { seconds: preMatchCountdownLeft, defaultValue: `Preparar... ${preMatchCountdownLeft}s` });
+                    return i18n.t('match_room:pre_match.starting', { defaultValue: 'Iniciando partida...' });
                   })()}
                 </p>
               </div>

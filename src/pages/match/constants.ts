@@ -1,13 +1,61 @@
 // ─── Match Constants ──────────────────────────────────────────
 
-export const PHASE_LABELS: Record<string, string> = {
+import i18n from '@/i18n';
+
+const PHASE_FALLBACK_PT: Record<string, string> = {
   ball_holder: 'Portador', attacking_support: 'Ataque',
   defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
   processing: 'Pausa',
   positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
+  positioning: 'Posicionar', open_play: 'Jogada',
 };
 
-export const ACTION_LABELS: Record<string, string> = {
+// PHASE_LABELS resolves through i18next at access time so PT/EN follow the
+// active language. Existing callers using `PHASE_LABELS[key]` continue to
+// work transparently.
+export const PHASE_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_t, prop: string) {
+    if (typeof prop !== 'string') return undefined;
+    const v = i18n.t(`match_room:phases.${prop}`, { defaultValue: '' });
+    return v || PHASE_FALLBACK_PT[prop] || prop;
+  },
+});
+
+export function phaseShortLabel(phase: string): string {
+  const v = i18n.t(`match_room:phase_short.${phase}`, { defaultValue: '' });
+  return v || phase;
+}
+
+// ─── Phase helpers (handle both legacy lab phases and merged engine phases) ──
+// The lab engine still emits positioning_attack/positioning_defense/attacking_support/defending_response.
+// The new match-engine emits positioning/open_play (merged simultaneous phases).
+// All client logic must use these helpers so both engines render correctly.
+export const POSITIONING_PHASES = ['positioning_attack', 'positioning_defense', 'positioning'] as const;
+export const OPEN_PLAY_PHASES = ['attacking_support', 'defending_response', 'open_play'] as const;
+export const isPositioningPhase = (p?: string | null) => !!p && (POSITIONING_PHASES as readonly string[]).includes(p);
+export const isOpenPlayPhase = (p?: string | null) => !!p && (OPEN_PLAY_PHASES as readonly string[]).includes(p);
+// In legacy phases the team-acting is encoded in the phase name; in merged phases
+// both teams act so we derive from isAttacker. Helper unifies both worlds.
+export const phaseAllowsAttackerAction = (p?: string | null, isAttacker?: boolean) => {
+  if (p === 'positioning_attack' || p === 'attacking_support') return true;
+  if (p === 'positioning_defense' || p === 'defending_response') return false;
+  if (p === 'positioning' || p === 'open_play') return !!isAttacker;
+  return false;
+};
+export const phaseAllowsDefenderAction = (p?: string | null, isAttacker?: boolean) => {
+  if (p === 'positioning_defense' || p === 'defending_response') return true;
+  if (p === 'positioning_attack' || p === 'attacking_support') return false;
+  if (p === 'positioning' || p === 'open_play') return !isAttacker;
+  return false;
+};
+// Phase-only flags: do attackers act in this phase? do defenders act in this phase?
+// For merged phases both are true (simultaneous); for legacy phases only one side acts.
+export const attackersActInPhase = (p?: string | null) =>
+  p === 'positioning_attack' || p === 'attacking_support' || p === 'positioning' || p === 'open_play';
+export const defendersActInPhase = (p?: string | null) =>
+  p === 'positioning_defense' || p === 'defending_response' || p === 'positioning' || p === 'open_play';
+
+const ACTION_FALLBACK_PT: Record<string, string> = {
   move: 'MOVER', pass_low: 'PASSE RASTEIRO', pass_high: 'PASSE ALTO',
   pass_launch: 'LANÇAMENTO', shoot: 'CHUTAR',
   shoot_controlled: 'CHUTE CONTROLADO', shoot_power: 'CHUTE FORTE',
@@ -17,6 +65,14 @@ export const ACTION_LABELS: Record<string, string> = {
   block_lane: 'BLOQUEAR ROTA', block: 'BLOQUEAR', no_action: 'SEM AÇÃO', receive: 'DOMINAR BOLA',
   receive_hard: 'CARRINHO',
 };
+
+export const ACTION_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_t, prop: string) {
+    if (typeof prop !== 'string') return undefined;
+    const v = i18n.t(`match_room:actions.${prop}`, { defaultValue: '' });
+    return v || ACTION_FALLBACK_PT[prop] || prop;
+  },
+});
 
 export const PHASE_DURATION = 7;
 export const POSITIONING_PHASE_DURATION = 7;
@@ -57,9 +113,11 @@ export const PENALTY_SPOT_DIST_PCT = 13;
 export const ACTION_PHASE_ORDER: Record<string, number> = {
   positioning_attack: -2,
   positioning_defense: -1,
+  positioning: -1,
   ball_holder: 0,
   attacking_support: 1,
   defending_response: 2,
+  open_play: 2,
   resolution: 3,
 };
 

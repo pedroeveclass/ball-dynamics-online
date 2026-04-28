@@ -5,7 +5,8 @@ import { positionToPT } from '@/lib/positions';
 import { CountryFlag } from '@/components/CountryFlag';
 import { renderMatchEventTitle, renderMatchEventBody } from '@/lib/matchEventLabel';
 import type { ClubInfo, Participant, MatchTurn, EventLog, MatchData } from './types';
-import { HALF_DURATION_MS_CLIENT } from './constants';
+import { HALF_DURATION_MS_CLIENT, isPositioningPhase, phaseShortLabel } from './constants';
+import i18n from '@/i18n';
 
 // Resolves which participant an event should be attributed to. Returns the
 // participant row when we can find one (gives us jersey + club_id), and falls
@@ -79,20 +80,30 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
   isHalftime?: boolean;
   timerDisplayRef?: React.RefObject<HTMLSpanElement | null>; timerBarRef?: React.RefObject<HTMLDivElement | null>;
 }) {
-  const isPositioning = currentPhase === 'positioning_attack' || currentPhase === 'positioning_defense';
+  const isPositioning = isPositioningPhase(currentPhase);
+  const isMergedPositioning = currentPhase === 'positioning';
+  const isMergedOpenPlay = currentPhase === 'open_play';
   const isHalftime = isHalftimeProp ?? false;
 
   const phases = isPositioning
-    ? [
-        { key: 'positioning_attack', label: 'ATK', icon: '\u26BD' },
-        { key: 'positioning_defense', label: 'DEF', icon: '\uD83D\uDEE1\uFE0F' },
-      ]
-    : [
-        { key: 'ball_holder', label: 'Portador', icon: '\u26BD' },
-        { key: 'attacking_support', label: 'Ataque', icon: '\u2694\uFE0F' },
-        { key: 'defending_response', label: 'Defesa', icon: '\uD83D\uDEE1\uFE0F' },
-        { key: 'resolution', label: 'Motion', icon: '\u26A1' },
-      ];
+    ? (isMergedPositioning
+        ? [{ key: 'positioning', label: phaseShortLabel('positioning'), icon: '\uD83D\uDEE1\uFE0F' }]
+        : [
+            { key: 'positioning_attack', label: phaseShortLabel('positioning_attack'), icon: '\u26BD' },
+            { key: 'positioning_defense', label: phaseShortLabel('positioning_defense'), icon: '\uD83D\uDEE1\uFE0F' },
+          ])
+    : (isMergedOpenPlay
+        ? [
+            { key: 'ball_holder', label: phaseShortLabel('ball_holder'), icon: '\u26BD' },
+            { key: 'open_play', label: phaseShortLabel('open_play'), icon: '\u2694\uFE0F' },
+            { key: 'resolution', label: phaseShortLabel('resolution'), icon: '\u26A1' },
+          ]
+        : [
+            { key: 'ball_holder', label: phaseShortLabel('ball_holder'), icon: '\u26BD' },
+            { key: 'attacking_support', label: phaseShortLabel('attacking_support'), icon: '\u2694\uFE0F' },
+            { key: 'defending_response', label: phaseShortLabel('defending_response'), icon: '\uD83D\uDEE1\uFE0F' },
+            { key: 'resolution', label: phaseShortLabel('resolution'), icon: '\u26A1' },
+          ]);
   const currentIdx = phases.findIndex(p => p.key === currentPhase);
   const progress = phaseDuration > 0 ? (1 - timeLeft / phaseDuration) : 0;
 
@@ -100,7 +111,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
     <div className="flex flex-col gap-2">
       {isHalftime && (
         <div className="bg-warning/20 border border-warning/40 rounded px-3 py-1 text-center">
-          <span className="text-xs font-display font-bold text-warning">&#x23F8; INTERVALO</span>
+          <span className="text-xs font-display font-bold text-warning">{i18n.t('match_room:status.halftime')}</span>
         </div>
       )}
 
@@ -139,7 +150,7 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: possessionClub.primary_color }} />
             <span className="text-xs font-display font-semibold text-white/80">
-              {isLooseBall ? 'BOLA SOLTA' : possessionClub.short_name}
+              {isLooseBall ? i18n.t('match_room:status.loose_ball') : possessionClub.short_name}
             </span>
           </div>
         )}
