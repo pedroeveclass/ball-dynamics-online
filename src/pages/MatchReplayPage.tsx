@@ -950,7 +950,7 @@ export default function MatchReplayPage() {
     <ReplayLayout>
       <div
         ref={playerRootRef}
-        className={`flex flex-col gap-2 ${isFullscreen ? 'h-screen w-screen bg-background p-3 overflow-hidden' : 'h-full min-h-[600px]'}`}
+        className={`flex flex-col gap-2 overflow-hidden ${isFullscreen ? 'h-screen w-screen bg-background p-3' : 'h-full min-h-[600px]'}`}
       >
         {/* ── Field box (field area + collapsible side panel share the same gradient) ── */}
         <div className="flex-1 min-h-0 flex gap-2" style={{ background: 'linear-gradient(180deg, hsl(140,15%,14%) 0%, hsl(140,12%,10%) 100%)', borderRadius: 8, padding: 4 }}>
@@ -1099,7 +1099,7 @@ export default function MatchReplayPage() {
               Hidden on mobile — the legacy events list under the controls
               still serves small screens. */}
           {showSidePanel && (
-            <div className="w-60 shrink-0 hidden md:flex flex-col gap-2 min-h-0">
+            <div className="w-60 shrink-0 hidden md:flex flex-col gap-2 min-h-0 overflow-hidden">
               {/* Scoreboard card */}
               <div className="bg-black/55 backdrop-blur-sm border border-white/10 rounded-lg p-2.5 shadow-lg flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
@@ -1141,7 +1141,7 @@ export default function MatchReplayPage() {
               </div>
 
               {/* MatchFlow events list */}
-              <div className="flex-1 min-h-0 bg-black/45 backdrop-blur-sm border border-white/10 rounded-lg p-2 overflow-y-auto shadow-lg flex flex-col gap-1">
+              <div className="flex-1 h-0 min-h-0 bg-black/45 backdrop-blur-sm border border-white/10 rounded-lg p-2 overflow-y-auto shadow-lg flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">{t('events.title')}</span>
                 {eventLog.length === 0 && (
                   <span className="text-[10px] text-white/50">{t('events.empty_total')}</span>
