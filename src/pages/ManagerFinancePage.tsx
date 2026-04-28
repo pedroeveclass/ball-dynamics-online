@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, Building2, Users, Store, Handshake, Dumbbell, Loader2 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
+import { formatDate } from '@/lib/formatDate';
 
 const FACILITY_STATS: Record<string, Record<number, { revenue: number; cost: number }>> = {
   souvenir_shop: { 1: { revenue: 3000, cost: 500 }, 2: { revenue: 6000, cost: 1000 }, 3: { revenue: 12000, cost: 2000 }, 4: { revenue: 22000, cost: 4000 }, 5: { revenue: 40000, cost: 7000 } },
@@ -13,11 +16,11 @@ const FACILITY_STATS: Record<string, Record<number, { revenue: number; cost: num
   stadium: { 1: { revenue: 0, cost: 2000 }, 2: { revenue: 0, cost: 3500 }, 3: { revenue: 0, cost: 5500 }, 4: { revenue: 0, cost: 8000 }, 5: { revenue: 0, cost: 12000 }, 6: { revenue: 0, cost: 18000 }, 7: { revenue: 0, cost: 25000 }, 8: { revenue: 0, cost: 35000 }, 9: { revenue: 0, cost: 48000 }, 10: { revenue: 0, cost: 65000 } },
 };
 
-const FACILITY_LABELS: Record<string, { label: string; icon: typeof Store }> = {
-  souvenir_shop: { label: 'Loja de Souvenirs', icon: Store },
-  sponsorship: { label: 'Patrocínios', icon: Handshake },
-  training_center: { label: 'Centro de Treinamento', icon: Dumbbell },
-  stadium: { label: 'Estádio', icon: Building2 },
+const FACILITY_ICONS: Record<string, typeof Store> = {
+  souvenir_shop: Store,
+  sponsorship: Handshake,
+  training_center: Dumbbell,
+  stadium: Building2,
 };
 
 interface FacilityRow {
@@ -31,6 +34,8 @@ interface ContractRow {
 }
 
 export default function ManagerFinancePage() {
+  const { t } = useTranslation('manager_finance');
+  const { current: lang } = useAppLanguage();
   const { club } = useAuth();
   const [finance, setFinance] = useState<any>(null);
   const [facilities, setFacilities] = useState<FacilityRow[]>([]);
@@ -114,7 +119,7 @@ export default function ManagerFinancePage() {
     const stats = FACILITY_STATS[f.facility_type]?.[f.level] || { revenue: 0, cost: 0 };
     totalFacilityRevenue += stats.revenue;
     totalFacilityCost += stats.cost;
-    return { ...f, ...stats, ...FACILITY_LABELS[f.facility_type] };
+    return { ...f, ...stats, label: t(`facilities.${f.facility_type}`), icon: FACILITY_ICONS[f.facility_type] };
   });
 
   // Salaries
@@ -128,20 +133,20 @@ export default function ManagerFinancePage() {
   const balance = finance?.balance ?? 0;
 
   // Matchday is per game, estimate 1 game/week average
-  const matchdayWeekly = matchdayRevenue; // ~1 home game/week on average
+  const ticketPrefix = t('ticket_history.ticket_label_prefix');
 
   return (
     <ManagerLayout>
       <div className="space-y-6">
-        <h1 className="font-display text-2xl font-bold">Finanças</h1>
+        <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Top stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Saldo" value={formatBRL(balance)} icon={<Wallet className="h-5 w-5" />} />
-          <StatCard label="Receita/Semana" value={formatBRL(totalWeeklyRevenue)} icon={<TrendingUp className="h-5 w-5" />} />
-          <StatCard label="Despesas/Semana" value={formatBRL(totalWeeklyCost)} icon={<TrendingDown className="h-5 w-5" />} />
+          <StatCard label={t('stats.balance')} value={formatBRL(balance)} icon={<Wallet className="h-5 w-5" />} />
+          <StatCard label={t('stats.weekly_revenue')} value={formatBRL(totalWeeklyRevenue)} icon={<TrendingUp className="h-5 w-5" />} />
+          <StatCard label={t('stats.weekly_expenses')} value={formatBRL(totalWeeklyCost)} icon={<TrendingDown className="h-5 w-5" />} />
           <StatCard
-            label="Resultado/Semana"
+            label={t('stats.weekly_profit')}
             value={formatBRL(weeklyProfit)}
             icon={<DollarSign className="h-5 w-5" />}
           />
@@ -149,30 +154,30 @@ export default function ManagerFinancePage() {
 
         {/* Revenue breakdown */}
         <div className="stat-card">
-          <h2 className="font-display font-semibold text-sm mb-4 text-pitch">Receitas Semanais</h2>
+          <h2 className="font-display font-semibold text-sm mb-4 text-pitch">{t('revenue_section.title')}</h2>
           <div className="space-y-2 text-sm">
             {facilityBreakdown.filter(f => f.revenue > 0).map(f => {
               const Icon = f.icon;
               return (
                 <div key={f.facility_type} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
                     <span className="text-muted-foreground">{f.label}</span>
-                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Nv. {f.level}</span>
+                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t('level_short', { level: f.level })}</span>
                   </div>
                   <span className="font-display font-bold text-pitch">{formatBRL(f.revenue)}</span>
                 </div>
               );
             })}
             <div className="flex items-center justify-between py-1.5 border-t border-border">
-              <span className="text-muted-foreground font-semibold">Total Receita Facilities</span>
+              <span className="text-muted-foreground font-semibold">{t('revenue_section.total_facilities')}</span>
               <span className="font-display font-bold text-pitch">{formatBRL(totalFacilityRevenue)}</span>
             </div>
             {matchdayRevenue > 0 && (
               <div className="flex items-center justify-between py-1.5">
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Bilheteria (est. por jogo)</span>
+                  <span className="text-muted-foreground">{t('revenue_section.matchday')}</span>
                 </div>
                 <span className="font-display font-bold text-pitch">{formatBRL(matchdayRevenue)}</span>
               </div>
@@ -182,7 +187,7 @@ export default function ManagerFinancePage() {
 
         {/* Expense breakdown */}
         <div className="stat-card">
-          <h2 className="font-display font-semibold text-sm mb-4 text-destructive">Despesas Semanais</h2>
+          <h2 className="font-display font-semibold text-sm mb-4 text-destructive">{t('expense_section.title')}</h2>
           <div className="space-y-2 text-sm">
             {/* Facility costs */}
             {facilityBreakdown.map(f => {
@@ -190,9 +195,9 @@ export default function ManagerFinancePage() {
               return (
                 <div key={f.facility_type} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Manutenção {f.label}</span>
-                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Nv. {f.level}</span>
+                    {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+                    <span className="text-muted-foreground">{t('expense_section.facility_maintenance', { label: f.label })}</span>
+                    <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t('level_short', { level: f.level })}</span>
                   </div>
                   <span className="font-display font-bold text-destructive">-{formatBRL(f.cost)}</span>
                 </div>
@@ -200,7 +205,7 @@ export default function ManagerFinancePage() {
             })}
 
             <div className="flex items-center justify-between py-1.5 border-t border-border">
-              <span className="text-muted-foreground font-semibold">Total Manutenção</span>
+              <span className="text-muted-foreground font-semibold">{t('expense_section.total_maintenance')}</span>
               <span className="font-display font-bold text-destructive">-{formatBRL(totalFacilityCost)}</span>
             </div>
 
@@ -208,13 +213,13 @@ export default function ManagerFinancePage() {
             <div className="flex items-center justify-between py-1.5 border-t border-border">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Folha Salarial ({squadSize} jogadores)</span>
+                <span className="text-muted-foreground">{t('expense_section.salaries', { count: squadSize })}</span>
               </div>
               <span className="font-display font-bold text-destructive">-{formatBRL(totalSalaries)}</span>
             </div>
 
             <div className="flex items-center justify-between py-1.5 border-t border-border">
-              <span className="text-muted-foreground font-semibold">Total Despesas</span>
+              <span className="text-muted-foreground font-semibold">{t('expense_section.total_expenses')}</span>
               <span className="font-display font-bold text-destructive">-{formatBRL(totalWeeklyCost)}</span>
             </div>
           </div>
@@ -223,16 +228,16 @@ export default function ManagerFinancePage() {
         {/* Ticket revenue history */}
         {ticketHistory.length > 0 && (
           <div className="stat-card">
-            <h2 className="font-display font-semibold text-sm mb-4 text-amber-500">Receita de Bilheteria</h2>
+            <h2 className="font-display font-semibold text-sm mb-4 text-amber-500">{t('ticket_history.title')}</h2>
             <div className="space-y-2 text-sm max-h-[300px] overflow-y-auto">
-              {ticketHistory.map((t, i) => (
+              {ticketHistory.map((tk, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                   <div>
-                    <div className="font-medium">{t.home_club} {t.score} {t.away_club}</div>
-                    <div className="text-xs text-muted-foreground">{t.body}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className="font-medium">{tk.home_club} {tk.score} {tk.away_club}</div>
+                    <div className="text-xs text-muted-foreground">{tk.body}</div>
+                    <div className="text-xs text-muted-foreground">{formatDate(tk.created_at, lang, 'datetime_short')}</div>
                   </div>
-                  <span className="font-display font-bold text-amber-500 whitespace-nowrap ml-4">{t.title.replace('🎫 Bilheteria: ', '')}</span>
+                  <span className="font-display font-bold text-amber-500 whitespace-nowrap ml-4">{tk.title.replace('🎫 Bilheteria: ', '').replace(ticketPrefix, '')}</span>
                 </div>
               ))}
             </div>
@@ -241,25 +246,25 @@ export default function ManagerFinancePage() {
 
         {/* Weekly summary */}
         <div className={`stat-card border-2 ${weeklyProfit >= 0 ? 'border-pitch/30 bg-pitch/5' : 'border-destructive/30 bg-destructive/5'}`}>
-          <h2 className="font-display font-semibold text-sm mb-3">Resumo Semanal</h2>
+          <h2 className="font-display font-semibold text-sm mb-3">{t('summary.title')}</h2>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Receitas</span>
+              <span className="text-muted-foreground">{t('summary.revenues')}</span>
               <span className="font-display font-bold text-pitch">{formatBRL(totalWeeklyRevenue)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Despesas</span>
+              <span className="text-muted-foreground">{t('summary.expenses')}</span>
               <span className="font-display font-bold text-destructive">-{formatBRL(totalWeeklyCost)}</span>
             </div>
             <div className="flex justify-between border-t border-border pt-2">
-              <span className="font-semibold">Resultado</span>
+              <span className="font-semibold">{t('summary.result')}</span>
               <span className={`font-display text-lg font-bold ${weeklyProfit >= 0 ? 'text-pitch' : 'text-destructive'}`}>
                 {weeklyProfit >= 0 ? '+' : ''}{formatBRL(weeklyProfit)}
               </span>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">
-            * Não inclui receita de bilheteria, que varia por jogo. Estimativa por jogo em casa: {formatBRL(matchdayRevenue)}
+            {t('summary.footnote', { amount: formatBRL(matchdayRevenue) })}
           </p>
         </div>
       </div>

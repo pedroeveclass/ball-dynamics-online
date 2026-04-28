@@ -1,0 +1,27 @@
+{
+  "loading": "Carregando...",
+  "title": "Convidar para Amistoso",
+  "lineup_required": {
+    "title": "Escalação necessária",
+    "subtitle": "Defina uma escalação ativa antes de enviar convite."
+  },
+  "your_club_label": "Seu Clube (Casa)",
+  "opponent_label": "Adversário",
+  "opponent_placeholder": "Escolha o clube adversário",
+  "opponent_reputation": "Rep: {{reputation}}",
+  "no_clubs_found": "Nenhum clube encontrado.",
+  "datetime_label": "Data e Hora",
+  "message_label": "Mensagem (opcional)",
+  "message_placeholder": "Escreva uma mensagem para o adversário...",
+  "send_button": "ENVIAR CONVITE",
+  "sending": "Enviando...",
+  "notification": {
+    "title": "⚔️ Convite de Amistoso",
+    "body": "{{club}} quer jogar um amistoso contra você em {{date}}."
+  },
+  "toast": {
+    "no_manager": "Clube adversário não tem manager registrado.",
+    "sent": "Convite enviado! Aguarde o adversário aceitar.",
+    "send_error": "Erro ao enviar convite"
+  }
+}

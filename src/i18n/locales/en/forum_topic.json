@@ -1,0 +1,56 @@
+{
+  "title": "FID Forum",
+  "anonymous": "Anonymous",
+  "header": {
+    "forum_link": "Forum"
+  },
+  "loading": "Loading...",
+  "not_found": "Topic not found.",
+  "by": "by",
+  "share_title": "Share",
+  "menu": {
+    "edit": "Edit",
+    "unpin": "Unpin",
+    "pin": "Pin to top",
+    "lock": "Lock topic",
+    "unlock": "Reopen topic",
+    "delete_topic": "Delete topic",
+    "delete_comment": "Delete comment"
+  },
+  "comments": {
+    "section": "Comments ({{count}})",
+    "empty": "No comments yet.",
+    "edited": "(edited)",
+    "placeholder": "Write your comment...",
+    "submit": "Comment",
+    "submitting": "Sending...",
+    "comment_count": "{{count}} comments",
+    "login_prompt": "Log in to comment"
+  },
+  "locked_notice": "This topic is closed.",
+  "edit_dialog": {
+    "title": "Edit Topic",
+    "title_label": "Title",
+    "body_label": "Content",
+    "submit": "Save",
+    "submitting": "Saving..."
+  },
+  "confirm": {
+    "delete_topic": "Are you sure you want to delete this topic? This action cannot be undone.",
+    "delete_comment": "Delete this comment?"
+  },
+  "toast": {
+    "comment_empty": "Write a comment.",
+    "comment_error": "Error posting comment",
+    "comment_added": "Comment added!",
+    "share_copied": "Link copied!",
+    "validation_edit": "Title min 5 chars, content min 10 chars.",
+    "topic_updated": "Topic updated!",
+    "pinned": "Topic pinned!",
+    "unpinned": "Topic unpinned!",
+    "locked": "Topic locked!",
+    "unlocked": "Topic reopened!",
+    "topic_deleted": "Topic deleted!",
+    "comment_deleted": "Comment deleted!"
+  }
+}

@@ -17,7 +17,7 @@ import { User, Lock, Mail, Upload, Check, UserCircle, Globe } from 'lucide-react
 import { CountrySelect } from '@/components/CountrySelect';
 import { CountryFlag } from '@/components/CountryFlag';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { getCountry, getCountryName } from '@/lib/countries';
 
@@ -46,7 +46,7 @@ type OwnedChar = PlayerOwned | ManagerOwned;
 
 export default function AccountProfilePage() {
   const { user, profile } = useAuth();
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['account_profile', 'common']);
   const { current: lang } = useAppLanguage();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -76,9 +76,9 @@ export default function AccountProfilePage() {
       .eq('id', user.id);
     setCountrySaving(false);
     if (error) {
-      toast.error(t('feedback.error_generic'));
+      toast.error(t('common:feedback.error_generic'));
     } else {
-      toast.success(t('feedback.saved'));
+      toast.success(t('common:feedback.saved'));
     }
   };
 
@@ -174,19 +174,19 @@ export default function AccountProfilePage() {
 
   const handleChangePassword = async () => {
     if (!newPassword || newPassword.length < 6) {
-      toast.error('A senha deve ter pelo menos 6 caracteres.');
+      toast.error(t('toast.password_short'));
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast.error('As senhas não coincidem.');
+      toast.error(t('toast.password_mismatch'));
       return;
     }
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
-      toast.error(error.message || 'Erro ao alterar senha.');
+      toast.error(error.message || t('toast.password_error'));
     } else {
-      toast.success('Senha alterada com sucesso!');
+      toast.success(t('toast.password_ok'));
       setNewPassword('');
       setConfirmPassword('');
     }
@@ -203,11 +203,11 @@ export default function AccountProfilePage() {
       .update({ avatar_url: avatarUrl, avatar_char_ref: null } as any)
       .eq('id', user.id);
     if (error) {
-      toast.error('Erro ao salvar avatar.');
+      toast.error(t('toast.avatar_save_error'));
     } else {
       setSelectedAvatar(avatarUrl);
       setCharRef(null);
-      toast.success('Avatar atualizado!');
+      toast.success(t('toast.avatar_ok'));
       window.location.reload();
     }
     setAvatarSaving(false);
@@ -221,14 +221,14 @@ export default function AccountProfilePage() {
       .update({ avatar_char_ref: ref } as any)
       .eq('id', user.id);
     if (error) {
-      toast.error('Erro ao salvar avatar.');
+      toast.error(t('toast.avatar_save_error'));
     } else {
       // Invalidate in case the user had a different char cached.
       invalidateCharAvatar(charRef);
       invalidateCharAvatar(ref);
       setCharRef(ref);
       setPickerOpen(false);
-      toast.success('Avatar de personagem aplicado!');
+      toast.success(t('toast.char_avatar_ok'));
       window.location.reload();
     }
     setAvatarSaving(false);
@@ -242,11 +242,11 @@ export default function AccountProfilePage() {
       .update({ avatar_char_ref: null } as any)
       .eq('id', user.id);
     if (error) {
-      toast.error('Erro ao remover avatar de personagem.');
+      toast.error(t('toast.char_avatar_remove_error'));
     } else {
       invalidateCharAvatar(charRef);
       setCharRef(null);
-      toast.success('Avatar de personagem removido.');
+      toast.success(t('toast.char_avatar_removed'));
       window.location.reload();
     }
     setAvatarSaving(false);
@@ -260,18 +260,18 @@ export default function AccountProfilePage() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 2MB.');
+      toast.error(t('toast.image_too_big'));
       return;
     }
     const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
     const allowedExts = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Formato não suportado. Use PNG, JPG, WEBP ou GIF.');
+      toast.error(t('toast.image_format'));
       return;
     }
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!ext || !allowedExts.includes(ext)) {
-      toast.error('Extensão de arquivo inválida.');
+      toast.error(t('toast.image_extension'));
       return;
     }
     setAvatarSaving(true);
@@ -280,7 +280,7 @@ export default function AccountProfilePage() {
       .from('avatars')
       .upload(path, file, { upsert: true });
     if (uploadError) {
-      toast.error('Erro ao enviar imagem.');
+      toast.error(t('toast.upload_error'));
       setAvatarSaving(false);
       return;
     }
@@ -291,7 +291,7 @@ export default function AccountProfilePage() {
 
   const handleUseCharacterAvatar = () => {
     if (ownedChars.length === 0) {
-      toast.info('Você ainda não tem personagens. Crie um jogador ou treinador primeiro.');
+      toast.info(t('toast.no_chars_yet'));
       return;
     }
     if (ownedChars.length === 1) {
@@ -315,16 +315,16 @@ export default function AccountProfilePage() {
     <Layout>
       <div className="space-y-6 max-w-lg">
         <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          <User className="h-6 w-6 text-tactical" /> Perfil da Conta
+          <User className="h-6 w-6 text-tactical" /> {t('title')}
         </h1>
 
         {/* ── Localization (country + language) ── */}
         <div className="stat-card space-y-4">
           <h2 className="font-display font-semibold text-sm flex items-center gap-1">
-            <Globe className="h-4 w-4 text-tactical" /> {t('country.label')} & {t('language.label')}
+            <Globe className="h-4 w-4 text-tactical" /> {t('common:country.label')} & {t('common:language.label')}
           </h2>
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{t('country.label')}</Label>
+            <Label className="text-xs text-muted-foreground">{t('common:country.label')}</Label>
             <div className="flex items-center gap-2">
               {(() => {
                 const c = getCountry(countryCode);
@@ -337,10 +337,10 @@ export default function AccountProfilePage() {
               })()}
             </div>
             <CountrySelect value={countryCode} onChange={saveCountry} disabled={countrySaving} />
-            <p className="text-[11px] text-muted-foreground">{t('country.override_hint')}.</p>
+            <p className="text-[11px] text-muted-foreground">{t('common:country.override_hint')}.</p>
           </div>
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{t('language.label')}</Label>
+            <Label className="text-xs text-muted-foreground">{t('common:language.label')}</Label>
             <div><LanguageSwitcher /></div>
           </div>
         </div>
@@ -348,7 +348,7 @@ export default function AccountProfilePage() {
         {/* Avatar Section */}
         <div className="stat-card space-y-4">
           <h2 className="font-display font-semibold text-sm flex items-center gap-1">
-            Seu Avatar
+            {t('avatar.section')}
           </h2>
 
           <div className="flex items-center gap-4">
@@ -384,10 +384,15 @@ export default function AccountProfilePage() {
               <p className="text-sm font-display font-bold">{profile?.username}</p>
               {hasCharAvatar ? (
                 <p className="text-xs text-muted-foreground">
-                  Usando o visual de <strong className="text-foreground">{activeChar?.name ?? 'personagem'}</strong>
+                  <Trans
+                    t={t}
+                    i18nKey="avatar.using_char"
+                    values={{ name: activeChar?.name ?? t('avatar.using_char_fallback') }}
+                    components={[<strong key="0" className="text-foreground" />]}
+                  />
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">Escolha um ícone, envie uma imagem ou use um personagem seu</p>
+                <p className="text-xs text-muted-foreground">{t('avatar.pick_hint')}</p>
               )}
             </div>
           </div>
@@ -397,16 +402,16 @@ export default function AccountProfilePage() {
             <div className="flex items-center justify-between gap-2">
               <div className="space-y-0.5">
                 <p className="text-xs font-display font-semibold flex items-center gap-1">
-                  <UserCircle className="h-3.5 w-3.5 text-tactical" /> Usar Avatar de Personagem
+                  <UserCircle className="h-3.5 w-3.5 text-tactical" /> {t('avatar.use_character_title')}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   {charsLoading
-                    ? 'Carregando personagens...'
+                    ? t('avatar.loading_chars')
                     : ownedChars.length === 0
-                      ? 'Nenhum personagem encontrado.'
+                      ? t('avatar.no_chars')
                       : ownedChars.length === 1
-                        ? 'Um personagem encontrado — clique para aplicar.'
-                        : `${ownedChars.length} personagens disponíveis — escolha um.`}
+                        ? t('avatar.one_char')
+                        : t('avatar.many_chars', { count: ownedChars.length })}
                 </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -418,7 +423,7 @@ export default function AccountProfilePage() {
                     disabled={avatarSaving}
                     className="font-display text-xs"
                   >
-                    Remover
+                    {t('avatar.remove')}
                   </Button>
                 )}
                 <Button
@@ -429,7 +434,7 @@ export default function AccountProfilePage() {
                   className="font-display text-xs"
                 >
                   <UserCircle className="h-3 w-3 mr-1" />
-                  {hasCharAvatar ? 'Trocar Personagem' : 'Usar Personagem'}
+                  {hasCharAvatar ? t('avatar.swap') : t('avatar.use')}
                 </Button>
               </div>
             </div>
@@ -471,23 +476,23 @@ export default function AccountProfilePage() {
               className="font-display text-xs"
             >
               <Upload className="h-3 w-3 mr-1" />
-              {avatarSaving ? 'Enviando...' : 'Enviar Imagem'}
+              {avatarSaving ? t('avatar.uploading') : t('avatar.upload')}
             </Button>
-            <span className="text-[10px] text-muted-foreground">PNG, JPG ou WebP — máx 2MB</span>
+            <span className="text-[10px] text-muted-foreground">{t('avatar.upload_hint')}</span>
           </div>
         </div>
 
         <div className="stat-card space-y-4">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <User className="h-3 w-3" /> Nome de Usuário
+              <User className="h-3 w-3" /> {t('fields.username')}
             </Label>
             <Input value={profile?.username || ''} disabled className="bg-muted/30" />
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <Mail className="h-3 w-3" /> E-mail
+              <Mail className="h-3 w-3" /> {t('fields.email')}
             </Label>
             <Input value={user?.email || ''} disabled className="bg-muted/30" />
           </div>
@@ -495,24 +500,24 @@ export default function AccountProfilePage() {
 
         <div className="stat-card space-y-4">
           <h2 className="font-display font-semibold text-sm flex items-center gap-1">
-            <Lock className="h-4 w-4 text-tactical" /> Alterar Senha
+            <Lock className="h-4 w-4 text-tactical" /> {t('password.section')}
           </h2>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Nova Senha</Label>
+            <Label className="text-xs text-muted-foreground">{t('password.new')}</Label>
             <Input
               type="password"
-              placeholder="Mínimo 6 caracteres"
+              placeholder={t('password.new_placeholder')}
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Confirmar Nova Senha</Label>
+            <Label className="text-xs text-muted-foreground">{t('password.confirm')}</Label>
             <Input
               type="password"
-              placeholder="Repita a nova senha"
+              placeholder={t('password.confirm_placeholder')}
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
             />
@@ -523,7 +528,7 @@ export default function AccountProfilePage() {
             disabled={saving || !newPassword}
             className="w-full"
           >
-            {saving ? 'Salvando...' : 'Alterar Senha'}
+            {saving ? t('password.saving') : t('password.submit')}
           </Button>
         </div>
       </div>
@@ -533,10 +538,10 @@ export default function AccountProfilePage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2">
-              <UserCircle className="h-5 w-5 text-tactical" /> Escolha um Personagem
+              <UserCircle className="h-5 w-5 text-tactical" /> {t('char_picker.title')}
             </DialogTitle>
             <DialogDescription>
-              Seu avatar da conta será o visual do personagem selecionado. Mudanças de aparência ou de clube serão refletidas automaticamente.
+              {t('char_picker.description')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto py-2">
@@ -569,7 +574,7 @@ export default function AccountProfilePage() {
                   <div className="text-center">
                     <p className="text-xs font-display font-bold leading-tight">{c.name}</p>
                     <p className="text-[10px] text-muted-foreground capitalize">
-                      {c.kind === 'player' ? 'Jogador' : 'Treinador'}
+                      {c.kind === 'player' ? t('char_picker.kind_player') : t('char_picker.kind_manager')}
                     </p>
                   </div>
                   {isActive && <Check className="h-3 w-3 text-tactical" />}

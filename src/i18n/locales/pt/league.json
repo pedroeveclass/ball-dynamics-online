@@ -1,0 +1,89 @@
+{
+  "title_fallback": "Liga",
+  "season": "Temporada {{n}}",
+  "tabs": {
+    "standings": "Classificação",
+    "rounds": "Rodadas",
+    "stats": "Estatísticas",
+    "available": "Times"
+  },
+  "standings": {
+    "col": {
+      "rank": "#",
+      "club": "Clube",
+      "played": "P",
+      "won": "V",
+      "drawn": "E",
+      "lost": "D",
+      "goals_for": "GP",
+      "goals_against": "GC",
+      "goal_diff": "SG",
+      "points": "Pts"
+    },
+    "empty": "Nenhum dado de classificação disponível.",
+    "legend": {
+      "qualification": "Zona de classificação",
+      "relegation": "Zona de rebaixamento"
+    }
+  },
+  "rounds": {
+    "next_match_label": "Próximo Jogo — Rodada {{n}}",
+    "home": "Casa",
+    "away": "Fora",
+    "vs_opponent": "{{home_or_away}} — vs {{name}}",
+    "enter_match": "Entrar na Partida →",
+    "link_available_soon": "Link disponível 5 min antes do jogo",
+    "round_label": "Rodada {{n}}",
+    "round_label_short": "Rodada",
+    "watch_live": "AO VIVO — Assistir",
+    "view_result": "Ver Resultado",
+    "view_replay": "Ver Replay",
+    "enter": "Entrar",
+    "vs_label": "vs",
+    "no_matches": "Nenhuma partida nesta rodada.",
+    "no_rounds": "Nenhuma rodada disponível.",
+    "next_marker": " •"
+  },
+  "status": {
+    "scheduled": "Agendado",
+    "live": "Ao Vivo",
+    "finished": "Finalizado"
+  },
+  "stats": {
+    "no_data_title": "Dados disponíveis após próximos jogos",
+    "no_data_subtitle": "As estatísticas detalhadas serão exibidas conforme as partidas forem jogadas.",
+    "best_attack": "Melhor Ataque",
+    "best_attack_value": "{{n}} gols",
+    "best_defense": "Melhor Defesa",
+    "best_defense_value": "{{n}} gols sofridos",
+    "most_wins": "Mais Vitórias",
+    "most_wins_value": "{{n}} vitórias",
+    "top_scorers": "Artilharia",
+    "top_assists": "Assistências",
+    "col_player": "Jogador",
+    "col_goals": "Gols",
+    "col_assists": "Assist.",
+    "no_assists_yet": "Nenhuma assistência registrada ainda.",
+    "player_fallback": "Jogador"
+  },
+  "available": {
+    "assume_team": "Assumir Time",
+    "empty_title": "Nenhum time disponível no momento.",
+    "empty_subtitle": "Você será notificado quando houver vagas."
+  },
+  "customize": {
+    "title": "Personalizar Time",
+    "team_name": "Nome do Time",
+    "short_name": "Abreviação (3 letras)",
+    "primary_color": "Cor Principal",
+    "secondary_color": "Cor Secundária",
+    "city": "Cidade",
+    "stadium_name": "Nome do Estádio",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar"
+  },
+  "toast": {
+    "assumed_ok": "Time assumido com sucesso!",
+    "assume_error": "Erro ao assumir time"
+  }
+}

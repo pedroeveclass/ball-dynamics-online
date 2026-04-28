@@ -1,0 +1,111 @@
+{
+  "loading": "Carregando...",
+  "free_agent": {
+    "title": "Meu Clube",
+    "no_club_title": "Sem clube",
+    "no_club_body": "Você está sem clube. Aguarde propostas de contrato ou procure oportunidades.",
+    "see_offers": "Ver ofertas disponíveis"
+  },
+  "stats": {
+    "team_overall": "OVR do Time",
+    "team_overall_caption": "Média do titular",
+    "league": "Liga",
+    "league_position": "{{n}}º lugar",
+    "league_caption": "{{points}} pts • {{played}} jogos",
+    "league_no_data": "Sem dados",
+    "next_match": "Próximo Jogo",
+    "next_match_round": "R{{round}}",
+    "next_match_home": "Casa vs {{name}}",
+    "next_match_away": "Fora vs {{name}}",
+    "next_match_none": "Nenhum agendado",
+    "formation": "Formação",
+    "formation_count": "{{count}} jogadores",
+    "reputation": "Reputação"
+  },
+  "coach": {
+    "label": "{{type}} (+{{pct}}% treino)",
+    "manager": "Treinador"
+  },
+  "uniforms": {
+    "title": "Uniformes",
+    "home": "Casa",
+    "away": "Fora",
+    "empty": "Nenhum uniforme cadastrado."
+  },
+  "facilities": {
+    "title": "Instalações",
+    "level": "Nv. {{n}}",
+    "empty": "Nenhuma instalação.",
+    "tc_summary": "Centro de Treino Nv.{{level}} → +{{pct}}% treino"
+  },
+  "facility_labels": {
+    "souvenir_shop": "Souvenirs",
+    "sponsorship": "Patrocínios",
+    "training_center": "Centro de Treino",
+    "stadium": "Estádio"
+  },
+  "lineup": {
+    "title": "Escalação ({{formation}})",
+    "title_named": "Escalação — {{name}} ({{formation}})",
+    "edit_assistant": "Editar (assistente)",
+    "col_jersey": "#",
+    "col_position": "Posição",
+    "col_player": "Jogador",
+    "col_ovr": "OVR",
+    "vacant": "Vago",
+    "you": "(você)",
+    "bench": "Reservas"
+  },
+  "results": {
+    "title": "Últimos Resultados",
+    "vs": "vs",
+    "at": "@",
+    "opponent": "Adversário",
+    "empty": "Nenhum resultado ainda."
+  },
+  "roster": {
+    "title": "Elenco ({{count}})",
+    "humans_one": "{{count}} humano",
+    "humans_other": "{{count}} humanos",
+    "empty": "Nenhum jogador no elenco.",
+    "click_hint": "Clique em um jogador para abrir a ficha completa.",
+    "you": "(você)",
+    "human_label": "Humano",
+    "bot_label": "Bot"
+  },
+  "contract": {
+    "title": "Meu Contrato",
+    "weekly_salary": "Salário/Sem",
+    "release_clause": "Multa Rescisória",
+    "start": "Início",
+    "end": "Término"
+  },
+  "details": {
+    "title": "Ficha do Jogador",
+    "subtitle": "Perfil técnico e atributos do atleta selecionado.",
+    "loading": "Carregando ficha do jogador...",
+    "error_profile": "Não foi possível carregar a ficha deste jogador.",
+    "error_attrs": "Não foi possível carregar os atributos deste jogador.",
+    "no_attrs": "Este jogador ainda não possui atributos cadastrados.",
+    "age": "Idade",
+    "age_value": "{{count}} anos",
+    "foot": "Pé dominante",
+    "archetype": "Arquétipo",
+    "reputation": "Reputação",
+    "primary_position": "Posição principal",
+    "secondary_position": "Posição secundária",
+    "club": "Clube",
+    "summary_title": "Resumo de Atributos",
+    "physical": "Físico",
+    "technical": "Técnico",
+    "mental": "Mental",
+    "shooting": "Finalização",
+    "defending": "Defesa",
+    "goalkeeping": "Goleiro"
+  },
+  "foot": {
+    "right": "Direito",
+    "left": "Esquerdo",
+    "both": "Ambos"
+  }
+}

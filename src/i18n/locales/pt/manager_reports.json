@@ -1,0 +1,44 @@
+{
+  "no_club": "Você precisa gerenciar um clube para ver o relatório.",
+  "owner_only": {
+    "title": "Restrito ao técnico principal",
+    "subtitle": "O Relatório de Jogadores só pode ser acessado pelo técnico responsável do clube. Assistentes não têm acesso a essa área."
+  },
+  "header": {
+    "title": "Relatório de Jogadores",
+    "subtitle": "Atividade, treinos, compras e desempenho do elenco."
+  },
+  "periods": {
+    "days_7": "7 dias",
+    "days_30": "30 dias",
+    "days_90": "90 dias"
+  },
+  "summary": {
+    "trainings": "Treinos totais",
+    "matches": "Jogos disputados",
+    "purchases": "Compras na loja",
+    "inactive": "Inativos (5+ dias)"
+  },
+  "columns": {
+    "player": "Jogador",
+    "last_training": "Último treino",
+    "days_trained": "Dias trein.",
+    "attribute_gain": "Ganho atr.",
+    "matches": "Jogos",
+    "goals_assists": "G / A",
+    "purchases": "Compras",
+    "score": "Score",
+    "actions": "Ações"
+  },
+  "table": {
+    "loading": "Carregando...",
+    "empty": "Sem jogadores no elenco.",
+    "today": "hoje",
+    "days_short": "{{n}}d",
+    "ovr": "OVR {{value}}",
+    "notify": "Notificar"
+  },
+  "score_explainer": "Score = (dias treinados × 2) + (jogos disputados × 5) + (compras) • Tabela ordenada por score.",
+  "fallback_opponent": "Adversário",
+  "fallback_item": "Item"
+}

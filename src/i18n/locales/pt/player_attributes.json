@@ -1,0 +1,70 @@
+{
+  "loading": "Carregando atributos...",
+  "header": {
+    "title": "Atributos & Treino",
+    "subtitle": "{{name}} • OVR {{ovr}} • Energia {{cur}}/{{max}}",
+    "growth_rate": "Taxa de crescimento",
+    "history_button": "Histórico"
+  },
+  "intro": "Clique em qualquer atributo para treinar. Cada treino custa {{cost}} de energia. Atributos mais altos crescem mais devagar.",
+  "intro_evo": " Setas verdes indicam evolução na última semana.",
+  "bonus_card": {
+    "title": "Bônus de Treino",
+    "no_club": "Sem clube — sem bônus de treino",
+    "base_rate": "Taxa Base (idade):",
+    "coach_bonus": "Bônus Treinador ({{type}}):",
+    "coach_attrs": "Atributos: {{attrs}}",
+    "coach_all": "Aplica a todos os atributos",
+    "tc_bonus": "Bônus Centro de Treino (Nv.{{level}}):",
+    "private_trainer": "Bônus Treinador Particular (Nv.{{level}}):",
+    "combined_max": "Bônus combinado máximo:"
+  },
+  "history": {
+    "title": "Histórico de Treinos",
+    "empty": "Nenhum treino registrado ainda."
+  },
+  "categories": {
+    "physical": "Físico",
+    "technical": "Técnico",
+    "mental": "Mental",
+    "shooting": "Chute",
+    "goalkeeping": "Goleiro"
+  },
+  "popover": {
+    "train_attr": "Treinar {{attr}}",
+    "current_growth": "Atual: <1>{{value}}</1> → Ganho estimado: <3>~{{min}} - {{max}}</3>",
+    "type_cap": "Limite do seu tipo ({{archetype}} / {{height}}): <1>{{cap}}</1>",
+    "limited_by_position": "Limitado pela posição ({{pos}})",
+    "limited_by_position_title": "Limitado pela posição",
+    "energy_cost": "Custo: {{cost}} energia",
+    "at_cap": "⚠ Atributo no limite do seu tipo. Não evolui mais com treino.",
+    "tier_reduced": "Crescimento reduzido pelo nível do atributo ({{pct}}%)",
+    "tier_bonus": "Bônus de crescimento por atributo baixo ({{pct}}%)",
+    "age_reduced": "Crescimento reduzido pela idade ({{pct}}%)",
+    "coach_bonus_value": "Bônus Treinador {{type}}: +{{pct}}%",
+    "tc_bonus_value": "Bônus Centro de Treino (Nv.{{level}}): +{{pct}}%",
+    "private_bonus_value": "Bônus Treinador Particular (Nv.{{level}}): +{{pct}}%",
+    "no_club_no_bonus": "Sem clube — sem bônus de treino",
+    "btn_at_cap": "No limite",
+    "btn_training": "Treinando...",
+    "btn_confirm": "Confirmar Treino"
+  },
+  "match_warn": {
+    "title": "Hoje é dia de jogo!",
+    "vs_known": "Você tem partida contra <1>{{opponent}}</1>{{when}}.",
+    "vs_unknown": "Você tem uma partida marcada para hoje.",
+    "kickoff_at": " às {{time}}",
+    "energy_warning": " Treinar agora vai gastar <1>{{cost}}</1> de energia — você entrará em campo com <3>{{remaining}}</3>. Ainda quer treinar?",
+    "cancel": "Cancelar",
+    "confirm": "Treinar mesmo assim"
+  },
+  "toast": {
+    "energy_low": "Energia insuficiente para treinar.",
+    "error": "Erro ao treinar.",
+    "success": "{{label}} +{{growth}}! ({{tier}}){{suffix}}",
+    "fit_top": " — FIT TOP aplicado (+50% no ganho)",
+    "fit_good": " — FIT BOM aplicado (+20% no ganho)",
+    "fit_bad": " — FIT RUIM aplicado (−40% no ganho)",
+    "fit_terrible": " — FIT CONTRA aplicado (−70% no ganho)"
+  }
+}

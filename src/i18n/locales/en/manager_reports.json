@@ -1,0 +1,44 @@
+{
+  "no_club": "You need to manage a club to see the report.",
+  "owner_only": {
+    "title": "Head coach only",
+    "subtitle": "The Player Report is only available to the club's head coach. Assistant managers can't access this area."
+  },
+  "header": {
+    "title": "Player Report",
+    "subtitle": "Activity, training, purchases and squad performance."
+  },
+  "periods": {
+    "days_7": "7 days",
+    "days_30": "30 days",
+    "days_90": "90 days"
+  },
+  "summary": {
+    "trainings": "Total trainings",
+    "matches": "Matches played",
+    "purchases": "Store purchases",
+    "inactive": "Inactive (5+ days)"
+  },
+  "columns": {
+    "player": "Player",
+    "last_training": "Last training",
+    "days_trained": "Days trained",
+    "attribute_gain": "Attr. gain",
+    "matches": "Matches",
+    "goals_assists": "G / A",
+    "purchases": "Purchases",
+    "score": "Score",
+    "actions": "Actions"
+  },
+  "table": {
+    "loading": "Loading...",
+    "empty": "No players on the roster.",
+    "today": "today",
+    "days_short": "{{n}}d",
+    "ovr": "OVR {{value}}",
+    "notify": "Notify"
+  },
+  "score_explainer": "Score = (days trained × 2) + (matches played × 5) + (purchases) • Table sorted by score.",
+  "fallback_opponent": "Opponent",
+  "fallback_item": "Item"
+}

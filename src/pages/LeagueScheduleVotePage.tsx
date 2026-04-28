@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,21 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
-const DAYS = [
-  { value: 'monday', label: 'Segunda-feira' },
-  { value: 'tuesday', label: 'Terça-feira' },
-  { value: 'wednesday', label: 'Quarta-feira' },
-  { value: 'thursday', label: 'Quinta-feira' },
-  { value: 'friday', label: 'Sexta-feira' },
-  { value: 'saturday', label: 'Sábado' },
-  { value: 'sunday', label: 'Domingo' },
-];
+const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
 const TIMES = ['18:00', '19:00', '20:00', '21:00', '22:00'];
-
-function dayLabel(value: string) {
-  return DAYS.find(d => d.value === value)?.label || value;
-}
 
 interface VoteSummary {
   preferred_day_1: string;
@@ -34,6 +23,11 @@ interface VoteSummary {
 
 export default function LeagueScheduleVotePage() {
   const { managerProfile } = useAuth();
+  const { t } = useTranslation('league_vote');
+
+  function dayLabel(value: string) {
+    return DAY_KEYS.includes(value as typeof DAY_KEYS[number]) ? t(`days.${value}`) : value;
+  }
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -136,12 +130,12 @@ export default function LeagueScheduleVotePage() {
 
       if (error) throw error;
 
-      toast.success('Voto registrado! Sua preferência foi salva com sucesso.');
+      toast.success(t('toast.vote_ok'));
       // Refresh data
       await fetchData();
     } catch (err: any) {
       console.error('Error submitting vote:', err);
-      toast.error(`Erro: ${err.message || 'Não foi possível registrar o voto.'}`);
+      toast.error(t('toast.vote_error', { message: err.message || t('toast.vote_error_default') }));
     } finally {
       setSubmitting(false);
     }
@@ -161,9 +155,9 @@ export default function LeagueScheduleVotePage() {
     <ManagerLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold">Votação de Horários</h1>
+          <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Vote nos dias e horários preferidos para as partidas da liga.
+            {t('subtitle')}
           </p>
         </div>
 
@@ -172,13 +166,13 @@ export default function LeagueScheduleVotePage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Calendar className="h-4 w-4 text-tactical" />
-              Horário Atual
+              {t('current.title')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm">
-              Jogos: <span className="font-semibold">{dayLabel(currentSchedule.day1)}</span> e{' '}
-              <span className="font-semibold">{dayLabel(currentSchedule.day2)}</span> às{' '}
+              {t('current.matches')} <span className="font-semibold">{dayLabel(currentSchedule.day1)}</span> {t('current.and')}{' '}
+              <span className="font-semibold">{dayLabel(currentSchedule.day2)}</span> {t('current.at')}{' '}
               <span className="font-semibold">{currentSchedule.time}</span>
             </p>
           </CardContent>
@@ -189,48 +183,48 @@ export default function LeagueScheduleVotePage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Vote className="h-4 w-4 text-tactical" />
-              Seu Voto
+              {t('form.title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Dia 1</label>
+                <label className="text-sm font-medium">{t('form.day1')}</label>
                 <Select value={day1} onValueChange={setDay1}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
+                    <SelectValue placeholder={t('form.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {DAYS.map(d => (
-                      <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                    {DAY_KEYS.map(d => (
+                      <SelectItem key={d} value={d}>{t(`days.${d}`)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Dia 2</label>
+                <label className="text-sm font-medium">{t('form.day2')}</label>
                 <Select value={day2} onValueChange={setDay2}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
+                    <SelectValue placeholder={t('form.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {DAYS.map(d => (
-                      <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                    {DAY_KEYS.map(d => (
+                      <SelectItem key={d} value={d}>{t(`days.${d}`)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Horário</label>
+                <label className="text-sm font-medium">{t('form.time')}</label>
                 <Select value={time} onValueChange={setTime}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione..." />
+                    <SelectValue placeholder={t('form.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {TIMES.map(t => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    {TIMES.map(tm => (
+                      <SelectItem key={tm} value={tm}>{tm}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -247,7 +241,7 @@ export default function LeagueScheduleVotePage() {
               ) : (
                 <CheckCircle2 className="h-4 w-4 mr-2" />
               )}
-              Votar
+              {t('form.submit')}
             </Button>
           </CardContent>
         </Card>
@@ -257,36 +251,38 @@ export default function LeagueScheduleVotePage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="h-4 w-4 text-tactical" />
-              Resumo da Votação
+              {t('summary.title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Managers que votaram</span>
+              <span className="text-sm text-muted-foreground">{t('summary.managers_voted')}</span>
               <Badge variant="secondary">{totalVotes}</Badge>
             </div>
 
             {winningOption && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Opção mais votada</span>
+                <span className="text-sm text-muted-foreground">{t('summary.winning_option')}</span>
                 <span className="text-sm font-semibold">
-                  {dayLabel(winningOption.preferred_day_1)} e {dayLabel(winningOption.preferred_day_2)} às {winningOption.preferred_time}
-                  <Badge variant="outline" className="ml-2">{winningOption.count} voto{winningOption.count !== 1 ? 's' : ''}</Badge>
+                  {dayLabel(winningOption.preferred_day_1)} {t('summary.and')} {dayLabel(winningOption.preferred_day_2)} {t('summary.at')} {winningOption.preferred_time}
+                  <Badge variant="outline" className="ml-2">
+                    {winningOption.count === 1 ? t('summary.votes_one', { count: winningOption.count }) : t('summary.votes_other', { count: winningOption.count })}
+                  </Badge>
                 </span>
               </div>
             )}
 
             {myVote && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Seu voto atual</span>
+                <span className="text-sm text-muted-foreground">{t('summary.your_vote')}</span>
                 <span className="text-sm font-semibold">
-                  {dayLabel(myVote.preferred_day_1)} e {dayLabel(myVote.preferred_day_2)} às {myVote.preferred_time}
+                  {dayLabel(myVote.preferred_day_1)} {t('summary.and')} {dayLabel(myVote.preferred_day_2)} {t('summary.at')} {myVote.preferred_time}
                 </span>
               </div>
             )}
 
             {!myVote && (
-              <p className="text-sm text-muted-foreground italic">Você ainda não votou.</p>
+              <p className="text-sm text-muted-foreground italic">{t('summary.no_vote')}</p>
             )}
           </CardContent>
         </Card>

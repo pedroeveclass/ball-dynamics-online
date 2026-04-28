@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
 import { PositionBadge } from '@/components/PositionBadge';
@@ -13,10 +14,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
 import { ATTR_LABELS, ATTRIBUTE_CATEGORIES, COACH_TYPE_LABELS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS } from '@/lib/attributes';
-import { positionToPT, sortPlayersByPosition } from '@/lib/positions';
+import { positionLabel, sortPlayersByPosition } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
   Handshake, Building2, Swords, Brain, CircleDot, Loader2, Star,
@@ -26,7 +28,9 @@ import { LineupFieldView } from '@/components/LineupFieldView';
 import { ClubCrest } from '@/components/ClubCrest';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { seededAppearance } from '@/lib/avatar';
-import { formatBRL, formatDate } from '@/lib/formatting';
+import { formatBRL } from '@/lib/formatting';
+import { formatDate as formatDateI18n } from '@/lib/formatDate';
+import type { SupportedLanguage } from '@/i18n';
 import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 
 // ── Types ──
@@ -127,11 +131,11 @@ type PlayerProfileSummary = Pick<
 
 // ── Constants ──
 
-const FACILITY_LABELS: Record<string, { label: string; icon: typeof Store }> = {
-  souvenir_shop: { label: 'Souvenirs', icon: Store },
-  sponsorship: { label: 'Patrocínios', icon: Handshake },
-  training_center: { label: 'Centro de Treino', icon: Dumbbell },
-  stadium: { label: 'Estádio', icon: Building2 },
+const FACILITY_ICONS: Record<string, typeof Store> = {
+  souvenir_shop: Store,
+  sponsorship: Handshake,
+  training_center: Dumbbell,
+  stadium: Building2,
 };
 
 const COACH_ICONS: Record<string, typeof Shield> = {
@@ -150,19 +154,11 @@ const gkKeys = ATTRIBUTE_CATEGORIES['Goleiro'];
 
 // ── Helpers ──
 
-function formatDominantFoot(foot: string) {
-  if (foot === 'right') return 'Direito';
-  if (foot === 'left') return 'Esquerdo';
-  if (foot === 'both') return 'Ambos';
+function formatDominantFoot(foot: string, t: (k: string) => string) {
+  if (foot === 'right') return t('foot.right');
+  if (foot === 'left') return t('foot.left');
+  if (foot === 'both') return t('foot.both');
   return foot || '-';
-}
-
-
-function getCoachBonusLabel(coachType: string | null): string {
-  const ct = coachType || 'all_around';
-  const rate = COACH_BONUS_RATE[ct] || 0.10;
-  const label = COACH_TYPE_LABELS[ct] || 'Completo';
-  return `${label} (+${Math.round(rate * 100)}% treino)`;
 }
 
 // ── Sub-components ──
@@ -244,6 +240,8 @@ function JerseyPreview({ label, shirtColor, numberColor }: { label: string; shir
 
 export default function PlayerClubPage() {
   const { playerProfile, assistantClub } = useAuth();
+  const { t } = useTranslation('player_club');
+  const { current: lang } = useAppLanguage();
 
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [managerInfo, setManagerInfo] = useState<ManagerInfo | null>(null);
@@ -492,7 +490,7 @@ export default function PlayerClubPage() {
       if (!active) return;
 
       if (profileRes.error || !profileRes.data) {
-        setDetailsError('Nao foi possivel carregar a ficha deste jogador.');
+        setDetailsError(t('details.error_profile'));
         setLoadingDetails(false);
         return;
       }
@@ -500,9 +498,9 @@ export default function PlayerClubPage() {
       setSelectedPlayer(profileRes.data);
 
       if (attrsRes.error) {
-        setDetailsError('Nao foi possivel carregar os atributos deste jogador.');
+        setDetailsError(t('details.error_attrs'));
       } else if (!attrsRes.data) {
-        setDetailsError('Este jogador ainda nao possui atributos cadastrados.');
+        setDetailsError(t('details.no_attrs'));
       } else {
         setSelectedPlayerAttrs(attrsRes.data);
       }
@@ -520,7 +518,7 @@ export default function PlayerClubPage() {
   if (!playerProfile) {
     return (
       <AppLayout>
-        <p className="text-muted-foreground">Carregando...</p>
+        <p className="text-muted-foreground">{t('loading')}</p>
       </AppLayout>
     );
   }
@@ -540,15 +538,15 @@ export default function PlayerClubPage() {
     return (
       <AppLayout>
         <div className="max-w-2xl space-y-6">
-          <h1 className="font-display text-2xl font-bold">Meu Clube</h1>
+          <h1 className="font-display text-2xl font-bold">{t('free_agent.title')}</h1>
           <div className="stat-card py-12 text-center">
             <Shield className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-            <p className="font-display text-lg font-semibold">Sem clube</p>
+            <p className="font-display text-lg font-semibold">{t('free_agent.no_club_title')}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Voce esta sem clube. Aguarde propostas de contrato ou procure oportunidades.
+              {t('free_agent.no_club_body')}
             </p>
             <Link to="/player/offers" className="mt-4 inline-block text-sm font-semibold text-tactical hover:underline">
-              Ver ofertas disponíveis
+              {t('free_agent.see_offers')}
             </Link>
           </div>
         </div>
@@ -562,6 +560,13 @@ export default function PlayerClubPage() {
   const tcLevel = trainingCenter?.level || 0;
   const tcBonus = TRAINING_CENTER_BONUS[tcLevel] ?? 0;
   const isGK = selectedPlayer?.primary_position === 'GK';
+
+  const coachBonusLabel = (() => {
+    const ct = coachType || 'all_around';
+    const rate = COACH_BONUS_RATE[ct] || 0.10;
+    const label = COACH_TYPE_LABELS[ct] || 'Completo';
+    return t('coach.label', { type: label, pct: Math.round(rate * 100) });
+  })();
 
   // Team overall: average of the active lineup's starters (derived from
   // already-fetched lineup state). Falls back to null when no lineup yet.
@@ -596,7 +601,7 @@ export default function PlayerClubPage() {
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="text-xs">
                 <CoachIcon className="mr-1 h-3 w-3 text-tactical" />
-                {getCoachBonusLabel(coachType)}
+                {coachBonusLabel}
               </Badge>
             </div>
           </div>
@@ -607,60 +612,62 @@ export default function PlayerClubPage() {
           {/* Team Overall */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <Star className="h-3.5 w-3.5" /> OVR do Time
+              <Star className="h-3.5 w-3.5" /> {t('stats.team_overall')}
             </div>
             <p className="font-display text-3xl font-extrabold text-tactical leading-none">
               {teamOverall ?? '—'}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">Media do titular</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('stats.team_overall_caption')}</p>
           </div>
 
           {/* Liga Position */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <Trophy className="h-3.5 w-3.5" /> Liga
+              <Trophy className="h-3.5 w-3.5" /> {t('stats.league')}
             </div>
             <p className="font-display text-lg font-bold">
-              {standing ? `${standing.position}\u00BA lugar` : '\u2014'}
+              {standing ? t('stats.league_position', { n: standing.position }) : '\u2014'}
             </p>
             <p className="text-xs text-muted-foreground">
-              {standing ? `${standing.points} pts \u2022 ${standing.played} jogos` : 'Sem dados'}
+              {standing ? t('stats.league_caption', { points: standing.points, played: standing.played }) : t('stats.league_no_data')}
             </p>
           </div>
 
           {/* Next match (wider — more content) */}
           <div className="stat-card sm:col-span-2">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <Calendar className="h-3.5 w-3.5" /> Proximo Jogo
-              {nextMatch && <span className="text-[10px] text-muted-foreground/80">R{nextMatch.round_number}</span>}
+              <Calendar className="h-3.5 w-3.5" /> {t('stats.next_match')}
+              {nextMatch && <span className="text-[10px] text-muted-foreground/80">{t('stats.next_match_round', { round: nextMatch.round_number })}</span>}
             </div>
             {nextMatch ? (
               <>
                 <p className="truncate font-display text-sm font-bold">
-                  {nextMatch.is_home ? 'Casa' : 'Fora'} vs {nextMatch.opponent_name}
+                  {nextMatch.is_home
+                    ? t('stats.next_match_home', { name: nextMatch.opponent_name })
+                    : t('stats.next_match_away', { name: nextMatch.opponent_name })}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatBRTDateTime(nextMatch.scheduled_at)}
                 </p>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">Nenhum agendado</p>
+              <p className="text-xs text-muted-foreground">{t('stats.next_match_none')}</p>
             )}
           </div>
 
           {/* Formation */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <Users className="h-3.5 w-3.5" /> Formacao
+              <Users className="h-3.5 w-3.5" /> {t('stats.formation')}
             </div>
             <p className="font-display text-lg font-bold">{formation}</p>
-            <p className="text-xs text-muted-foreground">{teammates.length} jogadores</p>
+            <p className="text-xs text-muted-foreground">{t('stats.formation_count', { count: teammates.length })}</p>
           </div>
 
           {/* Reputation */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <Star className="h-3.5 w-3.5" /> Reputacao
+              <Star className="h-3.5 w-3.5" /> {t('stats.reputation')}
             </div>
             <p className="font-display text-lg font-bold">{clubInfo.reputation}/100</p>
           </div>
@@ -683,7 +690,7 @@ export default function PlayerClubPage() {
                     outfit="coach"
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5">Treinador</p>
+                <p className="text-[10px] text-muted-foreground mt-1.5">{t('coach.manager')}</p>
                 <p className="text-xs font-semibold max-w-[120px] truncate">{managerInfo.full_name}</p>
               </>
             ) : (
@@ -701,40 +708,39 @@ export default function PlayerClubPage() {
           <div className="stat-card space-y-3">
             <div className="flex items-center gap-2">
               <Shirt className="h-4 w-4 text-tactical" />
-              <h3 className="font-display text-sm font-semibold">Uniformes</h3>
+              <h3 className="font-display text-sm font-semibold">{t('uniforms.title')}</h3>
             </div>
             {uniforms.length > 0 ? (
               <div className="flex items-center justify-center gap-8">
                 {uniforms.map((u) => (
                   <JerseyPreview
                     key={u.uniform_number}
-                    label={u.uniform_number === 1 ? 'Casa' : 'Fora'}
+                    label={u.uniform_number === 1 ? t('uniforms.home') : t('uniforms.away')}
                     shirtColor={u.shirt_color}
                     numberColor={u.number_color}
                   />
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-center text-xs text-muted-foreground">Nenhum uniforme cadastrado.</p>
+              <p className="py-4 text-center text-xs text-muted-foreground">{t('uniforms.empty')}</p>
             )}
           </div>
 
           {/* Facilities */}
           <div className="stat-card space-y-3">
-            <h3 className="font-display text-sm font-semibold">Facilities</h3>
+            <h3 className="font-display text-sm font-semibold">{t('facilities.title')}</h3>
             <div className="space-y-2.5">
               {facilities.map((f) => {
-                const info = FACILITY_LABELS[f.facility_type];
-                if (!info) return null;
-                const Icon = info.icon;
+                const Icon = FACILITY_ICONS[f.facility_type];
+                if (!Icon) return null;
                 const maxLevel = f.facility_type === 'stadium' ? 10 : 5;
                 return (
                   <div key={f.facility_type} className="flex items-center gap-2.5">
                     <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
                       <div className="mb-0.5 flex justify-between text-xs">
-                        <span className="text-muted-foreground">{info.label}</span>
-                        <span className="font-display font-bold">Nv. {f.level}</span>
+                        <span className="text-muted-foreground">{t(`facility_labels.${f.facility_type}` as any)}</span>
+                        <span className="font-display font-bold">{t('facilities.level', { n: f.level })}</span>
                       </div>
                       <Progress value={(f.level / maxLevel) * 100} className="h-1.5" />
                     </div>
@@ -742,13 +748,13 @@ export default function PlayerClubPage() {
                 );
               })}
               {facilities.length === 0 && (
-                <p className="text-xs text-muted-foreground">Nenhuma facility.</p>
+                <p className="text-xs text-muted-foreground">{t('facilities.empty')}</p>
               )}
             </div>
             {tcLevel > 0 && (
               <p className="rounded-md bg-blue-500/10 px-3 py-1.5 text-xs text-blue-400">
                 <Dumbbell className="mr-1 inline h-3 w-3" />
-                Centro de Treino Nv.{tcLevel} &rarr; +{Math.round(tcBonus * 100)}% treino
+                {t('facilities.tc_summary', { level: tcLevel, pct: Math.round(tcBonus * 100) })}
               </p>
             )}
           </div>
@@ -759,14 +765,16 @@ export default function PlayerClubPage() {
           <div className="stat-card space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-display text-sm font-semibold">
-                Escalação {lineup.name && `\u2014 ${lineup.name}`} ({lineup.formation})
+                {lineup.name
+                  ? t('lineup.title_named', { name: lineup.name, formation: lineup.formation })
+                  : t('lineup.title', { formation: lineup.formation })}
               </h3>
               {assistantClub?.id === clubInfo?.id && (
                 <Link
                   to="/manager/lineup"
                   className="inline-flex items-center gap-1 text-xs font-display font-semibold text-tactical hover:underline"
                 >
-                  <Pencil className="h-3 w-3" /> Editar (assistente)
+                  <Pencil className="h-3 w-3" /> {t('lineup.edit_assistant')}
                 </Link>
               )}
             </div>
@@ -781,10 +789,10 @@ export default function PlayerClubPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/40 text-xs text-muted-foreground">
-                    <th className="py-1.5 text-left">#</th>
-                    <th className="py-1.5 text-left">Posição</th>
-                    <th className="py-1.5 text-left">Jogador</th>
-                    <th className="py-1.5 text-right">OVR</th>
+                    <th className="py-1.5 text-left">{t('lineup.col_jersey')}</th>
+                    <th className="py-1.5 text-left">{t('lineup.col_position')}</th>
+                    <th className="py-1.5 text-left">{t('lineup.col_player')}</th>
+                    <th className="py-1.5 text-right">{t('lineup.col_ovr')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -798,9 +806,9 @@ export default function PlayerClubPage() {
                           <PositionBadge position={slot.slot_position} />
                         </td>
                         <td className="py-1.5 font-display font-semibold">
-                          {slot.player?.full_name || 'Vago'}
+                          {slot.player?.full_name || t('lineup.vacant')}
                           {slot.player?.id === playerProfile.id && (
-                            <span className="ml-1 text-xs text-tactical">(você)</span>
+                            <span className="ml-1 text-xs text-tactical">{t('lineup.you')}</span>
                           )}
                         </td>
                         <td className="py-1.5 text-right font-display font-bold text-tactical">
@@ -813,13 +821,13 @@ export default function PlayerClubPage() {
             </div>
             {lineup.slots.filter((s) => s.role_type === 'bench').length > 0 && (
               <div>
-                <p className="mb-1 text-xs font-semibold text-muted-foreground">Reservas</p>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">{t('lineup.bench')}</p>
                 <div className="flex flex-wrap gap-2">
                   {lineup.slots
                     .filter((s) => s.role_type === 'bench')
                     .map((slot, idx) => (
                       <Badge key={idx} variant="outline" className="text-xs">
-                        {positionToPT(slot.player?.primary_position || slot.slot_position)} • {slot.player?.full_name || 'Vago'} {slot.player ? `(${slot.player.overall})` : ''}
+                        {positionLabel(slot.player?.primary_position || slot.slot_position, 'long')} • {slot.player?.full_name || t('lineup.vacant')} {slot.player ? `(${slot.player.overall})` : ''}
                       </Badge>
                     ))}
                 </div>
@@ -830,7 +838,7 @@ export default function PlayerClubPage() {
 
         {/* ── Recent Results ── */}
         <div className="stat-card space-y-3">
-          <h3 className="font-display text-sm font-semibold">Ultimos Resultados</h3>
+          <h3 className="font-display text-sm font-semibold">{t('results.title')}</h3>
           {recentResults.length > 0 ? (
             <div className="space-y-1.5">
               {recentResults.map((r) => (
@@ -856,10 +864,10 @@ export default function PlayerClubPage() {
                     />
                   )}
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {r.isHome ? 'vs' : '@'}
+                    {r.isHome ? t('results.vs') : t('results.at')}
                   </span>
                   <span className="text-xs font-medium truncate group-hover:text-tactical transition-colors">
-                    {r.opponent?.name || 'Adversario'}
+                    {r.opponent?.name || t('results.opponent')}
                   </span>
                   <span className="ml-auto text-xs font-display font-bold tabular-nums shrink-0">
                     {r.myScore}–{r.oppScore}
@@ -868,7 +876,7 @@ export default function PlayerClubPage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Nenhum resultado ainda.</p>
+            <p className="text-xs text-muted-foreground">{t('results.empty')}</p>
           )}
         </div>
 
@@ -876,20 +884,23 @@ export default function PlayerClubPage() {
         <div className="stat-card">
           <div className="mb-4 flex items-center gap-2">
             <Users className="h-4 w-4 text-tactical" />
-            <span className="font-display text-sm font-semibold">Elenco ({teammates.length})</span>
-            {teammates.filter(t => t.user_id).length > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-pitch">
-                <User className="h-3 w-3" />
-                {teammates.filter(t => t.user_id).length} humano{teammates.filter(t => t.user_id).length > 1 ? 's' : ''}
-              </span>
-            )}
+            <span className="font-display text-sm font-semibold">{t('roster.title', { count: teammates.length })}</span>
+            {teammates.filter(tm => tm.user_id).length > 0 && (() => {
+              const humanCount = teammates.filter(tm => tm.user_id).length;
+              return (
+                <span className="inline-flex items-center gap-1 text-xs text-pitch">
+                  <User className="h-3 w-3" />
+                  {t(humanCount === 1 ? 'roster.humans_one' : 'roster.humans_other', { count: humanCount })}
+                </span>
+              );
+            })()}
           </div>
 
           {teammates.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Nenhum jogador no elenco.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">{t('roster.empty')}</p>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Clique em um jogador para abrir a ficha completa.</p>
+              <p className="text-xs text-muted-foreground">{t('roster.click_hint')}</p>
               <div className="space-y-2">
                 {teammates.map((teammate) => (
                   <button
@@ -914,12 +925,12 @@ export default function PlayerClubPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-display font-bold text-foreground flex items-center gap-1.5">
                           {teammate.user_id ? (
-                            <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label="Humano" />
+                            <User className="h-3.5 w-3.5 text-pitch shrink-0" aria-label={t('roster.human_label')} />
                           ) : (
-                            <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label="Bot" />
+                            <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label={t('roster.bot_label')} />
                           )}
                           <span className="truncate">{teammate.full_name}</span>
-                          {teammate.id === playerProfile.id && <span className="ml-1 text-xs text-tactical">(voce)</span>}
+                          {teammate.id === playerProfile.id && <span className="ml-1 text-xs text-tactical">{t('roster.you')}</span>}
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <PositionBadge position={teammate.primary_position} />
@@ -939,24 +950,24 @@ export default function PlayerClubPage() {
           <div className="stat-card">
             <div className="mb-4 flex items-center gap-2">
               <FileText className="h-4 w-4 text-tactical" />
-              <span className="font-display text-sm font-semibold">Meu Contrato</span>
+              <span className="font-display text-sm font-semibold">{t('contract.title')}</span>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
               <div>
-                <span className="text-xs text-muted-foreground">Salario/Sem</span>
+                <span className="text-xs text-muted-foreground">{t('contract.weekly_salary')}</span>
                 <p className="font-display font-bold">{formatBRL(contract.weekly_salary)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Multa Rescisoria</span>
+                <span className="text-xs text-muted-foreground">{t('contract.release_clause')}</span>
                 <p className="font-display font-bold">{formatBRL(contract.release_clause)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Inicio</span>
-                <p className="font-display font-bold">{formatDate(contract.start_date)}</p>
+                <span className="text-xs text-muted-foreground">{t('contract.start')}</span>
+                <p className="font-display font-bold">{contract.start_date ? formatDateI18n(new Date(contract.start_date + 'T00:00:00'), lang, 'date_short') : '-'}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Termino</span>
-                <p className="font-display font-bold">{formatDate(contract.end_date)}</p>
+                <span className="text-xs text-muted-foreground">{t('contract.end')}</span>
+                <p className="font-display font-bold">{contract.end_date ? formatDateI18n(new Date(contract.end_date + 'T00:00:00'), lang, 'date_short') : '-'}</p>
               </div>
             </div>
           </div>
@@ -972,15 +983,15 @@ export default function PlayerClubPage() {
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-xl">Ficha do Jogador</DialogTitle>
+            <DialogTitle className="font-display text-xl">{t('details.title')}</DialogTitle>
             <DialogDescription>
-              Perfil tecnico e atributos do atleta selecionado.
+              {t('details.subtitle')}
             </DialogDescription>
           </DialogHeader>
 
           {loadingDetails ? (
             <div className="stat-card py-10 text-center text-sm text-muted-foreground">
-              Carregando ficha do jogador...
+              {t('details.loading')}
             </div>
           ) : detailsError ? (
             <div className="stat-card py-10 text-center text-sm text-muted-foreground">
@@ -1014,27 +1025,27 @@ export default function PlayerClubPage() {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <DetailItem label="Idade" value={`${selectedPlayer.age} anos`} />
-                  <DetailItem label="Pe dominante" value={formatDominantFoot(selectedPlayer.dominant_foot)} />
-                  <DetailItem label="Arquetipo" value={selectedPlayer.archetype} />
-                  <DetailItem label="Reputacao" value={selectedPlayer.reputation.toString()} />
-                  <DetailItem label="Posicao principal" value={positionToPT(selectedPlayer.primary_position)} />
-                  <DetailItem label="Posicao secundaria" value={selectedPlayer.secondary_position ? positionToPT(selectedPlayer.secondary_position) : '-'} />
-                  <DetailItem label="Clube" value={clubInfo.name} />
+                  <DetailItem label={t('details.age')} value={t('details.age_value', { count: selectedPlayer.age })} />
+                  <DetailItem label={t('details.foot')} value={formatDominantFoot(selectedPlayer.dominant_foot, t)} />
+                  <DetailItem label={t('details.archetype')} value={selectedPlayer.archetype} />
+                  <DetailItem label={t('details.reputation')} value={selectedPlayer.reputation.toString()} />
+                  <DetailItem label={t('details.primary_position')} value={positionLabel(selectedPlayer.primary_position, 'long')} />
+                  <DetailItem label={t('details.secondary_position')} value={selectedPlayer.secondary_position ? positionLabel(selectedPlayer.secondary_position, 'long') : '-'} />
+                  <DetailItem label={t('details.club')} value={clubInfo.name} />
                 </div>
               </div>
 
               {selectedPlayerAttrs ? (
                 <div className="stat-card space-y-3">
-                  <h3 className="font-display text-sm font-bold">Resumo de Atributos</h3>
+                  <h3 className="font-display text-sm font-bold">{t('details.summary_title')}</h3>
                   <div className="space-y-2.5">
-                    <AttrSummaryRow title="Físico" icon={<Dumbbell className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_PHYSICAL} attrs={selectedPlayerAttrs} />
-                    <AttrSummaryRow title="Técnico" icon={<Footprints className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_TECHNICAL} attrs={selectedPlayerAttrs} />
-                    <AttrSummaryRow title="Mental" icon={<Brain className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_MENTAL} attrs={selectedPlayerAttrs} />
-                    <AttrSummaryRow title="Finalização" icon={<Crosshair className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_SHOOTING} attrs={selectedPlayerAttrs} />
-                    <AttrSummaryRow title="Defesa" icon={<ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_DEFENDING} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title={t('details.physical')} icon={<Dumbbell className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_PHYSICAL} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title={t('details.technical')} icon={<Footprints className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_TECHNICAL} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title={t('details.mental')} icon={<Brain className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_MENTAL} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title={t('details.shooting')} icon={<Crosshair className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_SHOOTING} attrs={selectedPlayerAttrs} />
+                    <AttrSummaryRow title={t('details.defending')} icon={<ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_DEFENDING} attrs={selectedPlayerAttrs} />
                     {isGK && (
-                      <AttrSummaryRow title="Goleiro" icon={<Shield className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_GK} attrs={selectedPlayerAttrs} />
+                      <AttrSummaryRow title={t('details.goalkeeping')} icon={<Shield className="h-3.5 w-3.5 text-muted-foreground" />} keys={SUMMARY_GK} attrs={selectedPlayerAttrs} />
                     )}
                   </div>
                 </div>

@@ -1,0 +1,124 @@
+{
+  "title": "Lineup",
+  "loading": "Loading lineup...",
+  "subtitle": "{{starters}}/{{maxStarters}} starters • {{bench}}/{{maxBench}} bench",
+  "tactics_button": "Tactics — Situational Play",
+  "save_button": "Save",
+  "saving": "Saving...",
+  "empty_squad": {
+    "title": "No players in your squad",
+    "hint": "Sign players from the Market before setting up your lineup."
+  },
+  "empty_slots_warning_one": "{{count}} empty position: {{labels}}",
+  "empty_slots_warning_other": "{{count}} empty positions: {{labels}}",
+  "field": {
+    "captain_label": "Captain",
+    "out_of_position": "{{name}} out of position: {{positions}} fielded at {{slot}} (−{{penalty}}% on attributes). Effective OVR: {{ovr}}"
+  },
+  "bench": {
+    "title": "Bench ({{current}}/{{max}})",
+    "add": "Add",
+    "empty": "No players on the bench",
+    "human_label": "Human",
+    "bot_label": "Bot"
+  },
+  "available": {
+    "title": "Available ({{count}})",
+    "all_assigned": "All players assigned",
+    "human_label": "Human",
+    "bot_label": "Bot"
+  },
+  "callup": {
+    "title": "Call-up — Next Match",
+    "round_summary": "Round {{round}} — {{venue}} vs {{opponent}}",
+    "venue_home": "Home",
+    "venue_away": "Away",
+    "confirmed": "confirmed",
+    "no_humans": "No human players in the squad.",
+    "info": "Informational: players confirm availability on the \"My Matches\" screen. Doesn't affect the lineup.",
+    "confirmed_aria": "Confirmed",
+    "not_confirmed_aria": "Not marked"
+  },
+  "tactical_roles": {
+    "title": "Tactical Roles",
+    "captain": "Captain",
+    "free_kick": "Free Kick Taker",
+    "corner_right": "Right Corner Taker",
+    "corner_left": "Left Corner Taker",
+    "throw_right": "Right Throw-in Taker",
+    "throw_left": "Left Throw-in Taker",
+    "select_placeholder": "Select...",
+    "save": "Save Roles",
+    "saving": "Saving..."
+  },
+  "assistant": {
+    "title": "Assistant",
+    "description": "The assistant can edit the entire lineup area (field, bench, tactical roles) just like you. Useful when the manager is away.",
+    "current": "Current assistant",
+    "none": "No assistant",
+    "saving": "Saving..."
+  },
+  "uniforms": {
+    "title": "Kits",
+    "goalkeeper": "Goalkeeper",
+    "uniform_n": "Kit {{n}} ({{type}})",
+    "home": "Home",
+    "away": "Away",
+    "pattern_label": "Pattern",
+    "bicolor_type": "Bicolor Type",
+    "stripe_count": "Stripe Count",
+    "shirt_color": "Shirt Color",
+    "left_color": "Left Color",
+    "right_color": "Right Color",
+    "stripe_color": "Stripe Color",
+    "number_color": "Number Color",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "patterns": {
+    "solid": "Solid",
+    "stripe_vertical": "Vertical Stripes",
+    "stripe_horizontal": "Horizontal Stripes",
+    "stripe_diagonal": "Diagonal Stripes",
+    "bicolor": "Two-tone"
+  },
+  "stripe_counts": {
+    "unique": "Single Band",
+    "single": "Single",
+    "double": "Double",
+    "triple": "Triple"
+  },
+  "bicolor_types": {
+    "bicolor_vertical": "Vertical",
+    "bicolor_horizontal": "Horizontal",
+    "bicolor_diagonal": "Diagonal"
+  },
+  "picker": {
+    "bench_title": "Substitute Bench ({{current}}/{{max}})",
+    "starter_title": "Pick Player — {{slot}}",
+    "no_available": "No available players",
+    "confirm_count": "Confirm ({{count}})",
+    "suspended_red": "Suspended — red card",
+    "suspended_yellows": "Suspended — 3 yellow cards accumulated",
+    "suspended_label_red": "🟥 SUSPENDED",
+    "suspended_label_yellows": "🟨🟨🟨 SUSPENDED"
+  },
+  "toast": {
+    "uniform_saved": "Kit {{n}} updated successfully.",
+    "uniform_error": "Error saving kit.",
+    "error_prefix": "Error: {{message}}",
+    "assistant_assigned": "Assistant assigned.",
+    "assistant_removed": "Assistant removed.",
+    "assistant_error": "Error saving assistant.",
+    "save_lineup_first": "Error: Save the lineup first before setting tactical roles.",
+    "tactical_saved": "Tactical roles updated successfully.",
+    "tactical_error": "Error saving tactical roles.",
+    "suspended_red": "Suspended by red card — player cannot be fielded this round.",
+    "suspended_yellows": "Suspended by 3 yellow cards — player cannot be fielded this round.",
+    "bench_full": "Bench full: Maximum {{max}} players on the bench.",
+    "lineup_saved": "The new formation was saved without affecting matches already created.",
+    "lineup_save_error": "Save error: {{message}}",
+    "lineup_save_failed": "Failed to create a new lineup version.",
+    "lineup_save_default": "Couldn't save the lineup."
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "title": "Finances",
+  "stats": {
+    "balance": "Balance",
+    "weekly_revenue": "Revenue/Week",
+    "weekly_expenses": "Expenses/Week",
+    "weekly_profit": "Profit/Week"
+  },
+  "facilities": {
+    "souvenir_shop": "Souvenir Shop",
+    "sponsorship": "Sponsorships",
+    "training_center": "Training Center",
+    "stadium": "Stadium"
+  },
+  "level_short": "Lv. {{level}}",
+  "revenue_section": {
+    "title": "Weekly Revenue",
+    "total_facilities": "Total Facility Revenue",
+    "matchday": "Matchday Tickets (est. per game)"
+  },
+  "expense_section": {
+    "title": "Weekly Expenses",
+    "facility_maintenance": "{{label}} Maintenance",
+    "total_maintenance": "Total Maintenance",
+    "salaries": "Wage Bill ({{count}} players)",
+    "total_expenses": "Total Expenses"
+  },
+  "ticket_history": {
+    "title": "Ticket Revenue",
+    "ticket_label_prefix": "🎫 Tickets: "
+  },
+  "summary": {
+    "title": "Weekly Summary",
+    "revenues": "Revenue",
+    "expenses": "Expenses",
+    "result": "Result",
+    "footnote": "* Does not include matchday ticket revenue, which varies per game. Estimated per home match: {{amount}}"
+  }
+}

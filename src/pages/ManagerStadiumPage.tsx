@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,6 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { PitchSVG, DEFAULT_STADIUM_STYLE, type StadiumStyle } from '@/components/PitchSVG';
+import type { TFunction } from 'i18next';
 
 interface Sector {
   id: string;
@@ -32,34 +34,21 @@ interface RevenuePreview {
 }
 
 // ─── Style editor constants ──────────────────────────────────────────
-const PITCH_PATTERNS: { value: string; label: string }[] = [
-  { value: 'stripes_vertical_thin', label: 'Listras V. Finas' },
-  { value: 'stripes_vertical_thick', label: 'Listras V. Grossas' },
-  { value: 'stripes_horizontal_thin', label: 'Listras H. Finas' },
-  { value: 'stripes_horizontal_thick', label: 'Listras H. Grossas' },
-  { value: 'checkered_small', label: 'Xadrez P.' },
-  { value: 'checkered_large', label: 'Xadrez G.' },
-  { value: 'concentric_circles', label: 'Círculos' },
-  { value: 'diagonal', label: 'Diagonal' },
-  { value: 'uniform', label: 'Uniforme' },
-];
+const PITCH_PATTERN_VALUES = [
+  'stripes_vertical_thin',
+  'stripes_vertical_thick',
+  'stripes_horizontal_thin',
+  'stripes_horizontal_thick',
+  'checkered_small',
+  'checkered_large',
+  'concentric_circles',
+  'diagonal',
+  'uniform',
+] as const;
 
-const LIGHTING_OPTIONS: { value: string; label: string }[] = [
-  { value: 'neutral', label: 'Neutra' },
-  { value: 'warm', label: 'Quente' },
-  { value: 'cold', label: 'Fria' },
-  { value: 'night', label: 'Noturna' },
-];
-
-const NET_PATTERNS: { value: string; label: string }[] = [
-  { value: 'checkered', label: 'Quadriculado' },
-  { value: 'diamond', label: 'Diamante' },
-];
-
-const NET_STYLES: { value: string; label: string }[] = [
-  { value: 'classic', label: 'Clássico' },
-  { value: 'veil', label: 'Véu de Noiva' },
-];
+const LIGHTING_VALUES = ['neutral', 'warm', 'cold', 'night'] as const;
+const NET_PATTERN_VALUES = ['checkered', 'diamond'] as const;
+const NET_STYLE_VALUES = ['classic', 'veil'] as const;
 
 const STYLE_COLORS = [
   'hsl(140,10%,15%)', 'hsl(220,15%,18%)', 'hsl(0,0%,12%)', 'hsl(0,0%,20%)',
@@ -119,12 +108,14 @@ function StadiumStyleEditor({
   hasStyleChanges,
   savingStyle,
   onSave,
+  t,
 }: {
   editedStyle: StadiumStyle;
   setEditedStyle: React.Dispatch<React.SetStateAction<StadiumStyle>>;
   hasStyleChanges: boolean;
   savingStyle: boolean;
   onSave: () => void;
+  t: TFunction;
 }) {
   const updateField = <K extends keyof StadiumStyle>(key: K, value: StadiumStyle[K]) => {
     setEditedStyle(prev => ({ ...prev, [key]: value }));
@@ -135,7 +126,7 @@ function StadiumStyleEditor({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Palette className="h-4 w-4 text-pitch" />
-          <h2 className="font-display font-semibold text-sm">Personalizar Campo</h2>
+          <h2 className="font-display font-semibold text-sm">{t('style.title')}</h2>
         </div>
         {hasStyleChanges && (
           <Button
@@ -145,7 +136,7 @@ function StadiumStyleEditor({
             className="bg-pitch hover:bg-pitch/90 text-white"
           >
             {savingStyle ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-            Salvar Estilo
+            {t('style.save')}
           </Button>
         )}
       </div>
@@ -160,15 +151,15 @@ function StadiumStyleEditor({
       <div className="space-y-4">
         {/* Pitch pattern */}
         <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Gramado</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.pitch')}</label>
           <div className="flex flex-wrap gap-1.5">
-            {PITCH_PATTERNS.map(p => (
+            {PITCH_PATTERN_VALUES.map(value => (
               <StyleOptionButton
-                key={p.value}
-                selected={editedStyle.pitch_pattern === p.value}
-                onClick={() => updateField('pitch_pattern', p.value)}
+                key={value}
+                selected={editedStyle.pitch_pattern === value}
+                onClick={() => updateField('pitch_pattern', value)}
               >
-                {p.label}
+                {t(`pitch_patterns.${value}`)}
               </StyleOptionButton>
             ))}
           </div>
@@ -176,7 +167,7 @@ function StadiumStyleEditor({
 
         {/* Border color */}
         <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Borda</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.border')}</label>
           <div className="flex flex-wrap gap-1.5">
             {STYLE_COLORS.map(color => (
               <ColorSwatch
@@ -191,15 +182,15 @@ function StadiumStyleEditor({
 
         {/* Lighting */}
         <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Iluminacao</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.lighting')}</label>
           <div className="flex flex-wrap gap-1.5">
-            {LIGHTING_OPTIONS.map(opt => (
+            {LIGHTING_VALUES.map(value => (
               <StyleOptionButton
-                key={opt.value}
-                selected={editedStyle.lighting === opt.value}
-                onClick={() => updateField('lighting', opt.value)}
+                key={value}
+                selected={editedStyle.lighting === value}
+                onClick={() => updateField('lighting', value)}
               >
-                {opt.label}
+                {t(`lighting.${value}`)}
               </StyleOptionButton>
             ))}
           </div>
@@ -208,29 +199,29 @@ function StadiumStyleEditor({
         {/* Net pattern + style */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Rede do Gol</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.net_pattern')}</label>
             <div className="flex flex-wrap gap-1.5">
-              {NET_PATTERNS.map(opt => (
+              {NET_PATTERN_VALUES.map(value => (
                 <StyleOptionButton
-                  key={opt.value}
-                  selected={editedStyle.net_pattern === opt.value}
-                  onClick={() => updateField('net_pattern', opt.value)}
+                  key={value}
+                  selected={editedStyle.net_pattern === value}
+                  onClick={() => updateField('net_pattern', value)}
                 >
-                  {opt.label}
+                  {t(`net_patterns.${value}`)}
                 </StyleOptionButton>
               ))}
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Estilo da Rede</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.net_style')}</label>
             <div className="flex flex-wrap gap-1.5">
-              {NET_STYLES.map(opt => (
+              {NET_STYLE_VALUES.map(value => (
                 <StyleOptionButton
-                  key={opt.value}
-                  selected={editedStyle.net_style === opt.value}
-                  onClick={() => updateField('net_style', opt.value)}
+                  key={value}
+                  selected={editedStyle.net_style === value}
+                  onClick={() => updateField('net_style', value)}
                 >
-                  {opt.label}
+                  {t(`net_styles.${value}`)}
                 </StyleOptionButton>
               ))}
             </div>
@@ -239,7 +230,7 @@ function StadiumStyleEditor({
 
         {/* Ad board color */}
         <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Placas de Publicidade</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.ad_boards')}</label>
           <div className="flex flex-wrap gap-1.5">
             {STYLE_COLORS.map(color => (
               <ColorSwatch
@@ -254,7 +245,7 @@ function StadiumStyleEditor({
 
         {/* Bench color */}
         <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Banco de Reservas</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">{t('style.bench')}</label>
           <div className="flex flex-wrap gap-1.5">
             {STYLE_COLORS.map(color => (
               <ColorSwatch
@@ -272,6 +263,7 @@ function StadiumStyleEditor({
 }
 
 export default function ManagerStadiumPage() {
+  const { t } = useTranslation('manager_stadium');
   const { club } = useAuth();
   const [stadium, setStadium] = useState<any>(null);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -358,9 +350,9 @@ export default function ManagerStadiumPage() {
       );
       if (error) throw error;
       setSavedStyle({ ...editedStyle });
-      toast.success('Estilo do campo salvo com sucesso!');
+      toast.success(t('toast.style_saved'));
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar estilo');
+      toast.error(err.message || t('toast.style_error'));
     } finally {
       setSavingStyle(false);
     }
@@ -386,10 +378,10 @@ export default function ManagerStadiumPage() {
       }).filter(Boolean);
 
       await Promise.all(updates);
-      toast.success('Preços atualizados com sucesso!');
+      toast.success(t('toast.prices_saved'));
       await fetchData();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar preços');
+      toast.error(err.message || t('toast.prices_error'));
     } finally {
       setSaving(false);
     }
@@ -398,7 +390,7 @@ export default function ManagerStadiumPage() {
   if (!club || !stadium) {
     return (
       <ManagerLayout>
-        <p className="text-muted-foreground">Carregando estádio...</p>
+        <p className="text-muted-foreground">{t('loading')}</p>
       </ManagerLayout>
     );
   }
@@ -417,25 +409,25 @@ export default function ManagerStadiumPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Capacidade" value={totalCapacity.toLocaleString()} icon={<Users className="h-5 w-5" />} />
-          <StatCard label="Qualidade" value={`${stadium.quality}/100`} icon={<Building2 className="h-5 w-5" />} />
-          <StatCard label="Ocupação Média" value={`${avgOccupancy.toFixed(0)}%`} icon={<BarChart3 className="h-5 w-5" />} />
-          <StatCard label="Receita/Jogo (est.)" value={formatBRL(totalExpectedRevenue)} icon={<TrendingUp className="h-5 w-5" />} />
+          <StatCard label={t('stats.capacity')} value={totalCapacity.toLocaleString()} icon={<Users className="h-5 w-5" />} />
+          <StatCard label={t('stats.quality')} value={`${stadium.quality}/100`} icon={<Building2 className="h-5 w-5" />} />
+          <StatCard label={t('stats.avg_occupancy')} value={`${avgOccupancy.toFixed(0)}%`} icon={<BarChart3 className="h-5 w-5" />} />
+          <StatCard label={t('stats.matchday_revenue')} value={formatBRL(totalExpectedRevenue)} icon={<TrendingUp className="h-5 w-5" />} />
         </div>
 
         {/* Revenue preview banner */}
         <div className="stat-card bg-gradient-to-r from-pitch/10 to-tactical/10 border-pitch/20">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-display font-bold text-sm">Previsão por Jogo em Casa</h3>
+              <h3 className="font-display font-bold text-sm">{t('preview.title')}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Público estimado: <span className="font-semibold text-foreground">{totalExpectedAttendance.toLocaleString()}</span> / {totalCapacity.toLocaleString()}
+                {t('preview.attendance')} <span className="font-semibold text-foreground">{totalExpectedAttendance.toLocaleString()}</span> / {totalCapacity.toLocaleString()}
                 {' '}({totalCapacity > 0 ? ((totalExpectedAttendance / totalCapacity) * 100).toFixed(0) : 0}%)
               </p>
             </div>
             <div className="text-right">
               <p className="font-display text-2xl font-bold text-pitch">{formatBRL(totalExpectedRevenue)}</p>
-              <p className="text-xs text-muted-foreground">receita estimada</p>
+              <p className="text-xs text-muted-foreground">{t('preview.estimated_revenue')}</p>
             </div>
           </div>
         </div>
@@ -443,7 +435,7 @@ export default function ManagerStadiumPage() {
         {/* Sectors */}
         <div className="stat-card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-semibold text-sm">Setores & Ingressos</h2>
+            <h2 className="font-display font-semibold text-sm">{t('sectors.title')}</h2>
             {hasChanges && (
               <Button
                 size="sm"
@@ -452,7 +444,7 @@ export default function ManagerStadiumPage() {
                 className="bg-pitch hover:bg-pitch/90 text-white"
               >
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-                Salvar Preços
+                {t('sectors.save_prices')}
               </Button>
             )}
           </div>
@@ -474,11 +466,11 @@ export default function ManagerStadiumPage() {
                         {sec.sector_label || sec.sector_type}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {sec.capacity.toLocaleString()} lugares
+                        {t('sectors.seats', { count: sec.capacity.toLocaleString() })}
                       </p>
                     </div>
                     <div className="text-right text-sm">
-                      <span className="text-muted-foreground">Receita: </span>
+                      <span className="text-muted-foreground">{t('sectors.revenue_label')}</span>
                       <span className="font-display font-bold text-pitch">{formatBRL(revenue)}</span>
                     </div>
                   </div>
@@ -487,7 +479,7 @@ export default function ManagerStadiumPage() {
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">
-                        Público: {attendance.toLocaleString()} / {sec.capacity.toLocaleString()}
+                        {t('sectors.audience_label', { attendance: attendance.toLocaleString(), capacity: sec.capacity.toLocaleString() })}
                       </span>
                       <span className={`font-semibold ${occupancy >= 70 ? 'text-pitch' : occupancy >= 40 ? 'text-yellow-500' : 'text-destructive'}`}>
                         {occupancy.toFixed(0)}%
@@ -523,7 +515,7 @@ export default function ManagerStadiumPage() {
           </div>
 
           {sectors.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">Nenhum setor configurado.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">{t('sectors.empty')}</p>
           )}
         </div>
 
@@ -534,13 +526,14 @@ export default function ManagerStadiumPage() {
           hasStyleChanges={hasStyleChanges}
           savingStyle={savingStyle}
           onSave={handleSaveStyle}
+          t={t}
         />
 
         {/* Info */}
         <div className="text-xs text-muted-foreground space-y-1 px-1">
-          <p>* A previsão de público considera a reputação do seu time, qualidade do estádio e preço dos ingressos.</p>
-          <p>* Preços mais baixos atraem mais público. Preços mais altos podem gerar mais receita se o time e estádio forem bons.</p>
-          <p>* A receita real varia de acordo com o adversário — times com maior reputação atraem mais público.</p>
+          <p>{t('info.line1')}</p>
+          <p>{t('info.line2')}</p>
+          <p>{t('info.line3')}</p>
         </div>
       </div>
     </ManagerLayout>

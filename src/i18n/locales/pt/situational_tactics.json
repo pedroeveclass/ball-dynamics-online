@@ -1,0 +1,122 @@
+{
+  "club_not_found": "Clube não encontrado.",
+  "header": {
+    "back": "Voltar",
+    "title": "Táticas — Jogo Situacional",
+    "description": "Posicione cada jogador conforme a bola em cada um dos 35 quadrantes do campo. Salve por formação."
+  },
+  "save": "Salvar",
+  "saving": "Salvando...",
+  "save_set_piece": "Salvar bola parada",
+  "saving_set_piece": "Salvando...",
+  "modes": {
+    "general": "Geral",
+    "set_piece": "Bola Parada"
+  },
+  "phases": {
+    "with_ball": "Com bola",
+    "without_ball": "Sem bola"
+  },
+  "set_piece": {
+    "type": {
+      "corner": "Escanteio",
+      "throw_in": "Lateral",
+      "free_kick": "Falta",
+      "goal_kick": "Tiro de meta"
+    },
+    "help": {
+      "corner": "Layout aplicado quando há um escanteio. O engine espelha pelo lado do campo (esq/dir) automaticamente.",
+      "throw_in": "Layout aplicado em qualquer reposição de lateral. O engine espelha pelo lado em que a bola saiu.",
+      "free_kick": "Layout aplicado em qualquer falta. O engine ajusta pela posição da bola no campo.",
+      "goal_kick": "Layout aplicado quando há um tiro de meta. Coloque atacantes onde quer pegar o lançamento."
+    },
+    "phase": {
+      "with_ball": "Atacando",
+      "without_ball": "Defendendo"
+    },
+    "reset_layout": "Resetar este layout",
+    "customized_count": "{{count}}/8 layout(s) personalizado(s) (4 tipos × 2 fases)",
+    "explanation": "<0>Como funciona:</0> o engine usa esse layout em qualquer cobrança do tipo selecionado. Para escanteios e laterais, ele espelha a posição X automaticamente conforme o lado em que a bola saiu/está. Goleiro fica trancado na pequena área. Se você não personalizar, o engine usa o comportamento padrão (situacional + knobs)."
+  },
+  "knobs": {
+    "attack_label": "Ataque:",
+    "positioning_label": "Posicionamento:",
+    "inclination_label": "Inclinação:",
+    "attack": {
+      "central": "Ataque central",
+      "balanced": "Balanceado",
+      "wide": "Pelos lados"
+    },
+    "positioning": {
+      "short": "Jogo curto",
+      "normal": "Normal",
+      "spread": "Espalhado"
+    },
+    "inclination": {
+      "ultra_def": "Ultra defensivo",
+      "def": "Defensivo",
+      "normal": "Normal",
+      "off": "Ofensivo",
+      "ultra_off": "Ultra ofensivo"
+    }
+  },
+  "viz": {
+    "opposite_phase": "Fase oposta ({{phase}})",
+    "distance": "Distância",
+    "opponent_label": "Adversário:",
+    "no_opponent": "Sem adversário",
+    "mirror_label": "Espelhar:",
+    "mirror_left_to_right": "E → D",
+    "mirror_right_to_left": "D → E",
+    "compare_quadrant": "Comparar quadrante:",
+    "none": "Nenhum",
+    "ghost_hint": "Ative \"Fase oposta\" pra ver o ghost"
+  },
+  "quadrant_label": "Quadrante {{n}}/35 — {{zoneY}} {{zoneX}} · {{state}}",
+  "zone_y": {
+    "attack": "ataque",
+    "midfield": "meio-campo",
+    "defense": "defesa"
+  },
+  "zone_x": {
+    "left": "esquerda",
+    "right": "direita",
+    "center": "centro",
+    "center_left": "centro-esquerda",
+    "center_right": "centro-direita"
+  },
+  "state": {
+    "custom": "personalizado",
+    "dynamic": "dinâmico"
+  },
+  "actions": {
+    "reset_quadrant": "Resetar este quadrante",
+    "reset_all": "Limpar todas as personalizações",
+    "duplicate": "Duplicar para outra formação"
+  },
+  "customized_status": "{{count}}/35 quadrante(s) personalizado(s) nesta fase",
+  "explanation": "<0>Dinâmico (padrão):</0> o time inteiro acompanha a bola — verticalmente mais, lateralmente menos. Quando você arrasta um jogador, o quadrante vira <1>personalizado</1> (pontinho amarelo no canto) e trava naquela configuração.",
+  "duplicate_dialog": {
+    "title": "Duplicar ajustes",
+    "description": "Copia só os quadrantes <0>personalizados</0> de <1>{{formation}}</1> para a formação escolhida, slot por slot (os não-personalizados continuam usando o dinâmico na nova formação). Salva direto no banco.",
+    "target_label": "Formação de destino",
+    "target_placeholder": "Escolha...",
+    "cancel": "Cancelar",
+    "submit": "Duplicar"
+  },
+  "toast": {
+    "load_error": "Erro ao carregar táticas",
+    "load_set_piece_error": "Erro ao carregar bola parada",
+    "save_error": "Erro ao salvar",
+    "save_set_piece_error": "Erro ao salvar bola parada",
+    "saved": "Táticas salvas",
+    "saved_set_piece": "Bola parada salva",
+    "no_layout_to_save": "Nenhum layout personalizado para salvar.",
+    "set_piece_reset": "Layout resetado para o padrão da formação",
+    "all_cleared": "Todas as personalizações removidas — não esquece de salvar",
+    "duplicate_error": "Erro ao duplicar",
+    "duplicated": "Ajustes duplicados para {{target}}",
+    "mirror_left_to_right": "Espelhado: esquerda → direita",
+    "mirror_right_to_left": "Espelhado: direita → esquerda"
+  }
+}

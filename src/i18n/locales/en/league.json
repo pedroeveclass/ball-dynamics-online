@@ -1,0 +1,89 @@
+{
+  "title_fallback": "League",
+  "season": "Season {{n}}",
+  "tabs": {
+    "standings": "Standings",
+    "rounds": "Rounds",
+    "stats": "Statistics",
+    "available": "Teams"
+  },
+  "standings": {
+    "col": {
+      "rank": "#",
+      "club": "Club",
+      "played": "P",
+      "won": "W",
+      "drawn": "D",
+      "lost": "L",
+      "goals_for": "GF",
+      "goals_against": "GA",
+      "goal_diff": "GD",
+      "points": "Pts"
+    },
+    "empty": "No standings data available.",
+    "legend": {
+      "qualification": "Qualification zone",
+      "relegation": "Relegation zone"
+    }
+  },
+  "rounds": {
+    "next_match_label": "Next Match — Round {{n}}",
+    "home": "Home",
+    "away": "Away",
+    "vs_opponent": "{{home_or_away}} — vs {{name}}",
+    "enter_match": "Enter Match →",
+    "link_available_soon": "Link available 5 min before kickoff",
+    "round_label": "Round {{n}}",
+    "round_label_short": "Round",
+    "watch_live": "LIVE — Watch",
+    "view_result": "View Result",
+    "view_replay": "View Replay",
+    "enter": "Enter",
+    "vs_label": "vs",
+    "no_matches": "No matches in this round.",
+    "no_rounds": "No rounds available.",
+    "next_marker": " •"
+  },
+  "status": {
+    "scheduled": "Scheduled",
+    "live": "Live",
+    "finished": "Finished"
+  },
+  "stats": {
+    "no_data_title": "Data available after upcoming matches",
+    "no_data_subtitle": "Detailed statistics will appear as matches are played.",
+    "best_attack": "Best Attack",
+    "best_attack_value": "{{n}} goals",
+    "best_defense": "Best Defense",
+    "best_defense_value": "{{n}} goals conceded",
+    "most_wins": "Most Wins",
+    "most_wins_value": "{{n}} wins",
+    "top_scorers": "Top Scorers",
+    "top_assists": "Assists",
+    "col_player": "Player",
+    "col_goals": "Goals",
+    "col_assists": "Assists",
+    "no_assists_yet": "No assists recorded yet.",
+    "player_fallback": "Player"
+  },
+  "available": {
+    "assume_team": "Take Team",
+    "empty_title": "No teams available right now.",
+    "empty_subtitle": "You'll be notified when slots open."
+  },
+  "customize": {
+    "title": "Customize Team",
+    "team_name": "Team Name",
+    "short_name": "Abbreviation (3 letters)",
+    "primary_color": "Primary Color",
+    "secondary_color": "Secondary Color",
+    "city": "City",
+    "stadium_name": "Stadium Name",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "toast": {
+    "assumed_ok": "Team taken successfully!",
+    "assume_error": "Error taking over team"
+  }
+}

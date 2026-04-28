@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Check, X, FileText, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
+import { formatDate as formatDateI18n } from '@/lib/formatDate';
+import type { SupportedLanguage } from '@/i18n';
 
 interface Offer {
   id: string;
@@ -36,20 +40,15 @@ interface ContractInfo {
   club_name?: string;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  starter: 'Titular',
-  rotation: 'Rotação',
-  backup: 'Reserva',
-  youth: 'Jovem Promessa',
-};
-
-function formatDate(d: string | null) {
-  if (!d) return 'Indeterminado';
-  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+function formatContractDate(d: string | null, lang: SupportedLanguage, fallback: string) {
+  if (!d) return fallback;
+  return formatDateI18n(new Date(d + 'T00:00:00'), lang, 'date_short');
 }
 
 export default function PlayerOffersPage() {
   const { user, playerProfile, refreshPlayerProfile } = useAuth();
+  const { t } = useTranslation('player_offers');
+  const { current: lang } = useAppLanguage();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [contract, setContract] = useState<ContractInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -159,8 +158,8 @@ export default function PlayerOffersPage() {
             if (sellerMgr?.user_id) {
               await supabase.from('notifications').insert({
                 user_id: sellerMgr.user_id,
-                title: '💰 Venda de Jogador',
-                body: `${playerProfile.full_name} foi vendido por ${formatBRL(clause)}. Valor creditado nas finanças do clube.`,
+                title: t('notifications.sold_title'),
+                body: t('notifications.sold_body', { name: playerProfile.full_name, amount: formatBRL(clause) }),
                 type: 'transfer',
                 link: '/manager/finance',
                 i18n_key: 'player_sold',
@@ -175,8 +174,8 @@ export default function PlayerOffersPage() {
             if (buyerMgr?.user_id) {
               await supabase.from('notifications').insert({
                 user_id: buyerMgr.user_id,
-                title: '💸 Compra de Jogador',
-                body: `${playerProfile.full_name} contratado por ${formatBRL(clause)} de multa rescisória.`,
+                title: t('notifications.bought_title'),
+                body: t('notifications.bought_body', { name: playerProfile.full_name, amount: formatBRL(clause) }),
                 type: 'transfer',
                 link: '/manager/squad',
                 i18n_key: 'player_bought',
@@ -191,8 +190,8 @@ export default function PlayerOffersPage() {
       if (mgr) {
         await supabase.from('notifications').insert({
           user_id: mgr.user_id,
-          title: 'Proposta aceita!',
-          body: `${playerProfile.full_name} aceitou sua proposta de contrato.`,
+          title: t('notifications.accepted_title'),
+          body: t('notifications.accepted_body', { name: playerProfile.full_name }),
           type: 'contract',
           link: '/manager/squad',
           i18n_key: 'contract_offer_accepted',
@@ -200,7 +199,7 @@ export default function PlayerOffersPage() {
         } as any);
       }
 
-      toast.success(`Contrato assinado! Você agora faz parte do ${actionOffer.club_name}.`);
+      toast.success(t('toast.signed', { club: actionOffer.club_name }));
       await refreshPlayerProfile();
     } else {
       await supabase.from('contract_offers').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('id', actionOffer.id);
@@ -209,8 +208,8 @@ export default function PlayerOffersPage() {
       if (mgr) {
         await supabase.from('notifications').insert({
           user_id: mgr.user_id,
-          title: 'Proposta recusada',
-          body: `${playerProfile.full_name} recusou sua proposta de contrato.`,
+          title: t('notifications.rejected_title'),
+          body: t('notifications.rejected_body', { name: playerProfile.full_name }),
           type: 'contract',
           link: '/manager/market',
           i18n_key: 'contract_offer_rejected',
@@ -218,7 +217,7 @@ export default function PlayerOffersPage() {
         } as any);
       }
 
-      toast.success('Proposta recusada: A proposta foi recusada com sucesso.');
+      toast.success(t('toast.rejected'));
     }
 
     setProcessing(false);
@@ -227,50 +226,55 @@ export default function PlayerOffersPage() {
     fetchData();
   };
 
-  if (!playerProfile) return <AppLayout><p className="text-muted-foreground">Carregando...</p></AppLayout>;
+  if (!playerProfile) return <AppLayout><p className="text-muted-foreground">{t('loading')}</p></AppLayout>;
+
+  const roleLabel = (role: string) => {
+    const known = ['starter', 'rotation', 'backup', 'youth'];
+    return known.includes(role) ? t(`roles.${role}`) : role;
+  };
 
   return (
     <AppLayout>
       <div className="space-y-6 max-w-3xl">
-        <h1 className="font-display text-2xl font-bold">Contrato & Propostas</h1>
+        <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Current contract status */}
         <div className="stat-card">
           <div className="flex items-center gap-2 mb-4">
             <FileText className="h-4 w-4 text-tactical" />
-            <span className="font-display font-semibold text-sm">Status Atual</span>
+            <span className="font-display font-semibold text-sm">{t('current_status.title')}</span>
           </div>
           {contract ? (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <span className="text-xs text-muted-foreground">Clube</span>
+                <span className="text-xs text-muted-foreground">{t('current_status.club')}</span>
                 <p className="font-display font-bold">{contract.club_name}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Status</span>
-                <p className="font-display font-bold text-pitch capitalize">Ativo</p>
+                <span className="text-xs text-muted-foreground">{t('current_status.status')}</span>
+                <p className="font-display font-bold text-pitch capitalize">{t('current_status.active')}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Salário Semanal</span>
-                <p className="font-display font-bold">${contract.weekly_salary.toLocaleString()}</p>
+                <span className="text-xs text-muted-foreground">{t('current_status.weekly_salary')}</span>
+                <p className="font-display font-bold">{formatBRL(contract.weekly_salary)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Multa Rescisória</span>
-                <p className="font-display font-bold">${contract.release_clause.toLocaleString()}</p>
+                <span className="text-xs text-muted-foreground">{t('current_status.release_clause')}</span>
+                <p className="font-display font-bold">{formatBRL(contract.release_clause)}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Início</span>
-                <p className="font-display font-bold">{formatDate(contract.start_date)}</p>
+                <span className="text-xs text-muted-foreground">{t('current_status.start')}</span>
+                <p className="font-display font-bold">{formatContractDate(contract.start_date, lang, t('indeterminate'))}</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Término</span>
-                <p className="font-display font-bold">{formatDate(contract.end_date)}</p>
+                <span className="text-xs text-muted-foreground">{t('current_status.end')}</span>
+                <p className="font-display font-bold">{formatContractDate(contract.end_date, lang, t('indeterminate'))}</p>
               </div>
             </div>
           ) : (
             <div className="text-center py-4">
-              <p className="font-display font-semibold text-foreground">Agente Livre</p>
-              <p className="text-xs text-muted-foreground mt-1">Você não possui contrato ativo com nenhum clube.</p>
+              <p className="font-display font-semibold text-foreground">{t('current_status.free_agent_title')}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t('current_status.free_agent_hint')}</p>
             </div>
           )}
         </div>
@@ -279,19 +283,19 @@ export default function PlayerOffersPage() {
         <div>
           <div className="flex items-center gap-2 mb-4">
             <Inbox className="h-4 w-4 text-tactical" />
-            <span className="font-display font-semibold">Propostas Pendentes</span>
+            <span className="font-display font-semibold">{t('pending.title')}</span>
             {offers.length > 0 && (
               <span className="bg-tactical text-tactical-foreground text-xs font-bold px-2 py-0.5 rounded-full">{offers.length}</span>
             )}
           </div>
 
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando propostas...</p>
+            <p className="text-sm text-muted-foreground">{t('pending.loading')}</p>
           ) : offers.length === 0 ? (
             <div className="stat-card text-center py-8">
               <Inbox className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="font-display font-semibold text-sm">Nenhuma proposta pendente</p>
-              <p className="text-xs text-muted-foreground mt-1">Quando um clube enviar uma proposta, ela aparecerá aqui.</p>
+              <p className="font-display font-semibold text-sm">{t('pending.empty_title')}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t('pending.empty_hint')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -305,27 +309,27 @@ export default function PlayerOffersPage() {
                     <div className="flex-1">
                       <p className="font-display font-bold">{offer.club_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(offer.created_at).toLocaleDateString('pt-BR')}
+                        {formatDateI18n(offer.created_at, lang, 'date_short')}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
                     <div>
-                      <span className="text-xs text-muted-foreground">Salário/Sem</span>
-                      <p className="font-display font-bold">${offer.weekly_salary.toLocaleString()}</p>
+                      <span className="text-xs text-muted-foreground">{t('offer.weekly_salary')}</span>
+                      <p className="font-display font-bold">{formatBRL(offer.weekly_salary)}</p>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">Multa</span>
-                      <p className="font-display font-bold">${offer.release_clause.toLocaleString()}</p>
+                      <span className="text-xs text-muted-foreground">{t('offer.release_clause')}</span>
+                      <p className="font-display font-bold">{formatBRL(offer.release_clause)}</p>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">Duração</span>
-                      <p className="font-display font-bold">{offer.contract_length} meses</p>
+                      <span className="text-xs text-muted-foreground">{t('offer.duration')}</span>
+                      <p className="font-display font-bold">{t('offer.duration_value', { count: offer.contract_length })}</p>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">Papel</span>
-                      <p className="font-display font-bold">{ROLE_LABELS[offer.squad_role] || offer.squad_role}</p>
+                      <span className="text-xs text-muted-foreground">{t('offer.role')}</span>
+                      <p className="font-display font-bold">{roleLabel(offer.squad_role)}</p>
                     </div>
                   </div>
 
@@ -336,11 +340,11 @@ export default function PlayerOffersPage() {
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" size="sm" onClick={() => handleAction(offer, 'reject')} className="gap-1.5 text-destructive hover:text-destructive">
                       <X className="h-3.5 w-3.5" />
-                      Recusar
+                      {t('offer.reject')}
                     </Button>
                     <Button size="sm" onClick={() => handleAction(offer, 'accept')} className="gap-1.5">
                       <Check className="h-3.5 w-3.5" />
-                      Aceitar
+                      {t('offer.accept')}
                     </Button>
                   </div>
                 </div>
@@ -355,22 +359,26 @@ export default function PlayerOffersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-display">
-              {actionType === 'accept' ? 'Aceitar Proposta?' : 'Recusar Proposta?'}
+              {actionType === 'accept' ? t('dialog.title_accept') : t('dialog.title_reject')}
             </DialogTitle>
             <DialogDescription>
               {actionType === 'accept'
-                ? `Você assinará contrato com ${actionOffer?.club_name} com salário de $${actionOffer?.weekly_salary.toLocaleString()}/semana por ${actionOffer?.contract_length} meses. Todas as outras propostas serão automaticamente recusadas.`
-                : `Tem certeza que deseja recusar a proposta de ${actionOffer?.club_name}?`}
+                ? t('dialog.desc_accept', {
+                    club: actionOffer?.club_name ?? '',
+                    salary: actionOffer ? formatBRL(actionOffer.weekly_salary) : '',
+                    months: actionOffer?.contract_length ?? 0,
+                  })
+                : t('dialog.desc_reject', { club: actionOffer?.club_name ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setActionOffer(null); setActionType(null); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setActionOffer(null); setActionType(null); }}>{t('dialog.cancel')}</Button>
             <Button
               onClick={confirmAction}
               disabled={processing}
               variant={actionType === 'reject' ? 'destructive' : 'default'}
             >
-              {processing ? 'Processando...' : actionType === 'accept' ? 'Confirmar Assinatura' : 'Confirmar Recusa'}
+              {processing ? t('dialog.processing') : actionType === 'accept' ? t('dialog.confirm_accept') : t('dialog.confirm_reject')}
             </Button>
           </DialogFooter>
         </DialogContent>

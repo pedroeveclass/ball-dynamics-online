@@ -1,0 +1,61 @@
+{
+  "loading": "Carregando plano...",
+  "header": {
+    "title": "Treino Automático",
+    "subtitle": "Programe até {{slots}} sessões por dia. O sistema executa automaticamente todo dia às 07:00 UTC, após a recuperação diária de energia.",
+    "clear_week": "Limpar semana",
+    "save": "Salvar plano",
+    "saved": "Salvo",
+    "saving": "Salvando..."
+  },
+  "aging": {
+    "approaching_title": "Atenção: jogador se aproximando do auge",
+    "approaching_body": "Aos 33 anos seu jogador começa a perder atributos físicos a cada temporada. Faltam {{seasons}} temporada(s). Foque nas faixas mais altas antes que o decay supere o ganho de treino.",
+    "mature_title": "Carreira madura — decay leve ({{age}} anos)",
+    "mature_body": "Atributos físicos caem um pouco a cada fim de temporada. Treino concentrado ainda consegue manter.",
+    "decline_title": "Decay acelerado ({{age}} anos)",
+    "decline_body": "O treino já não compensa a perda. A partir daqui o jogador perde mais do que ganha — aproveite os últimos minutos em campo.",
+    "veteran_title": "Veterano ({{age}} anos) — aposentadoria disponível",
+    "veteran_body": "Você pode aposentar o jogador pelo Perfil a qualquer momento. Continuar jogando é opcional, mas os atributos vão cair rápido."
+  },
+  "status": {
+    "current_energy": "Energia atual",
+    "daily_regen": "Regen diário",
+    "regen_value": "~{{pct}}%/dia",
+    "session_cost": "Custo por sessão",
+    "weekly_matches": "Jogos esta semana"
+  },
+  "days": {
+    "monday": "Segunda",
+    "tuesday": "Terça",
+    "wednesday": "Quarta",
+    "thursday": "Quinta",
+    "friday": "Sexta",
+    "saturday": "Sábado",
+    "sunday": "Domingo"
+  },
+  "day_card": {
+    "today": "Hoje",
+    "clear_day": "Limpar dia",
+    "match_day": "DIA DE JOGO",
+    "match_day_with_time": "DIA DE JOGO — {{time}} BRT",
+    "vs_label_home": "vs {{name}} (Casa)",
+    "vs_label_away": "vs {{name}} (Fora)",
+    "save_energy": "Guarde energia!",
+    "after_regen": "Início (pós-regen)",
+    "slot": "Slot {{n}}",
+    "no_energy": "Sem energia",
+    "no_attribute": "Nenhum",
+    "no_attribute_option": "— Nenhum —",
+    "gain_range": "Ganho ~",
+    "to": " a ",
+    "energy_after": "→ Energia: ",
+    "end_of_day": "Fim do dia",
+    "end_summary": "{{pct}}% · {{filled}}/{{total}} slots"
+  },
+  "tip": "Dica: o regen médio é ~{{pct}}% por dia. Se não tiver fisio no contrato, considere treinar menos nos dias próximos a jogos pra chegar 100% em campo.",
+  "toast": {
+    "saved": "Plano de treino salvo!",
+    "save_error": "Erro ao salvar plano"
+  }
+}

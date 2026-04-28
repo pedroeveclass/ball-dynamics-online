@@ -1,0 +1,68 @@
+{
+  "title": "Como jogar Ball Dynamics",
+  "tabs": {
+    "general": "Geral",
+    "phases": "Fases",
+    "actions": "Ações",
+    "shortcuts": "Atalhos"
+  },
+  "general": {
+    "intro_p1": "<0>Ball Dynamics</0> é um jogo de futebol tático por <1>turnos sincronizados</1>. Não é em tempo real: em cada turno, todos os jogadores decidem suas ações em fases curtas (cerca de 7 segundos cada), e o motor de jogo resolve tudo de uma vez no final.",
+    "intro_p2": "Você controla <0>um jogador</0> (se for Player) ou <1>um time inteiro</1> (se for Manager/Técnico). O objetivo é simples: marcar mais gols que o adversário em dois tempos.",
+    "flow_title": "Fluxo de um turno",
+    "flow_step1": "Posicionamento (apenas em kickoff, falta, lateral, tiro de meta)",
+    "flow_step2": "Fase 1 — Portador (Ball Holder)",
+    "flow_step3": "Fase 2 — Ataque (Attacking Support)",
+    "flow_step4": "Fase 3 — Defesa (Defending Response)",
+    "flow_step5": "Resolução / Motion (animação do que aconteceu)"
+  },
+  "phases": {
+    "positioning_title": "📍 Posicionamento",
+    "positioning_body": "Antes de jogadas \"paradas\" (kickoff de gol ou início, falta, lateral, tiro de meta, escanteio). Cada time pode reposicionar todos os seus jogadores livremente antes do lance. Primeiro posiciona o time com a bola, depois o que defende.",
+    "ball_holder_title": "⚽ Fase do Portador (Ball Holder)",
+    "ball_holder_body": "Apenas o jogador com a bola age. Escolhe entre: <0>passe rasteiro</0>, <1>passe alto</1>, <2>lançamento</2>, <3>chute controlado</3>, <4>chute forte</4> ou <5>drible</5> (move). Ficar parado com a bola também é uma opção.",
+    "attacking_title": "🏃 Fase de Ataque (Attacking Support)",
+    "attacking_body": "Time com a bola se movimenta SEM a bola. Os outros atacantes podem <0>Dominar</0> passes que passem por eles (círculo roxo). Se o portador passou ou chutou, ele pode dar um mini-move. Se driblou, ele fica com a bola ao final do drible.",
+    "defending_title": "🛡️ Fase de Defesa (Defending Response)",
+    "defending_body": "Time sem a bola age. Pode <0>Desarmar</0> (tackle) quem está driblando, <1>Dominar</1> (interceptar) passes, <2>Bloquear</2> chutes, ou apenas se posicionar. Goleiros podem <3>Agarrar</3> ou <4>Espalmar</4>.",
+    "resolution_title": "⚡ Resolução / Motion",
+    "resolution_body": "O motor resolve tudo: calcula contestos (desarmes, defesas), anima os movimentos, decide gols, e prepara o próximo turno."
+  },
+  "actions": {
+    "green_circle_title": "🟢 Círculo verde",
+    "green_circle_body": "Você pode se mover, mas não alcança a bola nem a trajetória do passe/chute.",
+    "purple_circle_title": "🟣 Círculo roxo",
+    "purple_circle_body": "Você PODE interagir com a bola/trajetória. Ao clicar, o menu já abre com as opções relevantes: Dominar, Desarme, Carrinho, Bloqueio ou Espalmar.",
+    "ball_zones_title": "Zonas da bola (altura)",
+    "ball_zone_green": "<0>Verde</0>: bola no chão — pode dominar com pé.",
+    "ball_zone_yellow": "<0>Amarelo</0>: bola na altura da cabeça — pode cabecear (header).",
+    "ball_zone_red": "<0>Vermelho</0>: bola alta demais — não dá pra interagir.",
+    "inertia_title": "🎯 Potência da Inércia",
+    "inertia_body": "Depois que você confirma um move, uma seta laranja aparece no fim do seu movimento. Ela representa a <0>potência da inércia</0> que você carrega pro próximo turno. Arraste o cursor pra definir 0-100% e clique em qualquer lugar pra confirmar.",
+    "inertia_100": "<0>100%</0>: máxima velocidade na mesma direção, máxima penalidade pra reverter.",
+    "inertia_0": "<0>0%</0>: sem bônus nem penalidade — você pode ir pra qualquer direção igualmente no próximo turno.",
+    "inertia_50": "<0>50%</0>: meio-termo.",
+    "one_touch_title": "⚡ One-touch (jogada de primeira)",
+    "one_touch_body": "Quando você está na zona amarela (cabeceio) ou verde perto do fim do passe, pode dominar E já passar/chutar de primeira sem esperar o próximo turno. O menu mostra as opções marcadas com ⚡ quando disponível."
+  },
+  "shortcuts": {
+    "intro": "Com o menu de ações aberto, aperte a letra correspondente pra escolher direto — não precisa clicar no botão. As teclas ficam todas na mão esquerda, organizadas por linha:",
+    "row_top_title": "⚽ Linha de cima — Passes e chutes (QWERT)",
+    "row_mid_title": "🤸 Linha do meio — Cabeceios (ASDF)",
+    "row_bot_title": "🛡️ Linha de baixo — Movimento e defesa (ZXCVB)",
+    "key_q": "Passe rasteiro",
+    "key_w": "Passe alto",
+    "key_e": "Lançamento",
+    "key_r": "Chute controlado",
+    "key_t": "Chute forte",
+    "key_a": "Cabeceio baixo",
+    "key_s": "Cabeceio alto",
+    "key_d": "Cabeceio controlado",
+    "key_f": "Cabeceio forte",
+    "key_z": "Sem ação / cancelar",
+    "key_x": "Mover",
+    "key_c": "Dominar / Desarme / Agarrar",
+    "key_v": "Carrinho (tackle forte)",
+    "key_b": "Bloquear / Espalmar"
+  }
+}

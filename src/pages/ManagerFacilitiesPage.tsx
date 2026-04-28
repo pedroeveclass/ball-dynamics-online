@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -72,17 +73,18 @@ const UPGRADE_COSTS: Record<number, number> = {
   9: 50000000,
 };
 
-const FACILITY_META: { key: string; label: string; icon: React.ElementType }[] = [
-  { key: 'souvenir_shop', label: 'Loja de Souvenirs', icon: Store },
-  { key: 'sponsorship', label: 'Patrocínios', icon: Handshake },
-  { key: 'training_center', label: 'Centro de Treinamento', icon: Dumbbell },
-  { key: 'stadium', label: 'Estádio', icon: Building2 },
+const FACILITY_META: { key: string; icon: React.ElementType }[] = [
+  { key: 'souvenir_shop', icon: Store },
+  { key: 'sponsorship', icon: Handshake },
+  { key: 'training_center', icon: Dumbbell },
+  { key: 'stadium', icon: Building2 },
 ];
 
 import { formatBRL } from '@/lib/formatting';
 const formatCurrency = formatBRL;
 
 export default function ManagerFacilitiesPage() {
+  const { t } = useTranslation('manager_facilities');
   const { club } = useAuth();
   const [facilities, setFacilities] = useState<any[]>([]);
   const [balance, setBalance] = useState<number>(0);
@@ -147,7 +149,7 @@ export default function ManagerFacilitiesPage() {
     if (!club) return;
 
     if (balance < upgradeCost) {
-      toast.error('Saldo insuficiente para essa melhoria.');
+      toast.error(t('toast.insufficient'));
       setConfirmDialog((prev) => ({ ...prev, open: false }));
       return;
     }
@@ -162,11 +164,11 @@ export default function ManagerFacilitiesPage() {
       if (error) throw error;
 
       const result = data as { facility_type: string; new_level: number };
-      const meta = FACILITY_META.find((m) => m.key === facilityKey);
-      toast.success(`${meta?.label} melhorado para Nível ${result.new_level}!`);
+      const label = t(`facilities.${facilityKey}`);
+      toast.success(t('toast.upgrade_ok', { label, level: result.new_level }));
       await fetchData();
     } catch (err: any) {
-      toast.error(`Erro ao melhorar: ${err.message}`);
+      toast.error(t('toast.upgrade_error', { message: err.message }));
     } finally {
       setUpgrading(false);
       setConfirmDialog((prev) => ({ ...prev, open: false }));
@@ -176,7 +178,7 @@ export default function ManagerFacilitiesPage() {
   if (!club || loading) {
     return (
       <ManagerLayout>
-        <p className="text-muted-foreground">Carregando instalações...</p>
+        <p className="text-muted-foreground">{t('loading')}</p>
       </ManagerLayout>
     );
   }
@@ -184,27 +186,27 @@ export default function ManagerFacilitiesPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
-        <h1 className="font-display text-2xl font-bold">Instalações do Clube</h1>
+        <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Summary bar */}
         <div className="stat-card">
-          <h2 className="font-display font-semibold text-sm mb-4">Resumo Semanal das Instalações</h2>
+          <h2 className="font-display font-semibold text-sm mb-4">{t('summary.title')}</h2>
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="flex flex-col items-center gap-1">
               <TrendingUp className="h-4 w-4 text-pitch" />
-              <span className="text-muted-foreground">Receita Total</span>
-              <span className="font-display font-bold text-pitch">{formatCurrency(totalRevenue)}/sem</span>
+              <span className="text-muted-foreground">{t('summary.total_revenue')}</span>
+              <span className="font-display font-bold text-pitch">{formatCurrency(totalRevenue)}{t('summary.per_week')}</span>
             </div>
             <div className="flex flex-col items-center gap-1">
               <TrendingDown className="h-4 w-4 text-destructive" />
-              <span className="text-muted-foreground">Custo Total</span>
-              <span className="font-display font-bold text-destructive">{formatCurrency(totalCost)}/sem</span>
+              <span className="text-muted-foreground">{t('summary.total_cost')}</span>
+              <span className="font-display font-bold text-destructive">{formatCurrency(totalCost)}{t('summary.per_week')}</span>
             </div>
             <div className="flex flex-col items-center gap-1">
               <DollarSign className={`h-4 w-4 ${netIncome >= 0 ? 'text-pitch' : 'text-destructive'}`} />
-              <span className="text-muted-foreground">Lucro Líquido</span>
+              <span className="text-muted-foreground">{t('summary.net_income')}</span>
               <span className={`font-display font-bold ${netIncome >= 0 ? 'text-pitch' : 'text-destructive'}`}>
-                {formatCurrency(netIncome)}/sem
+                {formatCurrency(netIncome)}{t('summary.per_week')}
               </span>
             </div>
           </div>
@@ -221,6 +223,7 @@ export default function ManagerFacilitiesPage() {
             const isMaxLevel = level >= maxLvl;
             const upgradeCost = UPGRADE_COSTS[level];
             const canAfford = upgradeCost ? balance >= upgradeCost : false;
+            const label = t(`facilities.${meta.key}`);
 
             return (
               <Card key={meta.key} className="bg-card border-border">
@@ -228,11 +231,11 @@ export default function ManagerFacilitiesPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Icon className="h-5 w-5 text-tactical" />
-                      <CardTitle className="font-display text-base">{meta.label}</CardTitle>
+                      <CardTitle className="font-display text-base">{label}</CardTitle>
                     </div>
                     {isMaxLevel && (
                       <Badge variant="secondary" className="bg-pitch/20 text-pitch border-pitch/30">
-                        Nível Máximo
+                        {t('card.max_level')}
                       </Badge>
                     )}
                   </div>
@@ -241,7 +244,7 @@ export default function ManagerFacilitiesPage() {
                   {/* Level progress */}
                   <div>
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-muted-foreground">Nível</span>
+                      <span className="text-muted-foreground">{t('card.level')}</span>
                       <span className="font-display font-bold">
                         {level} / {maxLvl}
                       </span>
@@ -253,30 +256,30 @@ export default function ManagerFacilitiesPage() {
                   <div className="space-y-2 text-sm">
                     {stats.rev > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Receita</span>
+                        <span className="text-muted-foreground">{t('card.revenue')}</span>
                         <span className="font-display font-bold text-pitch">
-                          {formatCurrency(stats.rev)}/semana
+                          {formatCurrency(stats.rev)}{t('card.per_week_long')}
                         </span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Custo</span>
+                      <span className="text-muted-foreground">{t('card.cost')}</span>
                       <span className="font-display font-bold text-destructive">
-                        {formatCurrency(stats.cost)}/semana
+                        {formatCurrency(stats.cost)}{t('card.per_week_long')}
                       </span>
                     </div>
                     {stats.boost != null && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Boost de treino</span>
+                        <span className="text-muted-foreground">{t('card.training_boost')}</span>
                         <span className="font-display font-bold text-tactical">+{stats.boost}%</span>
                       </div>
                     )}
                     <div className="flex justify-between border-t border-border pt-2">
-                      <span className="text-muted-foreground font-semibold">Lucro Líquido</span>
+                      <span className="text-muted-foreground font-semibold">{t('card.net_profit')}</span>
                       <span
                         className={`font-display font-bold ${netProfit >= 0 ? 'text-pitch' : 'text-destructive'}`}
                       >
-                        {formatCurrency(netProfit)}/semana
+                        {formatCurrency(netProfit)}{t('card.per_week_long')}
                       </span>
                     </div>
                   </div>
@@ -290,8 +293,8 @@ export default function ManagerFacilitiesPage() {
                       onClick={() => openUpgradeDialog(meta.key)}
                     >
                       {canAfford
-                        ? `Melhorar → Nível ${level + 1} (${formatCurrency(upgradeCost)})`
-                        : `Saldo insuficiente (${formatCurrency(upgradeCost)})`}
+                        ? t('card.upgrade_cta', { level: level + 1, cost: formatCurrency(upgradeCost) })
+                        : t('card.insufficient_balance', { cost: formatCurrency(upgradeCost) })}
                     </Button>
                   )}
                 </CardContent>
@@ -308,9 +311,9 @@ export default function ManagerFacilitiesPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display">Confirmar Melhoria</DialogTitle>
+            <DialogTitle className="font-display">{t('dialog.title')}</DialogTitle>
             <DialogDescription>
-              Tem certeza? Custo: {formatCurrency(confirmDialog.upgradeCost)}
+              {t('dialog.description', { cost: formatCurrency(confirmDialog.upgradeCost) })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -319,10 +322,10 @@ export default function ManagerFacilitiesPage() {
               onClick={() => setConfirmDialog((prev) => ({ ...prev, open: false }))}
               disabled={upgrading}
             >
-              Cancelar
+              {t('dialog.cancel')}
             </Button>
             <Button onClick={handleUpgrade} disabled={upgrading}>
-              {upgrading ? 'Melhorando...' : 'Confirmar'}
+              {upgrading ? t('dialog.submitting') : t('dialog.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

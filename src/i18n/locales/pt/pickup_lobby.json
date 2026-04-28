@@ -1,0 +1,44 @@
+{
+  "loading": "Carregando…",
+  "not_found": "Jogo não encontrado.",
+  "back": "Voltar",
+  "format": {
+    "5v5": "Pelada 5x5",
+    "11v11": "Jogo 11x11"
+  },
+  "filled": "{{filled}}/{{total}} preenchidos",
+  "status": {
+    "open": "Aberto",
+    "materialized": "Preparando",
+    "live": "🔴 Ao Vivo",
+    "finished": "Encerrado",
+    "cancelled": "Cancelado"
+  },
+  "countdown": {
+    "starting": "começando…"
+  },
+  "cancelled_notice": "Este jogo foi cancelado pelo criador.",
+  "team": {
+    "home": "Time da Casa",
+    "away": "Time Visitante",
+    "human_fallback": "Humano",
+    "open_slot": "vaga (vira bot se ninguém entrar)",
+    "join": "Entrar"
+  },
+  "actions": {
+    "leave": "Sair do jogo",
+    "cancel": "Cancelar jogo",
+    "go_to_match": "Ir para a partida"
+  },
+  "confirm": {
+    "cancel": "Tem certeza que quer cancelar este jogo?"
+  },
+  "toast": {
+    "join_error": "Não foi possível entrar",
+    "joined_ok": "Entrou no jogo!",
+    "leave_error": "Erro ao sair",
+    "left_ok": "Você saiu do jogo",
+    "cancel_error": "Erro ao cancelar",
+    "cancelled_ok": "Jogo cancelado"
+  }
+}

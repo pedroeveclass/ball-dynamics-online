@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { formatDate } from '@/lib/formatDate';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +25,7 @@ interface MatchRow { id: string; home_club_id: string; away_club_id: string; sta
 
 export default function AdminPage() {
   const { isAdmin } = useAuth();
+  const { t } = useTranslation('admin');
   const [clubs, setClubs] = useState<Club[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
   const [seasons, setSeasons] = useState<LeagueSeason[]>([]);
@@ -55,19 +59,19 @@ export default function AdminPage() {
 
   const clubName = (id: string) => clubs.find(c => c.id === id)?.name || id.slice(0, 8);
 
-  if (!isAdmin) return <div className="p-8 text-center">Acesso negado</div>;
+  if (!isAdmin) return <div className="p-8 text-center">{t('access_denied')}</div>;
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold font-display mb-6">Painel Admin</h1>
+      <h1 className="text-3xl font-bold font-display mb-6">{t('title')}</h1>
 
       <Tabs defaultValue="liga" className="space-y-4">
         <TabsList className="grid grid-cols-5 w-full max-w-2xl">
-          <TabsTrigger value="liga">Liga</TabsTrigger>
-          <TabsTrigger value="times">Times</TabsTrigger>
-          <TabsTrigger value="financas">Financas</TabsTrigger>
-          <TabsTrigger value="partidas">Partidas</TabsTrigger>
-          <TabsTrigger value="jogadores">Jogadores</TabsTrigger>
+          <TabsTrigger value="liga">{t('tabs.league')}</TabsTrigger>
+          <TabsTrigger value="times">{t('tabs.clubs')}</TabsTrigger>
+          <TabsTrigger value="financas">{t('tabs.finances')}</TabsTrigger>
+          <TabsTrigger value="partidas">{t('tabs.matches')}</TabsTrigger>
+          <TabsTrigger value="jogadores">{t('tabs.players')}</TabsTrigger>
         </TabsList>
 
         {/* ═══ LIGA TAB ═══ */}
@@ -115,6 +119,8 @@ interface RoundMatch {
 }
 
 function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: League[]; seasons: LeagueSeason[]; rounds: LeagueRound[]; clubs: Club[]; onReload: () => void }) {
+  const { t } = useTranslation('admin');
+  const { current: lang } = useAppLanguage();
   const [editLeague, setEditLeague] = useState<League | null>(null);
   const [matchDay1, setMatchDay1] = useState('');
   const [matchDay2, setMatchDay2] = useState('');
@@ -157,7 +163,7 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
   async function ensureMaterialized(m: RoundMatch): Promise<string | null> {
     if (m.match_id) return m.match_id;
     const { data, error } = await supabase.rpc('admin_materialize_league_match', { p_league_match_id: m.id });
-    if (error) { toast.error('Falha ao materializar: ' + error.message); return null; }
+    if (error) { toast.error(t('league_toast.materialize_failed', { message: error.message })); return null; }
     return (data as string) || null;
   }
 
@@ -184,7 +190,12 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
       }
       if (err) toast.error(err.message || String(err));
       else {
-        toast.success({ start: 'Iniciada', simulate: 'Simulada', finalize: 'Finalizada', restart: 'Reiniciada' }[kind]);
+        toast.success({
+          start: t('league_toast.started'),
+          simulate: t('league_toast.simulated'),
+          finalize: t('league_toast.finalized'),
+          restart: t('league_toast.restarted'),
+        }[kind]);
         await loadRoundMatches();
       }
     } finally {
@@ -200,13 +211,13 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
       match_time: matchTime || league.match_time,
     }).eq('id', league.id);
     if (error) toast.error(error.message);
-    else { toast.success('Horario atualizado'); onReload(); }
+    else { toast.success(t('league_toast.schedule_saved')); onReload(); }
   }
 
   async function cancelRound(roundId: string) {
     const { error } = await supabase.from('league_rounds').update({ status: 'cancelled' }).eq('id', roundId);
     if (error) toast.error(error.message);
-    else { toast.success('Rodada cancelada'); onReload(); }
+    else { toast.success(t('league_toast.round_cancelled')); onReload(); }
   }
 
   async function createRound() {
@@ -219,14 +230,14 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
       status: 'scheduled',
     });
     if (error) toast.error(error.message);
-    else { toast.success(`Rodada ${maxRound + 1} criada`); setNewRoundDate(''); onReload(); }
+    else { toast.success(t('league_toast.round_created', { n: maxRound + 1 })); setNewRoundDate(''); onReload(); }
   }
 
   async function endSeason() {
     if (!season) return;
     const { error } = await supabase.from('league_seasons').update({ status: 'finished', finished_at: new Date().toISOString() }).eq('id', season.id);
     if (error) toast.error(error.message);
-    else { toast.success('Temporada finalizada'); onReload(); }
+    else { toast.success(t('league_toast.season_finished')); onReload(); }
   }
 
   async function startNewSeason() {
@@ -238,29 +249,29 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
       status: 'scheduled',
     });
     if (error) toast.error(error.message);
-    else { toast.success(`Temporada ${newSeasonNum} criada`); onReload(); }
+    else { toast.success(t('league_toast.season_started', { n: newSeasonNum })); onReload(); }
   }
 
   async function updateRoundDate(roundId: string, newDate: string) {
     const { error } = await supabase.from('league_rounds').update({ scheduled_at: new Date(newDate).toISOString() }).eq('id', roundId);
     if (error) toast.error(error.message);
-    else { toast.success('Data da rodada atualizada'); onReload(); }
+    else { toast.success(t('league_toast.round_date_updated')); onReload(); }
   }
 
   return (
     <div className="space-y-6">
       {/* Schedule */}
       <Card>
-        <CardHeader><CardTitle>Horarios da Liga</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('league.schedule_title')}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {league && (
             <div className="text-sm text-muted-foreground mb-2">
-              Atual: {league.match_day_1} + {league.match_day_2} as {league.match_time}
+              {t('league.schedule_current', { day1: league.match_day_1, day2: league.match_day_2, time: league.match_time })}
             </div>
           )}
           <div className="grid grid-cols-3 gap-2">
             <Select value={matchDay1} onValueChange={setMatchDay1}>
-              <SelectTrigger><SelectValue placeholder="Dia 1" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('league.day_placeholder', { n: 1 })} /></SelectTrigger>
               <SelectContent>
                 {['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => (
                   <SelectItem key={d} value={d}>{d}</SelectItem>
@@ -268,48 +279,48 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
               </SelectContent>
             </Select>
             <Select value={matchDay2} onValueChange={setMatchDay2}>
-              <SelectTrigger><SelectValue placeholder="Dia 2" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('league.day_placeholder', { n: 2 })} /></SelectTrigger>
               <SelectContent>
                 {['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => (
                   <SelectItem key={d} value={d}>{d}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Input placeholder="Horario (ex: 21:00)" value={matchTime} onChange={e => setMatchTime(e.target.value)} />
+            <Input placeholder={t('league.time_placeholder')} value={matchTime} onChange={e => setMatchTime(e.target.value)} />
           </div>
-          <Button onClick={updateSchedule}>Salvar Horario</Button>
+          <Button onClick={updateSchedule}>{t('league.save_schedule')}</Button>
         </CardContent>
       </Card>
 
       {/* Season controls */}
       <Card>
-        <CardHeader><CardTitle>Temporada</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('league.season_title')}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="text-sm text-muted-foreground">
-            {season ? `Temporada ${season.season_number} - Status: ${season.status}` : 'Nenhuma temporada'}
+            {season ? t('league.season_status', { n: season.season_number, status: season.status }) : t('league.season_none')}
           </div>
           <div className="flex gap-2">
             <Button variant="destructive" onClick={endSeason} disabled={!season || season.status === 'finished'}>
-              Finalizar Temporada
+              {t('league.end_season')}
             </Button>
-            <Button onClick={startNewSeason}>Nova Temporada</Button>
+            <Button onClick={startNewSeason}>{t('league.new_season')}</Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Rounds */}
       <Card>
-        <CardHeader><CardTitle>Rodadas ({rounds.length})</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('league.rounds_title', { count: rounds.length })}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2 items-center">
             <Input type="datetime-local" value={newRoundDate} onChange={e => setNewRoundDate(e.target.value)} className="max-w-xs" />
-            <Button onClick={createRound}>Criar Rodada</Button>
+            <Button onClick={createRound}>{t('league.create_round')}</Button>
           </div>
           <div className="max-h-[600px] overflow-y-auto space-y-3">
             {rounds.map(r => (
               <div key={r.id} className="bg-card rounded border">
                 <div className="flex items-center justify-between text-sm p-2 border-b">
-                  <span className="font-medium">R{r.round_number} - {new Date(r.scheduled_at).toLocaleString('pt-BR')} [{r.status}]</span>
+                  <span className="font-medium">{t('league.round_label', { n: r.round_number, when: formatDate(r.scheduled_at, lang, 'datetime_short'), status: r.status })}</span>
                   <div className="flex gap-1">
                     <Input
                       type="datetime-local"
@@ -319,7 +330,7 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                     />
                     {r.status === 'scheduled' && (
                       <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => cancelRound(r.id)}>
-                        Cancelar
+                        {t('league.cancel_round')}
                       </Button>
                     )}
                   </div>
@@ -327,7 +338,7 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                 <div className="p-2 space-y-1">
                   {(roundMatches[r.id] || []).map(m => {
                     const hasMatchRow = !!m.match_id && !!m.status;
-                    const status = hasMatchRow ? (m.status as string) : 'pendente';
+                    const status = hasMatchRow ? (m.status as string) : t('league.match_pending');
                     const score = hasMatchRow ? `${m.home_score ?? 0} x ${m.away_score ?? 0}` : '-';
                     const busy = busyMatchId === (m.match_id || m.id);
                     const canStart = !hasMatchRow || status === 'scheduled';
@@ -344,28 +355,28 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                           {canStart && (
                             <Button size="sm" className="h-6 text-[11px] px-2" disabled={busy}
                               onClick={() => runMatchAction(m, 'start')}>
-                              Iniciar
+                              {t('league.actions.start')}
                             </Button>
                           )}
                           {canSimulate && (
                             <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
                               onClick={() => runMatchAction(m, 'simulate')}>
-                              Simular
+                              {t('league.actions.simulate')}
                             </Button>
                           )}
                           {canFinalize && (
                             <Button size="sm" variant="secondary" className="h-6 text-[11px] px-2" disabled={busy}
                               onClick={() => runMatchAction(m, 'finalize')}>
-                              Finalizar
+                              {t('league.actions.finalize')}
                             </Button>
                           )}
                           {canRestart && (
                             <Button size="sm" variant="destructive" className="h-6 text-[11px] px-2" disabled={busy}
                               onClick={() => {
-                                if (!confirm('Reiniciar a partida zera placar e apaga eventos. Continuar?')) return;
+                                if (!confirm(t('league.restart_confirm'))) return;
                                 runMatchAction(m, 'restart');
                               }}>
-                              Reiniciar
+                              {t('league.actions.restart')}
                             </Button>
                           )}
                         </div>
@@ -373,7 +384,7 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                     );
                   })}
                   {(roundMatches[r.id] || []).length === 0 && (
-                    <div className="text-xs text-muted-foreground italic p-1">Sem partidas nesta rodada.</div>
+                    <div className="text-xs text-muted-foreground italic p-1">{t('league.no_matches_in_round')}</div>
                   )}
                 </div>
               </div>
@@ -389,6 +400,7 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
 // TIMES TAB
 // ═══════════════════════════════════════════════════
 function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) {
+  const { t } = useTranslation('admin');
   const [selected, setSelected] = useState<Club | null>(null);
   const [name, setName] = useState('');
   const [shortName, setShortName] = useState('');
@@ -422,7 +434,7 @@ function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) 
       p_formation: formation,
     });
     if (error) { toast.error(error.message); return; }
-    toast.success('Time salvo');
+    toast.success(t('clubs_toast.saved'));
     setSelected(null);
     onReload();
   }
@@ -430,7 +442,7 @@ function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) 
   async function fireManager(clubId: string) {
     const { error } = await supabase.rpc('admin_fire_manager', { p_club_id: clubId });
     if (error) toast.error(error.message);
-    else { toast.success('Treinador demitido, time voltou a ser bot'); onReload(); }
+    else { toast.success(t('clubs_toast.manager_fired')); onReload(); }
   }
 
   const FORMATIONS = ['3-4-3','3-5-2','4-3-3','4-4-2','4-5-1','4-2-3-1','5-3-2','5-4-1'];
@@ -446,11 +458,11 @@ function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) 
                   <span className="w-4 h-4 rounded-full inline-block" style={{ backgroundColor: club.primary_color }} />
                   {club.name}
                 </div>
-                <div className="text-xs text-muted-foreground">{club.is_bot_managed ? 'Bot' : 'Humano'} | {club.city}</div>
+                <div className="text-xs text-muted-foreground">{club.is_bot_managed ? t('clubs.type_bot') : t('clubs.type_human')} | {club.city}</div>
               </div>
               {!club.is_bot_managed && (
                 <Button size="sm" variant="destructive" className="text-xs" onClick={e => { e.stopPropagation(); fireManager(club.id); }}>
-                  Demitir
+                  {t('clubs.fire_manager')}
                 </Button>
               )}
             </CardContent>
@@ -460,28 +472,28 @@ function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) 
 
       <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Editar {selected?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('clubs.edit_title', { name: selected?.name })}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Input placeholder="Nome" value={name} onChange={e => setName(e.target.value)} />
-            <Input placeholder="Sigla" value={shortName} onChange={e => setShortName(e.target.value)} />
+            <Input placeholder={t('clubs.name')} value={name} onChange={e => setName(e.target.value)} />
+            <Input placeholder={t('clubs.short_name')} value={shortName} onChange={e => setShortName(e.target.value)} />
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-muted-foreground">Cor primaria</label>
+                <label className="text-xs text-muted-foreground">{t('clubs.primary_color')}</label>
                 <Input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Cor secundaria</label>
+                <label className="text-xs text-muted-foreground">{t('clubs.secondary_color')}</label>
                 <Input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} />
               </div>
             </div>
-            <Input placeholder="Cidade" value={city} onChange={e => setCity(e.target.value)} />
+            <Input placeholder={t('clubs.city')} value={city} onChange={e => setCity(e.target.value)} />
             <Select value={formation} onValueChange={setFormation}>
-              <SelectTrigger><SelectValue placeholder="Formacao" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('clubs.formation')} /></SelectTrigger>
               <SelectContent>
                 {FORMATIONS.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button onClick={saveClub} className="w-full">Salvar</Button>
+            <Button onClick={saveClub} className="w-full">{t('clubs.save')}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -493,6 +505,7 @@ function TimesTab({ clubs, onReload }: { clubs: Club[]; onReload: () => void }) 
 // FINANCAS TAB
 // ═══════════════════════════════════════════════════
 function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: ClubFinance[]; onReload: () => void }) {
+  const { t } = useTranslation('admin');
   const [selectedClub, setSelectedClub] = useState('');
   const [clubAmount, setClubAmount] = useState('');
   const [playerSearch, setPlayerSearch] = useState('');
@@ -507,7 +520,8 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
     const { error } = await supabase.rpc('admin_adjust_club_balance', { p_club_id: selectedClub, p_amount: amount });
     if (error) toast.error(error.message);
     else {
-      toast.success(`R$ ${amount.toLocaleString()} ${amount >= 0 ? 'adicionado' : 'removido'}`);
+      const formatted = `R$ ${Math.abs(amount).toLocaleString()}`;
+      toast.success(amount >= 0 ? t('finances_toast.club_added', { amount: formatted }) : t('finances_toast.club_removed', { amount: formatted }));
       setClubAmount('');
       onReload();
     }
@@ -527,7 +541,11 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
     const { error } = await supabase.rpc('admin_adjust_player_money', { p_player_id: selectedPlayer.id, p_amount: amount });
     if (error) toast.error(error.message);
     else {
-      toast.success(`R$ ${amount.toLocaleString()} ${amount >= 0 ? 'adicionado' : 'removido'} para ${selectedPlayer.full_name || selectedPlayer.name}`);
+      const formatted = `R$ ${Math.abs(amount).toLocaleString()}`;
+      const playerName = selectedPlayer.full_name || selectedPlayer.name || '';
+      toast.success(amount >= 0
+        ? t('finances_toast.player_added', { amount: formatted, name: playerName })
+        : t('finances_toast.player_removed', { amount: formatted, name: playerName }));
       setPlayerAmount('');
       setSelectedPlayer(null);
     }
@@ -537,10 +555,10 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
     <div className="space-y-6">
       {/* Club finances */}
       <Card>
-        <CardHeader><CardTitle>Dinheiro do Time</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('finances.club_title')}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <Select value={selectedClub} onValueChange={setSelectedClub}>
-            <SelectTrigger><SelectValue placeholder="Selecione um time" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder={t('finances.select_club')} /></SelectTrigger>
             <SelectContent>
               {clubs.map(c => (
                 <SelectItem key={c.id} value={c.id}>
@@ -550,19 +568,19 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
             </SelectContent>
           </Select>
           <div className="flex gap-2">
-            <Input type="number" placeholder="Valor (negativo = retirar)" value={clubAmount} onChange={e => setClubAmount(e.target.value)} />
-            <Button onClick={addClubMoney}>Aplicar</Button>
+            <Input type="number" placeholder={t('finances.amount_placeholder')} value={clubAmount} onChange={e => setClubAmount(e.target.value)} />
+            <Button onClick={addClubMoney}>{t('finances.apply')}</Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Player finances */}
       <Card>
-        <CardHeader><CardTitle>Dinheiro do Jogador</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('finances.player_title')}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
-            <Input placeholder="Buscar jogador por nome" value={playerSearch} onChange={e => setPlayerSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchPlayer()} />
-            <Button onClick={searchPlayer}>Buscar</Button>
+            <Input placeholder={t('finances.search_placeholder')} value={playerSearch} onChange={e => setPlayerSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchPlayer()} />
+            <Button onClick={searchPlayer}>{t('finances.search')}</Button>
           </div>
           {playerResults.length > 0 && (
             <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -570,7 +588,7 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
                 <div key={p.id}
                   className={`text-sm p-2 rounded cursor-pointer border ${selectedPlayer?.id === p.id ? 'border-primary bg-primary/10' : 'hover:bg-muted'}`}
                   onClick={() => setSelectedPlayer(p)}>
-                  {p.full_name || p.name || 'Sem nome'} | {p.primary_position} | R$ {(p.money || 0).toLocaleString()} | {clubs.find(c => c.id === p.club_id)?.name || 'Free agent'}
+                  {p.full_name || p.name || t('finances.no_name')} | {p.primary_position} | R$ {(p.money || 0).toLocaleString()} | {clubs.find(c => c.id === p.club_id)?.name || t('finances.free_agent')}
                 </div>
               ))}
             </div>
@@ -578,8 +596,8 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
           {selectedPlayer && (
             <div className="flex gap-2 items-center">
               <span className="text-sm font-medium">{selectedPlayer.full_name || selectedPlayer.name}:</span>
-              <Input type="number" placeholder="Valor" value={playerAmount} onChange={e => setPlayerAmount(e.target.value)} className="max-w-40" />
-              <Button onClick={addPlayerMoney}>Aplicar</Button>
+              <Input type="number" placeholder={t('finances.value_placeholder')} value={playerAmount} onChange={e => setPlayerAmount(e.target.value)} className="max-w-40" />
+              <Button onClick={addPlayerMoney}>{t('finances.apply')}</Button>
             </div>
           )}
         </CardContent>
@@ -592,6 +610,8 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
 // PARTIDAS TAB
 // ═══════════════════════════════════════════════════
 function PartidasTab({ matches, clubs, onReload }: { matches: MatchRow[]; clubs: Club[]; onReload: () => void }) {
+  const { t } = useTranslation('admin');
+  const { current: lang } = useAppLanguage();
   const clubName = (id: string) => clubs.find(c => c.id === id)?.name || id.slice(0, 8);
 
   async function forceStart(matchId: string) {
@@ -601,19 +621,19 @@ function PartidasTab({ matches, clubs, onReload }: { matches: MatchRow[]; clubs:
       scheduled_at: now,
     }).eq('id', matchId);
     if (error) toast.error(error.message);
-    else { toast.success('Partida agendada para iniciar em 5s'); onReload(); }
+    else { toast.success(t('matches_toast.scheduled_5s')); onReload(); }
   }
 
   async function cancelMatch(matchId: string) {
     const { error } = await supabase.from('matches').update({ status: 'cancelled' }).eq('id', matchId);
     if (error) toast.error(error.message);
-    else { toast.success('Partida cancelada'); onReload(); }
+    else { toast.success(t('matches_toast.cancelled')); onReload(); }
   }
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>Partidas Recentes</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('matches.recent_title')}</CardTitle></CardHeader>
         <CardContent>
           <div className="space-y-2 max-h-[600px] overflow-y-auto">
             {matches.map(m => (
@@ -622,17 +642,17 @@ function PartidasTab({ matches, clubs, onReload }: { matches: MatchRow[]; clubs:
                   <span className="font-medium">{clubName(m.home_club_id)}</span>
                   <span className="mx-2">{m.home_score} x {m.away_score}</span>
                   <span className="font-medium">{clubName(m.away_club_id)}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">[{m.status}] {new Date(m.scheduled_at).toLocaleString('pt-BR')}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">[{m.status}] {formatDate(m.scheduled_at, lang, 'datetime_short')}</span>
                 </div>
                 <div className="flex gap-1">
                   {m.status === 'scheduled' && (
                     <Button size="sm" className="h-7 text-xs" onClick={() => forceStart(m.id)}>
-                      Forcar Inicio
+                      {t('matches.force_start')}
                     </Button>
                   )}
                   {(m.status === 'scheduled' || m.status === 'waiting') && (
                     <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => cancelMatch(m.id)}>
-                      Cancelar
+                      {t('matches.cancel')}
                     </Button>
                   )}
                 </div>
@@ -662,6 +682,7 @@ interface HumanPlayer {
 interface StoreItem { id: string; name: string; category: string; level: number | null; bonus_type: string | null; duration: string | null; is_available: boolean; sort_order: number; }
 
 function JogadoresTab({ clubs }: { clubs: Club[] }) {
+  const { t } = useTranslation('admin');
   const [humanPlayers, setHumanPlayers] = useState<HumanPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignDialog, setAssignDialog] = useState<HumanPlayer | null>(null);
@@ -687,20 +708,20 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
     const raw = energyDraft[playerId];
     if (raw === undefined || raw === '') return;
     const val = parseInt(raw);
-    if (!Number.isFinite(val)) { toast.error('Valor inválido'); return; }
+    if (!Number.isFinite(val)) { toast.error(t('players_toast.invalid_value')); return; }
     const { data, error } = await supabase.rpc('admin_set_player_energy', { p_player_id: playerId, p_energy: val });
     if (error) toast.error(error.message);
     else {
-      toast.success(`Energia setada para ${data}`);
+      toast.success(t('players_toast.energy_set', { value: data as number }));
       setEnergyDraft(prev => ({ ...prev, [playerId]: '' }));
     }
   }
 
   async function resetAvatar(userId: string, name: string) {
-    if (!confirm(`Resetar avatar de ${name}? Ele será obrigado a recriar no próximo login.`)) return;
+    if (!confirm(t('players.reset_avatar_confirm', { name }))) return;
     const { error } = await supabase.rpc('admin_reset_avatar', { p_user_id: userId });
     if (error) toast.error(error.message);
-    else toast.success('Avatar resetado');
+    else toast.success(t('players_toast.avatar_reset'));
   }
 
   async function grantItem(playerId: string, itemId: string) {
@@ -710,7 +731,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
       if (error) toast.error(error.message);
       else {
         const r: any = data;
-        toast.success(`${r?.item_name || 'Item'} concedido (${r?.status || 'ok'})`);
+        toast.success(t('players_toast.item_granted', { item: r?.item_name || t('players_toast.item_default'), status: r?.status || 'ok' }));
       }
     } finally {
       setGrantingItemId(null);
@@ -738,7 +759,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
     setHumanPlayers(players.map((p: any) => ({
       id: p.id,
       user_id: p.user_id,
-      full_name: p.full_name || 'Sem nome',
+      full_name: p.full_name || t('players.no_name'),
       primary_position: p.primary_position || '?',
       overall: p.overall ?? 0,
       club_id: p.club_id,
@@ -751,9 +772,9 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
   async function handleLoginAs(player: HumanPlayer) {
     try {
       await navigator.clipboard.writeText(player.user_id);
-      toast.success(`User ID copiado: ${player.user_id}`, { description: 'Use no Supabase Dashboard > Authentication para gerar magic link.' });
+      toast.success(t('players_toast.user_id_copied', { id: player.user_id }), { description: t('players_toast.user_id_copied_desc') });
     } catch {
-      toast.info(`User ID: ${player.user_id}`);
+      toast.info(t('players_toast.user_id_fallback', { id: player.user_id }));
     }
   }
 
@@ -763,9 +784,9 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
       p_player_id: assignDialog.id,
       p_club_id: selectedClubId,
     });
-    if (error) { toast.error('Erro ao atribuir clube: ' + error.message); return; }
+    if (error) { toast.error(t('players_toast.assign_error', { message: error.message })); return; }
 
-    toast.success(`${assignDialog.full_name} atribuído ao ${clubs.find(c => c.id === selectedClubId)?.name}`);
+    toast.success(t('players_toast.assigned', { name: assignDialog.full_name, club: clubs.find(c => c.id === selectedClubId)?.name }));
     setAssignDialog(null);
     setSelectedClubId('');
     loadHumanPlayers();
@@ -774,8 +795,8 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
   async function handleRemoveFromClub(player: HumanPlayer) {
     if (!player.club_id) return;
     const { error } = await supabase.rpc('admin_remove_player_from_club', { p_player_id: player.id });
-    if (error) { toast.error('Erro ao remover: ' + error.message); return; }
-    toast.success(`${player.full_name} removido do clube`);
+    if (error) { toast.error(t('players_toast.remove_error', { message: error.message })); return; }
+    toast.success(t('players_toast.removed', { name: player.full_name }));
     loadHumanPlayers();
   }
 
@@ -783,13 +804,13 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Jogadores Humanos ({humanPlayers.length})</CardTitle>
+          <CardTitle className="text-lg">{t('players.humans_title', { count: humanPlayers.length })}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center text-muted-foreground py-8">Carregando...</div>
+            <div className="text-center text-muted-foreground py-8">{t('players.loading')}</div>
           ) : humanPlayers.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">Nenhum jogador humano encontrado.</div>
+            <div className="text-center text-muted-foreground py-8">{t('players.empty')}</div>
           ) : (
             <div className="space-y-2">
               {humanPlayers.map(p => (
@@ -799,49 +820,49 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
                       <div className="flex items-center gap-2">
                         <span className="font-display font-bold text-sm">{p.full_name}</span>
                         <Badge variant="outline" className="text-[10px]">{p.primary_position}</Badge>
-                        <span className="text-xs text-muted-foreground">OVR {Math.round(p.overall)}</span>
+                        <span className="text-xs text-muted-foreground">{t('players.ovr_label', { value: Math.round(p.overall) })}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                         {p.email && <span>{p.email}</span>}
                         {p.club_name ? (
                           <Badge className="text-[10px]" variant="secondary">{p.club_name}</Badge>
                         ) : (
-                          <Badge className="text-[10px]" variant="destructive">Sem clube</Badge>
+                          <Badge className="text-[10px]" variant="destructive">{t('players.no_club')}</Badge>
                         )}
                       </div>
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleLoginAs(p)}>
-                        Copiar ID
+                        {t('players.copy_id')}
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAssignDialog(p); setSelectedClubId(p.club_id || ''); }}>
-                        Atribuir Clube
+                        {t('players.assign_club')}
                       </Button>
                       {p.club_id && (
                         <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleRemoveFromClub(p)}>
-                          Remover
+                          {t('players.remove')}
                         </Button>
                       )}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 items-center pl-1">
-                    <span className="text-[11px] text-muted-foreground">Energia:</span>
+                    <span className="text-[11px] text-muted-foreground">{t('players.energy_label')}</span>
                     <Input
                       type="number"
-                      placeholder="0-100"
+                      placeholder={t('players.energy_placeholder')}
                       className="h-7 w-20 text-xs"
                       value={energyDraft[p.id] ?? ''}
                       onChange={e => setEnergyDraft(prev => ({ ...prev, [p.id]: e.target.value }))}
                       onKeyDown={e => e.key === 'Enter' && applyEnergy(p.id)}
                     />
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyEnergy(p.id)}>
-                      Aplicar
+                      {t('players.apply')}
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setItemsDialog(p); loadStoreItems(); }}>
-                      Dar item
+                      {t('players.give_item')}
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => resetAvatar(p.user_id, p.full_name)}>
-                      Resetar avatar
+                      {t('players.reset_avatar')}
                     </Button>
                   </div>
                 </div>
@@ -854,24 +875,24 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
       <Dialog open={!!assignDialog} onOpenChange={open => { if (!open) setAssignDialog(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Atribuir Clube — {assignDialog?.full_name}</DialogTitle>
+            <DialogTitle>{t('players.assign_dialog_title', { name: assignDialog?.full_name })}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <Label>Selecione o clube</Label>
+            <Label>{t('players.select_club')}</Label>
             <Select value={selectedClubId} onValueChange={setSelectedClubId}>
-              <SelectTrigger><SelectValue placeholder="Escolha um clube..." /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('players.select_club_placeholder')} /></SelectTrigger>
               <SelectContent>
                 {clubs.map(c => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.name} {c.is_bot_managed ? '(Bot)' : ''}
+                    {c.name} {c.is_bot_managed ? t('players.bot_suffix') : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignDialog(null)}>Cancelar</Button>
-            <Button onClick={handleAssignClub} disabled={!selectedClubId}>Confirmar</Button>
+            <Button variant="outline" onClick={() => setAssignDialog(null)}>{t('players.cancel')}</Button>
+            <Button onClick={handleAssignClub} disabled={!selectedClubId}>{t('players.confirm')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -879,11 +900,11 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
       <Dialog open={!!itemsDialog} onOpenChange={open => { if (!open) setItemsDialog(null); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Dar item — {itemsDialog?.full_name}</DialogTitle>
+            <DialogTitle>{t('players.items_dialog_title', { name: itemsDialog?.full_name })}</DialogTitle>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto space-y-1">
             {storeItems.length === 0 ? (
-              <div className="text-center text-muted-foreground text-sm py-4">Carregando itens...</div>
+              <div className="text-center text-muted-foreground text-sm py-4">{t('players.items_loading')}</div>
             ) : (
               storeItems.map(it => (
                 <div key={it.id} className="flex items-center gap-2 p-2 rounded border bg-card">
@@ -894,19 +915,19 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
                       {it.level !== null && <Badge variant="outline" className="text-[10px]">L{it.level}</Badge>}
                       {it.duration && <Badge variant="outline" className="text-[10px]">{it.duration}</Badge>}
                       {it.bonus_type && <Badge variant="outline" className="text-[10px]">{it.bonus_type}</Badge>}
-                      {!it.is_available && <Badge variant="destructive" className="text-[10px]">indisponível</Badge>}
+                      {!it.is_available && <Badge variant="destructive" className="text-[10px]">{t('players.item_unavailable')}</Badge>}
                     </div>
                   </div>
                   <Button size="sm" className="h-7 text-xs" disabled={grantingItemId === it.id}
                     onClick={() => itemsDialog && grantItem(itemsDialog.id, it.id)}>
-                    Dar
+                    {t('players.give')}
                   </Button>
                 </div>
               ))
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setItemsDialog(null)}>Fechar</Button>
+            <Button variant="outline" onClick={() => setItemsDialog(null)}>{t('players.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

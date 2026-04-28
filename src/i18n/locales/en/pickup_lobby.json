@@ -1,0 +1,44 @@
+{
+  "loading": "Loading…",
+  "not_found": "Game not found.",
+  "back": "Back",
+  "format": {
+    "5v5": "5v5 Pickup",
+    "11v11": "11v11 Game"
+  },
+  "filled": "{{filled}}/{{total}} filled",
+  "status": {
+    "open": "Open",
+    "materialized": "Preparing",
+    "live": "🔴 Live",
+    "finished": "Finished",
+    "cancelled": "Cancelled"
+  },
+  "countdown": {
+    "starting": "starting…"
+  },
+  "cancelled_notice": "This game was cancelled by the creator.",
+  "team": {
+    "home": "Home Team",
+    "away": "Away Team",
+    "human_fallback": "Human",
+    "open_slot": "open slot (becomes a bot if nobody joins)",
+    "join": "Join"
+  },
+  "actions": {
+    "leave": "Leave game",
+    "cancel": "Cancel game",
+    "go_to_match": "Go to match"
+  },
+  "confirm": {
+    "cancel": "Are you sure you want to cancel this game?"
+  },
+  "toast": {
+    "join_error": "Could not join",
+    "joined_ok": "Joined the game!",
+    "leave_error": "Error leaving",
+    "left_ok": "You left the game",
+    "cancel_error": "Error cancelling",
+    "cancelled_ok": "Game cancelled"
+  }
+}

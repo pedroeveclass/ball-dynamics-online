@@ -1,0 +1,138 @@
+{
+  "access_denied": "Access denied",
+  "title": "Admin Panel",
+  "tabs": {
+    "league": "League",
+    "clubs": "Clubs",
+    "finances": "Finances",
+    "matches": "Matches",
+    "players": "Players"
+  },
+  "league": {
+    "schedule_title": "League Schedule",
+    "schedule_current": "Current: {{day1}} + {{day2}} at {{time}}",
+    "day_placeholder": "Day {{n}}",
+    "time_placeholder": "Time (e.g. 21:00)",
+    "save_schedule": "Save Schedule",
+    "season_title": "Season",
+    "season_status": "Season {{n}} — Status: {{status}}",
+    "season_none": "No season",
+    "end_season": "End Season",
+    "new_season": "New Season",
+    "rounds_title": "Rounds ({{count}})",
+    "create_round": "Create Round",
+    "round_label": "R{{n}} — {{when}} [{{status}}]",
+    "cancel_round": "Cancel",
+    "match_pending": "pending",
+    "no_matches_in_round": "No matches in this round.",
+    "actions": {
+      "start": "Start",
+      "simulate": "Simulate",
+      "finalize": "Finalize",
+      "restart": "Restart"
+    },
+    "restart_confirm": "Restarting the match wipes the score and events. Continue?"
+  },
+  "league_toast": {
+    "materialize_failed": "Failed to materialize: {{message}}",
+    "started": "Started",
+    "simulated": "Simulated",
+    "finalized": "Finalized",
+    "restarted": "Restarted",
+    "schedule_saved": "Schedule updated",
+    "round_cancelled": "Round cancelled",
+    "round_created": "Round {{n}} created",
+    "season_finished": "Season finished",
+    "season_started": "Season {{n}} created",
+    "round_date_updated": "Round date updated"
+  },
+  "clubs": {
+    "edit_title": "Edit {{name}}",
+    "name": "Name",
+    "short_name": "Short name",
+    "primary_color": "Primary color",
+    "secondary_color": "Secondary color",
+    "city": "City",
+    "formation": "Formation",
+    "save": "Save",
+    "fire_manager": "Fire",
+    "type_bot": "Bot",
+    "type_human": "Human"
+  },
+  "clubs_toast": {
+    "saved": "Club saved",
+    "manager_fired": "Manager fired, club is now bot-managed"
+  },
+  "finances": {
+    "club_title": "Club Money",
+    "select_club": "Select a club",
+    "amount_placeholder": "Amount (negative = withdraw)",
+    "apply": "Apply",
+    "player_title": "Player Money",
+    "search_placeholder": "Search player by name",
+    "search": "Search",
+    "no_name": "No name",
+    "free_agent": "Free agent",
+    "value_placeholder": "Amount"
+  },
+  "finances_toast": {
+    "club_added": "{{amount}} added",
+    "club_removed": "{{amount}} removed",
+    "player_added": "{{amount}} added to {{name}}",
+    "player_removed": "{{amount}} removed from {{name}}"
+  },
+  "matches": {
+    "recent_title": "Recent Matches",
+    "force_start": "Force Start",
+    "cancel": "Cancel"
+  },
+  "matches_toast": {
+    "scheduled_5s": "Match scheduled to start in 5s",
+    "cancelled": "Match cancelled"
+  },
+  "players": {
+    "humans_title": "Human Players ({{count}})",
+    "loading": "Loading...",
+    "empty": "No human players found.",
+    "no_name": "No name",
+    "ovr_label": "OVR {{value}}",
+    "no_club": "No club",
+    "copy_id": "Copy ID",
+    "assign_club": "Assign Club",
+    "remove": "Remove",
+    "energy_label": "Energy:",
+    "energy_placeholder": "0-100",
+    "apply": "Apply",
+    "give_item": "Give item",
+    "reset_avatar": "Reset avatar",
+    "assign_dialog_title": "Assign Club — {{name}}",
+    "select_club": "Pick the club",
+    "select_club_placeholder": "Choose a club...",
+    "bot_suffix": "(Bot)",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "items_dialog_title": "Give item — {{name}}",
+    "items_loading": "Loading items...",
+    "item_unavailable": "unavailable",
+    "give": "Give",
+    "close": "Close",
+    "reset_avatar_confirm": "Reset {{name}}'s avatar? They'll be forced to recreate it on next login."
+  },
+  "players_toast": {
+    "invalid_value": "Invalid value",
+    "energy_set": "Energy set to {{value}}",
+    "avatar_reset": "Avatar reset",
+    "item_granted": "{{item}} granted ({{status}})",
+    "item_default": "Item",
+    "user_id_copied": "User ID copied: {{id}}",
+    "user_id_copied_desc": "Use it in Supabase Dashboard > Authentication to generate a magic link.",
+    "user_id_fallback": "User ID: {{id}}",
+    "assign_error": "Error assigning club: {{message}}",
+    "assigned": "{{name}} assigned to {{club}}",
+    "remove_error": "Error removing: {{message}}",
+    "removed": "{{name}} removed from club"
+  },
+  "common": {
+    "match_not_found": "Match not found"
+  }
+}

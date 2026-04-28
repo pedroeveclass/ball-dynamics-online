@@ -1,0 +1,70 @@
+{
+  "loading": "Loading attributes...",
+  "header": {
+    "title": "Attributes & Training",
+    "subtitle": "{{name}} • OVR {{ovr}} • Energy {{cur}}/{{max}}",
+    "growth_rate": "Growth rate",
+    "history_button": "History"
+  },
+  "intro": "Click any attribute to train it. Each session costs {{cost}} energy. Higher attributes grow more slowly.",
+  "intro_evo": " Green arrows show progress over the past week.",
+  "bonus_card": {
+    "title": "Training Bonuses",
+    "no_club": "No club — no training bonuses",
+    "base_rate": "Base rate (age):",
+    "coach_bonus": "Coach bonus ({{type}}):",
+    "coach_attrs": "Attributes: {{attrs}}",
+    "coach_all": "Applies to all attributes",
+    "tc_bonus": "Training Center bonus (Lv.{{level}}):",
+    "private_trainer": "Private Trainer bonus (Lv.{{level}}):",
+    "combined_max": "Max combined bonus:"
+  },
+  "history": {
+    "title": "Training History",
+    "empty": "No training sessions recorded yet."
+  },
+  "categories": {
+    "physical": "Physical",
+    "technical": "Technical",
+    "mental": "Mental",
+    "shooting": "Shooting",
+    "goalkeeping": "Goalkeeping"
+  },
+  "popover": {
+    "train_attr": "Train {{attr}}",
+    "current_growth": "Current: <1>{{value}}</1> → Estimated gain: <3>~{{min}} - {{max}}</3>",
+    "type_cap": "Cap for your type ({{archetype}} / {{height}}): <1>{{cap}}</1>",
+    "limited_by_position": "Capped by position ({{pos}})",
+    "limited_by_position_title": "Capped by position",
+    "energy_cost": "Cost: {{cost}} energy",
+    "at_cap": "⚠ Attribute at your type's cap. No further training growth.",
+    "tier_reduced": "Growth reduced by attribute tier ({{pct}}%)",
+    "tier_bonus": "Growth bonus for low attribute ({{pct}}%)",
+    "age_reduced": "Growth reduced by age ({{pct}}%)",
+    "coach_bonus_value": "Coach bonus {{type}}: +{{pct}}%",
+    "tc_bonus_value": "Training Center bonus (Lv.{{level}}): +{{pct}}%",
+    "private_bonus_value": "Private Trainer bonus (Lv.{{level}}): +{{pct}}%",
+    "no_club_no_bonus": "No club — no training bonuses",
+    "btn_at_cap": "At cap",
+    "btn_training": "Training...",
+    "btn_confirm": "Confirm Training"
+  },
+  "match_warn": {
+    "title": "Match day today!",
+    "vs_known": "You have a match against <1>{{opponent}}</1>{{when}}.",
+    "vs_unknown": "You have a match scheduled for today.",
+    "kickoff_at": " at {{time}}",
+    "energy_warning": " Training now will cost <1>{{cost}}</1> energy — you'll take the field with <3>{{remaining}}</3>. Still want to train?",
+    "cancel": "Cancel",
+    "confirm": "Train anyway"
+  },
+  "toast": {
+    "energy_low": "Not enough energy to train.",
+    "error": "Error training.",
+    "success": "{{label}} +{{growth}}! ({{tier}}){{suffix}}",
+    "fit_top": " — TOP FIT applied (+50% gain)",
+    "fit_good": " — GOOD FIT applied (+20% gain)",
+    "fit_bad": " — POOR FIT applied (−40% gain)",
+    "fit_terrible": " — COUNTER FIT applied (−70% gain)"
+  }
+}

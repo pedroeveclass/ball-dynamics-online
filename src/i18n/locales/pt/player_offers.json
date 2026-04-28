@@ -1,0 +1,62 @@
+{
+  "loading": "Carregando...",
+  "title": "Contrato & Propostas",
+  "current_status": {
+    "title": "Status Atual",
+    "club": "Clube",
+    "status": "Status",
+    "active": "Ativo",
+    "weekly_salary": "Salário Semanal",
+    "release_clause": "Multa Rescisória",
+    "start": "Início",
+    "end": "Término",
+    "free_agent_title": "Agente Livre",
+    "free_agent_hint": "Você não possui contrato ativo com nenhum clube."
+  },
+  "pending": {
+    "title": "Propostas Pendentes",
+    "loading": "Carregando propostas...",
+    "empty_title": "Nenhuma proposta pendente",
+    "empty_hint": "Quando um clube enviar uma proposta, ela aparecerá aqui."
+  },
+  "offer": {
+    "weekly_salary": "Salário/Sem",
+    "release_clause": "Multa",
+    "duration": "Duração",
+    "duration_value": "{{count}} meses",
+    "role": "Papel",
+    "reject": "Recusar",
+    "accept": "Aceitar"
+  },
+  "roles": {
+    "starter": "Titular",
+    "rotation": "Rotação",
+    "backup": "Reserva",
+    "youth": "Jovem Promessa"
+  },
+  "indeterminate": "Indeterminado",
+  "dialog": {
+    "title_accept": "Aceitar Proposta?",
+    "title_reject": "Recusar Proposta?",
+    "desc_accept": "Você assinará contrato com {{club}} com salário de {{salary}}/semana por {{months}} meses. Todas as outras propostas serão automaticamente recusadas.",
+    "desc_reject": "Tem certeza que deseja recusar a proposta de {{club}}?",
+    "cancel": "Cancelar",
+    "processing": "Processando...",
+    "confirm_accept": "Confirmar Assinatura",
+    "confirm_reject": "Confirmar Recusa"
+  },
+  "notifications": {
+    "sold_title": "💰 Venda de Jogador",
+    "sold_body": "{{name}} foi vendido por {{amount}}. Valor creditado nas finanças do clube.",
+    "bought_title": "💸 Compra de Jogador",
+    "bought_body": "{{name}} contratado por {{amount}} de multa rescisória.",
+    "accepted_title": "Proposta aceita!",
+    "accepted_body": "{{name}} aceitou sua proposta de contrato.",
+    "rejected_title": "Proposta recusada",
+    "rejected_body": "{{name}} recusou sua proposta de contrato."
+  },
+  "toast": {
+    "signed": "Contrato assinado! Você agora faz parte do {{club}}.",
+    "rejected": "Proposta recusada: A proposta foi recusada com sucesso."
+  }
+}

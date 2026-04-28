@@ -1,0 +1,39 @@
+{
+  "title": "Fórum FID",
+  "title_short": "Fórum",
+  "subtitle": "Discussões da comunidade Football Identity",
+  "anonymous": "Anônimo",
+  "back": "Voltar",
+  "category_fallback": "Fórum",
+  "buttons": {
+    "new_topic": "Novo Tópico",
+    "login_to_participate": "Faça login para participar",
+    "load_more": "Carregar mais",
+    "back_to_top": "Voltar ao início"
+  },
+  "topics": {
+    "section_recent": "Tópicos Recentes",
+    "section_default": "Tópicos",
+    "empty": "Nenhum tópico ainda. Seja o primeiro a criar!"
+  },
+  "reorder": {
+    "up": "Subir",
+    "down": "Descer"
+  },
+  "new_topic_dialog": {
+    "title": "Novo Tópico",
+    "category_label": "Categoria",
+    "category_placeholder": "Selecione uma categoria",
+    "title_label": "Título",
+    "title_placeholder": "Título do tópico (min 5 caracteres)",
+    "body_label": "Conteúdo",
+    "body_placeholder": "Escreva seu tópico (min 10 caracteres)",
+    "submit": "Criar Tópico",
+    "submitting": "Criando..."
+  },
+  "toast": {
+    "validation_fields": "Preencha todos os campos (título min 5 chars, corpo min 10 chars).",
+    "create_error": "Erro ao criar tópico",
+    "created_ok": "Tópico criado!"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "loading": "Loading...",
+  "title": "Contract & Finances",
+  "summary": {
+    "title": "Financial Summary",
+    "balance": "Balance",
+    "weekly_salary": "Wage/Week",
+    "no_contract": "No contract",
+    "club": "Club",
+    "free_agent": "Free Agent",
+    "next_payment": "Next Payment"
+  },
+  "contract": {
+    "title": "Current Contract",
+    "status": "Status",
+    "active": "Active",
+    "club": "Club",
+    "weekly_salary": "Weekly Wage",
+    "release_clause": "Release Clause",
+    "start": "Start",
+    "end": "End",
+    "free_agent_title": "Free Agent",
+    "free_agent_hint": "No active contract. Check pending offers.",
+    "see_offers": "See Offers"
+  },
+  "club_request": {
+    "title": "Club Proposal",
+    "body": "Your club has proposed a mutual agreement termination. If you accept, you'll leave the club at no cost to either side.",
+    "accept": "✅ Accept",
+    "reject": "❌ Reject"
+  },
+  "request_exit": {
+    "title": "Request Exit",
+    "pending": "Waiting on club response",
+    "hint": "Free-of-charge termination proposal. The club must accept for the contract to end.",
+    "button": "Request Mutual Agreement Exit"
+  },
+  "dialog": {
+    "title": "Request Mutual Agreement Exit",
+    "description": "You are requesting contract termination by mutual agreement. The club must accept for it to take effect. There's no cost for this request.",
+    "cancel": "Cancel",
+    "submit": "Confirm Request",
+    "submitting": "Sending..."
+  },
+  "notifications": {
+    "request_title": "📋 Exit request",
+    "request_body": "{{name}} requested termination by mutual agreement.",
+    "accept_title": "✅ Mutual agreement accepted",
+    "accept_body": "{{name}} accepted the mutual agreement termination.",
+    "reject_title": "❌ Mutual agreement rejected",
+    "reject_body": "{{name}} rejected the mutual agreement termination."
+  },
+  "toast": {
+    "request_sent": "Request sent to the club.",
+    "request_error": "Error sending request.",
+    "accept_ok": "Contract terminated by mutual agreement.",
+    "accept_error": "Error accepting.",
+    "reject_ok": "Proposal rejected.",
+    "reject_error": "Error rejecting."
+  }
+}

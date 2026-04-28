@@ -1,5 +1,6 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input';
 
 function ForumLayout({ children }: { children: ReactNode }) {
   const { managerProfile, playerProfile, loading } = useAuth();
+  const { t } = useTranslation('forum');
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
   if (playerProfile) return <AppLayout>{children}</AppLayout>;
@@ -31,7 +33,7 @@ function ForumLayout({ children }: { children: ReactNode }) {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <MessageSquare className="h-5 w-5 text-tactical" />
-          <span className="font-display text-lg font-bold">Fórum FID</span>
+          <span className="font-display text-lg font-bold">{t('title')}</span>
         </div>
       </nav>
       <div className="max-w-5xl mx-auto px-4 py-6">{children}</div>
@@ -68,6 +70,7 @@ interface Comment {
 export default function ForumTopicPage() {
   const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation('forum_topic');
   const { profile, isAdmin } = useAuth();
   const [topic, setTopic] = useState<Topic | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -135,7 +138,7 @@ export default function ForumTopicPage() {
     const playerNameMap = new Map((playersRes.data || []).map((p: any) => [p.user_id, p.full_name]));
     const managerNameMap = new Map((managersRes.data || []).map((m: any) => [m.user_id, m.full_name]));
     const aMap: Record<string, string> = {};
-    for (const p of (profilesRes.data || [])) aMap[p.id] = p.username || playerNameMap.get(p.id) || managerNameMap.get(p.id) || 'Anônimo';
+    for (const p of (profilesRes.data || [])) aMap[p.id] = p.username || playerNameMap.get(p.id) || managerNameMap.get(p.id) || t('anonymous');
     setAuthorMap(aMap);
 
     // Fetch user reactions
@@ -156,7 +159,7 @@ export default function ForumTopicPage() {
 
   async function handleComment() {
     if (!profile) { navigate('/login'); return; }
-    if (commentText.trim().length < 1) { toast.error('Escreva um comentário.'); return; }
+    if (commentText.trim().length < 1) { toast.error(t('toast.comment_empty')); return; }
     setSubmitting(true);
     const { error } = await (supabase as any)
       .from('forum_comments')
@@ -166,9 +169,9 @@ export default function ForumTopicPage() {
         body: commentText.trim(),
       });
     setSubmitting(false);
-    if (error) { toast.error(error.message || 'Erro ao comentar'); return; }
+    if (error) { toast.error(error.message || t('toast.comment_error')); return; }
     setCommentText('');
-    toast.success('Comentário adicionado!');
+    toast.success(t('toast.comment_added'));
     fetchAll();
   }
 
@@ -192,7 +195,7 @@ export default function ForumTopicPage() {
 
   function handleShare() {
     navigator.clipboard.writeText(window.location.href);
-    toast.success('Link copiado!');
+    toast.success(t('toast.share_copied'));
   }
 
   function openEditTopic() {
@@ -204,7 +207,7 @@ export default function ForumTopicPage() {
 
   async function handleSaveEdit() {
     if (!topic || editTitle.length < 5 || editBody.length < 10) {
-      toast.error('Título min 5 chars, conteúdo min 10 chars.');
+      toast.error(t('toast.validation_edit'));
       return;
     }
     setSaving(true);
@@ -214,7 +217,7 @@ export default function ForumTopicPage() {
       .eq('id', topic.id);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    toast.success('Tópico atualizado!');
+    toast.success(t('toast.topic_updated'));
     setEditingTopic(false);
     fetchAll();
   }
@@ -226,7 +229,7 @@ export default function ForumTopicPage() {
       .update({ is_pinned: !topic.is_pinned })
       .eq('id', topic.id);
     if (error) { toast.error(error.message); return; }
-    toast.success(topic.is_pinned ? 'Tópico desfixado!' : 'Tópico fixado!');
+    toast.success(topic.is_pinned ? t('toast.unpinned') : t('toast.pinned'));
     fetchAll();
   }
 
@@ -237,29 +240,29 @@ export default function ForumTopicPage() {
       .update({ is_locked: !topic.is_locked })
       .eq('id', topic.id);
     if (error) { toast.error(error.message); return; }
-    toast.success(topic.is_locked ? 'Tópico reaberto!' : 'Tópico trancado!');
+    toast.success(topic.is_locked ? t('toast.unlocked') : t('toast.locked'));
     fetchAll();
   }
 
   async function handleDeleteTopic() {
-    if (!topic || !confirm('Tem certeza que deseja apagar este tópico? Esta ação não pode ser desfeita.')) return;
+    if (!topic || !confirm(t('confirm.delete_topic'))) return;
     const { error } = await (supabase as any)
       .from('forum_topics')
       .delete()
       .eq('id', topic.id);
     if (error) { toast.error(error.message); return; }
-    toast.success('Tópico apagado!');
+    toast.success(t('toast.topic_deleted'));
     navigate(`/forum/${categorySlug}`);
   }
 
   async function handleDeleteComment(commentId: string) {
-    if (!confirm('Apagar este comentário?')) return;
+    if (!confirm(t('confirm.delete_comment'))) return;
     const { error } = await (supabase as any)
       .from('forum_comments')
       .delete()
       .eq('id', commentId);
     if (error) { toast.error(error.message); return; }
-    toast.success('Comentário apagado!');
+    toast.success(t('toast.comment_deleted'));
     fetchAll();
   }
 
@@ -295,7 +298,7 @@ export default function ForumTopicPage() {
   }
 
   if (!topic) {
-    return <ForumLayout><p className="text-muted-foreground text-center py-12">Tópico não encontrado.</p></ForumLayout>;
+    return <ForumLayout><p className="text-muted-foreground text-center py-12">{t('not_found')}</p></ForumLayout>;
   }
 
   return (
@@ -303,7 +306,7 @@ export default function ForumTopicPage() {
       <div className="space-y-6">
         {/* Back link */}
         <div className="flex items-center gap-2 text-sm">
-          <Link to="/forum" className="text-muted-foreground hover:text-foreground transition-colors">Fórum</Link>
+          <Link to="/forum" className="text-muted-foreground hover:text-foreground transition-colors">{t('header.forum_link')}</Link>
           <span className="text-muted-foreground">/</span>
           <Link to={`/forum/${categorySlug}`} className="text-muted-foreground hover:text-foreground transition-colors">{categoryName}</Link>
         </div>
@@ -320,13 +323,13 @@ export default function ForumTopicPage() {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                   <Badge variant="outline" className="text-[10px]">{categoryName}</Badge>
-                  <span>por <strong>{authorMap[topic.author_id] || 'Anônimo'}</strong></span>
+                  <span>{t('by')} <strong>{authorMap[topic.author_id] || t('anonymous')}</strong></span>
                   <span>&middot;</span>
                   <span>{timeAgo(topic.created_at)}</span>
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleShare} title="Compartilhar">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleShare} title={t('share_title')}>
                   <Share2 className="h-4 w-4" />
                 </Button>
                 {(canEdit || canDelete || canPin) && (
@@ -339,25 +342,25 @@ export default function ForumTopicPage() {
                     <DropdownMenuContent align="end">
                       {canEdit && (
                         <DropdownMenuItem onClick={openEditTopic}>
-                          <Pencil className="h-3.5 w-3.5 mr-2" />Editar
+                          <Pencil className="h-3.5 w-3.5 mr-2" />{t('menu.edit')}
                         </DropdownMenuItem>
                       )}
                       {canPin && (
                         <DropdownMenuItem onClick={handleTogglePin}>
                           {topic.is_pinned
-                            ? <><PinOff className="h-3.5 w-3.5 mr-2" />Desfixar</>
-                            : <><Pin className="h-3.5 w-3.5 mr-2" />Fixar no topo</>}
+                            ? <><PinOff className="h-3.5 w-3.5 mr-2" />{t('menu.unpin')}</>
+                            : <><Pin className="h-3.5 w-3.5 mr-2" />{t('menu.pin')}</>}
                         </DropdownMenuItem>
                       )}
                       {canPin && (
                         <DropdownMenuItem onClick={handleToggleLock}>
                           <Lock className="h-3.5 w-3.5 mr-2" />
-                          {topic.is_locked ? 'Reabrir tópico' : 'Trancar tópico'}
+                          {topic.is_locked ? t('menu.unlock') : t('menu.lock')}
                         </DropdownMenuItem>
                       )}
                       {canDelete && (
                         <DropdownMenuItem onClick={handleDeleteTopic} className="text-destructive">
-                          <Trash2 className="h-3.5 w-3.5 mr-2" />Apagar tópico
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />{t('menu.delete_topic')}
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
@@ -371,7 +374,7 @@ export default function ForumTopicPage() {
             <div className="flex items-center gap-4 pt-2 border-t">
               <ReactionButtons targetType="topic" targetId={topic.id} likeCount={topic.like_count} dislikeCount={topic.dislike_count} />
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <MessageCircle className="h-3.5 w-3.5" />{topic.comment_count} comentários
+                <MessageCircle className="h-3.5 w-3.5" />{t('comments.comment_count', { count: topic.comment_count })}
               </span>
             </div>
           </CardContent>
@@ -380,11 +383,11 @@ export default function ForumTopicPage() {
         {/* Comments */}
         <div>
           <h2 className="font-display text-sm font-semibold text-muted-foreground mb-3">
-            Comentários ({comments.length})
+            {t('comments.section', { count: comments.length })}
           </h2>
 
           {comments.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Nenhum comentário ainda.</p>
+            <p className="text-sm text-muted-foreground text-center py-6">{t('comments.empty')}</p>
           ) : (
             <div className="space-y-2">
               {comments.map(comment => (
@@ -392,13 +395,13 @@ export default function ForumTopicPage() {
                   <CardContent className="p-3 sm:p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <strong className="text-foreground">{authorMap[comment.author_id] || 'Anônimo'}</strong>
+                        <strong className="text-foreground">{authorMap[comment.author_id] || t('anonymous')}</strong>
                         <span>&middot;</span>
                         <span>{timeAgo(comment.created_at)}</span>
-                        {comment.created_at !== comment.updated_at && <span className="italic">(editado)</span>}
+                        {comment.created_at !== comment.updated_at && <span className="italic">{t('comments.edited')}</span>}
                       </div>
                       {isAdmin && (
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteComment(comment.id)} title="Apagar comentário">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteComment(comment.id)} title={t('menu.delete_comment')}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       )}
@@ -415,7 +418,7 @@ export default function ForumTopicPage() {
         {/* Comment form */}
         {topic.is_locked ? (
           <div className="text-center text-sm text-muted-foreground py-4 border rounded-md bg-muted/30">
-            <Lock className="h-4 w-4 inline mr-1" /> Este tópico está encerrado.
+            <Lock className="h-4 w-4 inline mr-1" /> {t('locked_notice')}
           </div>
         ) : profile ? (
           <Card>
@@ -423,13 +426,13 @@ export default function ForumTopicPage() {
               <Textarea
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                placeholder="Escreva seu comentário..."
+                placeholder={t('comments.placeholder')}
                 rows={3}
               />
               <div className="flex justify-end">
                 <Button size="sm" disabled={submitting || commentText.trim().length < 1} onClick={handleComment} className="font-display">
                   <Send className="h-3.5 w-3.5 mr-1" />
-                  {submitting ? 'Enviando...' : 'Comentar'}
+                  {submitting ? t('comments.submitting') : t('comments.submit')}
                 </Button>
               </div>
             </CardContent>
@@ -437,7 +440,7 @@ export default function ForumTopicPage() {
         ) : (
           <div className="text-center py-4">
             <Link to="/login">
-              <Button variant="outline" className="font-display text-sm">Faça login para comentar</Button>
+              <Button variant="outline" className="font-display text-sm">{t('comments.login_prompt')}</Button>
             </Link>
           </div>
         )}
@@ -447,19 +450,19 @@ export default function ForumTopicPage() {
       <Dialog open={editingTopic} onOpenChange={setEditingTopic}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display">Editar Tópico</DialogTitle>
+            <DialogTitle className="font-display">{t('edit_dialog.title')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-1 block">Título</label>
+              <label className="text-sm font-medium mb-1 block">{t('edit_dialog.title_label')}</label>
               <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} maxLength={150} />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Conteúdo</label>
+              <label className="text-sm font-medium mb-1 block">{t('edit_dialog.body_label')}</label>
               <Textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={8} />
             </div>
             <Button className="w-full font-display" disabled={saving} onClick={handleSaveEdit}>
-              {saving ? 'Salvando...' : 'Salvar'}
+              {saving ? t('edit_dialog.submitting') : t('edit_dialog.submit')}
             </Button>
           </div>
         </DialogContent>

@@ -1,0 +1,122 @@
+{
+  "club_not_found": "Club not found.",
+  "header": {
+    "back": "Back",
+    "title": "Tactics — Situational Play",
+    "description": "Position each player based on where the ball is across the 35 quadrants of the pitch. Saved per formation."
+  },
+  "save": "Save",
+  "saving": "Saving...",
+  "save_set_piece": "Save set-piece",
+  "saving_set_piece": "Saving...",
+  "modes": {
+    "general": "General",
+    "set_piece": "Set Pieces"
+  },
+  "phases": {
+    "with_ball": "With ball",
+    "without_ball": "Without ball"
+  },
+  "set_piece": {
+    "type": {
+      "corner": "Corner",
+      "throw_in": "Throw-in",
+      "free_kick": "Free kick",
+      "goal_kick": "Goal kick"
+    },
+    "help": {
+      "corner": "Layout used on any corner. The engine mirrors X by the side of the field automatically.",
+      "throw_in": "Layout used on any throw-in. The engine mirrors X by the side the ball went out.",
+      "free_kick": "Layout used on any free kick. The engine adjusts to where the ball is.",
+      "goal_kick": "Layout used on goal kicks. Place attackers where you want to win the launch."
+    },
+    "phase": {
+      "with_ball": "Attacking",
+      "without_ball": "Defending"
+    },
+    "reset_layout": "Reset this layout",
+    "customized_count": "{{count}}/8 custom layout(s) (4 types × 2 phases)",
+    "explanation": "<0>How it works:</0> the engine uses this layout on any restart of the selected type. For corners and throw-ins, X is automatically mirrored based on the side. The keeper stays inside the small area. If you don't customize, the engine falls back to the default behavior (situational + knobs)."
+  },
+  "knobs": {
+    "attack_label": "Attack:",
+    "positioning_label": "Spacing:",
+    "inclination_label": "Tilt:",
+    "attack": {
+      "central": "Central attack",
+      "balanced": "Balanced",
+      "wide": "Out wide"
+    },
+    "positioning": {
+      "short": "Short play",
+      "normal": "Normal",
+      "spread": "Spread"
+    },
+    "inclination": {
+      "ultra_def": "Ultra defensive",
+      "def": "Defensive",
+      "normal": "Normal",
+      "off": "Offensive",
+      "ultra_off": "Ultra offensive"
+    }
+  },
+  "viz": {
+    "opposite_phase": "Opposite phase ({{phase}})",
+    "distance": "Distance",
+    "opponent_label": "Opponent:",
+    "no_opponent": "No opponent",
+    "mirror_label": "Mirror:",
+    "mirror_left_to_right": "L → R",
+    "mirror_right_to_left": "R → L",
+    "compare_quadrant": "Compare quadrant:",
+    "none": "None",
+    "ghost_hint": "Enable \"Opposite phase\" to see the ghost"
+  },
+  "quadrant_label": "Quadrant {{n}}/35 — {{zoneY}} {{zoneX}} · {{state}}",
+  "zone_y": {
+    "attack": "attack",
+    "midfield": "midfield",
+    "defense": "defense"
+  },
+  "zone_x": {
+    "left": "left",
+    "right": "right",
+    "center": "center",
+    "center_left": "center-left",
+    "center_right": "center-right"
+  },
+  "state": {
+    "custom": "customized",
+    "dynamic": "dynamic"
+  },
+  "actions": {
+    "reset_quadrant": "Reset this quadrant",
+    "reset_all": "Clear all customizations",
+    "duplicate": "Duplicate to another formation"
+  },
+  "customized_status": "{{count}}/35 quadrant(s) customized in this phase",
+  "explanation": "<0>Dynamic (default):</0> the whole team follows the ball — vertically more, laterally less. When you drag a player, the quadrant becomes <1>customized</1> (yellow dot in the corner) and locks into that shape.",
+  "duplicate_dialog": {
+    "title": "Duplicate adjustments",
+    "description": "Copies only the <0>customized</0> quadrants from <1>{{formation}}</1> to the chosen formation, slot by slot (non-customized ones keep the dynamic default in the new formation). Saves straight to the database.",
+    "target_label": "Target formation",
+    "target_placeholder": "Pick one...",
+    "cancel": "Cancel",
+    "submit": "Duplicate"
+  },
+  "toast": {
+    "load_error": "Error loading tactics",
+    "load_set_piece_error": "Error loading set-pieces",
+    "save_error": "Error saving",
+    "save_set_piece_error": "Error saving set-pieces",
+    "saved": "Tactics saved",
+    "saved_set_piece": "Set-pieces saved",
+    "no_layout_to_save": "No custom layout to save.",
+    "set_piece_reset": "Layout reset to formation default",
+    "all_cleared": "All customizations cleared — don't forget to save",
+    "duplicate_error": "Error duplicating",
+    "duplicated": "Adjustments duplicated to {{target}}",
+    "mirror_left_to_right": "Mirrored: left → right",
+    "mirror_right_to_left": "Mirrored: right → left"
+  }
+}

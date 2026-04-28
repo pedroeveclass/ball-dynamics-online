@@ -1,0 +1,18 @@
+{
+  "title": "Replay",
+  "back": "Back",
+  "badge": "Replay",
+  "errors": {
+    "match_not_found": "Match not found.",
+    "load_failed": "Error loading replay.",
+    "no_replay": "Replay not available for this match"
+  },
+  "fallbacks": {
+    "player_name": "Player"
+  },
+  "turn_label": "Turn {{current}} / {{total}}",
+  "events": {
+    "title": "Events",
+    "empty": "No events on this turn"
+  }
+}

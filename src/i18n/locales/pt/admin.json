@@ -1,0 +1,138 @@
+{
+  "access_denied": "Acesso negado",
+  "title": "Painel Admin",
+  "tabs": {
+    "league": "Liga",
+    "clubs": "Times",
+    "finances": "Finanças",
+    "matches": "Partidas",
+    "players": "Jogadores"
+  },
+  "league": {
+    "schedule_title": "Horários da Liga",
+    "schedule_current": "Atual: {{day1}} + {{day2}} às {{time}}",
+    "day_placeholder": "Dia {{n}}",
+    "time_placeholder": "Horário (ex: 21:00)",
+    "save_schedule": "Salvar Horário",
+    "season_title": "Temporada",
+    "season_status": "Temporada {{n}} — Status: {{status}}",
+    "season_none": "Nenhuma temporada",
+    "end_season": "Finalizar Temporada",
+    "new_season": "Nova Temporada",
+    "rounds_title": "Rodadas ({{count}})",
+    "create_round": "Criar Rodada",
+    "round_label": "R{{n}} — {{when}} [{{status}}]",
+    "cancel_round": "Cancelar",
+    "match_pending": "pendente",
+    "no_matches_in_round": "Sem partidas nesta rodada.",
+    "actions": {
+      "start": "Iniciar",
+      "simulate": "Simular",
+      "finalize": "Finalizar",
+      "restart": "Reiniciar"
+    },
+    "restart_confirm": "Reiniciar a partida zera placar e apaga eventos. Continuar?"
+  },
+  "league_toast": {
+    "materialize_failed": "Falha ao materializar: {{message}}",
+    "started": "Iniciada",
+    "simulated": "Simulada",
+    "finalized": "Finalizada",
+    "restarted": "Reiniciada",
+    "schedule_saved": "Horário atualizado",
+    "round_cancelled": "Rodada cancelada",
+    "round_created": "Rodada {{n}} criada",
+    "season_finished": "Temporada finalizada",
+    "season_started": "Temporada {{n}} criada",
+    "round_date_updated": "Data da rodada atualizada"
+  },
+  "clubs": {
+    "edit_title": "Editar {{name}}",
+    "name": "Nome",
+    "short_name": "Sigla",
+    "primary_color": "Cor primária",
+    "secondary_color": "Cor secundária",
+    "city": "Cidade",
+    "formation": "Formação",
+    "save": "Salvar",
+    "fire_manager": "Demitir",
+    "type_bot": "Bot",
+    "type_human": "Humano"
+  },
+  "clubs_toast": {
+    "saved": "Time salvo",
+    "manager_fired": "Treinador demitido, time voltou a ser bot"
+  },
+  "finances": {
+    "club_title": "Dinheiro do Time",
+    "select_club": "Selecione um time",
+    "amount_placeholder": "Valor (negativo = retirar)",
+    "apply": "Aplicar",
+    "player_title": "Dinheiro do Jogador",
+    "search_placeholder": "Buscar jogador por nome",
+    "search": "Buscar",
+    "no_name": "Sem nome",
+    "free_agent": "Free agent",
+    "value_placeholder": "Valor"
+  },
+  "finances_toast": {
+    "club_added": "{{amount}} adicionado",
+    "club_removed": "{{amount}} removido",
+    "player_added": "{{amount}} adicionado para {{name}}",
+    "player_removed": "{{amount}} removido para {{name}}"
+  },
+  "matches": {
+    "recent_title": "Partidas Recentes",
+    "force_start": "Forçar Início",
+    "cancel": "Cancelar"
+  },
+  "matches_toast": {
+    "scheduled_5s": "Partida agendada para iniciar em 5s",
+    "cancelled": "Partida cancelada"
+  },
+  "players": {
+    "humans_title": "Jogadores Humanos ({{count}})",
+    "loading": "Carregando...",
+    "empty": "Nenhum jogador humano encontrado.",
+    "no_name": "Sem nome",
+    "ovr_label": "OVR {{value}}",
+    "no_club": "Sem clube",
+    "copy_id": "Copiar ID",
+    "assign_club": "Atribuir Clube",
+    "remove": "Remover",
+    "energy_label": "Energia:",
+    "energy_placeholder": "0-100",
+    "apply": "Aplicar",
+    "give_item": "Dar item",
+    "reset_avatar": "Resetar avatar",
+    "assign_dialog_title": "Atribuir Clube — {{name}}",
+    "select_club": "Selecione o clube",
+    "select_club_placeholder": "Escolha um clube...",
+    "bot_suffix": "(Bot)",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "items_dialog_title": "Dar item — {{name}}",
+    "items_loading": "Carregando itens...",
+    "item_unavailable": "indisponível",
+    "give": "Dar",
+    "close": "Fechar",
+    "reset_avatar_confirm": "Resetar avatar de {{name}}? Ele será obrigado a recriar no próximo login."
+  },
+  "players_toast": {
+    "invalid_value": "Valor inválido",
+    "energy_set": "Energia setada para {{value}}",
+    "avatar_reset": "Avatar resetado",
+    "item_granted": "{{item}} concedido ({{status}})",
+    "item_default": "Item",
+    "user_id_copied": "User ID copiado: {{id}}",
+    "user_id_copied_desc": "Use no Supabase Dashboard > Authentication para gerar magic link.",
+    "user_id_fallback": "User ID: {{id}}",
+    "assign_error": "Erro ao atribuir clube: {{message}}",
+    "assigned": "{{name}} atribuído ao {{club}}",
+    "remove_error": "Erro ao remover: {{message}}",
+    "removed": "{{name}} removido do clube"
+  },
+  "common": {
+    "match_not_found": "Partida não encontrada"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "loading": "Loading plan...",
+  "header": {
+    "title": "Auto-Training",
+    "subtitle": "Schedule up to {{slots}} sessions per day. The system runs automatically every day at 07:00 UTC, after daily energy recovery.",
+    "clear_week": "Clear week",
+    "save": "Save plan",
+    "saved": "Saved",
+    "saving": "Saving..."
+  },
+  "aging": {
+    "approaching_title": "Warning: player approaching peak",
+    "approaching_body": "At 33 years old, your player starts losing physical attributes each season. {{seasons}} season(s) to go. Focus on top tiers before decay overtakes training gains.",
+    "mature_title": "Mature career — light decay ({{age}} years old)",
+    "mature_body": "Physical attributes drop slightly each end of season. Focused training can still maintain them.",
+    "decline_title": "Accelerated decay ({{age}} years old)",
+    "decline_body": "Training no longer compensates for the loss. From here on, the player loses more than they gain — make the most of the last minutes on the pitch.",
+    "veteran_title": "Veteran ({{age}} years old) — retirement available",
+    "veteran_body": "You can retire the player from Profile any time. Keeping playing is optional, but attributes will drop fast."
+  },
+  "status": {
+    "current_energy": "Current energy",
+    "daily_regen": "Daily regen",
+    "regen_value": "~{{pct}}%/day",
+    "session_cost": "Cost per session",
+    "weekly_matches": "Matches this week"
+  },
+  "days": {
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
+    "sunday": "Sunday"
+  },
+  "day_card": {
+    "today": "Today",
+    "clear_day": "Clear day",
+    "match_day": "MATCH DAY",
+    "match_day_with_time": "MATCH DAY — {{time}} BRT",
+    "vs_label_home": "vs {{name}} (Home)",
+    "vs_label_away": "vs {{name}} (Away)",
+    "save_energy": "Save energy!",
+    "after_regen": "Start (post-regen)",
+    "slot": "Slot {{n}}",
+    "no_energy": "No energy",
+    "no_attribute": "None",
+    "no_attribute_option": "— None —",
+    "gain_range": "Gain ~",
+    "to": " to ",
+    "energy_after": "→ Energy: ",
+    "end_of_day": "End of day",
+    "end_summary": "{{pct}}% · {{filled}}/{{total}} slots"
+  },
+  "tip": "Tip: average regen is ~{{pct}}% per day. Without a physio under contract, consider training less on days near matches to reach 100% on the pitch.",
+  "toast": {
+    "saved": "Training plan saved!",
+    "save_error": "Error saving plan"
+  }
+}

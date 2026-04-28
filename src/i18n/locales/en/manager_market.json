@@ -1,0 +1,49 @@
+{
+  "title": "Free Agent Market",
+  "subtitle": "Find players without a club and send contract offers.",
+  "filters": {
+    "search_placeholder": "Search by name...",
+    "position_placeholder": "Position",
+    "archetype_placeholder": "Archetype",
+    "all_positions": "All",
+    "all_archetypes": "All"
+  },
+  "loading": "Loading players...",
+  "empty": {
+    "title": "No free agents found",
+    "hint": "Try adjusting the filters or wait for new players."
+  },
+  "card": {
+    "ovr": "OVR",
+    "age": "Age {{age}}",
+    "reputation": "Rep: {{value}}",
+    "offer_button": "Offer"
+  },
+  "offer_dialog": {
+    "title": "Send Offer",
+    "player_summary": "{{position}} • {{archetype}} • Age {{age}}",
+    "weekly_salary": "Weekly Wage ($)",
+    "release_clause": "Release Clause ($)",
+    "duration_months": "Length (months)",
+    "squad_role": "Squad Role",
+    "message_label": "Message (optional)",
+    "message_placeholder": "e.g. We want you as a key part of the squad...",
+    "cancel": "Cancel",
+    "submit": "Send Offer",
+    "submitting": "Sending..."
+  },
+  "squad_role": {
+    "starter": "Starter",
+    "rotation": "Rotation",
+    "backup": "Backup",
+    "youth": "Youth Prospect"
+  },
+  "toast": {
+    "offer_error": "Error: Couldn't send the offer.",
+    "offer_sent": "Offer sent to {{name}}."
+  },
+  "notification": {
+    "title": "New contract offer!",
+    "body": "{{club}} sent an offer of R${{salary}}/week."
+  }
+}

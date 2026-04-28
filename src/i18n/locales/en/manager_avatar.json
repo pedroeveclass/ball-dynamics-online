@@ -1,0 +1,11 @@
+{
+  "loading": "Loading...",
+  "title": "CREATE COACH LOOK",
+  "subtitle": "Customize your coach's face. The black suit is standard kit for all managers.",
+  "warning": "Heads up: this look is permanent and can't be changed later.",
+  "confirm_label": "Confirm Look",
+  "toast": {
+    "saved": "Coach look saved!",
+    "save_error": "Error saving avatar"
+  }
+}

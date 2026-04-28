@@ -1,0 +1,40 @@
+{
+  "title": "Club Facilities",
+  "loading": "Loading facilities...",
+  "facilities": {
+    "souvenir_shop": "Souvenir Shop",
+    "sponsorship": "Sponsorships",
+    "training_center": "Training Center",
+    "stadium": "Stadium"
+  },
+  "summary": {
+    "title": "Weekly Facilities Summary",
+    "total_revenue": "Total Revenue",
+    "total_cost": "Total Cost",
+    "net_income": "Net Profit",
+    "per_week": "/wk"
+  },
+  "card": {
+    "max_level": "Max Level",
+    "level": "Level",
+    "revenue": "Revenue",
+    "cost": "Cost",
+    "training_boost": "Training boost",
+    "net_profit": "Net Profit",
+    "per_week_long": "/week",
+    "upgrade_cta": "Upgrade → Level {{level}} ({{cost}})",
+    "insufficient_balance": "Insufficient balance ({{cost}})"
+  },
+  "dialog": {
+    "title": "Confirm Upgrade",
+    "description": "Are you sure? Cost: {{cost}}",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "submitting": "Upgrading..."
+  },
+  "toast": {
+    "insufficient": "Not enough balance for that upgrade.",
+    "upgrade_ok": "{{label}} upgraded to Level {{level}}!",
+    "upgrade_error": "Upgrade error: {{message}}"
+  }
+}

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, calculateOverall, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR } from '@/lib/attributes';
+import { formatDate } from '@/lib/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -24,6 +27,8 @@ interface TrainingRecord {
 
 export default function PlayerAttributesPage() {
   const { playerProfile, refreshPlayerProfile } = useAuth();
+  const { t } = useTranslation('player_attributes');
+  const { current: lang } = useAppLanguage();
   const [attrs, setAttrs] = useState<Tables<'player_attributes'> | null>(null);
   const [training, setTraining] = useState<string | null>(null);
   const [history, setHistory] = useState<TrainingRecord[]>([]);
@@ -144,7 +149,7 @@ export default function PlayerAttributesPage() {
   useEffect(() => { fetchAttrs(); fetchHistory(); fetchTrainingBonuses(); fetchTodayMatch(); }, [playerProfile]);
 
   if (!playerProfile || !attrs) {
-    return <AppLayout><p className="text-muted-foreground">Carregando atributos...</p></AppLayout>;
+    return <AppLayout><p className="text-muted-foreground">{t('loading')}</p></AppLayout>;
   }
 
   const isGK = playerProfile.primary_position === 'GK';
@@ -152,7 +157,7 @@ export default function PlayerAttributesPage() {
 
   const handleTrainClick = (attrKey: string) => {
     if (playerProfile.energy_current < ENERGY_COST) {
-      toast.error('Energia insuficiente para treinar.');
+      toast.error(t('toast.energy_low'));
       return;
     }
     if (todayMatch) {
@@ -166,7 +171,7 @@ export default function PlayerAttributesPage() {
 
   const handleTrain = async (attrKey: string) => {
     if (playerProfile.energy_current < ENERGY_COST) {
-      toast.error('Energia insuficiente para treinar.');
+      toast.error(t('toast.energy_low'));
       return;
     }
 
@@ -179,7 +184,7 @@ export default function PlayerAttributesPage() {
       });
 
       if (error) {
-        toast.error(error.message || 'Erro ao treinar.');
+        toast.error(error.message || t('toast.error'));
         setTraining(null);
         return;
       }
@@ -192,13 +197,18 @@ export default function PlayerAttributesPage() {
       const tier = getAttributeTier(result.new_value);
       const fitMult = typeof result.fit_multiplier === 'number' ? result.fit_multiplier : 1;
       let fitSuffix = '';
-      if (fitMult >= 1.5)      fitSuffix = ' — FIT TOP aplicado (+50% no ganho)';
-      else if (fitMult >= 1.2) fitSuffix = ' — FIT BOM aplicado (+20% no ganho)';
-      else if (fitMult <= 0.3) fitSuffix = ' — FIT CONTRA aplicado (−70% no ganho)';
-      else if (fitMult <= 0.6) fitSuffix = ' — FIT RUIM aplicado (−40% no ganho)';
-      toast.success(`${ATTR_LABELS[attrKey] || attrKey} +${result.growth.toFixed(2)}! (${tier.label})${fitSuffix}`);
+      if (fitMult >= 1.5)      fitSuffix = t('toast.fit_top');
+      else if (fitMult >= 1.2) fitSuffix = t('toast.fit_good');
+      else if (fitMult <= 0.3) fitSuffix = t('toast.fit_terrible');
+      else if (fitMult <= 0.6) fitSuffix = t('toast.fit_bad');
+      toast.success(t('toast.success', {
+        label: ATTR_LABELS[attrKey] || attrKey,
+        growth: result.growth.toFixed(2),
+        tier: tier.label,
+        suffix: fitSuffix,
+      }));
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao treinar.');
+      toast.error(err.message || t('toast.error'));
     } finally {
       setTraining(null);
     }
@@ -266,7 +276,7 @@ export default function PlayerAttributesPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Dumbbell className="h-4 w-4 text-tactical" />
-                    <span className="font-display font-bold text-sm">Treinar {ATTR_LABELS[key] || key}</span>
+                    <span className="font-display font-bold text-sm">{t('popover.train_attr', { attr: ATTR_LABELS[key] || key })}</span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${tier.bgColor} ${tier.color}`}>
@@ -277,40 +287,50 @@ export default function PlayerAttributesPage() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Atual: <span className="font-bold text-foreground">{value.toFixed(2)}</span> → Ganho estimado: <span className="font-bold text-pitch">~{effectiveGrowthMin} - {effectiveGrowthMax}</span>
+                    <Trans
+                      i18nKey="popover.current_growth"
+                      t={t}
+                      values={{ value: value.toFixed(2), min: effectiveGrowthMin, max: effectiveGrowthMax }}
+                      components={[<span key="0" />, <span key="1" className="font-bold text-foreground" />, <span key="2" />, <span key="3" className="font-bold text-pitch" />]}
+                    />
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Limite do seu tipo ({playerProfile.archetype} / {playerProfile.height}): <span className="font-bold text-foreground">{cap}</span>
+                    <Trans
+                      i18nKey="popover.type_cap"
+                      t={t}
+                      values={{ archetype: playerProfile.archetype, height: playerProfile.height, cap }}
+                      components={[<span key="0" />, <span key="1" className="font-bold text-foreground" />]}
+                    />
                   </p>
                   {capLimitedByPosition && (
-                    <p className="text-xs text-amber-400" title="Limitado pela posição">
-                      Limitado pela posição ({playerProfile.primary_position})
+                    <p className="text-xs text-amber-400" title={t('popover.limited_by_position_title')}>
+                      {t('popover.limited_by_position', { pos: playerProfile.primary_position })}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground">Custo: {ENERGY_COST} energia</p>
+                  <p className="text-xs text-muted-foreground">{t('popover.energy_cost', { cost: ENERGY_COST })}</p>
                   {atCap && (
-                    <p className="text-xs text-destructive">⚠ Atributo no limite do seu tipo. Não evolui mais com treino.</p>
+                    <p className="text-xs text-destructive">{t('popover.at_cap')}</p>
                   )}
                   {tierMult < 1 && (
-                    <p className="text-xs text-warning">Crescimento reduzido pelo nível do atributo ({Math.round(tierMult * 100)}%)</p>
+                    <p className="text-xs text-warning">{t('popover.tier_reduced', { pct: Math.round(tierMult * 100) })}</p>
                   )}
                   {tierMult > 1 && (
-                    <p className="text-xs text-pitch">Bônus de crescimento por atributo baixo ({Math.round(tierMult * 100)}%)</p>
+                    <p className="text-xs text-pitch">{t('popover.tier_bonus', { pct: Math.round(tierMult * 100) })}</p>
                   )}
                   {playerProfile.age >= 30 && (
-                    <p className="text-xs text-warning">Crescimento reduzido pela idade ({Math.round(growthRate * 100)}%)</p>
+                    <p className="text-xs text-warning">{t('popover.age_reduced', { pct: Math.round(growthRate * 100) })}</p>
                   )}
                   {hasClub && attrCoachBonus > 0 && (
-                    <p className="text-xs text-blue-400">Bônus Treinador {COACH_TYPE_LABELS[coachType] || coachType}: +{Math.round(attrCoachBonus * 100)}%</p>
+                    <p className="text-xs text-blue-400">{t('popover.coach_bonus_value', { type: COACH_TYPE_LABELS[coachType] || coachType, pct: Math.round(attrCoachBonus * 100) })}</p>
                   )}
                   {hasClub && attrTcBonus > 0 && (
-                    <p className="text-xs text-amber-400">Bônus Centro de Treino (Nv.{trainingCenterLevel}): +{Math.round(attrTcBonus * 100)}%</p>
+                    <p className="text-xs text-amber-400">{t('popover.tc_bonus_value', { level: trainingCenterLevel, pct: Math.round(attrTcBonus * 100) })}</p>
                   )}
                   {attrTrainerBonus > 0 && (
-                    <p className="text-xs text-green-400">Bônus Treinador Particular (Nv.{trainerBonus?.level}): +{Math.round(attrTrainerBonus * 100)}%</p>
+                    <p className="text-xs text-green-400">{t('popover.private_bonus_value', { level: trainerBonus?.level, pct: Math.round(attrTrainerBonus * 100) })}</p>
                   )}
                   {!hasClub && (
-                    <p className="text-xs text-muted-foreground">Sem clube — sem bônus de treino</p>
+                    <p className="text-xs text-muted-foreground">{t('popover.no_club_no_bonus')}</p>
                   )}
                   <Button
                     size="sm"
@@ -318,7 +338,7 @@ export default function PlayerAttributesPage() {
                     disabled={training !== null || playerProfile.energy_current < ENERGY_COST || atCap}
                     className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
                   >
-                    {atCap ? 'No limite' : training === key ? 'Treinando...' : 'Confirmar Treino'}
+                    {atCap ? t('popover.btn_at_cap') : training === key ? t('popover.btn_training') : t('popover.btn_confirm')}
                   </Button>
                 </div>
               </PopoverContent>
@@ -341,24 +361,24 @@ export default function PlayerAttributesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-2xl font-bold">Atributos & Treino</h1>
-            <p className="text-sm text-muted-foreground">{playerProfile.full_name} • OVR {playerProfile.overall} • Energia {playerProfile.energy_current}/{playerProfile.energy_max}</p>
+            <h1 className="font-display text-2xl font-bold">{t('header.title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('header.subtitle', { name: playerProfile.full_name, ovr: playerProfile.overall, cur: playerProfile.energy_current, max: playerProfile.energy_max })}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-xs text-muted-foreground">Taxa de crescimento</p>
+              <p className="text-xs text-muted-foreground">{t('header.growth_rate')}</p>
               <p className="font-display font-bold text-tactical">{Math.round(growthRate * 100)}%</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowHistory(!showHistory)} className="font-display">
               <History className="h-4 w-4 mr-1" />
-              Histórico
+              {t('header.history_button')}
             </Button>
           </div>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Clique em qualquer atributo para treinar. Cada treino custa {ENERGY_COST} de energia. Atributos mais altos crescem mais devagar.
-          {Object.keys(weeklyEvolution).length > 0 && <span className="text-pitch"> Setas verdes indicam evolução na última semana.</span>}
+          {t('intro', { cost: ENERGY_COST })}
+          {Object.keys(weeklyEvolution).length > 0 && <span className="text-pitch">{t('intro_evo')}</span>}
         </p>
 
         {/* Training Bonuses Info Card */}
@@ -369,19 +389,19 @@ export default function PlayerAttributesPage() {
           >
             <div className="flex items-center gap-2">
               <Info className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Bônus de Treino</span>
+              <span className="font-display font-semibold text-sm">{t('bonus_card.title')}</span>
             </div>
             {showBonusInfo ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
           </button>
           {showBonusInfo && (
             <div className="mt-3 space-y-2">
               {!hasClub ? (
-                <p className="text-sm text-muted-foreground">Sem clube — sem bônus de treino</p>
+                <p className="text-sm text-muted-foreground">{t('bonus_card.no_club')}</p>
               ) : (
                 <>
                   <div className="flex items-center gap-2 text-sm">
                     <Dumbbell className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Taxa Base (idade):</span>
+                    <span className="text-muted-foreground">{t('bonus_card.base_rate')}</span>
                     <span className="font-display font-bold text-foreground">{Math.round(growthRate * 100)}%</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
@@ -389,32 +409,32 @@ export default function PlayerAttributesPage() {
                     {coachType === 'offensive' && <Swords className="h-4 w-4 text-red-400" />}
                     {coachType === 'technical' && <Wrench className="h-4 w-4 text-cyan-400" />}
                     {(coachType === 'all_around' || coachType === 'complete') && <Star className="h-4 w-4 text-yellow-400" />}
-                    <span className="text-muted-foreground">Bônus Treinador ({COACH_TYPE_LABELS[coachType] || 'Completo'}):</span>
+                    <span className="text-muted-foreground">{t('bonus_card.coach_bonus', { type: COACH_TYPE_LABELS[coachType] || 'Completo' })}</span>
                     <span className="font-display font-bold text-blue-400">+{Math.round((COACH_BONUS_RATE[coachType] || 0.10) * 100)}%</span>
                   </div>
                   {coachType !== 'all_around' && coachType !== 'complete' && COACH_BONUS_ATTRS[coachType] && (
                     <p className="text-xs text-muted-foreground ml-6">
-                      Atributos: {COACH_BONUS_ATTRS[coachType].map(a => ATTR_LABELS[a] || a).join(', ')}
+                      {t('bonus_card.coach_attrs', { attrs: COACH_BONUS_ATTRS[coachType].map(a => ATTR_LABELS[a] || a).join(', ') })}
                     </p>
                   )}
                   {(coachType === 'all_around' || coachType === 'complete') && (
-                    <p className="text-xs text-muted-foreground ml-6">Aplica a todos os atributos</p>
+                    <p className="text-xs text-muted-foreground ml-6">{t('bonus_card.coach_all')}</p>
                   )}
                   <div className="flex items-center gap-2 text-sm">
                     <Building2 className="h-4 w-4 text-amber-400" />
-                    <span className="text-muted-foreground">Bônus Centro de Treino (Nv.{trainingCenterLevel}):</span>
+                    <span className="text-muted-foreground">{t('bonus_card.tc_bonus', { level: trainingCenterLevel })}</span>
                     <span className="font-display font-bold text-amber-400">+{Math.round(getTrainingCenterBonus(trainingCenterLevel) * 100)}%</span>
                   </div>
                   {trainerBonus && (
                     <div className="flex items-center gap-2 text-sm">
                       <GraduationCap className="h-4 w-4 text-green-400" />
-                      <span className="text-muted-foreground">Bônus Treinador Particular (Nv.{trainerBonus.level}):</span>
+                      <span className="text-muted-foreground">{t('bonus_card.private_trainer', { level: trainerBonus.level })}</span>
                       <span className="font-display font-bold text-green-400">+{trainerBonus.value}%</span>
                     </div>
                   )}
                   <div className="border-t border-muted pt-2 flex items-center gap-2 text-sm">
                     <TrendingUp className="h-4 w-4 text-pitch" />
-                    <span className="text-muted-foreground">Bônus combinado máximo:</span>
+                    <span className="text-muted-foreground">{t('bonus_card.combined_max')}</span>
                     <span className="font-display font-bold text-pitch">
                       +{Math.round(((COACH_BONUS_RATE[coachType] || 0.10) + getTrainingCenterBonus(trainingCenterLevel) + (trainerBonus ? trainerBonus.value / 100 : 0)) * 100)}%
                     </span>
@@ -429,7 +449,7 @@ export default function PlayerAttributesPage() {
           <div className="stat-card">
             <div className="flex items-center gap-2 mb-3">
               <History className="h-4 w-4 text-tactical" />
-              <span className="font-display font-semibold text-sm">Histórico de Treinos</span>
+              <span className="font-display font-semibold text-sm">{t('history.title')}</span>
             </div>
             {history.length > 0 ? (
               <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -442,13 +462,13 @@ export default function PlayerAttributesPage() {
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-muted-foreground">{Number(h.old_value).toFixed(2)} → {Number(h.new_value).toFixed(2)}</span>
                       <span className="font-display font-bold text-pitch">+{Number(h.growth).toFixed(2)}</span>
-                      <span className="text-muted-foreground">{new Date(h.trained_at).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-muted-foreground">{formatDate(h.trained_at, lang, 'date_short')}</span>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Nenhum treino registrado ainda.</p>
+              <p className="text-sm text-muted-foreground">{t('history.empty')}</p>
             )}
           </div>
         )}
@@ -456,19 +476,19 @@ export default function PlayerAttributesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {isGK ? (
             <>
-              {renderSection('Goleiro', gkKeys)}
-              {renderSection('Físico', physicalKeys)}
-              {renderSection('Técnico', technicalKeys)}
-              {renderSection('Mental', mentalKeys)}
-              {renderSection('Chute', shootingKeys)}
+              {renderSection(t('categories.goalkeeping'), gkKeys)}
+              {renderSection(t('categories.physical'), physicalKeys)}
+              {renderSection(t('categories.technical'), technicalKeys)}
+              {renderSection(t('categories.mental'), mentalKeys)}
+              {renderSection(t('categories.shooting'), shootingKeys)}
             </>
           ) : (
             <>
-              {renderSection('Físico', physicalKeys)}
-              {renderSection('Técnico', technicalKeys)}
-              {renderSection('Mental', mentalKeys)}
-              {renderSection('Chute', shootingKeys)}
-              {renderSection('Goleiro', gkKeys)}
+              {renderSection(t('categories.physical'), physicalKeys)}
+              {renderSection(t('categories.technical'), technicalKeys)}
+              {renderSection(t('categories.mental'), mentalKeys)}
+              {renderSection(t('categories.shooting'), shootingKeys)}
+              {renderSection(t('categories.goalkeeping'), gkKeys)}
             </>
           )}
         </div>
@@ -479,17 +499,33 @@ export default function PlayerAttributesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Swords className="h-5 w-5 text-destructive" />
-              Hoje é dia de jogo!
+              {t('match_warn.title')}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {todayMatch?.opponent
-                ? <>Você tem partida contra <strong>{todayMatch.opponent}</strong>{todayMatch?.scheduledAt ? ` às ${new Date(todayMatch.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.</>
-                : 'Você tem uma partida marcada para hoje.'}
-              {' '}Treinar agora vai gastar <strong>{ENERGY_COST}</strong> de energia — você entrará em campo com <strong>{Math.max(0, playerProfile.energy_current - ENERGY_COST)}</strong>. Ainda quer treinar?
+                ? <Trans
+                    i18nKey="match_warn.vs_known"
+                    t={t}
+                    values={{
+                      opponent: todayMatch.opponent,
+                      when: todayMatch?.scheduledAt
+                        ? t('match_warn.kickoff_at', { time: formatDate(todayMatch.scheduledAt, lang, 'time_short') })
+                        : '',
+                    }}
+                    components={[<span key="0" />, <strong key="1" />]}
+                  />
+                : t('match_warn.vs_unknown')}
+              {' '}
+              <Trans
+                i18nKey="match_warn.energy_warning"
+                t={t}
+                values={{ cost: ENERGY_COST, remaining: Math.max(0, playerProfile.energy_current - ENERGY_COST) }}
+                components={[<span key="0" />, <strong key="1" />, <span key="2" />, <strong key="3" />]}
+              />
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t('match_warn.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 const key = matchWarnFor;
@@ -497,7 +533,7 @@ export default function PlayerAttributesPage() {
                 if (key) void handleTrain(key);
               }}
             >
-              Treinar mesmo assim
+              {t('match_warn.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

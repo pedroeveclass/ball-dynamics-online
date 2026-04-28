@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,7 +22,7 @@ import type { Tables } from '@/integrations/supabase/types';
 import { Save, Trash2, Battery, Swords, Dumbbell, Trophy, Hourglass } from 'lucide-react';
 import { formatBRTTimeOnly, isoDowInSaoPaulo } from '@/lib/upcomingMatches';
 
-const DAY_LABELS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const SLOTS_PER_DAY = 4;
 const ENERGY_COST = 25;
 // energy-regen-daily applies a random 25–35% of max → average 30%.
@@ -55,6 +56,7 @@ function startOfIsoWeek(d: Date): Date {
 
 export default function PlayerTrainingPlanPage() {
   const { playerProfile } = useAuth();
+  const { t } = useTranslation('player_training_plan');
 
   const [attrs, setAttrs] = useState<AttrsRow | null>(null);
   const [plan, setPlan] = useState<WeeklyPlan>(emptyWeek());
@@ -369,37 +371,36 @@ export default function PlayerTrainingPlanPage() {
       }
 
       setOriginalPlan(plan.map(day => day.map(slot => ({ ...slot }))));
-      toast.success('Plano de treino salvo!');
+      toast.success(t('toast.saved'));
     } catch (e: any) {
-      toast.error(e?.message || 'Erro ao salvar plano');
+      toast.error(e?.message || t('toast.save_error'));
     } finally {
       setSaving(false);
     }
   };
 
   if (!playerProfile || loading) {
-    return <AppLayout><p className="text-muted-foreground">Carregando plano...</p></AppLayout>;
+    return <AppLayout><p className="text-muted-foreground">{t('loading')}</p></AppLayout>;
   }
 
   const maxEnergy = playerProfile.energy_max ?? 100;
   const regenPct = BASE_REGEN_PCT + physioBonus / 100;
-  const regenLabel = `~${Math.round(regenPct * 100)}%/dia`;
+  const regenLabel = t('status.regen_value', { pct: Math.round(regenPct * 100) });
 
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="font-display text-2xl font-bold">Treino Automático</h1>
+            <h1 className="font-display text-2xl font-bold">{t('header.title')}</h1>
             <p className="text-sm text-muted-foreground">
-              Programe até {SLOTS_PER_DAY} sessões por dia. O sistema executa automaticamente todo dia às 07:00 UTC,
-              após a recuperação diária de energia.
+              {t('header.subtitle', { slots: SLOTS_PER_DAY })}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={clearWeek} className="font-display" disabled={saving}>
               <Trash2 className="h-4 w-4 mr-1" />
-              Limpar semana
+              {t('header.clear_week')}
             </Button>
             <Button
               size="sm"
@@ -408,7 +409,7 @@ export default function PlayerTrainingPlanPage() {
               className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
             >
               <Save className="h-4 w-4 mr-1" />
-              {saving ? 'Salvando...' : dirty ? 'Salvar plano' : 'Salvo'}
+              {saving ? t('header.saving') : dirty ? t('header.save') : t('header.saved')}
             </Button>
           </div>
         </div>
@@ -418,19 +419,19 @@ export default function PlayerTrainingPlanPage() {
           const age = playerProfile.age;
           const daysLeftToDecay = age < 33 ? 33 - age : 0;
           let tone = 'bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-400';
-          let title = 'Atenção: jogador se aproximando do auge';
-          let body = `Aos 33 anos seu jogador começa a perder atributos físicos a cada temporada. Faltam ${daysLeftToDecay} temporada(s). Foque nas faixas mais altas antes que o decay supere o ganho de treino.`;
+          let title = t('aging.approaching_title');
+          let body = t('aging.approaching_body', { seasons: daysLeftToDecay });
           if (age >= 33 && age < 36) {
-            title = `Carreira madura — decay leve (${age} anos)`;
-            body = 'Atributos físicos caem um pouco a cada fim de temporada. Treino concentrado ainda consegue manter.';
+            title = t('aging.mature_title', { age });
+            body = t('aging.mature_body');
           } else if (age >= 36 && age < 38) {
             tone = 'bg-orange-500/10 border-orange-500/40 text-orange-700 dark:text-orange-400';
-            title = `Decay acelerado (${age} anos)`;
-            body = 'O treino já não compensa a perda. A partir daqui o jogador perde mais do que ganha — aproveite os últimos minutos em campo.';
+            title = t('aging.decline_title', { age });
+            body = t('aging.decline_body');
           } else if (age >= 38) {
             tone = 'bg-amber-600/15 border-amber-600/50 text-amber-800 dark:text-amber-300';
-            title = `Veterano (${age} anos) — aposentadoria disponível`;
-            body = 'Você pode aposentar o jogador pelo Perfil a qualquer momento. Continuar jogando é opcional, mas os atributos vão cair rápido.';
+            title = t('aging.veteran_title', { age });
+            body = t('aging.veteran_body');
           }
           return (
             <div className={`stat-card space-y-1 border ${tone}`}>
@@ -447,28 +448,28 @@ export default function PlayerTrainingPlanPage() {
           <div className="flex items-center gap-2">
             <Battery className="h-4 w-4 text-pitch" />
             <div>
-              <div className="text-muted-foreground text-xs">Energia atual</div>
+              <div className="text-muted-foreground text-xs">{t('status.current_energy')}</div>
               <div className="font-display font-bold">{playerProfile.energy_current}/{maxEnergy}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Battery className="h-4 w-4 text-tactical" />
             <div>
-              <div className="text-muted-foreground text-xs">Regen diário</div>
+              <div className="text-muted-foreground text-xs">{t('status.daily_regen')}</div>
               <div className="font-display font-bold">{regenLabel}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Dumbbell className="h-4 w-4 text-amber-400" />
             <div>
-              <div className="text-muted-foreground text-xs">Custo por sessão</div>
+              <div className="text-muted-foreground text-xs">{t('status.session_cost')}</div>
               <div className="font-display font-bold">{ENERGY_COST}%</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Swords className="h-4 w-4 text-destructive" />
             <div>
-              <div className="text-muted-foreground text-xs">Jogos esta semana</div>
+              <div className="text-muted-foreground text-xs">{t('status.weekly_matches')}</div>
               <div className="font-display font-bold">{matchDayDows.size}</div>
             </div>
           </div>
@@ -476,7 +477,8 @@ export default function PlayerTrainingPlanPage() {
 
         {/* Weekly grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-          {DAY_LABELS.map((label, dayIdx) => {
+          {DAY_KEYS.map((dayKey, dayIdx) => {
+            const label = t(`days.${dayKey}`);
             const isToday = dayIdx === todayDow;
             const isMatchDay = matchDayDows.has(dayIdx);
             const daySlots = plan[dayIdx];
@@ -493,14 +495,14 @@ export default function PlayerTrainingPlanPage() {
                     <span className="font-display font-bold text-sm">{label}</span>
                     {isToday && (
                       <span className="text-[10px] font-display font-bold uppercase px-1.5 py-0.5 rounded-full bg-tactical/20 text-tactical">
-                        Hoje
+                        {t('day_card.today')}
                       </span>
                     )}
                   </div>
                   <button
                     onClick={() => clearDay(dayIdx)}
                     className="text-muted-foreground hover:text-destructive transition-colors"
-                    title="Limpar dia"
+                    title={t('day_card.clear_day')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -517,15 +519,17 @@ export default function PlayerTrainingPlanPage() {
                     <div className="flex flex-col gap-1 px-2 py-1.5 rounded bg-destructive/15 text-destructive">
                       <div className="flex items-center gap-1.5 text-[11px] font-display font-bold">
                         {isLeague ? <Trophy className="h-3 w-3" /> : <Swords className="h-3 w-3" />}
-                        DIA DE JOGO{mi ? ` — ${formatBRTTimeOnly(mi.scheduled_at)} BRT` : ''}
+                        {mi ? t('day_card.match_day_with_time', { time: formatBRTTimeOnly(mi.scheduled_at) }) : t('day_card.match_day')}
                       </div>
                       {mi && (
                         <div className="text-[10px] leading-tight">
-                          vs {mi.opponent_name} ({mi.is_home ? 'Casa' : 'Fora'})
+                          {mi.is_home
+                            ? t('day_card.vs_label_home', { name: mi.opponent_name })
+                            : t('day_card.vs_label_away', { name: mi.opponent_name })}
                         </div>
                       )}
                       <div className="text-[10px] leading-tight italic opacity-80">
-                        Guarde energia!
+                        {t('day_card.save_energy')}
                       </div>
                     </div>
                   );
@@ -533,7 +537,7 @@ export default function PlayerTrainingPlanPage() {
 
                 {/* Energy header */}
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Início (pós-regen)</span>
+                  <span>{t('day_card.after_regen')}</span>
                   <span className="font-display font-bold text-foreground">{proj?.afterRegen ?? 0}%</span>
                 </div>
 
@@ -544,9 +548,9 @@ export default function PlayerTrainingPlanPage() {
                     return (
                       <div key={slotIdx} className="rounded-md border border-border/40 p-2 space-y-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Slot {slotIdx + 1}</span>
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('day_card.slot', { n: slotIdx + 1 })}</span>
                           {slot.attribute_key && projSlot && !projSlot.trained && (
-                            <span className="text-[9px] font-display font-bold text-destructive uppercase">Sem energia</span>
+                            <span className="text-[9px] font-display font-bold text-destructive uppercase">{t('day_card.no_energy')}</span>
                           )}
                         </div>
                         <Select
@@ -554,10 +558,10 @@ export default function PlayerTrainingPlanPage() {
                           onValueChange={(v) => updateSlot(dayIdx, slotIdx, v === 'none' ? null : v)}
                         >
                           <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Nenhum" />
+                            <SelectValue placeholder={t('day_card.no_attribute')} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">— Nenhum —</SelectItem>
+                            <SelectItem value="none">{t('day_card.no_attribute_option')}</SelectItem>
                             {availableAttrs.map(k => (
                               <SelectItem key={k} value={k} className="text-xs">
                                 {ATTR_LABELS[k] || k}
@@ -579,11 +583,11 @@ export default function PlayerTrainingPlanPage() {
                         })()}
                         {slot.attribute_key && range && (
                           <div className="text-[10px] text-muted-foreground">
-                            Ganho ~<span className="text-pitch font-bold">+{range[0].toFixed(2)}</span>
-                            {' a '}
+                            {t('day_card.gain_range')}<span className="text-pitch font-bold">+{range[0].toFixed(2)}</span>
+                            {t('day_card.to')}
                             <span className="text-pitch font-bold">+{range[1].toFixed(2)}</span>
                             {projSlot && (
-                              <span className="ml-2">→ Energia: <span className="font-bold text-foreground">{projSlot.energyAfter}%</span></span>
+                              <span className="ml-2">{t('day_card.energy_after')}<span className="font-bold text-foreground">{projSlot.energyAfter}%</span></span>
                             )}
                           </div>
                         )}
@@ -593,9 +597,9 @@ export default function PlayerTrainingPlanPage() {
                 </div>
 
                 <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[11px]">
-                  <span className="text-muted-foreground">Fim do dia</span>
+                  <span className="text-muted-foreground">{t('day_card.end_of_day')}</span>
                   <span className="font-display font-bold">
-                    {proj?.endOfDay ?? 0}% · {filledCount}/{SLOTS_PER_DAY} slots
+                    {t('day_card.end_summary', { pct: proj?.endOfDay ?? 0, filled: filledCount, total: SLOTS_PER_DAY })}
                   </span>
                 </div>
               </div>
@@ -604,7 +608,7 @@ export default function PlayerTrainingPlanPage() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Dica: o regen médio é ~{Math.round(regenPct * 100)}% por dia. Se não tiver fisio no contrato, considere treinar menos nos dias próximos a jogos pra chegar 100% em campo.
+          {t('tip', { pct: Math.round(regenPct * 100) })}
         </p>
       </div>
     </AppLayout>

@@ -1,0 +1,131 @@
+{
+  "header": {
+    "back": "Voltar",
+    "badge_lab": "LAB SOLO",
+    "badge_dummy": "JOGADOR + BONECO",
+    "badge_no_timer": "SEM TIMER"
+  },
+  "buttons": {
+    "clear_inertia": "Zerar inércia",
+    "ball_to_player": "Bola no pé",
+    "ball_to_dummy": "Bola no boneco",
+    "drop_ball": "Bola solta",
+    "reset": "Resetar"
+  },
+  "actions_section": {
+    "title": "Ações",
+    "click_to_open": "Clique no jogador no campo para abrir o menu de ações.",
+    "current_action": "Ação atual: <0>{{name}}</0>",
+    "post_action_available": "Passo pós-ação disponível: mova até {{pct}}% do alcance."
+  },
+  "state_section": {
+    "title": "Estado",
+    "x": "X: {{value}}",
+    "y": "Y: {{value}}",
+    "dummy_x": "Boneco X: {{value}}",
+    "dummy_y": "Boneco Y: {{value}}",
+    "gk_x": "Goleiro X: {{value}}",
+    "gk_y": "Goleiro Y: {{value}}",
+    "current_range": "Alcance atual: {{value}}",
+    "last_vector": "Último vetor: {{value}}",
+    "stopped": "parado",
+    "ball": "Bola: {{state}}",
+    "ball_in_flight": "em voo ({{pct}}%)",
+    "ball_with_player": "com o jogador",
+    "ball_with_dummy": "com o boneco",
+    "ball_with_gk": "com o goleiro",
+    "ball_loose": "solta",
+    "result": "Resultado: {{label}}",
+    "error_severity": "Severidade do erro: {{pct}}%",
+    "speed_penalty": "Penalidade por velocidade: {{pct}}%",
+    "real_deviation": "Desvio real: {{value}}",
+    "over_goal_suffix": " (por cima)"
+  },
+  "telemetry": {
+    "title": "Telemetria",
+    "speed": "Velocidade: {{value}}",
+    "speed_norm": "Vel. norm.: {{pct}}%",
+    "accel": "Aceleração: {{value}}",
+    "accel_norm": "Accel. norm.: {{pct}}%",
+    "base_speed": "Base vel.: {{value}}",
+    "accel_factor": "Fator accel.: {{value}}",
+    "stamina_factor": "Fator stamina: {{value}}",
+    "strength_factor": "Fator força: {{value}}",
+    "final_range": "Alcance final: {{value}}",
+    "preview_stride": "Passada em hover: {{stride}} / {{max}}",
+    "directional_inertia": "Inércia dir.: x{{value}}",
+    "last_stride": "Última passada: {{value}}",
+    "speed_load": "Carga de velocidade: {{pct}}%",
+    "post_action_step": "Passo pós-ação: {{state}}",
+    "post_action_freed": "{{pct}}% liberado",
+    "post_action_unavailable": "indisponível"
+  },
+  "simulation": {
+    "title": "Simulação",
+    "error_label": "Erro da ação"
+  },
+  "goalkeeper": {
+    "title": "Goleiro Bot",
+    "remove": "Remover",
+    "add": "Adicionar",
+    "active_help": "O goleiro acompanha a bola, defende apenas o gol da direita e repõe a jogada após a defesa.",
+    "inactive_help": "Ative para adicionar um goleiro com movimento automático.",
+    "attrs_title": "Atributos do goleiro"
+  },
+  "dummy": {
+    "title": "Boneco",
+    "x_label": "Posição X",
+    "y_label": "Posição Y",
+    "attrs_title": "Atributos do boneco"
+  },
+  "attrs_title": "Atributos",
+  "field_hint_post_action": "Passo pós-ação liberado: clique no campo para mover até <0>{{pct}}%</0> do alcance.",
+  "field_hint_default": "Clique no jogador para escolher a ação e depois clique no campo para aplicar <0>{{name}}</0>. Movimento com posse conduz a bola e só vira disputa de drible quando o trajeto entra na zona do boneco.",
+  "menu": {
+    "active": "ativa"
+  },
+  "actions": {
+    "move": "Mover",
+    "tackle": "Desarmar",
+    "pass_low": "Passe rasteiro",
+    "pass_high": "Passe alto",
+    "pass_launch": "Lançamento",
+    "shoot_controlled": "Chute controlado",
+    "shoot_power": "Chute forte"
+  },
+  "player_attrs": {
+    "velocidade": "Velocidade",
+    "aceleracao": "Aceleração",
+    "stamina": "Stamina",
+    "forca": "Força",
+    "drible": "Drible",
+    "agilidade": "Agilidade",
+    "desarme": "Desarme",
+    "marcacao": "Marcação",
+    "antecipacao": "Antecipação",
+    "passe_baixo": "Passe rasteiro",
+    "passe_alto": "Passe alto",
+    "acuracia_chute": "Acerto do chute",
+    "forca_chute": "Força do chute",
+    "controle_bola": "Controle de bola",
+    "um_toque": "Um toque"
+  },
+  "dummy_attrs": {
+    "drible": "Drible",
+    "desarme": "Desarme",
+    "marcacao": "Marcação",
+    "antecipacao": "Antecipação",
+    "controle_bola": "Controle de bola",
+    "forca": "Força",
+    "agilidade": "Agilidade",
+    "tomada_decisao": "Tomada de decisão",
+    "um_toque": "Um toque"
+  },
+  "gk_attrs": {
+    "reflexo": "Reflexo",
+    "posicionamento_gol": "Posicionamento",
+    "um_contra_um": "Um contra um",
+    "tempo_reacao": "Tempo de reação",
+    "agilidade": "Agilidade"
+  }
+}

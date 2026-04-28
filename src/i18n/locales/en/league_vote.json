@@ -1,0 +1,43 @@
+{
+  "title": "Schedule Vote",
+  "subtitle": "Vote on the preferred days and times for league matches.",
+  "current": {
+    "title": "Current Schedule",
+    "matches": "Matches:",
+    "and": "and",
+    "at": "at"
+  },
+  "form": {
+    "title": "Your Vote",
+    "day1": "Day 1",
+    "day2": "Day 2",
+    "time": "Time",
+    "placeholder": "Select...",
+    "submit": "Vote"
+  },
+  "summary": {
+    "title": "Vote Summary",
+    "managers_voted": "Managers who voted",
+    "winning_option": "Top option",
+    "votes_one": "{{count}} vote",
+    "votes_other": "{{count}} votes",
+    "your_vote": "Your current vote",
+    "no_vote": "You haven't voted yet.",
+    "and": "and",
+    "at": "at"
+  },
+  "days": {
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
+    "sunday": "Sunday"
+  },
+  "toast": {
+    "vote_ok": "Vote recorded! Your preference was saved.",
+    "vote_error": "Error: {{message}}",
+    "vote_error_default": "Could not record vote."
+  }
+}

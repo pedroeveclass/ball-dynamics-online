@@ -1,5 +1,6 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -21,6 +22,7 @@ import {
 
 function ForumLayout({ children }: { children: ReactNode }) {
   const { managerProfile, playerProfile, loading } = useAuth();
+  const { t } = useTranslation('forum');
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
   if (playerProfile) return <AppLayout>{children}</AppLayout>;
@@ -32,7 +34,7 @@ function ForumLayout({ children }: { children: ReactNode }) {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <MessageSquare className="h-5 w-5 text-tactical" />
-          <span className="font-display text-lg font-bold">Fórum FID</span>
+          <span className="font-display text-lg font-bold">{t('title')}</span>
         </div>
       </nav>
       <div className="max-w-5xl mx-auto px-4 py-6">{children}</div>
@@ -79,6 +81,7 @@ interface Topic {
 export default function ForumPage() {
   const { categorySlug } = useParams<{ categorySlug?: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation('forum');
   const { profile, isAdmin } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -137,16 +140,16 @@ export default function ForumPage() {
       const playerNameMap = new Map((playersRes.data || []).map((p: any) => [p.user_id, p.full_name]));
       const managerNameMap = new Map((managersRes.data || []).map((m: any) => [m.user_id, m.full_name]));
       for (const p of (profilesRes.data || [])) {
-        authorMap[p.id] = p.username || playerNameMap.get(p.id) || managerNameMap.get(p.id) || 'Anônimo';
+        authorMap[p.id] = p.username || playerNameMap.get(p.id) || managerNameMap.get(p.id) || t('anonymous');
       }
     }
 
     // Enrich with category info
     const catMap = Object.fromEntries(catList.map(c => [c.id, c]));
-    for (const t of topicList) {
-      t.author_username = authorMap[t.author_id] || 'Anônimo';
-      t.category_slug = catMap[t.category_id]?.slug;
-      t.category_name = catMap[t.category_id]?.name;
+    for (const tp of topicList) {
+      tp.author_username = authorMap[tp.author_id] || t('anonymous');
+      tp.category_slug = catMap[tp.category_id]?.slug;
+      tp.category_name = catMap[tp.category_id]?.name;
     }
 
     setTopics(topicList);
@@ -177,7 +180,7 @@ export default function ForumPage() {
   async function handleCreateTopic() {
     if (!profile) { navigate('/login'); return; }
     if (!newCategoryId || newTitle.length < 5 || newBody.length < 10) {
-      toast.error('Preencha todos os campos (título min 5 chars, corpo min 10 chars).');
+      toast.error(t('toast.validation_fields'));
       return;
     }
     setSubmitting(true);
@@ -193,10 +196,10 @@ export default function ForumPage() {
       .single();
     setSubmitting(false);
     if (error) {
-      toast.error(error.message || 'Erro ao criar tópico');
+      toast.error(error.message || t('toast.create_error'));
       return;
     }
-    toast.success('Tópico criado!');
+    toast.success(t('toast.created_ok'));
     setShowNewTopic(false);
     setNewTitle('');
     setNewBody('');
@@ -226,22 +229,22 @@ export default function ForumPage() {
               <h1 className="font-display text-2xl font-bold flex items-center gap-2">
                 <MessageSquare className="h-6 w-6 text-tactical" />
                 {categorySlug
-                  ? categories.find(c => c.slug === categorySlug)?.name || 'Fórum'
-                  : 'Fórum FID'}
+                  ? categories.find(c => c.slug === categorySlug)?.name || t('category_fallback')
+                  : t('title')}
               </h1>
               {!categorySlug && (
-                <p className="text-sm text-muted-foreground mt-1">Discussões da comunidade Football Identity</p>
+                <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
               )}
             </div>
           </div>
           {profile && (
             <Button onClick={() => setShowNewTopic(true)} className="font-display">
-              <Plus className="h-4 w-4 mr-1" /> Novo Tópico
+              <Plus className="h-4 w-4 mr-1" /> {t('buttons.new_topic')}
             </Button>
           )}
           {!profile && (
             <Link to="/login">
-              <Button variant="outline" className="font-display text-sm">Faça login para participar</Button>
+              <Button variant="outline" className="font-display text-sm">{t('buttons.login_to_participate')}</Button>
             </Link>
           )}
         </div>
@@ -270,10 +273,10 @@ export default function ForumPage() {
             {/* Topic list */}
             <div>
               <h2 className="font-display text-sm font-semibold text-muted-foreground mb-3">
-                {categorySlug ? 'Tópicos' : 'Tópicos Recentes'}
+                {categorySlug ? t('topics.section_default') : t('topics.section_recent')}
               </h2>
               {topics.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum tópico ainda. Seja o primeiro a criar!</p>
+                <p className="text-sm text-muted-foreground text-center py-8">{t('topics.empty')}</p>
               ) : (
                 <div className="space-y-2">
                   {topics.map(topic => (
@@ -298,10 +301,10 @@ export default function ForumPage() {
                           <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
                             {isAdmin && topic.is_pinned && (
                               <div className="flex flex-col -my-1" onClick={e => e.preventDefault()}>
-                                <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'up'); }} title="Subir">
+                                <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'up'); }} title={t('reorder.up')}>
                                   <ChevronUp className="h-3.5 w-3.5" />
                                 </button>
-                                <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'down'); }} title="Descer">
+                                <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'down'); }} title={t('reorder.down')}>
                                   <ChevronDown className="h-3.5 w-3.5" />
                                 </button>
                               </div>
@@ -319,12 +322,12 @@ export default function ForumPage() {
               {/* Pagination */}
               {topics.length === PAGE_SIZE && (
                 <div className="flex justify-center mt-4">
-                  <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)}>Carregar mais</Button>
+                  <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)}>{t('buttons.load_more')}</Button>
                 </div>
               )}
               {page > 0 && (
                 <div className="flex justify-center mt-2">
-                  <Button variant="ghost" size="sm" onClick={() => setPage(0)}>Voltar ao início</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setPage(0)}>{t('buttons.back_to_top')}</Button>
                 </div>
               )}
             </div>
@@ -335,13 +338,13 @@ export default function ForumPage() {
         <Dialog open={showNewTopic} onOpenChange={setShowNewTopic}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle className="font-display">Novo Tópico</DialogTitle>
+              <DialogTitle className="font-display">{t('new_topic_dialog.title')}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-1 block">Categoria</label>
+                <label className="text-sm font-medium mb-1 block">{t('new_topic_dialog.category_label')}</label>
                 <Select value={newCategoryId} onValueChange={setNewCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione uma categoria" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t('new_topic_dialog.category_placeholder')} /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -350,15 +353,15 @@ export default function ForumPage() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Título</label>
-                <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Título do tópico (min 5 caracteres)" maxLength={150} />
+                <label className="text-sm font-medium mb-1 block">{t('new_topic_dialog.title_label')}</label>
+                <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder={t('new_topic_dialog.title_placeholder')} maxLength={150} />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Conteúdo</label>
-                <Textarea value={newBody} onChange={e => setNewBody(e.target.value)} placeholder="Escreva seu tópico (min 10 caracteres)" rows={5} />
+                <label className="text-sm font-medium mb-1 block">{t('new_topic_dialog.body_label')}</label>
+                <Textarea value={newBody} onChange={e => setNewBody(e.target.value)} placeholder={t('new_topic_dialog.body_placeholder')} rows={5} />
               </div>
               <Button className="w-full font-display" disabled={submitting} onClick={handleCreateTopic}>
-                {submitting ? 'Criando...' : 'Criar Tópico'}
+                {submitting ? t('new_topic_dialog.submitting') : t('new_topic_dialog.submit')}
               </Button>
             </div>
           </DialogContent>

@@ -1,0 +1,39 @@
+{
+  "title": "FID Forum",
+  "title_short": "Forum",
+  "subtitle": "Football Identity community discussions",
+  "anonymous": "Anonymous",
+  "back": "Back",
+  "category_fallback": "Forum",
+  "buttons": {
+    "new_topic": "New Topic",
+    "login_to_participate": "Log in to participate",
+    "load_more": "Load more",
+    "back_to_top": "Back to top"
+  },
+  "topics": {
+    "section_recent": "Recent Topics",
+    "section_default": "Topics",
+    "empty": "No topics yet. Be the first to create one!"
+  },
+  "reorder": {
+    "up": "Move up",
+    "down": "Move down"
+  },
+  "new_topic_dialog": {
+    "title": "New Topic",
+    "category_label": "Category",
+    "category_placeholder": "Select a category",
+    "title_label": "Title",
+    "title_placeholder": "Topic title (min 5 characters)",
+    "body_label": "Content",
+    "body_placeholder": "Write your topic (min 10 characters)",
+    "submit": "Create Topic",
+    "submitting": "Creating..."
+  },
+  "toast": {
+    "validation_fields": "Fill in all fields (title min 5 chars, body min 10 chars).",
+    "create_error": "Error creating topic",
+    "created_ok": "Topic created!"
+  }
+}

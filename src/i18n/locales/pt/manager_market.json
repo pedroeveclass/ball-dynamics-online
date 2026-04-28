@@ -1,0 +1,49 @@
+{
+  "title": "Mercado de Agentes Livres",
+  "subtitle": "Encontre jogadores sem clube e envie propostas de contrato.",
+  "filters": {
+    "search_placeholder": "Buscar por nome...",
+    "position_placeholder": "Posição",
+    "archetype_placeholder": "Arquétipo",
+    "all_positions": "Todas",
+    "all_archetypes": "Todos"
+  },
+  "loading": "Carregando jogadores...",
+  "empty": {
+    "title": "Nenhum agente livre encontrado",
+    "hint": "Tente ajustar os filtros ou aguarde novos jogadores."
+  },
+  "card": {
+    "ovr": "OVR",
+    "age": "{{age}} anos",
+    "reputation": "Rep: {{value}}",
+    "offer_button": "Proposta"
+  },
+  "offer_dialog": {
+    "title": "Enviar Proposta",
+    "player_summary": "{{position}} • {{archetype}} • {{age}} anos",
+    "weekly_salary": "Salário Semanal ($)",
+    "release_clause": "Multa Rescisória ($)",
+    "duration_months": "Duração (meses)",
+    "squad_role": "Papel no Elenco",
+    "message_label": "Mensagem (opcional)",
+    "message_placeholder": "Ex: Queremos você como peça-chave do time...",
+    "cancel": "Cancelar",
+    "submit": "Enviar Proposta",
+    "submitting": "Enviando..."
+  },
+  "squad_role": {
+    "starter": "Titular",
+    "rotation": "Rotação",
+    "backup": "Reserva",
+    "youth": "Jovem Promessa"
+  },
+  "toast": {
+    "offer_error": "Erro: Não foi possível enviar a proposta.",
+    "offer_sent": "Proposta enviada para {{name}}."
+  },
+  "notification": {
+    "title": "Nova proposta de contrato!",
+    "body": "{{club}} enviou uma proposta de R${{salary}}/semana."
+  }
+}

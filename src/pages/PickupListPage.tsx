@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { formatDate } from '@/lib/formatDate';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,12 +38,12 @@ type ParticipantRow = {
   slot_id: string;
 };
 
-const STATUS_INFO: Record<PickupRow['status'], { label: string; className: string }> = {
-  open:        { label: 'Aberto',    className: 'bg-primary/10 text-primary border-primary/30' },
-  materialized:{ label: 'Preparando',className: 'bg-amber-500/20 text-amber-600 border-amber-500/30' },
-  live:        { label: '🔴 Ao Vivo',className: 'bg-pitch/20 text-pitch border-pitch/30' },
-  finished:    { label: 'Encerrado', className: 'bg-muted text-muted-foreground border-border' },
-  cancelled:   { label: 'Cancelado', className: 'bg-destructive/10 text-destructive border-destructive/30' },
+const STATUS_CLASSNAMES: Record<PickupRow['status'], string> = {
+  open:         'bg-primary/10 text-primary border-primary/30',
+  materialized: 'bg-amber-500/20 text-amber-600 border-amber-500/30',
+  live:         'bg-pitch/20 text-pitch border-pitch/30',
+  finished:     'bg-muted text-muted-foreground border-border',
+  cancelled:    'bg-destructive/10 text-destructive border-destructive/30',
 };
 
 function defaultKickoffLocal(): string {
@@ -53,6 +56,8 @@ function defaultKickoffLocal(): string {
 export default function PickupListPage() {
   const { user, playerProfile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('pickup_list');
+  const { current: lang } = useAppLanguage();
   const [pickups, setPickups] = useState<PickupRow[]>([]);
   const [participants, setParticipants] = useState<ParticipantRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,24 +161,23 @@ export default function PickupListPage() {
     });
     setCreating(false);
     if (error) {
-      toast.error(error.message || 'Erro ao criar jogo');
+      toast.error(error.message || t('toast.create_error'));
       return;
     }
     setCreateOpen(false);
-    toast.success('Jogo de várzea criado!');
+    toast.success(t('toast.created_ok'));
     if (data) navigate(`/varzea/${data as string}`);
   };
 
   const renderCard = (p: PickupRow) => {
     const count = countsById.get(p.id) || 0;
     const total = totalSlotsPerSide(p.format) * 2;
-    const status = STATUS_INFO[p.status];
     const when = new Date(p.kickoff_at);
     const now = new Date();
     const minutesUntil = Math.round((when.getTime() - now.getTime()) / 60000);
     const whenLabel = p.status === 'open' && minutesUntil >= 0 && minutesUntil <= 120
-      ? `em ${minutesUntil} min`
-      : when.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      ? t('when.in_minutes', { n: minutesUntil })
+      : formatDate(when, lang, 'datetime_short');
 
     return (
       <Link key={p.id} to={`/varzea/${p.id}`} className="block">
@@ -185,7 +189,7 @@ export default function PickupListPage() {
               </div>
               <div className="min-w-0">
                 <div className="font-display font-medium">
-                  {p.format === '5v5' ? 'Pelada 5x5' : 'Jogo 11x11'}
+                  {p.format === '5v5' ? t('format.5v5') : t('format.11v11')}
                 </div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                   <Clock className="h-3 w-3" />
@@ -197,7 +201,7 @@ export default function PickupListPage() {
               <Badge variant="outline" className="font-mono text-xs">
                 {count}/{total}
               </Badge>
-              <Badge className={status.className} variant="outline">{status.label}</Badge>
+              <Badge className={STATUS_CLASSNAMES[p.status]} variant="outline">{t(`status.${p.status}`)}</Badge>
             </div>
           </CardContent>
         </Card>
@@ -211,61 +215,61 @@ export default function PickupListPage() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-              <Users2 className="h-6 w-6 text-primary" /> Jogos de Várzea
+              <Users2 className="h-6 w-6 text-primary" /> {t('title')}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Crie um jogo avulso ou entre em um existente. Sem XP, sem energia, só diversão.
+              {t('subtitle')}
             </p>
           </div>
 
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="h-4 w-4 mr-2" /> Criar jogo
+                <Plus className="h-4 w-4 mr-2" /> {t('create_button')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Criar jogo de várzea</DialogTitle>
+                <DialogTitle>{t('create_dialog.title')}</DialogTitle>
               </DialogHeader>
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Formato</Label>
+                  <Label>{t('create_dialog.format_label')}</Label>
                   <Select value={createFormat} onValueChange={v => setCreateFormat(v as PickupFormat)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="5v5">5 x 5 (pelada)</SelectItem>
-                      <SelectItem value="11v11">11 x 11 (4-4-2)</SelectItem>
+                      <SelectItem value="5v5">{t('create_dialog.format_5v5')}</SelectItem>
+                      <SelectItem value="11v11">{t('create_dialog.format_11v11')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Horário do kickoff</Label>
+                  <Label>{t('create_dialog.kickoff_label')}</Label>
                   <Input
                     type="datetime-local"
                     value={createKickoff}
                     onChange={e => setCreateKickoff(e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Mínimo 2 minutos. Máximo 7 dias.
+                    {t('create_dialog.kickoff_hint')}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Seu time</Label>
+                    <Label>{t('create_dialog.side_label')}</Label>
                     <Select value={createSide} onValueChange={v => setCreateSide(v as 'home' | 'away')}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="home">Casa</SelectItem>
-                        <SelectItem value="away">Visitante</SelectItem>
+                        <SelectItem value="home">{t('create_dialog.side_home')}</SelectItem>
+                        <SelectItem value="away">{t('create_dialog.side_away')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Sua posição</Label>
+                    <Label>{t('create_dialog.slot_label')}</Label>
                     <Select value={createSlot} onValueChange={setCreateSlot}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -280,10 +284,10 @@ export default function PickupListPage() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
-                  Cancelar
+                  {t('create_dialog.cancel')}
                 </Button>
                 <Button onClick={handleCreate} disabled={creating}>
-                  {creating ? 'Criando…' : 'Criar'}
+                  {creating ? t('create_dialog.submitting') : t('create_dialog.submit')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -292,16 +296,16 @@ export default function PickupListPage() {
 
         <Tabs defaultValue="open">
           <TabsList>
-            <TabsTrigger value="open">Abertos ({openList.length})</TabsTrigger>
-            <TabsTrigger value="mine">Meus ({myList.length})</TabsTrigger>
-            <TabsTrigger value="recent">Recentes ({recentList.length})</TabsTrigger>
+            <TabsTrigger value="open">{t('tabs.open', { n: openList.length })}</TabsTrigger>
+            <TabsTrigger value="mine">{t('tabs.mine', { n: myList.length })}</TabsTrigger>
+            <TabsTrigger value="recent">{t('tabs.recent', { n: recentList.length })}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="open" className="space-y-2 mt-4">
-            {loading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+            {loading && <p className="text-sm text-muted-foreground">{t('loading')}</p>}
             {!loading && openList.length === 0 && (
               <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-                Nenhum jogo aberto. Crie o primeiro!
+                {t('empty.open')}
               </CardContent></Card>
             )}
             {openList.map(renderCard)}
@@ -310,7 +314,7 @@ export default function PickupListPage() {
           <TabsContent value="mine" className="space-y-2 mt-4">
             {!loading && myList.length === 0 && (
               <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-                Você ainda não entrou em nenhum jogo.
+                {t('empty.mine')}
               </CardContent></Card>
             )}
             {myList.map(renderCard)}
@@ -319,7 +323,7 @@ export default function PickupListPage() {
           <TabsContent value="recent" className="space-y-2 mt-4">
             {!loading && recentList.length === 0 && (
               <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-                Nenhum jogo recente.
+                {t('empty.recent')}
               </CardContent></Card>
             )}
             {recentList.map(renderCard)}

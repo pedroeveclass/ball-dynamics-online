@@ -1,0 +1,49 @@
+{
+  "title": "Pickup Games",
+  "subtitle": "Create a casual game or join one. No XP, no energy, just fun.",
+  "create_button": "Create game",
+  "format": {
+    "5v5": "5v5 Pickup",
+    "11v11": "11v11 Game"
+  },
+  "status": {
+    "open": "Open",
+    "materialized": "Preparing",
+    "live": "🔴 Live",
+    "finished": "Finished",
+    "cancelled": "Cancelled"
+  },
+  "when": {
+    "in_minutes": "in {{n}} min"
+  },
+  "tabs": {
+    "open": "Open ({{n}})",
+    "mine": "Mine ({{n}})",
+    "recent": "Recent ({{n}})"
+  },
+  "empty": {
+    "open": "No open games. Be the first to create one!",
+    "mine": "You haven't joined any game yet.",
+    "recent": "No recent games."
+  },
+  "loading": "Loading…",
+  "create_dialog": {
+    "title": "Create pickup game",
+    "format_label": "Format",
+    "format_5v5": "5v5 (pickup)",
+    "format_11v11": "11v11 (4-4-2)",
+    "kickoff_label": "Kickoff time",
+    "kickoff_hint": "Minimum 2 minutes. Maximum 7 days.",
+    "side_label": "Your team",
+    "side_home": "Home",
+    "side_away": "Away",
+    "slot_label": "Your position",
+    "cancel": "Cancel",
+    "submit": "Create",
+    "submitting": "Creating…"
+  },
+  "toast": {
+    "create_error": "Error creating game",
+    "created_ok": "Pickup game created!"
+  }
+}

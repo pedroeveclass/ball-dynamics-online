@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Trans, useTranslation } from "react-i18next";
 import { ArrowLeft, FlaskConical, RotateCcw, Wind } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -104,14 +105,14 @@ type BallResolution = {
   owner: BallOwner;
 };
 
-const ACTION_LABELS: Record<SoloActionType, string> = {
-  move: "Mover",
-  tackle: "Desarmar",
-  pass_low: "Passe rasteiro",
-  pass_high: "Passe alto",
-  pass_launch: "Lancamento",
-  shoot_controlled: "Chute controlado",
-  shoot_power: "Chute forte",
+const ACTION_LABEL_KEY: Record<SoloActionType, string> = {
+  move: "actions.move",
+  tackle: "actions.tackle",
+  pass_low: "actions.pass_low",
+  pass_high: "actions.pass_high",
+  pass_launch: "actions.pass_launch",
+  shoot_controlled: "actions.shoot_controlled",
+  shoot_power: "actions.shoot_power",
 };
 
 const FIELD_W = 900;
@@ -909,6 +910,7 @@ function shouldResolveDribbleContest(from: FieldPoint, to: FieldPoint, dummyPos:
 
 export default function SoloPhysicsLabPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation('solo_lab');
   const svgRef = useRef<SVGSVGElement>(null);
 
   const [attrs, setAttrs] = useState<SoloAttrs>(DEFAULT_ATTRS);
@@ -1060,7 +1062,7 @@ export default function SoloPhysicsLabPage() {
   }, [attrs, computeMaxMoveRange, lastMoveVector, playerPos.x, playerPos.y, previewTarget, selectedAction]);
   const availableActions = useMemo(
     () =>
-      (Object.keys(ACTION_LABELS) as SoloActionType[]).filter((action) => {
+      (Object.keys(ACTION_LABEL_KEY) as SoloActionType[]).filter((action) => {
         if (action === "tackle") return dummyControlsBall;
         if (action !== "move" && !playerControlsBall) return false;
         return true;
@@ -1666,39 +1668,39 @@ export default function SoloPhysicsLabPage() {
   }, [goalkeeperEnabled]);
 
   const attrsList: Array<{ key: keyof SoloAttrs; label: string }> = [
-    { key: "velocidade", label: "Velocidade" },
-    { key: "aceleracao", label: "Aceleracao" },
-    { key: "stamina", label: "Stamina" },
-    { key: "forca", label: "Forca" },
-    { key: "drible", label: "Drible" },
-    { key: "agilidade", label: "Agilidade" },
-    { key: "desarme", label: "Desarme" },
-    { key: "marcacao", label: "Marcacao" },
-    { key: "antecipacao", label: "Antecipacao" },
-    { key: "passe_baixo", label: "Passe rasteiro" },
-    { key: "passe_alto", label: "Passe alto" },
-    { key: "acuracia_chute", label: "Acerto do chute" },
-    { key: "forca_chute", label: "Forca do chute" },
-    { key: "controle_bola", label: "Controle de bola" },
-    { key: "um_toque", label: "Um toque" },
+    { key: "velocidade", label: t('player_attrs.velocidade') },
+    { key: "aceleracao", label: t('player_attrs.aceleracao') },
+    { key: "stamina", label: t('player_attrs.stamina') },
+    { key: "forca", label: t('player_attrs.forca') },
+    { key: "drible", label: t('player_attrs.drible') },
+    { key: "agilidade", label: t('player_attrs.agilidade') },
+    { key: "desarme", label: t('player_attrs.desarme') },
+    { key: "marcacao", label: t('player_attrs.marcacao') },
+    { key: "antecipacao", label: t('player_attrs.antecipacao') },
+    { key: "passe_baixo", label: t('player_attrs.passe_baixo') },
+    { key: "passe_alto", label: t('player_attrs.passe_alto') },
+    { key: "acuracia_chute", label: t('player_attrs.acuracia_chute') },
+    { key: "forca_chute", label: t('player_attrs.forca_chute') },
+    { key: "controle_bola", label: t('player_attrs.controle_bola') },
+    { key: "um_toque", label: t('player_attrs.um_toque') },
   ];
   const dummyAttrsList: Array<{ key: keyof DummyAttrs; label: string }> = [
-    { key: "drible", label: "Drible" },
-    { key: "desarme", label: "Desarme" },
-    { key: "marcacao", label: "Marcacao" },
-    { key: "antecipacao", label: "Antecipacao" },
-    { key: "controle_bola", label: "Controle de bola" },
-    { key: "forca", label: "Forca" },
-    { key: "agilidade", label: "Agilidade" },
-    { key: "tomada_decisao", label: "Tomada de decisao" },
-    { key: "um_toque", label: "Um toque" },
+    { key: "drible", label: t('dummy_attrs.drible') },
+    { key: "desarme", label: t('dummy_attrs.desarme') },
+    { key: "marcacao", label: t('dummy_attrs.marcacao') },
+    { key: "antecipacao", label: t('dummy_attrs.antecipacao') },
+    { key: "controle_bola", label: t('dummy_attrs.controle_bola') },
+    { key: "forca", label: t('dummy_attrs.forca') },
+    { key: "agilidade", label: t('dummy_attrs.agilidade') },
+    { key: "tomada_decisao", label: t('dummy_attrs.tomada_decisao') },
+    { key: "um_toque", label: t('dummy_attrs.um_toque') },
   ];
   const goalkeeperAttrsList: Array<{ key: keyof GoalkeeperAttrs; label: string }> = [
-    { key: "reflexo", label: "Reflexo" },
-    { key: "posicionamento_gol", label: "Posicionamento" },
-    { key: "um_contra_um", label: "Um contra um" },
-    { key: "tempo_reacao", label: "Tempo de reacao" },
-    { key: "agilidade", label: "Agilidade" },
+    { key: "reflexo", label: t('gk_attrs.reflexo') },
+    { key: "posicionamento_gol", label: t('gk_attrs.posicionamento_gol') },
+    { key: "um_contra_um", label: t('gk_attrs.um_contra_um') },
+    { key: "tempo_reacao", label: t('gk_attrs.tempo_reacao') },
+    { key: "agilidade", label: t('gk_attrs.agilidade') },
   ];
 
   return (
@@ -1706,42 +1708,42 @@ export default function SoloPhysicsLabPage() {
       <div className="shrink-0 border-b border-[hsl(140,10%,20%)] bg-[hsl(140,20%,8%)] px-4 py-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/manager/challenges")} className="h-8 text-[10px] font-display">
-            <ArrowLeft className="h-3 w-3" /> Voltar
+            <ArrowLeft className="h-3 w-3" /> {t('header.back')}
           </Button>
           <Badge
             variant="secondary"
             className="border-sky-400/40 bg-sky-500/15 text-[10px] font-display text-sky-50"
           >
-            LAB SOLO
+            {t('header.badge_lab')}
           </Badge>
           <Badge
             variant="secondary"
             className="border-white/15 bg-white/10 text-[10px] font-display text-slate-100"
           >
-            JOGADOR + BONECO
+            {t('header.badge_dummy')}
           </Badge>
           <Badge
             variant="secondary"
             className="border-warning/50 bg-warning/15 text-[10px] font-display text-amber-100"
           >
-            SEM TIMER
+            {t('header.badge_no_timer')}
           </Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <Button variant="outline" size="sm" onClick={clearInertia} className="h-8 text-[10px] font-display">
-            <Wind className="h-3 w-3" /> Zerar inercia
+            <Wind className="h-3 w-3" /> {t('buttons.clear_inertia')}
           </Button>
           <Button variant="outline" size="sm" onClick={placeBallOnPlayer} className="h-8 text-[10px] font-display">
-            Bola no pe
+            {t('buttons.ball_to_player')}
           </Button>
           <Button variant="outline" size="sm" onClick={placeBallOnDummy} className="h-8 text-[10px] font-display">
-            Bola no boneco
+            {t('buttons.ball_to_dummy')}
           </Button>
           <Button variant="outline" size="sm" onClick={dropBallLoose} className="h-8 text-[10px] font-display">
-            Bola solta
+            {t('buttons.drop_ball')}
           </Button>
           <Button variant="outline" size="sm" onClick={resetPlayer} className="h-8 text-[10px] font-display">
-            <RotateCcw className="h-3 w-3" /> Resetar
+            <RotateCcw className="h-3 w-3" /> {t('buttons.reset')}
           </Button>
         </div>
       </div>
@@ -1751,113 +1753,123 @@ export default function SoloPhysicsLabPage() {
           <section className="space-y-2">
             <div className="flex items-center gap-2">
               <FlaskConical className="h-4 w-4 text-tactical" />
-              <h1 className="font-display text-sm font-bold uppercase tracking-widest">Acoes</h1>
+              <h1 className="font-display text-sm font-bold uppercase tracking-widest">{t('actions_section.title')}</h1>
             </div>
             <div className="rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] px-3 py-2 text-[11px] font-display text-muted-foreground">
-              Clique no jogador no campo para abrir o menu de acoes.
+              {t('actions_section.click_to_open')}
             </div>
             <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-[11px] font-display text-emerald-50">
-              Acao atual: <span className="font-bold">{ACTION_LABELS[selectedAction]}</span>
+              <Trans
+                t={t}
+                i18nKey="actions_section.current_action"
+                values={{ name: t(ACTION_LABEL_KEY[selectedAction]) }}
+                components={[<span key="0" className="font-bold" />]}
+              />
             </div>
             {postActionMoveAvailable && (
               <div className="rounded-lg border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] font-display text-sky-50">
-                Passo pos-acao disponivel: mova ate {Math.round(POST_ACTION_MOVE_RATIO * 100)}% do alcance.
+                {t('actions_section.post_action_available', { pct: Math.round(POST_ACTION_MOVE_RATIO * 100) })}
               </div>
             )}
           </section>
 
           <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Estado</h2>
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('state_section.title')}</h2>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-display">
-              <div className="rounded bg-white/20 px-2 py-1.5">X: {playerPos.x.toFixed(1)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Y: {playerPos.y.toFixed(1)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Boneco X: {dummyPos.x.toFixed(1)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Boneco Y: {dummyPos.y.toFixed(1)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('state_section.x', { value: playerPos.x.toFixed(1) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('state_section.y', { value: playerPos.y.toFixed(1) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('state_section.dummy_x', { value: dummyPos.x.toFixed(1) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('state_section.dummy_y', { value: dummyPos.y.toFixed(1) })}</div>
               {goalkeeperEnabled && (
                 <>
-                  <div className="rounded bg-white/20 px-2 py-1.5">Goleiro X: {goalkeeperPos.x.toFixed(1)}</div>
-                  <div className="rounded bg-white/20 px-2 py-1.5">Goleiro Y: {goalkeeperPos.y.toFixed(1)}</div>
+                  <div className="rounded bg-white/20 px-2 py-1.5">{t('state_section.gk_x', { value: goalkeeperPos.x.toFixed(1) })}</div>
+                  <div className="rounded bg-white/20 px-2 py-1.5">{t('state_section.gk_y', { value: goalkeeperPos.y.toFixed(1) })}</div>
                 </>
               )}
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Alcance atual: {displayedMoveRange.toFixed(1)}
+                {t('state_section.current_range', { value: displayedMoveRange.toFixed(1) })}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Ultimo vetor: {lastMoveVector ? `${lastMoveVector.x.toFixed(1)}, ${lastMoveVector.y.toFixed(1)}` : "parado"}
+                {t('state_section.last_vector', { value: lastMoveVector ? `${lastMoveVector.x.toFixed(1)}, ${lastMoveVector.y.toFixed(1)}` : t('state_section.stopped') })}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Bola:{" "}
-                {ballFlight
-                  ? `em voo (${Math.round(ballFlightProgress * 100)}%)`
-                  : ballOwner === "player"
-                    ? "com o jogador"
-                    : ballOwner === "dummy"
-                      ? "com o boneco"
-                      : ballOwner === "goalkeeper"
-                        ? "com o goleiro"
-                      : "solta"}
+                {t('state_section.ball', {
+                  state: ballFlight
+                    ? t('state_section.ball_in_flight', { pct: Math.round(ballFlightProgress * 100) })
+                    : ballOwner === "player"
+                      ? t('state_section.ball_with_player')
+                      : ballOwner === "dummy"
+                        ? t('state_section.ball_with_dummy')
+                        : ballOwner === "goalkeeper"
+                          ? t('state_section.ball_with_gk')
+                          : t('state_section.ball_loose'),
+                })}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Resultado: {lastResolution.label}
+                {t('state_section.result', { label: lastResolution.label })}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2 text-muted-foreground">
                 {lastResolution.detail}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Severidade do erro: {errorScalePct}%
+                {t('state_section.error_severity', { pct: errorScalePct })}
               </div>
               {selectedAction !== "move" && (
                 <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                  Penalidade por velocidade: {Math.round(actionExecutionSpeedLoad * 100)}%
+                  {t('state_section.speed_penalty', { pct: Math.round(actionExecutionSpeedLoad * 100) })}
                 </div>
               )}
               {committedAction && committedAction.type !== "move" && committedAction.type !== "tackle" && (
                 <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                  Desvio real: {committedAction.deviationDist.toFixed(2)}
-                  {committedAction.overGoal ? " (por cima)" : ""}
+                  {t('state_section.real_deviation', { value: committedAction.deviationDist.toFixed(2) })}
+                  {committedAction.overGoal ? t('state_section.over_goal_suffix') : ""}
                 </div>
               )}
               {previewMeta && (
                 <div className="rounded px-2 py-1.5 col-span-2 font-bold" style={{ backgroundColor: `${previewMeta.color}22`, color: previewMeta.color }}>
-                  {ACTION_LABELS[selectedAction]}: {previewMeta.label}
+                  {t(ACTION_LABEL_KEY[selectedAction])}: {previewMeta.label}
                 </div>
               )}
             </div>
           </section>
 
           <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Telemetria</h2>
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('telemetry.title')}</h2>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-display">
-              <div className="rounded bg-sky-500/10 px-2 py-1.5">Velocidade: {movementDebug.speedAttr.toFixed(0)}</div>
-              <div className="rounded bg-sky-500/10 px-2 py-1.5">Vel. norm.: {Math.round(movementDebug.speedNorm * 100)}%</div>
-              <div className="rounded bg-amber-500/10 px-2 py-1.5">Aceleracao: {movementDebug.accelAttr.toFixed(0)}</div>
-              <div className="rounded bg-amber-500/10 px-2 py-1.5">Accel. norm.: {Math.round(movementDebug.accelNorm * 100)}%</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Base vel.: {movementDebug.baseSpeed.toFixed(2)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Fator accel.: {movementDebug.accelFactor.toFixed(2)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Fator stamina: {movementDebug.staminaFactor.toFixed(2)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Fator forca: {movementDebug.strengthFactor.toFixed(2)}</div>
+              <div className="rounded bg-sky-500/10 px-2 py-1.5">{t('telemetry.speed', { value: movementDebug.speedAttr.toFixed(0) })}</div>
+              <div className="rounded bg-sky-500/10 px-2 py-1.5">{t('telemetry.speed_norm', { pct: Math.round(movementDebug.speedNorm * 100) })}</div>
+              <div className="rounded bg-amber-500/10 px-2 py-1.5">{t('telemetry.accel', { value: movementDebug.accelAttr.toFixed(0) })}</div>
+              <div className="rounded bg-amber-500/10 px-2 py-1.5">{t('telemetry.accel_norm', { pct: Math.round(movementDebug.accelNorm * 100) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('telemetry.base_speed', { value: movementDebug.baseSpeed.toFixed(2) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('telemetry.accel_factor', { value: movementDebug.accelFactor.toFixed(2) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('telemetry.stamina_factor', { value: movementDebug.staminaFactor.toFixed(2) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('telemetry.strength_factor', { value: movementDebug.strengthFactor.toFixed(2) })}</div>
               <div className="rounded bg-emerald-500/10 px-2 py-1.5 col-span-2">
-                Alcance final: {movementDebug.baseMoveRange.toFixed(2)}
+                {t('telemetry.final_range', { value: movementDebug.baseMoveRange.toFixed(2) })}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Passada em hover: {movementDebug.previewStride.toFixed(2)} / {movementDebug.previewMaxRange.toFixed(2)}
+                {t('telemetry.preview_stride', { stride: movementDebug.previewStride.toFixed(2), max: movementDebug.previewMaxRange.toFixed(2) })}
               </div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Inercia dir.: x{movementDebug.directionalMultiplier.toFixed(2)}</div>
-              <div className="rounded bg-white/20 px-2 py-1.5">Ultima passada: {movementDebug.lastStride.toFixed(2)}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('telemetry.directional_inertia', { value: movementDebug.directionalMultiplier.toFixed(2) })}</div>
+              <div className="rounded bg-white/20 px-2 py-1.5">{t('telemetry.last_stride', { value: movementDebug.lastStride.toFixed(2) })}</div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Carga de velocidade: {Math.round(actionExecutionSpeedLoad * 100)}%
+                {t('telemetry.speed_load', { pct: Math.round(actionExecutionSpeedLoad * 100) })}
               </div>
               <div className="rounded bg-white/20 px-2 py-1.5 col-span-2">
-                Passo pos-acao: {postActionMoveAvailable ? `${Math.round(POST_ACTION_MOVE_RATIO * 100)}% liberado` : "indisponivel"}
+                {t('telemetry.post_action_step', {
+                  state: postActionMoveAvailable
+                    ? t('telemetry.post_action_freed', { pct: Math.round(POST_ACTION_MOVE_RATIO * 100) })
+                    : t('telemetry.post_action_unavailable'),
+                })}
               </div>
             </div>
           </section>
 
           <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Simulacao</h2>
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('simulation.title')}</h2>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-[11px] font-display">Erro da acao</Label>
+                <Label className="text-[11px] font-display">{t('simulation.error_label')}</Label>
                 <span className="text-[11px] font-display text-muted-foreground">{errorScalePct}%</span>
               </div>
               <Slider min={25} max={250} step={5} value={[errorScalePct]} onValueChange={(value) => setErrorScalePct(value[0] ?? DEFAULT_ERROR_SCALE)} />
@@ -1866,21 +1878,19 @@ export default function SoloPhysicsLabPage() {
 
           <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Goleiro Bot</h2>
+              <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('goalkeeper.title')}</h2>
               <Button variant="outline" size="sm" onClick={toggleGoalkeeper} className="h-8 text-[10px] font-display">
-                {goalkeeperEnabled ? "Remover" : "Adicionar"}
+                {goalkeeperEnabled ? t('goalkeeper.remove') : t('goalkeeper.add')}
               </Button>
             </div>
             <div className="text-[11px] font-display text-muted-foreground">
-              {goalkeeperEnabled
-                ? "O goleiro acompanha a bola, defende apenas o gol da direita e repoe a jogada apos a defesa."
-                : "Ative para adicionar um goleiro com movimento automatico."}
+              {goalkeeperEnabled ? t('goalkeeper.active_help') : t('goalkeeper.inactive_help')}
             </div>
           </section>
 
           {goalkeeperEnabled && (
             <section className="space-y-3">
-              <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Atributos do goleiro</h2>
+              <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('goalkeeper.attrs_title')}</h2>
               {goalkeeperAttrsList.map(({ key, label }) => (
                 <div key={key} className="space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -1900,17 +1910,17 @@ export default function SoloPhysicsLabPage() {
           )}
 
           <section className="space-y-3 rounded-lg border border-[hsl(140,10%,18%)] bg-[hsl(140,10%,11%)] p-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Boneco</h2>
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('dummy.title')}</h2>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-[11px] font-display">Posicao X</Label>
+                <Label className="text-[11px] font-display">{t('dummy.x_label')}</Label>
                 <span className="text-[11px] font-display text-muted-foreground">{dummyPos.x.toFixed(1)}</span>
               </div>
               <Slider min={0} max={100} step={0.5} value={[dummyPos.x]} onValueChange={(value) => updateDummyAxis("x", value)} />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-[11px] font-display">Posicao Y</Label>
+                <Label className="text-[11px] font-display">{t('dummy.y_label')}</Label>
                 <span className="text-[11px] font-display text-muted-foreground">{dummyPos.y.toFixed(1)}</span>
               </div>
               <Slider min={0} max={100} step={0.5} value={[dummyPos.y]} onValueChange={(value) => updateDummyAxis("y", value)} />
@@ -1918,7 +1928,7 @@ export default function SoloPhysicsLabPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Atributos do boneco</h2>
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('dummy.attrs_title')}</h2>
             {dummyAttrsList.map(({ key, label }) => (
               <div key={key} className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1937,7 +1947,7 @@ export default function SoloPhysicsLabPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">Atributos</h2>
+            <h2 className="font-display text-xs font-bold uppercase tracking-widest text-muted-foreground">{t('attrs_title')}</h2>
             {attrsList.map(({ key, label }) => (
               <div key={key} className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -2133,8 +2143,8 @@ export default function SoloPhysicsLabPage() {
                           : "flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-display text-slate-100 hover:bg-white/10"
                       }
                     >
-                      <span>{ACTION_LABELS[action]}</span>
-                      {selectedAction === action && <span className="text-[10px] text-emerald-200">ativa</span>}
+                      <span>{t(ACTION_LABEL_KEY[action])}</span>
+                      {selectedAction === action && <span className="text-[10px] text-emerald-200">{t('menu.active')}</span>}
                     </button>
                   ))}
                 </div>
@@ -2143,14 +2153,19 @@ export default function SoloPhysicsLabPage() {
 
             <div className="absolute left-3 bottom-3 rounded border border-[hsl(140,10%,22%)] bg-[hsl(140,10%,10%)]/92 px-3 py-2 text-[11px] font-display">
               {postActionMoveAvailable ? (
-                <>
-                  Passo pos-acao liberado: clique no campo para mover ate <span className="font-bold">{Math.round(POST_ACTION_MOVE_RATIO * 100)}%</span> do alcance.
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="field_hint_post_action"
+                  values={{ pct: Math.round(POST_ACTION_MOVE_RATIO * 100) }}
+                  components={[<span key="0" className="font-bold" />]}
+                />
               ) : (
-                <>
-                  Clique no jogador para escolher a acao e depois clique no campo para aplicar <span className="font-bold">{ACTION_LABELS[selectedAction]}</span>.
-                  Movimento com posse conduz a bola e so vira disputa de drible quando o trajeto entra na zona do boneco.
-                </>
+                <Trans
+                  t={t}
+                  i18nKey="field_hint_default"
+                  values={{ name: t(ACTION_LABEL_KEY[selectedAction]) }}
+                  components={[<span key="0" className="font-bold" />]}
+                />
               )}
             </div>
           </div>

@@ -1,0 +1,69 @@
+{
+  "loading": "Loading stadium...",
+  "stats": {
+    "capacity": "Capacity",
+    "quality": "Quality",
+    "avg_occupancy": "Avg. Occupancy",
+    "matchday_revenue": "Revenue/Game (est.)"
+  },
+  "preview": {
+    "title": "Home Match Forecast",
+    "attendance": "Estimated attendance:",
+    "estimated_revenue": "estimated revenue"
+  },
+  "sectors": {
+    "title": "Sectors & Tickets",
+    "save_prices": "Save Prices",
+    "seats": "{{count}} seats",
+    "revenue_label": "Revenue: ",
+    "audience_label": "Attendance: {{attendance}} / {{capacity}}",
+    "empty": "No sectors configured."
+  },
+  "style": {
+    "title": "Customize Pitch",
+    "save": "Save Style",
+    "pitch": "Pitch",
+    "border": "Border",
+    "lighting": "Lighting",
+    "net_pattern": "Goal Net",
+    "net_style": "Net Style",
+    "ad_boards": "Advertising Boards",
+    "bench": "Substitute Bench"
+  },
+  "pitch_patterns": {
+    "stripes_vertical_thin": "Thin V. Stripes",
+    "stripes_vertical_thick": "Thick V. Stripes",
+    "stripes_horizontal_thin": "Thin H. Stripes",
+    "stripes_horizontal_thick": "Thick H. Stripes",
+    "checkered_small": "Small Check",
+    "checkered_large": "Large Check",
+    "concentric_circles": "Circles",
+    "diagonal": "Diagonal",
+    "uniform": "Uniform"
+  },
+  "lighting": {
+    "neutral": "Neutral",
+    "warm": "Warm",
+    "cold": "Cold",
+    "night": "Night"
+  },
+  "net_patterns": {
+    "checkered": "Checkered",
+    "diamond": "Diamond"
+  },
+  "net_styles": {
+    "classic": "Classic",
+    "veil": "Bridal Veil"
+  },
+  "toast": {
+    "style_saved": "Pitch style saved successfully!",
+    "style_error": "Error saving style",
+    "prices_saved": "Ticket prices updated successfully!",
+    "prices_error": "Error saving prices"
+  },
+  "info": {
+    "line1": "* Attendance forecast considers your team's reputation, stadium quality, and ticket prices.",
+    "line2": "* Lower prices draw bigger crowds. Higher prices can yield more revenue if the team and stadium are strong.",
+    "line3": "* Actual revenue varies by opponent — higher-reputation teams draw more fans."
+  }
+}

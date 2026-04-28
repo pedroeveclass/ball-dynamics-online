@@ -1,0 +1,11 @@
+{
+  "loading": "Loading...",
+  "title": "CREATE YOUR LOOK",
+  "subtitle": "Customize how your player appears on the pitch, on your profile, and for everyone else.",
+  "warning": "Heads up: this look is permanent and can't be changed later.",
+  "confirm_label": "Confirm Look",
+  "toast": {
+    "saved": "Player look saved!",
+    "save_error": "Error saving avatar"
+  }
+}

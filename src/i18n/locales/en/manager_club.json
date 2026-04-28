@@ -1,0 +1,104 @@
+{
+  "no_club": {
+    "message": "You aren't managing any team.",
+    "see_league": "See League"
+  },
+  "header": {
+    "edit_club": "Edit Club",
+    "leave_club": "Leave Club",
+    "reputation": "Rep. {{value}}"
+  },
+  "coach_types": {
+    "defensive": "Defensive",
+    "offensive": "Offensive",
+    "technical": "Technical",
+    "all_around": "All-around",
+    "complete": "All-around"
+  },
+  "facility_labels": {
+    "souvenir_shop": "Souvenirs",
+    "sponsorship": "Sponsorships",
+    "training_center": "Training",
+    "stadium": "Stadium"
+  },
+  "stats": {
+    "balance": "Balance",
+    "balance_per_week": "{{value}}/wk",
+    "squad": "Squad",
+    "squad_count": "{{count}} players",
+    "wage_bill": "Wages: {{value}}/wk",
+    "stadium": "Stadium",
+    "stadium_capacity": "{{capacity}} seats • Q{{quality}}",
+    "league": "League",
+    "league_position": "{{position}}th place",
+    "league_summary": "{{points}} pts • {{played}} matches",
+    "no_data": "No data"
+  },
+  "identity": {
+    "title": "Identity & Coach",
+    "manager": "Manager",
+    "coach_type": "Coach Type",
+    "manager_rep": "Manager Rep.",
+    "club_rep": "Club Rep.",
+    "formation": "Formation",
+    "colors": "Colors"
+  },
+  "facilities": {
+    "title": "Facilities",
+    "see": "View",
+    "level": "Lv. {{level}}",
+    "empty": "No facilities."
+  },
+  "next_match": {
+    "title": "Next Match",
+    "home": "Home",
+    "away": "Away",
+    "vs": "vs",
+    "tbd": "TBD",
+    "empty": "No match scheduled."
+  },
+  "recent_results": {
+    "title": "Recent Results",
+    "empty": "No results yet.",
+    "win": "W",
+    "loss": "L",
+    "draw": "D"
+  },
+  "edit_dialog": {
+    "title": "Edit Club",
+    "description": "Editing club info costs <strong>{{cost}}</strong> from the club coffers.",
+    "insufficient_balance": "Not enough funds! Current: {{balance}}",
+    "crest_label": "Club Crest",
+    "crest_default_title": "Use abbreviation (default)",
+    "crest_default_letters": "ABC",
+    "crest_upload": "Upload",
+    "crest_remove": "Remove",
+    "crest_help": "Pick an emoji, upload an image (PNG/JPG/WebP, max 2MB), or keep the short name.",
+    "name_label": "Team Name",
+    "short_label": "Short Name (3 letters)",
+    "primary_color_label": "Primary Color",
+    "secondary_color_label": "Secondary Color",
+    "city_label": "City",
+    "stadium_name_label": "Stadium Name",
+    "cancel": "Cancel",
+    "save": "Save ({{cost}})",
+    "short_placeholder": "???"
+  },
+  "leave_dialog": {
+    "title": "Leave Club",
+    "description": "Are you sure you want to leave <strong>{{club}}</strong>? The team will go back to bot control and become available for another manager. Your improvements (facilities, players) stay with the club.",
+    "cancel": "Cancel",
+    "confirm": "Confirm Departure"
+  },
+  "toast": {
+    "left": "You left the club. You can take over another team in the League.",
+    "leave_error": "Error leaving the club",
+    "image_too_big": "Image too large. Limit: 2MB.",
+    "invalid_format": "Invalid format. Use PNG, JPG or WebP.",
+    "crest_uploaded": "Crest uploaded!",
+    "crest_error": "Error uploading crest",
+    "insufficient_required": "Not enough funds. Required: {{cost}}",
+    "saved": "Info updated! Cost: {{cost}}",
+    "save_error": "Error saving"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "title": "Jogos de Várzea",
+  "subtitle": "Crie um jogo avulso ou entre em um existente. Sem XP, sem energia, só diversão.",
+  "create_button": "Criar jogo",
+  "format": {
+    "5v5": "Pelada 5x5",
+    "11v11": "Jogo 11x11"
+  },
+  "status": {
+    "open": "Aberto",
+    "materialized": "Preparando",
+    "live": "🔴 Ao Vivo",
+    "finished": "Encerrado",
+    "cancelled": "Cancelado"
+  },
+  "when": {
+    "in_minutes": "em {{n}} min"
+  },
+  "tabs": {
+    "open": "Abertos ({{n}})",
+    "mine": "Meus ({{n}})",
+    "recent": "Recentes ({{n}})"
+  },
+  "empty": {
+    "open": "Nenhum jogo aberto. Crie o primeiro!",
+    "mine": "Você ainda não entrou em nenhum jogo.",
+    "recent": "Nenhum jogo recente."
+  },
+  "loading": "Carregando…",
+  "create_dialog": {
+    "title": "Criar jogo de várzea",
+    "format_label": "Formato",
+    "format_5v5": "5 x 5 (pelada)",
+    "format_11v11": "11 x 11 (4-4-2)",
+    "kickoff_label": "Horário do kickoff",
+    "kickoff_hint": "Mínimo 2 minutos. Máximo 7 dias.",
+    "side_label": "Seu time",
+    "side_home": "Casa",
+    "side_away": "Visitante",
+    "slot_label": "Sua posição",
+    "cancel": "Cancelar",
+    "submit": "Criar",
+    "submitting": "Criando…"
+  },
+  "toast": {
+    "create_error": "Erro ao criar jogo",
+    "created_ok": "Jogo de várzea criado!"
+  }
+}

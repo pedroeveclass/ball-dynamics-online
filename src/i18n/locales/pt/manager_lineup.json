@@ -1,0 +1,124 @@
+{
+  "title": "Escalação",
+  "loading": "Carregando escalação...",
+  "subtitle": "{{starters}}/{{maxStarters}} titulares • {{bench}}/{{maxBench}} banco",
+  "tactics_button": "Táticas — Jogo Situacional",
+  "save_button": "Salvar",
+  "saving": "Salvando...",
+  "empty_squad": {
+    "title": "Nenhum jogador no elenco",
+    "hint": "Contrate jogadores no Mercado antes de montar a escalação."
+  },
+  "empty_slots_warning_one": "{{count}} posição vazia: {{labels}}",
+  "empty_slots_warning_other": "{{count}} posições vazias: {{labels}}",
+  "field": {
+    "captain_label": "Capitão",
+    "out_of_position": "{{name}} fora de posição: {{positions}} escalado em {{slot}} (−{{penalty}}% nos atributos). OVR efetivo: {{ovr}}"
+  },
+  "bench": {
+    "title": "Banco ({{current}}/{{max}})",
+    "add": "Adicionar",
+    "empty": "Nenhum jogador no banco",
+    "human_label": "Humano",
+    "bot_label": "Bot"
+  },
+  "available": {
+    "title": "Disponíveis ({{count}})",
+    "all_assigned": "Todos escalados",
+    "human_label": "Humano",
+    "bot_label": "Bot"
+  },
+  "callup": {
+    "title": "Convocação — Próximo Jogo",
+    "round_summary": "Rodada {{round}} — {{venue}} vs {{opponent}}",
+    "venue_home": "Casa",
+    "venue_away": "Fora",
+    "confirmed": "confirmados",
+    "no_humans": "Nenhum jogador humano no elenco.",
+    "info": "Informativo: os jogadores confirmam presença na tela \"Minhas Partidas\". Não afeta a escalação.",
+    "confirmed_aria": "Confirmou",
+    "not_confirmed_aria": "Não marcou"
+  },
+  "tactical_roles": {
+    "title": "Funções Táticas",
+    "captain": "Capitão",
+    "free_kick": "Batedor de Falta",
+    "corner_right": "Cobrador de Escanteio Direito",
+    "corner_left": "Cobrador de Escanteio Esquerdo",
+    "throw_right": "Batedor de Lateral Direito",
+    "throw_left": "Batedor de Lateral Esquerdo",
+    "select_placeholder": "Selecionar...",
+    "save": "Salvar Funções",
+    "saving": "Salvando..."
+  },
+  "assistant": {
+    "title": "Assistente",
+    "description": "O assistente pode editar toda a área de escalação (campo, banco, funções táticas) como você. Útil quando o treinador está ausente.",
+    "current": "Assistente atual",
+    "none": "Sem assistente",
+    "saving": "Salvando..."
+  },
+  "uniforms": {
+    "title": "Uniformes",
+    "goalkeeper": "Goleiro",
+    "uniform_n": "Uniforme {{n}} ({{type}})",
+    "home": "Casa",
+    "away": "Fora",
+    "pattern_label": "Padrão",
+    "bicolor_type": "Tipo Bicolor",
+    "stripe_count": "Quantidade de Listras",
+    "shirt_color": "Cor da Camisa",
+    "left_color": "Cor Esquerda",
+    "right_color": "Cor Direita",
+    "stripe_color": "Cor da Listra",
+    "number_color": "Cor do Número",
+    "save": "Salvar",
+    "saving": "Salvando..."
+  },
+  "patterns": {
+    "solid": "Cor Completa",
+    "stripe_vertical": "Listra Vertical",
+    "stripe_horizontal": "Listra Horizontal",
+    "stripe_diagonal": "Listra Diagonal",
+    "bicolor": "Bicolor"
+  },
+  "stripe_counts": {
+    "unique": "Unica",
+    "single": "Simples",
+    "double": "Dupla",
+    "triple": "Tripla"
+  },
+  "bicolor_types": {
+    "bicolor_vertical": "Vertical",
+    "bicolor_horizontal": "Horizontal",
+    "bicolor_diagonal": "Diagonal"
+  },
+  "picker": {
+    "bench_title": "Banco de Reservas ({{current}}/{{max}})",
+    "starter_title": "Escolher Jogador — {{slot}}",
+    "no_available": "Nenhum jogador disponível",
+    "confirm_count": "Confirmar ({{count}})",
+    "suspended_red": "Suspenso — cartão vermelho",
+    "suspended_yellows": "Suspenso — 3 amarelos acumulados",
+    "suspended_label_red": "🟥 SUSPENSO",
+    "suspended_label_yellows": "🟨🟨🟨 SUSPENSO"
+  },
+  "toast": {
+    "uniform_saved": "Uniforme {{n}} atualizado com sucesso.",
+    "uniform_error": "Erro ao salvar uniforme.",
+    "error_prefix": "Erro: {{message}}",
+    "assistant_assigned": "Assistente designado.",
+    "assistant_removed": "Assistente removido.",
+    "assistant_error": "Erro ao salvar assistente.",
+    "save_lineup_first": "Erro: Salve a escalação primeiro antes de definir funções táticas.",
+    "tactical_saved": "As funções táticas foram atualizadas com sucesso.",
+    "tactical_error": "Erro ao salvar funções táticas.",
+    "suspended_red": "Suspenso por cartão vermelho — jogador não pode ser escalado nesta rodada.",
+    "suspended_yellows": "Suspenso por acúmulo de 3 amarelos — jogador não pode ser escalado nesta rodada.",
+    "bench_full": "Banco cheio: Máximo de {{max}} jogadores no banco.",
+    "lineup_saved": "A nova formação foi salva sem alterar partidas já criadas.",
+    "lineup_save_error": "Erro ao salvar: {{message}}",
+    "lineup_save_failed": "Falha ao criar nova versão da escalação.",
+    "lineup_save_default": "Não foi possível salvar a escalação."
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "loading": "Carregando estádio...",
+  "stats": {
+    "capacity": "Capacidade",
+    "quality": "Qualidade",
+    "avg_occupancy": "Ocupação Média",
+    "matchday_revenue": "Receita/Jogo (est.)"
+  },
+  "preview": {
+    "title": "Previsão por Jogo em Casa",
+    "attendance": "Público estimado:",
+    "estimated_revenue": "receita estimada"
+  },
+  "sectors": {
+    "title": "Setores & Ingressos",
+    "save_prices": "Salvar Preços",
+    "seats": "{{count}} lugares",
+    "revenue_label": "Receita: ",
+    "audience_label": "Público: {{attendance}} / {{capacity}}",
+    "empty": "Nenhum setor configurado."
+  },
+  "style": {
+    "title": "Personalizar Campo",
+    "save": "Salvar Estilo",
+    "pitch": "Gramado",
+    "border": "Borda",
+    "lighting": "Iluminação",
+    "net_pattern": "Rede do Gol",
+    "net_style": "Estilo da Rede",
+    "ad_boards": "Placas de Publicidade",
+    "bench": "Banco de Reservas"
+  },
+  "pitch_patterns": {
+    "stripes_vertical_thin": "Listras V. Finas",
+    "stripes_vertical_thick": "Listras V. Grossas",
+    "stripes_horizontal_thin": "Listras H. Finas",
+    "stripes_horizontal_thick": "Listras H. Grossas",
+    "checkered_small": "Xadrez P.",
+    "checkered_large": "Xadrez G.",
+    "concentric_circles": "Círculos",
+    "diagonal": "Diagonal",
+    "uniform": "Uniforme"
+  },
+  "lighting": {
+    "neutral": "Neutra",
+    "warm": "Quente",
+    "cold": "Fria",
+    "night": "Noturna"
+  },
+  "net_patterns": {
+    "checkered": "Quadriculado",
+    "diamond": "Diamante"
+  },
+  "net_styles": {
+    "classic": "Clássico",
+    "veil": "Véu de Noiva"
+  },
+  "toast": {
+    "style_saved": "Estilo do campo salvo com sucesso!",
+    "style_error": "Erro ao salvar estilo",
+    "prices_saved": "Preços atualizados com sucesso!",
+    "prices_error": "Erro ao salvar preços"
+  },
+  "info": {
+    "line1": "* A previsão de público considera a reputação do seu time, qualidade do estádio e preço dos ingressos.",
+    "line2": "* Preços mais baixos atraem mais público. Preços mais altos podem gerar mais receita se o time e estádio forem bons.",
+    "line3": "* A receita real varia de acordo com o adversário — times com maior reputação atraem mais público."
+  }
+}

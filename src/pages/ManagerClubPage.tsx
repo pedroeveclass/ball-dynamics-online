@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation, Trans } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { formatDate } from '@/lib/formatDate';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -22,22 +25,24 @@ import { seededAppearance } from '@/lib/avatar';
 
 const CREST_EMOJI_PRESETS = ['⚽', '🦁', '🦅', '🐺', '🐉', '🐻', '🐯', '🦈', '⭐', '🔥', '🛡️', '⚓', '👑', '🌪️', '🦊', '🐍'];
 
-const FACILITY_LABELS: Record<string, { label: string; icon: typeof Store }> = {
-  souvenir_shop: { label: 'Souvenirs', icon: Store },
-  sponsorship: { label: 'Patrocínios', icon: Handshake },
-  training_center: { label: 'Treinamento', icon: Dumbbell },
-  stadium: { label: 'Estádio', icon: Building2 },
+const FACILITY_ICONS: Record<string, typeof Store> = {
+  souvenir_shop: Store,
+  sponsorship: Handshake,
+  training_center: Dumbbell,
+  stadium: Building2,
 };
 
-const COACH_LABELS: Record<string, { label: string; icon: typeof Shield }> = {
-  defensive: { label: 'Defensivo', icon: Shield },
-  offensive: { label: 'Ofensivo', icon: Swords },
-  technical: { label: 'Técnico', icon: Brain },
-  all_around: { label: 'Completo', icon: CircleDot },
-  complete: { label: 'Completo', icon: CircleDot },
+const COACH_ICONS: Record<string, typeof Shield> = {
+  defensive: Shield,
+  offensive: Swords,
+  technical: Brain,
+  all_around: CircleDot,
+  complete: CircleDot,
 };
 
 export default function ManagerClubPage() {
+  const { t } = useTranslation('manager_club');
+  const { current: lang } = useAppLanguage();
   const { managerProfile, club, refreshManagerProfile } = useAuth();
   const navigate = useNavigate();
 
@@ -184,10 +189,10 @@ export default function ManagerClubPage() {
       if (error) throw error;
 
       await refreshManagerProfile();
-      toast.success('Você deixou o clube. Pode assumir outro time na Liga.');
+      toast.success(t('toast.left'));
       navigate('/manager', { replace: true });
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao deixar o clube');
+      toast.error(err.message || t('toast.leave_error'));
     } finally {
       setLeaving(false);
       setLeaveOpen(false);
@@ -209,12 +214,12 @@ export default function ManagerClubPage() {
     const file = e.target.files?.[0];
     if (!file || !club) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('Imagem muito grande. Limite: 2MB.');
+      toast.error(t('toast.image_too_big'));
       return;
     }
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!ext || !['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
-      toast.error('Formato inválido. Use PNG, JPG ou WebP.');
+      toast.error(t('toast.invalid_format'));
       return;
     }
     setCrestUploading(true);
@@ -226,9 +231,9 @@ export default function ManagerClubPage() {
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from('club-crests').getPublicUrl(path);
       setEditCrestUrl(`${pub.publicUrl}?v=${Date.now()}`);
-      toast.success('Escudo carregado!');
+      toast.success(t('toast.crest_uploaded'));
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao carregar escudo');
+      toast.error(err.message || t('toast.crest_error'));
     } finally {
       setCrestUploading(false);
     }
@@ -238,7 +243,7 @@ export default function ManagerClubPage() {
     if (!club || !finance) return;
     const balance = Number(finance.balance ?? 0);
     if (balance < EDIT_COST) {
-      toast.error(`Saldo insuficiente. Necessário: ${formatBRL(EDIT_COST)}`);
+      toast.error(t('toast.insufficient_required', { cost: formatBRL(EDIT_COST) }));
       return;
     }
     setSaving(true);
@@ -265,11 +270,11 @@ export default function ManagerClubPage() {
       }).eq('club_id', club.id);
 
       await refreshManagerProfile();
-      toast.success(`Informações atualizadas! Custo: ${formatBRL(EDIT_COST)}`);
+      toast.success(t('toast.saved', { cost: formatBRL(EDIT_COST) }));
       setEditOpen(false);
       fetchAll();
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao salvar');
+      toast.error(err.message || t('toast.save_error'));
     } finally {
       setSaving(false);
     }
@@ -282,9 +287,9 @@ export default function ManagerClubPage() {
       <ManagerLayout>
         <div className="text-center py-12 space-y-3">
           <Shield className="h-12 w-12 mx-auto text-muted-foreground" />
-          <p className="text-muted-foreground">Você não gerencia nenhum time.</p>
+          <p className="text-muted-foreground">{t('no_club.message')}</p>
           <Link to="/league">
-            <Button className="bg-tactical hover:bg-tactical/90 text-white">Ver Liga</Button>
+            <Button className="bg-tactical hover:bg-tactical/90 text-white">{t('no_club.see_league')}</Button>
           </Link>
         </div>
       </ManagerLayout>
@@ -301,8 +306,9 @@ export default function ManagerClubPage() {
     );
   }
 
-  const coachInfo = COACH_LABELS[managerProfile.coach_type] || COACH_LABELS.all_around;
-  const CoachIcon = coachInfo.icon;
+  const coachKey = (COACH_ICONS[managerProfile.coach_type] ? managerProfile.coach_type : 'all_around') as keyof typeof COACH_ICONS;
+  const CoachIcon = COACH_ICONS[coachKey];
+  const coachLabel = t(`coach_types.${coachKey}` as const);
   const balance = finance?.balance ?? 0;
   const weeklyRevenue = finance?.projected_income ?? 0;
   const weeklyExpense = (finance?.projected_expense ?? 0) + wageBill;
@@ -328,10 +334,10 @@ export default function ManagerClubPage() {
               </p>
               <div className="flex items-center gap-3 mt-1.5">
                 <Badge variant="outline" className="text-xs">
-                  <Star className="h-3 w-3 mr-1" /> Rep. {club.reputation}
+                  <Star className="h-3 w-3 mr-1" /> {t('header.reputation', { value: club.reputation })}
                 </Badge>
                 <Badge variant="outline" className="text-xs">
-                  <CoachIcon className="h-3 w-3 mr-1" /> {coachInfo.label}
+                  <CoachIcon className="h-3 w-3 mr-1" /> {coachLabel}
                 </Badge>
                 <Badge variant="outline" className="text-xs capitalize">
                   {formation}
@@ -346,7 +352,7 @@ export default function ManagerClubPage() {
               onClick={openEditDialog}
               className="text-xs"
             >
-              <Pencil className="h-3.5 w-3.5 mr-1" /> Editar Clube
+              <Pencil className="h-3.5 w-3.5 mr-1" /> {t('header.edit_club')}
             </Button>
             <Button
               variant="ghost"
@@ -354,7 +360,7 @@ export default function ManagerClubPage() {
               onClick={() => setLeaveOpen(true)}
               className="text-destructive hover:text-destructive hover:bg-destructive/10 text-xs"
             >
-              <LogOut className="h-3.5 w-3.5 mr-1" /> Deixar Clube
+              <LogOut className="h-3.5 w-3.5 mr-1" /> {t('header.leave_club')}
             </Button>
           </div>
         </div>
@@ -363,41 +369,41 @@ export default function ManagerClubPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Link to="/manager/finance" className="stat-card hover:border-pitch/30 transition-colors cursor-pointer">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <DollarSign className="h-3.5 w-3.5" /> Saldo
+              <DollarSign className="h-3.5 w-3.5" /> {t('stats.balance')}
             </div>
             <p className="font-display font-bold text-lg">{formatBRL(balance)}</p>
             <p className={`text-xs font-display ${weeklyResult >= 0 ? 'text-pitch' : 'text-destructive'}`}>
-              {weeklyResult >= 0 ? '+' : ''}{formatBRL(weeklyResult)}/sem
+              {weeklyResult >= 0 ? '+' : ''}{t('stats.balance_per_week', { value: formatBRL(weeklyResult) })}
             </p>
           </Link>
 
           <Link to="/manager/squad" className="stat-card hover:border-pitch/30 transition-colors cursor-pointer">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Users className="h-3.5 w-3.5" /> Elenco
+              <Users className="h-3.5 w-3.5" /> {t('stats.squad')}
             </div>
-            <p className="font-display font-bold text-lg">{squadSize} jogadores</p>
-            <p className="text-xs text-muted-foreground">Folha: {formatBRL(wageBill)}/sem</p>
+            <p className="font-display font-bold text-lg">{t('stats.squad_count', { count: squadSize })}</p>
+            <p className="text-xs text-muted-foreground">{t('stats.wage_bill', { value: formatBRL(wageBill) })}</p>
           </Link>
 
           <Link to="/manager/stadium" className="stat-card hover:border-pitch/30 transition-colors cursor-pointer">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Building2 className="h-3.5 w-3.5" /> Estádio
+              <Building2 className="h-3.5 w-3.5" /> {t('stats.stadium')}
             </div>
             <p className="font-display font-bold text-lg">{stadium?.name || '—'}</p>
             <p className="text-xs text-muted-foreground">
-              {stadium ? `${stadium.capacity.toLocaleString()} lugares • Q${stadium.quality}` : '—'}
+              {stadium ? t('stats.stadium_capacity', { capacity: stadium.capacity.toLocaleString(), quality: stadium.quality }) : '—'}
             </p>
           </Link>
 
           <Link to="/league" className="stat-card hover:border-pitch/30 transition-colors cursor-pointer">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-              <Trophy className="h-3.5 w-3.5" /> Liga
+              <Trophy className="h-3.5 w-3.5" /> {t('stats.league')}
             </div>
             <p className="font-display font-bold text-lg">
-              {standing ? `${standing.position}º lugar` : '—'}
+              {standing ? t('stats.league_position', { position: standing.position }) : '—'}
             </p>
             <p className="text-xs text-muted-foreground">
-              {standing ? `${standing.points} pts • ${standing.played} jogos` : 'Sem dados'}
+              {standing ? t('stats.league_summary', { points: standing.points, played: standing.played }) : t('stats.no_data')}
             </p>
           </Link>
         </div>
@@ -405,7 +411,7 @@ export default function ManagerClubPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Manager & Identity */}
           <div className="stat-card">
-            <h3 className="font-display font-semibold text-sm mb-3">Identidade & Treinador</h3>
+            <h3 className="font-display font-semibold text-sm mb-3">{t('identity.title')}</h3>
             <div className="grid grid-cols-[auto_1fr] gap-4">
               {/* Full-body coach avatar on the left */}
               <div className="w-28 h-56 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg">
@@ -421,29 +427,29 @@ export default function ManagerClubPage() {
 
               <div className="space-y-2 text-sm min-w-0">
                 <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Manager</p>
+                  <p className="text-xs text-muted-foreground">{t('identity.manager')}</p>
                   <p className="font-display font-bold truncate">{managerProfile.full_name}</p>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tipo Coach</span>
+                  <span className="text-muted-foreground">{t('identity.coach_type')}</span>
                   <span className="font-bold flex items-center gap-1">
-                    <CoachIcon className="h-3.5 w-3.5 text-tactical" /> {coachInfo.label}
+                    <CoachIcon className="h-3.5 w-3.5 text-tactical" /> {coachLabel}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rep. Manager</span>
+                  <span className="text-muted-foreground">{t('identity.manager_rep')}</span>
                   <span className="font-display font-bold">{managerProfile.reputation}/100</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rep. Clube</span>
+                  <span className="text-muted-foreground">{t('identity.club_rep')}</span>
                   <span className="font-display font-bold text-tactical">{club.reputation}/100</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Formação</span>
+                  <span className="text-muted-foreground">{t('identity.formation')}</span>
                   <span className="font-display font-bold">{formation}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Cores</span>
+                  <span className="text-muted-foreground">{t('identity.colors')}</span>
                   <div className="flex gap-2">
                     <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: club.primary_color }} />
                     <div className="w-5 h-5 rounded-full border border-border" style={{ backgroundColor: club.secondary_color }} />
@@ -456,23 +462,22 @@ export default function ManagerClubPage() {
           {/* Facilities */}
           <div className="stat-card space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-display font-semibold text-sm">Facilities</h3>
+              <h3 className="font-display font-semibold text-sm">{t('facilities.title')}</h3>
               <Link to="/manager/facilities" className="text-xs text-tactical hover:underline flex items-center gap-0.5">
-                Ver <ArrowRight className="h-3 w-3" />
+                {t('facilities.see')} <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
             <div className="space-y-2.5">
               {facilities.map((f: any) => {
-                const info = FACILITY_LABELS[f.facility_type];
-                if (!info) return null;
-                const Icon = info.icon;
+                const Icon = FACILITY_ICONS[f.facility_type];
+                if (!Icon) return null;
                 return (
                   <div key={f.facility_type} className="flex items-center gap-2.5">
                     <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between text-xs mb-0.5">
-                        <span className="text-muted-foreground">{info.label}</span>
-                        <span className="font-display font-bold">Nv. {f.level}</span>
+                        <span className="text-muted-foreground">{t(`facility_labels.${f.facility_type}` as const)}</span>
+                        <span className="font-display font-bold">{t('facilities.level', { level: f.level })}</span>
                       </div>
                       <Progress value={(f.level / (f.facility_type === 'stadium' ? 10 : 5)) * 100} className="h-1.5" />
                     </div>
@@ -480,24 +485,24 @@ export default function ManagerClubPage() {
                 );
               })}
               {facilities.length === 0 && (
-                <p className="text-xs text-muted-foreground">Nenhuma facility.</p>
+                <p className="text-xs text-muted-foreground">{t('facilities.empty')}</p>
               )}
             </div>
           </div>
 
           {/* Next match */}
           <div className="stat-card space-y-3">
-            <h3 className="font-display font-semibold text-sm">Próximo Jogo</h3>
+            <h3 className="font-display font-semibold text-sm">{t('next_match.title')}</h3>
             {nextMatch ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-bold">
-                      {nextMatch.isHome ? 'Casa' : 'Fora'} vs {nextMatch.opponent?.name || 'TBD'}
+                      {nextMatch.isHome ? t('next_match.home') : t('next_match.away')} {t('next_match.vs')} {nextMatch.opponent?.name || t('next_match.tbd')}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(nextMatch.scheduled_at).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      {formatDate(new Date(nextMatch.scheduled_at), lang, 'datetime_short')}
                     </p>
                   </div>
                 </div>
@@ -512,31 +517,34 @@ export default function ManagerClubPage() {
                 )}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Nenhum jogo agendado.</p>
+              <p className="text-xs text-muted-foreground">{t('next_match.empty')}</p>
             )}
           </div>
 
           {/* Recent results */}
           <div className="stat-card space-y-3">
-            <h3 className="font-display font-semibold text-sm">Últimos Resultados</h3>
+            <h3 className="font-display font-semibold text-sm">{t('recent_results.title')}</h3>
             {recentResults.length > 0 ? (
               <div className="flex gap-2">
-                {recentResults.map((r: any) => (
-                  <div
-                    key={r.id}
-                    className={`flex-1 text-center p-2 rounded text-xs font-display font-bold ${
-                      r.result === 'V' ? 'bg-pitch/15 text-pitch' :
-                      r.result === 'D' ? 'bg-destructive/15 text-destructive' :
-                      'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    <div className="text-lg">{r.result}</div>
-                    <div className="text-[10px] opacity-70">{r.myScore}-{r.oppScore}</div>
-                  </div>
-                ))}
+                {recentResults.map((r: any) => {
+                  const resultKey = r.result === 'V' ? 'win' : r.result === 'D' ? 'loss' : 'draw';
+                  return (
+                    <div
+                      key={r.id}
+                      className={`flex-1 text-center p-2 rounded text-xs font-display font-bold ${
+                        r.result === 'V' ? 'bg-pitch/15 text-pitch' :
+                        r.result === 'D' ? 'bg-destructive/15 text-destructive' :
+                        'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <div className="text-lg">{t(`recent_results.${resultKey}` as const)}</div>
+                      <div className="text-[10px] opacity-70">{r.myScore}-{r.oppScore}</div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Nenhum resultado ainda.</p>
+              <p className="text-xs text-muted-foreground">{t('recent_results.empty')}</p>
             )}
           </div>
         </div>
@@ -546,12 +554,17 @@ export default function ManagerClubPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">Editar Clube</DialogTitle>
+            <DialogTitle className="font-display">{t('edit_dialog.title')}</DialogTitle>
             <DialogDescription>
-              Alterar as informações do clube custa <strong className="text-destructive">{formatBRL(EDIT_COST)}</strong> dos cofres do clube.
+              <Trans
+                t={t}
+                i18nKey="edit_dialog.description"
+                values={{ cost: formatBRL(EDIT_COST) }}
+                components={{ strong: <strong className="text-destructive" /> }}
+              />
               {finance && Number(finance.balance) < EDIT_COST && (
                 <span className="block mt-1 text-destructive font-semibold">
-                  Saldo insuficiente! Atual: {formatBRL(Number(finance.balance))}
+                  {t('edit_dialog.insufficient_balance', { balance: formatBRL(Number(finance.balance)) })}
                 </span>
               )}
             </DialogDescription>
@@ -563,22 +576,22 @@ export default function ManagerClubPage() {
                 crestUrl={editCrestUrl}
                 primaryColor={editPrimary}
                 secondaryColor={editSecondary}
-                shortName={editShort.toUpperCase() || '???'}
+                shortName={editShort.toUpperCase() || t('edit_dialog.short_placeholder')}
                 className="h-16 w-16 rounded-lg text-xl"
               />
             </div>
 
             {/* Crest chooser */}
             <div className="space-y-2">
-              <Label>Escudo do Time</Label>
+              <Label>{t('edit_dialog.crest_label')}</Label>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() => setEditCrestUrl(null)}
-                  title="Usar sigla (padrão)"
+                  title={t('edit_dialog.crest_default_title')}
                   className={`h-9 w-9 rounded border flex items-center justify-center text-[10px] font-display font-bold ${!editCrestUrl ? 'border-tactical bg-tactical/10 text-tactical' : 'border-border text-muted-foreground hover:border-tactical/40'}`}
                 >
-                  ABC
+                  {t('edit_dialog.crest_default_letters')}
                 </button>
                 {CREST_EMOJI_PRESETS.map(e => {
                   const val = `emoji:${e}`;
@@ -596,7 +609,7 @@ export default function ManagerClubPage() {
                 })}
                 <label className={`h-9 px-2 rounded border flex items-center gap-1 text-xs cursor-pointer ${crestUploading ? 'opacity-60 pointer-events-none' : 'border-border hover:border-tactical/40'}`}>
                   {crestUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  <span>Upload</span>
+                  <span>{t('edit_dialog.crest_upload')}</span>
                   <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleCrestUpload} />
                 </label>
                 {editCrestUrl && (
@@ -604,28 +617,28 @@ export default function ManagerClubPage() {
                     type="button"
                     onClick={() => setEditCrestUrl(null)}
                     className="h-9 w-9 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-destructive hover:border-destructive/40"
-                    title="Remover"
+                    title={t('edit_dialog.crest_remove')}
                   >
                     <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground">Escolha um emoji, faça upload (PNG/JPG/WebP, máx 2MB) ou mantenha a sigla.</p>
+              <p className="text-[10px] text-muted-foreground">{t('edit_dialog.crest_help')}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>Nome do Time</Label>
+              <Label>{t('edit_dialog.name_label')}</Label>
               <Input value={editName} onChange={e => setEditName(e.target.value)} maxLength={40} />
             </div>
 
             <div className="space-y-2">
-              <Label>Abreviação (3 letras)</Label>
+              <Label>{t('edit_dialog.short_label')}</Label>
               <Input value={editShort} onChange={e => setEditShort(e.target.value.slice(0, 3).toUpperCase())} maxLength={3} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Cor Principal</Label>
+                <Label>{t('edit_dialog.primary_color_label')}</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {PRESET_COLORS.map(c => (
                     <button
@@ -638,7 +651,7 @@ export default function ManagerClubPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Cor Secundária</Label>
+                <Label>{t('edit_dialog.secondary_color_label')}</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {['#FFFFFF', '#000000', '#FFD700', '#FF6347', '#00FA9A', '#FF4500'].map(c => (
                     <button
@@ -653,25 +666,25 @@ export default function ManagerClubPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Cidade</Label>
+              <Label>{t('edit_dialog.city_label')}</Label>
               <Input value={editCity} onChange={e => setEditCity(e.target.value)} />
             </div>
 
             <div className="space-y-2">
-              <Label>Nome do Estádio</Label>
+              <Label>{t('edit_dialog.stadium_name_label')}</Label>
               <Input value={editStadiumName} onChange={e => setEditStadiumName(e.target.value)} />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t('edit_dialog.cancel')}</Button>
             <Button
               onClick={handleSaveEdit}
               disabled={saving || !editName.trim() || editShort.trim().length !== 3 || (finance && Number(finance.balance) < EDIT_COST)}
               className="bg-tactical hover:bg-tactical/90 text-white"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Salvar ({formatBRL(EDIT_COST)})
+              {t('edit_dialog.save', { cost: formatBRL(EDIT_COST) })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -681,20 +694,25 @@ export default function ManagerClubPage() {
       <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display text-destructive">Deixar Clube</DialogTitle>
+            <DialogTitle className="font-display text-destructive">{t('leave_dialog.title')}</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja deixar o <strong>{club.name}</strong>? O time voltará a ser controlado por bot e ficará disponível para outro manager assumir. Suas melhorias (facilities, jogadores) permanecem no time.
+              <Trans
+                t={t}
+                i18nKey="leave_dialog.description"
+                values={{ club: club.name }}
+                components={{ strong: <strong /> }}
+              />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLeaveOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setLeaveOpen(false)}>{t('leave_dialog.cancel')}</Button>
             <Button
               variant="destructive"
               onClick={handleLeaveClub}
               disabled={leaving}
             >
               {leaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Confirmar Saída
+              {t('leave_dialog.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

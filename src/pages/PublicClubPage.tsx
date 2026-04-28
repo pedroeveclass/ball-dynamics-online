@@ -334,7 +334,9 @@ export default function PublicClubPage() {
           body: `${myClub.name} enviou uma proposta de ${formatBRL(salary)}/semana.`,
           type: 'contract',
           link: '/player/offers',
-        });
+          i18n_key: 'contract_offer_received',
+          i18n_params: { club: myClub.name, salary: formatBRL(salary) },
+        } as any);
       }
 
       toast.success(`Proposta enviada para ${selectedPlayer.full_name}!`);

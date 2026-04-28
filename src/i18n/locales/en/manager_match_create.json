@@ -1,0 +1,27 @@
+{
+  "loading": "Loading...",
+  "title": "Invite to Friendly",
+  "lineup_required": {
+    "title": "Lineup required",
+    "subtitle": "Set an active lineup before sending an invite."
+  },
+  "your_club_label": "Your Club (Home)",
+  "opponent_label": "Opponent",
+  "opponent_placeholder": "Pick the opposing club",
+  "opponent_reputation": "Rep: {{reputation}}",
+  "no_clubs_found": "No clubs found.",
+  "datetime_label": "Date and Time",
+  "message_label": "Message (optional)",
+  "message_placeholder": "Write a message to your opponent...",
+  "send_button": "SEND INVITE",
+  "sending": "Sending...",
+  "notification": {
+    "title": "⚔️ Friendly Invite",
+    "body": "{{club}} wants to play a friendly against you on {{date}}."
+  },
+  "toast": {
+    "no_manager": "Opposing club has no registered manager.",
+    "sent": "Invite sent! Wait for the opponent to accept.",
+    "send_error": "Error sending invite"
+  }
+}

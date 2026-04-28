@@ -1,0 +1,62 @@
+{
+  "loading": "Loading...",
+  "title": "Contract & Offers",
+  "current_status": {
+    "title": "Current Status",
+    "club": "Club",
+    "status": "Status",
+    "active": "Active",
+    "weekly_salary": "Weekly Wage",
+    "release_clause": "Release Clause",
+    "start": "Start",
+    "end": "End",
+    "free_agent_title": "Free Agent",
+    "free_agent_hint": "You don't have an active contract with any club."
+  },
+  "pending": {
+    "title": "Pending Offers",
+    "loading": "Loading offers...",
+    "empty_title": "No pending offers",
+    "empty_hint": "When a club sends an offer, it'll show up here."
+  },
+  "offer": {
+    "weekly_salary": "Wage/Wk",
+    "release_clause": "Clause",
+    "duration": "Duration",
+    "duration_value": "{{count}} months",
+    "role": "Role",
+    "reject": "Reject",
+    "accept": "Accept"
+  },
+  "roles": {
+    "starter": "Starter",
+    "rotation": "Rotation",
+    "backup": "Backup",
+    "youth": "Youth Prospect"
+  },
+  "indeterminate": "Open-ended",
+  "dialog": {
+    "title_accept": "Accept Offer?",
+    "title_reject": "Reject Offer?",
+    "desc_accept": "You'll sign a contract with {{club}} for {{salary}}/week over {{months}} months. All other offers will be automatically rejected.",
+    "desc_reject": "Are you sure you want to reject the offer from {{club}}?",
+    "cancel": "Cancel",
+    "processing": "Processing...",
+    "confirm_accept": "Confirm Signing",
+    "confirm_reject": "Confirm Rejection"
+  },
+  "notifications": {
+    "sold_title": "💰 Player Sold",
+    "sold_body": "{{name}} sold for {{amount}}. Credited to club finances.",
+    "bought_title": "💸 Player Bought",
+    "bought_body": "{{name}} signed for {{amount}} release clause.",
+    "accepted_title": "Offer accepted!",
+    "accepted_body": "{{name}} accepted your contract offer.",
+    "rejected_title": "Offer rejected",
+    "rejected_body": "{{name}} rejected your contract offer."
+  },
+  "toast": {
+    "signed": "Contract signed! You're now part of {{club}}.",
+    "rejected": "Offer rejected: The offer was rejected successfully."
+  }
+}

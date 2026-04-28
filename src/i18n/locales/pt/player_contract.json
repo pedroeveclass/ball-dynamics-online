@@ -1,0 +1,61 @@
+{
+  "loading": "Carregando...",
+  "title": "Contrato & Financeiro",
+  "summary": {
+    "title": "Resumo Financeiro",
+    "balance": "Saldo",
+    "weekly_salary": "Salário/Semana",
+    "no_contract": "Sem contrato",
+    "club": "Clube",
+    "free_agent": "Agente Livre",
+    "next_payment": "Próximo Pagamento"
+  },
+  "contract": {
+    "title": "Contrato Atual",
+    "status": "Status",
+    "active": "Ativo",
+    "club": "Clube",
+    "weekly_salary": "Salário Semanal",
+    "release_clause": "Multa de Saída",
+    "start": "Início",
+    "end": "Término",
+    "free_agent_title": "Agente Livre",
+    "free_agent_hint": "Sem contrato ativo. Verifique propostas pendentes.",
+    "see_offers": "Ver Propostas"
+  },
+  "club_request": {
+    "title": "Proposta do Clube",
+    "body": "Seu clube propôs rescisão por comum acordo. Se aceitar, você sairá do clube sem custo para nenhuma das partes.",
+    "accept": "✅ Aceitar",
+    "reject": "❌ Recusar"
+  },
+  "request_exit": {
+    "title": "Solicitar Saída",
+    "pending": "Aguardando resposta do clube",
+    "hint": "Proposta de rescisão sem custo. O clube precisa aceitar para que o contrato seja encerrado.",
+    "button": "Solicitar Saída por Comum Acordo"
+  },
+  "dialog": {
+    "title": "Solicitar Saída por Comum Acordo",
+    "description": "Você está solicitando a rescisão do contrato por comum acordo. O clube precisa aceitar para que a rescisão seja efetivada. Não há custo para esta solicitação.",
+    "cancel": "Cancelar",
+    "submit": "Confirmar Solicitação",
+    "submitting": "Enviando..."
+  },
+  "notifications": {
+    "request_title": "📋 Solicitação de saída",
+    "request_body": "{{name}} solicitou rescisão por comum acordo.",
+    "accept_title": "✅ Comum acordo aceito",
+    "accept_body": "{{name}} aceitou a rescisão por comum acordo.",
+    "reject_title": "❌ Comum acordo recusado",
+    "reject_body": "{{name}} recusou a rescisão por comum acordo."
+  },
+  "toast": {
+    "request_sent": "Solicitação enviada ao clube.",
+    "request_error": "Erro ao enviar solicitação.",
+    "accept_ok": "Contrato rescindido por comum acordo.",
+    "accept_error": "Erro ao aceitar.",
+    "reject_ok": "Proposta recusada.",
+    "reject_error": "Erro ao recusar."
+  }
+}

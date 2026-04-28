@@ -66,5 +66,25 @@
   "challenge_rejected": {
     "title": "❌ Convite recusado",
     "body": "{{club}} recusou o amistoso."
+  },
+  "contract_offer_received": {
+    "title": "Nova proposta de contrato!",
+    "body": "{{club}} enviou uma proposta de {{salary}}/semana."
+  },
+  "friendly_invite": {
+    "title": "⚔️ Convite de Amistoso",
+    "body": "{{club}} quer jogar um amistoso contra você em {{date}}."
+  },
+  "mutual_exit_requested": {
+    "title": "📋 Solicitação de saída",
+    "body": "{{player}} solicitou rescisão por comum acordo."
+  },
+  "mutual_exit_player_accepted": {
+    "title": "✅ Comum acordo aceito",
+    "body": "{{player}} aceitou a rescisão por comum acordo."
+  },
+  "mutual_exit_player_rejected": {
+    "title": "❌ Comum acordo recusado",
+    "body": "{{player}} recusou a rescisão por comum acordo."
   }
 }

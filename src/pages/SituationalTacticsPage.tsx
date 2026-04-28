@@ -14,6 +14,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
+import { Trans, useTranslation } from 'react-i18next';
 import { FORMATIONS } from './ManagerLineupPage';
 
 // ── Grid geometry ─────────────────────────────────────────────
@@ -37,9 +38,9 @@ const DYNAMIC_SHIFT_X = 0.25;
 const DYNAMIC_SHIFT_Y = 0.45;
 
 const PHASES: Phase[] = ['with_ball', 'without_ball'];
-const PHASE_LABEL: Record<Phase, string> = {
-  with_ball: 'Com bola',
-  without_ball: 'Sem bola',
+const PHASE_LABEL_KEY: Record<Phase, string> = {
+  with_ball: 'phases.with_ball',
+  without_ball: 'phases.without_ball',
 };
 
 // ── Tactical knobs ────────────────────────────────────────────
@@ -60,10 +61,10 @@ const ATTACK_TYPE_X_SCALE: Record<AttackType, number> = { central: 0.78, balance
 const POSITIONING_SCALE: Record<Positioning, number> = { short: 0.82, normal: 1.0, spread: 1.18 };
 const INCLINATION_CELLS: Record<Inclination, number> = { ultra_def: 2, def: 1, normal: 0, off: -1, ultra_off: -2 };
 
-const ATTACK_TYPE_LABEL: Record<AttackType, string> = { central: 'Ataque central', balanced: 'Balanceado', wide: 'Pelos lados' };
-const POSITIONING_LABEL: Record<Positioning, string> = { short: 'Jogo curto', normal: 'Normal', spread: 'Espalhado' };
-const INCLINATION_LABEL: Record<Inclination, string> = {
-  ultra_def: 'Ultra defensivo', def: 'Defensivo', normal: 'Normal', off: 'Ofensivo', ultra_off: 'Ultra ofensivo',
+const ATTACK_TYPE_KEY: Record<AttackType, string> = { central: 'knobs.attack.central', balanced: 'knobs.attack.balanced', wide: 'knobs.attack.wide' };
+const POSITIONING_KEY: Record<Positioning, string> = { short: 'knobs.positioning.short', normal: 'knobs.positioning.normal', spread: 'knobs.positioning.spread' };
+const INCLINATION_KEY: Record<Inclination, string> = {
+  ultra_def: 'knobs.inclination.ultra_def', def: 'knobs.inclination.def', normal: 'knobs.inclination.normal', off: 'knobs.inclination.off', ultra_off: 'knobs.inclination.ultra_off',
 };
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
@@ -208,17 +209,17 @@ const oppositePhase = (p: Phase): Phase => (p === 'with_ball' ? 'without_ball' :
 // quadrants, no knobs — just one fixed shape per situation.
 type SetPieceType = 'corner' | 'throw_in' | 'free_kick' | 'goal_kick';
 const SET_PIECE_TYPES: SetPieceType[] = ['corner', 'throw_in', 'free_kick', 'goal_kick'];
-const SET_PIECE_LABEL: Record<SetPieceType, string> = {
-  corner: 'Escanteio',
-  throw_in: 'Lateral',
-  free_kick: 'Falta',
-  goal_kick: 'Tiro de meta',
+const SET_PIECE_LABEL_KEY: Record<SetPieceType, string> = {
+  corner: 'set_piece.type.corner',
+  throw_in: 'set_piece.type.throw_in',
+  free_kick: 'set_piece.type.free_kick',
+  goal_kick: 'set_piece.type.goal_kick',
 };
-const SET_PIECE_HELP: Record<SetPieceType, string> = {
-  corner: 'Layout aplicado quando há um escanteio. O engine espelha pelo lado do campo (esq/dir) automaticamente.',
-  throw_in: 'Layout aplicado em qualquer reposição de lateral. O engine espelha pelo lado em que a bola saiu.',
-  free_kick: 'Layout aplicado em qualquer falta. O engine ajusta pela posição da bola no campo.',
-  goal_kick: 'Layout aplicado quando há um tiro de meta. Coloque atacantes onde quer pegar o lançamento.',
+const SET_PIECE_HELP_KEY: Record<SetPieceType, string> = {
+  corner: 'set_piece.help.corner',
+  throw_in: 'set_piece.help.throw_in',
+  free_kick: 'set_piece.help.free_kick',
+  goal_kick: 'set_piece.help.goal_kick',
 };
 
 type SetPiecePhase = Phase;
@@ -412,6 +413,7 @@ function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
 
 // ── Page ──────────────────────────────────────────────────────
 export default function SituationalTacticsPage() {
+  const { t } = useTranslation('situational_tactics');
   const { club: ownClub, assistantClub } = useAuth();
   const club = ownClub || assistantClub;
   const navigate = useNavigate();
@@ -488,7 +490,7 @@ export default function SituationalTacticsPage() {
       if (cancelled) return;
       if (error) {
         console.error(error);
-        toast.error('Erro ao carregar táticas');
+        toast.error(t('toast.load_error'));
         setPhaseMap(buildEmptyBothPhases());
         setKnobs(DEFAULT_KNOBS);
         setLoading(false);
@@ -548,7 +550,7 @@ export default function SituationalTacticsPage() {
       if (cancelled) return;
       if (error) {
         console.error(error);
-        toast.error('Erro ao carregar bola parada');
+        toast.error(t('toast.load_set_piece_error'));
         setSetPieceMap(buildEmptySetPieceMap());
         setSetPieceLoading(false);
         return;
@@ -640,7 +642,7 @@ export default function SituationalTacticsPage() {
       ...prev,
       [phase]: { ...prev[phase], [ballQuadrant]: next },
     }));
-    toast.success(direction === 'leftToRight' ? 'Espelhado: esquerda → direita' : 'Espelhado: direita → esquerda');
+    toast.success(direction === 'leftToRight' ? t('toast.mirror_left_to_right') : t('toast.mirror_right_to_left'));
   };
 
   const ballPos = quadrantCenter(ballQuadrant);
@@ -672,10 +674,10 @@ export default function SituationalTacticsPage() {
     setSaving(false);
     if (error) {
       console.error(error);
-      toast.error('Erro ao salvar');
+      toast.error(t('toast.save_error'));
       return;
     }
-    toast.success('Táticas salvas');
+    toast.success(t('toast.saved'));
   };
 
   // ── Set-piece mutators / save ──────────────────────────────
@@ -700,7 +702,7 @@ export default function SituationalTacticsPage() {
       ...prev,
       [setPieceType]: { ...prev[setPieceType], [setPiecePhase]: null },
     }));
-    toast.success('Layout resetado para o padrão da formação');
+    toast.success(t('toast.set_piece_reset'));
   };
 
   const handleSaveSetPiece = async () => {
@@ -724,7 +726,7 @@ export default function SituationalTacticsPage() {
     }
     if (rows.length === 0) {
       setSetPieceSaving(false);
-      toast.info('Nenhum layout personalizado para salvar.');
+      toast.info(t('toast.no_layout_to_save'));
       return;
     }
     const { error } = await supabase
@@ -733,10 +735,10 @@ export default function SituationalTacticsPage() {
     setSetPieceSaving(false);
     if (error) {
       console.error(error);
-      toast.error('Erro ao salvar bola parada');
+      toast.error(t('toast.save_set_piece_error'));
       return;
     }
-    toast.success('Bola parada salva');
+    toast.success(t('toast.saved_set_piece'));
   };
 
   const customizedSetPieceCount = useMemo(() => {
@@ -751,7 +753,7 @@ export default function SituationalTacticsPage() {
 
   const handleReset = () => {
     setPhaseMap(buildEmptyBothPhases());
-    toast.success('Todas as personalizações removidas — não esquece de salvar');
+    toast.success(t('toast.all_cleared'));
   };
 
   const handleDuplicate = async () => {
@@ -791,10 +793,10 @@ export default function SituationalTacticsPage() {
       .from('situational_tactics' as any)
       .upsert(rows, { onConflict: 'club_id,formation,phase' });
     if (error) {
-      toast.error('Erro ao duplicar');
+      toast.error(t('toast.duplicate_error'));
       return;
     }
-    toast.success(`Ajustes duplicados para ${dupTarget}`);
+    toast.success(t('toast.duplicated', { target: dupTarget }));
     setDupOpen(false);
   };
 
@@ -802,13 +804,17 @@ export default function SituationalTacticsPage() {
   const quadrantLabel = useMemo(() => {
     const col = ballQuadrant % COLS;
     const row = Math.floor(ballQuadrant / COLS);
-    const zoneY =
-      row <= 1 ? 'ataque' : row <= 4 ? 'meio-campo' : 'defesa';
-    const zoneX =
-      col === 0 ? 'esquerda' : col === 4 ? 'direita' : col === 2 ? 'centro' : col === 1 ? 'centro-esquerda' : 'centro-direita';
-    const state = isQuadrantCustomized ? 'personalizado' : 'dinâmico';
-    return `Quadrante ${ballQuadrant + 1}/35 — ${zoneY} ${zoneX} · ${state}`;
-  }, [ballQuadrant, isQuadrantCustomized]);
+    const zoneY = t(row <= 1 ? 'zone_y.attack' : row <= 4 ? 'zone_y.midfield' : 'zone_y.defense');
+    const zoneX = t(
+      col === 0 ? 'zone_x.left'
+        : col === 4 ? 'zone_x.right'
+          : col === 2 ? 'zone_x.center'
+            : col === 1 ? 'zone_x.center_left'
+              : 'zone_x.center_right',
+    );
+    const state = t(isQuadrantCustomized ? 'state.custom' : 'state.dynamic');
+    return t('quadrant_label', { n: ballQuadrant + 1, zoneY, zoneX, state });
+  }, [ballQuadrant, isQuadrantCustomized, t]);
 
   const customizedIndices = useMemo(() => {
     const out: number[] = [];
@@ -817,7 +823,7 @@ export default function SituationalTacticsPage() {
   }, [phaseMap, phase]);
 
   if (!club) {
-    return <ManagerLayout><div className="p-6">Clube não encontrado.</div></ManagerLayout>;
+    return <ManagerLayout><div className="p-6">{t('club_not_found')}</div></ManagerLayout>;
   }
 
   return (
@@ -827,12 +833,12 @@ export default function SituationalTacticsPage() {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm" className="gap-1">
-              <Link to="/manager/lineup"><ArrowLeft className="h-4 w-4" /> Voltar</Link>
+              <Link to="/manager/lineup"><ArrowLeft className="h-4 w-4" /> {t('header.back')}</Link>
             </Button>
             <div>
-              <h1 className="font-display text-2xl font-bold">Táticas — Jogo Situacional</h1>
+              <h1 className="font-display text-2xl font-bold">{t('header.title')}</h1>
               <p className="text-xs text-muted-foreground">
-                Posicione cada jogador conforme a bola em cada um dos 35 quadrantes do campo. Salve por formação.
+                {t('header.description')}
               </p>
             </div>
           </div>
@@ -846,12 +852,12 @@ export default function SituationalTacticsPage() {
             {mode === 'general' ? (
               <Button onClick={handleSave} disabled={saving || loading} className="gap-1.5">
                 <Save className="h-4 w-4" />
-                {saving ? 'Salvando...' : 'Salvar'}
+                {saving ? t('saving') : t('save')}
               </Button>
             ) : (
               <Button onClick={handleSaveSetPiece} disabled={setPieceSaving || setPieceLoading} className="gap-1.5">
                 <Save className="h-4 w-4" />
-                {setPieceSaving ? 'Salvando...' : 'Salvar bola parada'}
+                {setPieceSaving ? t('saving_set_piece') : t('save_set_piece')}
               </Button>
             )}
           </div>
@@ -860,8 +866,8 @@ export default function SituationalTacticsPage() {
         {/* Top-level mode toggle: Geral (35-quadrant) vs Bola Parada */}
         <Tabs value={mode} onValueChange={(v) => setMode(v as 'general' | 'set_piece')}>
           <TabsList>
-            <TabsTrigger value="general">Geral</TabsTrigger>
-            <TabsTrigger value="set_piece">Bola Parada</TabsTrigger>
+            <TabsTrigger value="general">{t('modes.general')}</TabsTrigger>
+            <TabsTrigger value="set_piece">{t('modes.set_piece')}</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -871,20 +877,20 @@ export default function SituationalTacticsPage() {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <Tabs value={setPieceType} onValueChange={(v) => setSetPieceType(v as SetPieceType)}>
                 <TabsList>
-                  {SET_PIECE_TYPES.map(t => (
-                    <TabsTrigger key={t} value={t}>{SET_PIECE_LABEL[t]}</TabsTrigger>
+                  {SET_PIECE_TYPES.map(spt => (
+                    <TabsTrigger key={spt} value={spt}>{t(SET_PIECE_LABEL_KEY[spt])}</TabsTrigger>
                   ))}
                 </TabsList>
               </Tabs>
               <Tabs value={setPiecePhase} onValueChange={(v) => setSetPiecePhase(v as SetPiecePhase)}>
                 <TabsList>
-                  <TabsTrigger value="with_ball">Atacando</TabsTrigger>
-                  <TabsTrigger value="without_ball">Defendendo</TabsTrigger>
+                  <TabsTrigger value="with_ball">{t('set_piece.phase.with_ball')}</TabsTrigger>
+                  <TabsTrigger value="without_ball">{t('set_piece.phase.without_ball')}</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
 
-            <p className="text-xs text-muted-foreground">{SET_PIECE_HELP[setPieceType]}</p>
+            <p className="text-xs text-muted-foreground">{t(SET_PIECE_HELP_KEY[setPieceType])}</p>
 
             {/* Set-piece field */}
             <Card>
@@ -936,18 +942,16 @@ export default function SituationalTacticsPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {setPieceMap[setPieceType][setPiecePhase] && (
                 <Button variant="outline" size="sm" onClick={resetCurrentSetPiece} className="gap-1.5">
-                  <RotateCcw className="h-4 w-4" /> Resetar este layout
+                  <RotateCcw className="h-4 w-4" /> {t('set_piece.reset_layout')}
                 </Button>
               )}
               <div className="ml-auto text-xs text-muted-foreground">
-                {customizedSetPieceCount}/8 layout(s) personalizado(s) (4 tipos × 2 fases)
+                {t('set_piece.customized_count', { count: customizedSetPieceCount })}
               </div>
             </div>
 
             <div className="text-xs text-muted-foreground">
-              <strong>Como funciona:</strong> o engine usa esse layout em qualquer cobrança do tipo selecionado.
-              Para escanteios e laterais, ele espelha a posição X automaticamente conforme o lado em que a bola saiu/está.
-              Goleiro fica trancado na pequena área. Se você não personalizar, o engine usa o comportamento padrão (situacional + knobs).
+              <Trans t={t} i18nKey="set_piece.explanation" components={[<strong key="0" />]} />
             </div>
           </div>
         )}
@@ -958,7 +962,7 @@ export default function SituationalTacticsPage() {
           <Tabs value={phase} onValueChange={(v) => setPhase(v as Phase)}>
             <TabsList>
               {PHASES.map(p => (
-                <TabsTrigger key={p} value={p}>{PHASE_LABEL[p]}</TabsTrigger>
+                <TabsTrigger key={p} value={p}>{t(PHASE_LABEL_KEY[p])}</TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
@@ -974,25 +978,25 @@ export default function SituationalTacticsPage() {
             className="gap-1.5"
           >
             {showGhost ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-            Fase oposta ({PHASE_LABEL[oppositePhase(phase)]})
+            {t('viz.opposite_phase', { phase: t(PHASE_LABEL_KEY[oppositePhase(phase)]) })}
           </Button>
           <label className={`flex items-center gap-1.5 px-2 py-1 rounded border ${showGhost ? '' : 'opacity-50 pointer-events-none'}`}>
             <Checkbox
               checked={showDistance}
               onCheckedChange={(v) => setShowDistance(!!v)}
             />
-            <span>Distância</span>
+            <span>{t('viz.distance')}</span>
           </label>
 
           <div className="flex items-center gap-1.5 pl-2 border-l ml-1">
-            <span className="text-muted-foreground">Adversário:</span>
+            <span className="text-muted-foreground">{t('viz.opponent_label')}</span>
             <Select
               value={opponentFormation ?? 'none'}
               onValueChange={(v) => setOpponentFormationAndReset(v === 'none' ? null : v)}
             >
               <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sem adversário</SelectItem>
+                <SelectItem value="none">{t('viz.no_opponent')}</SelectItem>
                 {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -1004,12 +1008,12 @@ export default function SituationalTacticsPage() {
           </div>
 
           <div className="flex items-center gap-1 pl-2 border-l ml-1">
-            <span className="text-muted-foreground">Espelhar:</span>
+            <span className="text-muted-foreground">{t('viz.mirror_label')}</span>
             <Button variant="outline" size="sm" className="gap-1" onClick={() => applyMirror('leftToRight')}>
-              <FlipHorizontal className="h-3.5 w-3.5" /> E → D
+              <FlipHorizontal className="h-3.5 w-3.5" /> {t('viz.mirror_left_to_right')}
             </Button>
             <Button variant="outline" size="sm" className="gap-1" onClick={() => applyMirror('rightToLeft')}>
-              <FlipHorizontal className="h-3.5 w-3.5" /> D → E
+              <FlipHorizontal className="h-3.5 w-3.5" /> {t('viz.mirror_right_to_left')}
             </Button>
           </div>
         </div>
@@ -1017,47 +1021,47 @@ export default function SituationalTacticsPage() {
         {/* Tactical knobs + quadrant comparison */}
         <div className="flex items-center gap-2 flex-wrap text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Ataque:</span>
+            <span className="text-muted-foreground">{t('knobs.attack_label')}</span>
             <Select value={knobs.attack_type} onValueChange={(v) => setKnobs(k => ({ ...k, attack_type: v as AttackType }))}>
               <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(ATTACK_TYPE_LABEL) as AttackType[]).map(k => (
-                  <SelectItem key={k} value={k}>{ATTACK_TYPE_LABEL[k]}</SelectItem>
+                {(Object.keys(ATTACK_TYPE_KEY) as AttackType[]).map(k => (
+                  <SelectItem key={k} value={k}>{t(ATTACK_TYPE_KEY[k])}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Posicionamento:</span>
+            <span className="text-muted-foreground">{t('knobs.positioning_label')}</span>
             <Select value={knobs.positioning} onValueChange={(v) => setKnobs(k => ({ ...k, positioning: v as Positioning }))}>
               <SelectTrigger className="h-8 w-[140px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(POSITIONING_LABEL) as Positioning[]).map(k => (
-                  <SelectItem key={k} value={k}>{POSITIONING_LABEL[k]}</SelectItem>
+                {(Object.keys(POSITIONING_KEY) as Positioning[]).map(k => (
+                  <SelectItem key={k} value={k}>{t(POSITIONING_KEY[k])}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Inclinação:</span>
+            <span className="text-muted-foreground">{t('knobs.inclination_label')}</span>
             <Select value={knobs.inclination} onValueChange={(v) => setKnobs(k => ({ ...k, inclination: v as Inclination }))}>
               <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(INCLINATION_LABEL) as Inclination[]).map(k => (
-                  <SelectItem key={k} value={k}>{INCLINATION_LABEL[k]}</SelectItem>
+                {(Object.keys(INCLINATION_KEY) as Inclination[]).map(k => (
+                  <SelectItem key={k} value={k}>{t(INCLINATION_KEY[k])}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-1.5 pl-2 border-l ml-1">
-            <span className="text-muted-foreground">Comparar quadrante:</span>
+            <span className="text-muted-foreground">{t('viz.compare_quadrant')}</span>
             <Select
               value={compareQuadrant == null ? 'none' : String(compareQuadrant)}
               onValueChange={(v) => setCompareQuadrant(v === 'none' ? null : Number(v))}
             >
               <SelectTrigger className="h-8 w-[90px]"><SelectValue /></SelectTrigger>
               <SelectContent className="max-h-[300px]">
-                <SelectItem value="none">Nenhum</SelectItem>
+                <SelectItem value="none">{t('viz.none')}</SelectItem>
                 {Array.from({ length: COLS * ROWS }, (_, i) => (
                   <SelectItem key={i} value={String(i)}>{i + 1}</SelectItem>
                 ))}
@@ -1067,12 +1071,12 @@ export default function SituationalTacticsPage() {
               <Select value={comparePhase} onValueChange={(v) => setComparePhase(v as Phase)}>
                 <SelectTrigger className="h-8 w-[110px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {PHASES.map(p => <SelectItem key={p} value={p}>{PHASE_LABEL[p]}</SelectItem>)}
+                  {PHASES.map(p => <SelectItem key={p} value={p}>{t(PHASE_LABEL_KEY[p])}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
             {compareQuadrant != null && !showGhost && (
-              <span className="text-[10px] text-amber-600">Ative "Fase oposta" pra ver o ghost</span>
+              <span className="text-[10px] text-amber-600">{t('viz.ghost_hint')}</span>
             )}
           </div>
         </div>
@@ -1257,11 +1261,11 @@ export default function SituationalTacticsPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {isQuadrantCustomized && (
             <Button variant="outline" size="sm" onClick={resetCurrentQuadrant} className="gap-1.5">
-              <RotateCcw className="h-4 w-4" /> Resetar este quadrante
+              <RotateCcw className="h-4 w-4" /> {t('actions.reset_quadrant')}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5">
-            <RotateCcw className="h-4 w-4" /> Limpar todas as personalizações
+            <RotateCcw className="h-4 w-4" /> {t('actions.reset_all')}
           </Button>
           <Button
             variant="outline"
@@ -1273,16 +1277,15 @@ export default function SituationalTacticsPage() {
             }}
             className="gap-1.5"
           >
-            <Copy className="h-4 w-4" /> Duplicar para outra formação
+            <Copy className="h-4 w-4" /> {t('actions.duplicate')}
           </Button>
           <div className="ml-auto text-xs text-muted-foreground">
-            {customizedIndices.length}/35 quadrante(s) personalizado(s) nesta fase
+            {t('customized_status', { count: customizedIndices.length })}
           </div>
         </div>
 
         <div className="text-xs text-muted-foreground">
-          <strong>Dinâmico (padrão):</strong> o time inteiro acompanha a bola — verticalmente mais, lateralmente menos.
-          Quando você arrasta um jogador, o quadrante vira <strong>personalizado</strong> (pontinho amarelo no canto) e trava naquela configuração.
+          <Trans t={t} i18nKey="explanation" components={[<strong key="0" />, <strong key="1" />]} />
         </div>
         </>)}
       </div>
@@ -1291,16 +1294,20 @@ export default function SituationalTacticsPage() {
       <Dialog open={dupOpen} onOpenChange={setDupOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Duplicar ajustes</DialogTitle>
+            <DialogTitle>{t('duplicate_dialog.title')}</DialogTitle>
             <DialogDescription>
-              Copia só os quadrantes <strong>personalizados</strong> de <strong>{formation}</strong> para a formação escolhida, slot por slot
-              (os não-personalizados continuam usando o dinâmico na nova formação). Salva direto no banco.
+              <Trans
+                t={t}
+                i18nKey="duplicate_dialog.description"
+                values={{ formation }}
+                components={[<strong key="0" />, <strong key="1" />]}
+              />
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <label className="text-sm font-semibold">Formação de destino</label>
+            <label className="text-sm font-semibold">{t('duplicate_dialog.target_label')}</label>
             <Select value={dupTarget} onValueChange={setDupTarget}>
-              <SelectTrigger><SelectValue placeholder="Escolha..." /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('duplicate_dialog.target_placeholder')} /></SelectTrigger>
               <SelectContent>
                 {Object.keys(FORMATIONS).filter(f => f !== formation).map(f => (
                   <SelectItem key={f} value={f}>{f}</SelectItem>
@@ -1309,8 +1316,8 @@ export default function SituationalTacticsPage() {
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDupOpen(false)}>Cancelar</Button>
-            <Button onClick={handleDuplicate} disabled={!dupTarget || dupTarget === formation}>Duplicar</Button>
+            <Button variant="outline" onClick={() => setDupOpen(false)}>{t('duplicate_dialog.cancel')}</Button>
+            <Button onClick={handleDuplicate} disabled={!dupTarget || dupTarget === formation}>{t('duplicate_dialog.submit')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,0 +1,58 @@
+{
+  "title": "Perfil da Conta",
+  "localization": {
+    "section": "{{country}} & {{language}}"
+  },
+  "avatar": {
+    "section": "Seu Avatar",
+    "use_character_title": "Usar Avatar de Personagem",
+    "loading_chars": "Carregando personagens...",
+    "no_chars": "Nenhum personagem encontrado.",
+    "one_char": "Um personagem encontrado — clique para aplicar.",
+    "many_chars": "{{count}} personagens disponíveis — escolha um.",
+    "remove": "Remover",
+    "swap": "Trocar Personagem",
+    "use": "Usar Personagem",
+    "using_char": "Usando o visual de <0>{{name}}</0>",
+    "using_char_fallback": "personagem",
+    "pick_hint": "Escolha um ícone, envie uma imagem ou use um personagem seu",
+    "uploading": "Enviando...",
+    "upload": "Enviar Imagem",
+    "upload_hint": "PNG, JPG ou WebP — máx 2MB"
+  },
+  "fields": {
+    "username": "Nome de Usuário",
+    "email": "E-mail"
+  },
+  "password": {
+    "section": "Alterar Senha",
+    "new": "Nova Senha",
+    "new_placeholder": "Mínimo 6 caracteres",
+    "confirm": "Confirmar Nova Senha",
+    "confirm_placeholder": "Repita a nova senha",
+    "saving": "Salvando...",
+    "submit": "Alterar Senha"
+  },
+  "char_picker": {
+    "title": "Escolha um Personagem",
+    "description": "Seu avatar da conta será o visual do personagem selecionado. Mudanças de aparência ou de clube serão refletidas automaticamente.",
+    "kind_player": "Jogador",
+    "kind_manager": "Treinador"
+  },
+  "toast": {
+    "password_short": "A senha deve ter pelo menos 6 caracteres.",
+    "password_mismatch": "As senhas não coincidem.",
+    "password_error": "Erro ao alterar senha.",
+    "password_ok": "Senha alterada com sucesso!",
+    "avatar_save_error": "Erro ao salvar avatar.",
+    "avatar_ok": "Avatar atualizado!",
+    "char_avatar_ok": "Avatar de personagem aplicado!",
+    "char_avatar_remove_error": "Erro ao remover avatar de personagem.",
+    "char_avatar_removed": "Avatar de personagem removido.",
+    "no_chars_yet": "Você ainda não tem personagens. Crie um jogador ou treinador primeiro.",
+    "image_too_big": "A imagem deve ter no máximo 2MB.",
+    "image_format": "Formato não suportado. Use PNG, JPG, WEBP ou GIF.",
+    "image_extension": "Extensão de arquivo inválida.",
+    "upload_error": "Erro ao enviar imagem."
+  }
+}

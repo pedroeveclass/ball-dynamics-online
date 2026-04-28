@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PositionBadge } from '@/components/PositionBadge';
 import { Search, UserPlus, Users } from 'lucide-react';
-import { positionToPT } from '@/lib/positions';
+import { positionLabel } from '@/lib/positions';
 import { toast } from 'sonner';
 import { ClubDemandEditor } from '@/components/ClubDemandEditor';
 
@@ -27,14 +28,10 @@ interface FreeAgent {
 
 const POSITIONS = ['GK', 'CB', 'LB', 'RB', 'DM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'];
 const ARCHETYPES = ['All Around', 'Condutor', 'Chutador', 'Velocista', 'Torre', 'Cão de Guarda'];
-const SQUAD_ROLES = [
-  { value: 'starter', label: 'Titular' },
-  { value: 'rotation', label: 'Rotação' },
-  { value: 'backup', label: 'Reserva' },
-  { value: 'youth', label: 'Jovem Promessa' },
-];
+const SQUAD_ROLE_KEYS = ['starter', 'rotation', 'backup', 'youth'] as const;
 
 export default function ManagerMarketPage() {
+  const { t } = useTranslation('manager_market');
   const { managerProfile, club } = useAuth();
   const [players, setPlayers] = useState<FreeAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +101,7 @@ export default function ManagerMarketPage() {
     });
 
     if (error) {
-      toast.error('Erro: Não foi possível enviar a proposta.');
+      toast.error(t('toast.offer_error'));
     } else {
       const { data: playerData } = await supabase
         .from('player_profiles')
@@ -115,14 +112,16 @@ export default function ManagerMarketPage() {
       if (playerData) {
         await supabase.from('notifications').insert({
           user_id: playerData.user_id,
-          title: 'Nova proposta de contrato!',
-          body: `${club.name} enviou uma proposta de R$${salary}/semana.`,
+          title: t('notification.title'),
+          body: t('notification.body', { club: club.name, salary }),
           type: 'contract',
           link: '/player/offers',
-        });
+          i18n_key: 'contract_offer_received',
+          i18n_params: { club: club.name, salary: `R$${salary}` },
+        } as any);
       }
 
-      toast.success(`Proposta enviada! Proposta enviada para ${selected.full_name}.`);
+      toast.success(t('toast.offer_sent', { name: selected.full_name }));
       setOfferOpen(false);
     }
     setSending(false);
@@ -134,8 +133,8 @@ export default function ManagerMarketPage() {
     <ManagerLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold">Mercado de Agentes Livres</h1>
-          <p className="text-sm text-muted-foreground">Encontre jogadores sem clube e envie propostas de contrato.</p>
+          <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
 
         <div className="rounded-lg border border-border bg-card p-4">
@@ -145,31 +144,31 @@ export default function ManagerMarketPage() {
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar por nome..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            <Input placeholder={t('filters.search_placeholder')} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
           <Select value={posFilter} onValueChange={setPosFilter}>
-            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Posição" /></SelectTrigger>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder={t('filters.position_placeholder')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {POSITIONS.map(p => <SelectItem key={p} value={p}>{positionToPT(p)}</SelectItem>)}
+              <SelectItem value="all">{t('filters.all_positions')}</SelectItem>
+              {POSITIONS.map(p => <SelectItem key={p} value={p}>{positionLabel(p, 'short')}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={archFilter} onValueChange={setArchFilter}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Arquétipo" /></SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder={t('filters.archetype_placeholder')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="all">{t('filters.all_archetypes')}</SelectItem>
               {ARCHETYPES.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-muted-foreground">Carregando jogadores...</div>
+          <div className="text-center py-12 text-muted-foreground">{t('loading')}</div>
         ) : filtered.length === 0 ? (
           <div className="stat-card text-center py-12">
             <Users className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="font-display font-semibold">Nenhum agente livre encontrado</p>
-            <p className="text-xs text-muted-foreground mt-1">Tente ajustar os filtros ou aguarde novos jogadores.</p>
+            <p className="font-display font-semibold">{t('empty.title')}</p>
+            <p className="text-xs text-muted-foreground mt-1">{t('empty.hint')}</p>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -178,7 +177,7 @@ export default function ManagerMarketPage() {
                 <div className="flex items-center gap-4">
                   <div className="text-center min-w-[48px]">
                     <span className="font-display text-2xl font-extrabold text-tactical">{p.overall}</span>
-                    <p className="text-[10px] text-muted-foreground">OVR</p>
+                    <p className="text-[10px] text-muted-foreground">{t('card.ovr')}</p>
                   </div>
                   <div>
                     <p className="font-display font-bold">{p.full_name}</p>
@@ -186,14 +185,14 @@ export default function ManagerMarketPage() {
                       <PositionBadge position={p.primary_position} />
                       {p.secondary_position && <PositionBadge position={p.secondary_position} />}
                       <span className="text-xs text-muted-foreground">{p.archetype}</span>
-                      <span className="text-xs text-muted-foreground">• {p.age} anos</span>
-                      <span className="text-xs text-muted-foreground">• Rep: {p.reputation}</span>
+                      <span className="text-xs text-muted-foreground">• {t('card.age', { age: p.age })}</span>
+                      <span className="text-xs text-muted-foreground">• {t('card.reputation', { value: p.reputation })}</span>
                     </div>
                   </div>
                 </div>
                 <Button size="sm" onClick={() => openOffer(p)} className="gap-1.5">
                   <UserPlus className="h-3.5 w-3.5" />
-                  Proposta
+                  {t('card.offer_button')}
                 </Button>
               </div>
             ))}
@@ -204,7 +203,7 @@ export default function ManagerMarketPage() {
       <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display">Enviar Proposta</DialogTitle>
+            <DialogTitle className="font-display">{t('offer_dialog.title')}</DialogTitle>
           </DialogHeader>
           {selected && (
             <div className="space-y-4">
@@ -212,41 +211,41 @@ export default function ManagerMarketPage() {
                 <span className="font-display text-xl font-extrabold text-tactical">{selected.overall}</span>
                 <div>
                   <p className="font-display font-bold text-sm">{selected.full_name}</p>
-                  <p className="text-xs text-muted-foreground">{positionToPT(selected.primary_position)} • {selected.archetype} • {selected.age} anos</p>
+                  <p className="text-xs text-muted-foreground">{t('offer_dialog.player_summary', { position: positionLabel(selected.primary_position, 'short'), archetype: selected.archetype, age: selected.age })}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Salário Semanal ($)</Label>
+                  <Label className="text-xs">{t('offer_dialog.weekly_salary')}</Label>
                   <Input type="number" min={100} value={salary} onChange={e => setSalary(Number(e.target.value))} />
                 </div>
                 <div>
-                  <Label className="text-xs">Multa Rescisória ($)</Label>
+                  <Label className="text-xs">{t('offer_dialog.release_clause')}</Label>
                   <Input type="number" min={0} value={clause} onChange={e => setClause(Number(e.target.value))} />
                 </div>
                 <div>
-                  <Label className="text-xs">Duração (meses)</Label>
+                  <Label className="text-xs">{t('offer_dialog.duration_months')}</Label>
                   <Input type="number" min={1} max={60} value={length} onChange={e => setLength(Number(e.target.value))} />
                 </div>
                 <div>
-                  <Label className="text-xs">Papel no Elenco</Label>
+                  <Label className="text-xs">{t('offer_dialog.squad_role')}</Label>
                   <Select value={role} onValueChange={setRole}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {SQUAD_ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                      {SQUAD_ROLE_KEYS.map(r => <SelectItem key={r} value={r}>{t(`squad_role.${r}`)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div>
-                <Label className="text-xs">Mensagem (opcional)</Label>
-                <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Ex: Queremos você como peça-chave do time..." rows={2} />
+                <Label className="text-xs">{t('offer_dialog.message_label')}</Label>
+                <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder={t('offer_dialog.message_placeholder')} rows={2} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOfferOpen(false)}>Cancelar</Button>
-            <Button onClick={sendOffer} disabled={sending}>{sending ? 'Enviando...' : 'Enviar Proposta'}</Button>
+            <Button variant="outline" onClick={() => setOfferOpen(false)}>{t('offer_dialog.cancel')}</Button>
+            <Button onClick={sendOffer} disabled={sending}>{sending ? t('offer_dialog.submitting') : t('offer_dialog.submit')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

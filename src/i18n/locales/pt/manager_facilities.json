@@ -1,0 +1,40 @@
+{
+  "title": "Instalações do Clube",
+  "loading": "Carregando instalações...",
+  "facilities": {
+    "souvenir_shop": "Loja de Souvenirs",
+    "sponsorship": "Patrocínios",
+    "training_center": "Centro de Treinamento",
+    "stadium": "Estádio"
+  },
+  "summary": {
+    "title": "Resumo Semanal das Instalações",
+    "total_revenue": "Receita Total",
+    "total_cost": "Custo Total",
+    "net_income": "Lucro Líquido",
+    "per_week": "/sem"
+  },
+  "card": {
+    "max_level": "Nível Máximo",
+    "level": "Nível",
+    "revenue": "Receita",
+    "cost": "Custo",
+    "training_boost": "Boost de treino",
+    "net_profit": "Lucro Líquido",
+    "per_week_long": "/semana",
+    "upgrade_cta": "Melhorar → Nível {{level}} ({{cost}})",
+    "insufficient_balance": "Saldo insuficiente ({{cost}})"
+  },
+  "dialog": {
+    "title": "Confirmar Melhoria",
+    "description": "Tem certeza? Custo: {{cost}}",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "submitting": "Melhorando..."
+  },
+  "toast": {
+    "insufficient": "Saldo insuficiente para essa melhoria.",
+    "upgrade_ok": "{{label}} melhorado para Nível {{level}}!",
+    "upgrade_error": "Erro ao melhorar: {{message}}"
+  }
+}

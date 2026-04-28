@@ -1,0 +1,11 @@
+{
+  "loading": "Carregando...",
+  "title": "CRIAR VISUAL",
+  "subtitle": "Personalize como seu jogador vai aparecer em campo, no perfil e pra todos os outros jogadores.",
+  "warning": "Atenção: o visual é definitivo e não pode ser editado depois.",
+  "confirm_label": "Confirmar Visual",
+  "toast": {
+    "saved": "Visual do jogador salvo!",
+    "save_error": "Erro ao salvar avatar"
+  }
+}

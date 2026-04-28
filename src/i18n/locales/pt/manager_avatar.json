@@ -1,0 +1,11 @@
+{
+  "loading": "Carregando...",
+  "title": "CRIAR VISUAL DO TREINADOR",
+  "subtitle": "Personalize o rosto do seu treinador. A roupa social preta é padrão pra todos os técnicos.",
+  "warning": "Atenção: o visual é definitivo e não pode ser editado depois.",
+  "confirm_label": "Confirmar Visual",
+  "toast": {
+    "saved": "Visual do treinador salvo!",
+    "save_error": "Erro ao salvar avatar"
+  }
+}

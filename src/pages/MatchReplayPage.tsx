@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -11,6 +12,7 @@ import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Loader2, Film } from 'lu
 // ─── Layout wrapper (same pattern as LeaguePage) ──────────────────
 function ReplayLayout({ children }: { children: ReactNode }) {
   const { managerProfile, loading } = useAuth();
+  const { t } = useTranslation('match_replay');
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
   return (
@@ -21,7 +23,7 @@ function ReplayLayout({ children }: { children: ReactNode }) {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <Film className="h-5 w-5 text-tactical" />
-          <span className="font-display text-lg font-bold">Replay</span>
+          <span className="font-display text-lg font-bold">{t('title')}</span>
         </div>
       </nav>
       <div className="max-w-5xl mx-auto px-4 py-6">{children}</div>
@@ -130,6 +132,7 @@ const SPEED_OPTIONS = [
 // ─── Main page component ────────────────────────────────────────
 export default function MatchReplayPage() {
   const { id: matchId } = useParams<{ id: string }>();
+  const { t } = useTranslation('match_replay');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +175,7 @@ export default function MatchReplayPage() {
         .select('id, status, home_score, away_score, home_club_id, away_club_id, home_uniform, away_uniform, current_turn_number')
         .eq('id', matchId!)
         .single();
-      if (matchErr || !matchRow) { setError('Partida nao encontrada.'); setLoading(false); return; }
+      if (matchErr || !matchRow) { setError(t('errors.match_not_found')); setLoading(false); return; }
       const matchData = matchRow as MatchData;
       setMatch(matchData);
 
@@ -221,7 +224,7 @@ export default function MatchReplayPage() {
       const nameMap: Record<string, string> = {};
       const posMap: Record<string, string> = {};
       for (const pp of (playersRes.data || [])) {
-        nameMap[pp.id] = pp.full_name || 'Jogador';
+        nameMap[pp.id] = pp.full_name || t('fallbacks.player_name');
       }
       for (const sl of (slotsRes.data || [])) {
         posMap[sl.id] = sl.slot_position;
@@ -319,7 +322,7 @@ export default function MatchReplayPage() {
       setAnimProgress(1);
     } catch (err) {
       console.error('Replay load error:', err);
-      setError('Erro ao carregar replay.');
+      setError(t('errors.load_failed'));
     } finally {
       setLoading(false);
     }
@@ -486,8 +489,8 @@ export default function MatchReplayPage() {
     return (
       <ReplayLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-          <p className="text-muted-foreground">{error || 'Partida nao encontrada.'}</p>
-          <Link to="/league"><Button variant="outline">Voltar</Button></Link>
+          <p className="text-muted-foreground">{error || t('errors.match_not_found')}</p>
+          <Link to="/league"><Button variant="outline">{t('back')}</Button></Link>
         </div>
       </ReplayLayout>
     );
@@ -498,8 +501,8 @@ export default function MatchReplayPage() {
       <ReplayLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
           <Film className="h-12 w-12 text-muted-foreground" />
-          <p className="text-muted-foreground text-lg">Replay nao disponivel para esta partida</p>
-          <Link to="/league"><Button variant="outline">Voltar</Button></Link>
+          <p className="text-muted-foreground text-lg">{t('errors.no_replay')}</p>
+          <Link to="/league"><Button variant="outline">{t('back')}</Button></Link>
         </div>
       </ReplayLayout>
     );
@@ -534,7 +537,7 @@ export default function MatchReplayPage() {
             </span>
             <Badge variant="secondary" className="text-[10px] mt-1">
               <Film className="h-3 w-3 mr-1" />
-              Replay
+              {t('badge')}
             </Badge>
           </div>
           <div className="flex items-center gap-2 flex-1">
@@ -551,7 +554,7 @@ export default function MatchReplayPage() {
         {/* ── Turn indicator ── */}
         <div className="flex items-center justify-center gap-2">
           <Badge variant="outline" className="font-mono text-xs">
-            Turno {(currentSnapshot?.turnNumber ?? 0)} / {snapshots[snapshots.length - 1]?.turnNumber ?? 0}
+            {t('turn_label', { current: currentSnapshot?.turnNumber ?? 0, total: snapshots[snapshots.length - 1]?.turnNumber ?? 0 })}
           </Badge>
           {currentSnapshot?.phase && (
             <Badge variant="secondary" className="text-[10px]">{currentSnapshot.phase}</Badge>
@@ -729,9 +732,9 @@ export default function MatchReplayPage() {
 
           {/* Events sidebar */}
           <div className="w-56 shrink-0 bg-card border rounded-lg p-3 flex flex-col gap-1 max-h-[480px] overflow-y-auto hidden md:flex">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Eventos</span>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{t('events.title')}</span>
             {currentEvents.length === 0 && (
-              <span className="text-xs text-muted-foreground">Nenhum evento neste turno</span>
+              <span className="text-xs text-muted-foreground">{t('events.empty')}</span>
             )}
             {currentEvents.map((ev) => (
               <div
@@ -784,9 +787,9 @@ export default function MatchReplayPage() {
 
         {/* Mobile events (shown below on small screens) */}
         <div className="md:hidden bg-card border rounded-lg p-3">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Eventos</span>
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">{t('events.title')}</span>
           {currentEvents.length === 0 && (
-            <span className="text-xs text-muted-foreground">Nenhum evento neste turno</span>
+            <span className="text-xs text-muted-foreground">{t('events.empty')}</span>
           )}
           {currentEvents.map((ev) => (
             <div

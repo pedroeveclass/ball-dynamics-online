@@ -1,0 +1,43 @@
+{
+  "title": "Votação de Horários",
+  "subtitle": "Vote nos dias e horários preferidos para as partidas da liga.",
+  "current": {
+    "title": "Horário Atual",
+    "matches": "Jogos:",
+    "and": "e",
+    "at": "às"
+  },
+  "form": {
+    "title": "Seu Voto",
+    "day1": "Dia 1",
+    "day2": "Dia 2",
+    "time": "Horário",
+    "placeholder": "Selecione...",
+    "submit": "Votar"
+  },
+  "summary": {
+    "title": "Resumo da Votação",
+    "managers_voted": "Managers que votaram",
+    "winning_option": "Opção mais votada",
+    "votes_one": "{{count}} voto",
+    "votes_other": "{{count}} votos",
+    "your_vote": "Seu voto atual",
+    "no_vote": "Você ainda não votou.",
+    "and": "e",
+    "at": "às"
+  },
+  "days": {
+    "monday": "Segunda-feira",
+    "tuesday": "Terça-feira",
+    "wednesday": "Quarta-feira",
+    "thursday": "Quinta-feira",
+    "friday": "Sexta-feira",
+    "saturday": "Sábado",
+    "sunday": "Domingo"
+  },
+  "toast": {
+    "vote_ok": "Voto registrado! Sua preferência foi salva com sucesso.",
+    "vote_error": "Erro: {{message}}",
+    "vote_error_default": "Não foi possível registrar o voto."
+  }
+}

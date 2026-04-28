@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -164,26 +165,9 @@ interface UniformData {
   stripe_color: string;
 }
 
-const PATTERN_CATEGORIES = [
-  { value: 'solid', label: 'Cor Completa' },
-  { value: 'stripe_vertical', label: 'Listra Vertical' },
-  { value: 'stripe_horizontal', label: 'Listra Horizontal' },
-  { value: 'stripe_diagonal', label: 'Listra Diagonal' },
-  { value: 'bicolor', label: 'Bicolor' },
-];
-
-const STRIPE_COUNTS = [
-  { value: 'unique', label: 'Unica' },
-  { value: 'single', label: 'Simples' },
-  { value: 'double', label: 'Dupla' },
-  { value: 'triple', label: 'Tripla' },
-];
-
-const BICOLOR_TYPES = [
-  { value: 'bicolor_vertical', label: 'Vertical' },
-  { value: 'bicolor_horizontal', label: 'Horizontal' },
-  { value: 'bicolor_diagonal', label: 'Diagonal' },
-];
+const PATTERN_CATEGORY_VALUES = ['solid', 'stripe_vertical', 'stripe_horizontal', 'stripe_diagonal', 'bicolor'] as const;
+const STRIPE_COUNT_VALUES = ['unique', 'single', 'double', 'triple'] as const;
+const BICOLOR_TYPE_VALUES = ['bicolor_vertical', 'bicolor_horizontal', 'bicolor_diagonal'] as const;
 
 // Build full pattern value from category + count/type
 const buildPattern = (category: string, count: string) => {
@@ -207,6 +191,7 @@ const parsePattern = (pattern: string): { category: string; count: string } => {
 };
 
 export default function ManagerLineupPage() {
+  const { t } = useTranslation('manager_lineup');
   const { club: ownClub, assistantClub, managerProfile } = useAuth();
   // Head manager edits their own club; an assistant edits the club that nominated them.
   const club = ownClub || assistantClub;
@@ -429,10 +414,10 @@ export default function ManagerLineupPage() {
       if (error) throw error;
 
       setUniforms(prev => prev.map(u => u.id === uniform.id ? { ...u, shirt_color: edit.shirt_color, number_color: edit.number_color, pattern: edit.pattern, stripe_color: edit.stripe_color } : u));
-      toast.success(`Uniforme salvo! Uniforme ${uniformNumber} atualizado com sucesso.`);
+      toast.success(t('toast.uniform_saved', { n: uniformNumber }));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao salvar uniforme.';
-      toast.error(`Erro: ${message}`);
+      const message = err instanceof Error ? err.message : t('toast.uniform_error');
+      toast.error(t('toast.error_prefix', { message }));
     } finally {
       setSavingUniform(null);
     }
@@ -448,10 +433,10 @@ export default function ManagerLineupPage() {
       });
       if (error) throw error;
       setAssistantUserId(newAssistantUserId);
-      toast.success(newAssistantUserId ? 'Assistente designado.' : 'Assistente removido.');
+      toast.success(newAssistantUserId ? t('toast.assistant_assigned') : t('toast.assistant_removed'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao salvar assistente.';
-      toast.error(`Erro: ${message}`);
+      const message = err instanceof Error ? err.message : t('toast.assistant_error');
+      toast.error(t('toast.error_prefix', { message }));
     } finally {
       setSavingAssistant(false);
     }
@@ -459,7 +444,7 @@ export default function ManagerLineupPage() {
 
   const saveTacticalRoles = async () => {
     if (!lineupId) {
-      toast.error('Erro: Salve a escalação primeiro antes de definir funções táticas.');
+      toast.error(t('toast.save_lineup_first'));
       return;
     }
     setSavingRoles(true);
@@ -473,10 +458,10 @@ export default function ManagerLineupPage() {
         throw_in_left_taker_id: throwInLeftId || null,
       }).eq('id', lineupId);
       if (error) throw error;
-      toast.success('Funções táticas salvas! As funções foram atualizadas com sucesso.');
+      toast.success(t('toast.tactical_saved'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao salvar funções táticas.';
-      toast.error(`Erro: ${message}`);
+      const message = err instanceof Error ? err.message : t('toast.tactical_error');
+      toast.error(t('toast.error_prefix', { message }));
     } finally {
       setSavingRoles(false);
     }
@@ -497,16 +482,13 @@ export default function ManagerLineupPage() {
     // Block suspended players from being added to the lineup.
     if (suspendedPlayerIds.has(playerId)) {
       const reason = suspensionReasonByPlayer[playerId];
-      const label = reason === 'red_card'
-        ? 'Suspenso por cartão vermelho'
-        : 'Suspenso por acúmulo de 3 amarelos';
-      toast.error(`${label} — jogador não pode ser escalado nesta rodada.`);
+      toast.error(reason === 'red_card' ? t('toast.suspended_red') : t('toast.suspended_yellows'));
       return;
     }
 
     if (pickType === 'bench') {
       if (benchPlayers.length >= MAX_BENCH) {
-        toast.error(`Banco cheio: Máximo de ${MAX_BENCH} jogadores no banco.`);
+        toast.error(t('toast.bench_full', { max: MAX_BENCH }));
         return;
       }
       setBenchPlayers(prev => [...prev, playerId]);
@@ -610,7 +592,7 @@ export default function ManagerLineupPage() {
         .select()
         .single();
 
-      if (lineupError || !newLineup) throw lineupError ?? new Error('Falha ao criar nova versão da escalação.');
+      if (lineupError || !newLineup) throw lineupError ?? new Error(t('toast.lineup_save_failed'));
 
       if (slotsToInsert.length > 0) {
         const { error: slotsError } = await supabase.from('lineup_slots').insert(
@@ -636,10 +618,10 @@ export default function ManagerLineupPage() {
       if (cleanupError) throw cleanupError;
 
       setLineupId(newLineup.id);
-      toast.success('Escalação salva! A nova formação foi salva sem alterar partidas já criadas.');
+      toast.success(t('toast.lineup_saved'));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Não foi possível salvar a escalação.';
-      toast.error(`Erro ao salvar: ${message}`);
+      const message = err instanceof Error ? err.message : t('toast.lineup_save_default');
+      toast.error(t('toast.lineup_save_error', { message }));
     } finally {
       setSaving(false);
     }
@@ -650,7 +632,7 @@ export default function ManagerLineupPage() {
   if (loading) {
     return (
       <ManagerLayout>
-        <div className="text-center py-12 text-muted-foreground">Carregando escalação...</div>
+        <div className="text-center py-12 text-muted-foreground">{t('loading')}</div>
       </ManagerLayout>
     );
   }
@@ -659,11 +641,11 @@ export default function ManagerLineupPage() {
     return (
       <ManagerLayout>
         <div className="space-y-6">
-          <h1 className="font-display text-2xl font-bold">Escalação</h1>
+          <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
           <div className="stat-card text-center py-12">
             <Users className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="font-display font-semibold">Nenhum jogador no elenco</p>
-            <p className="text-xs text-muted-foreground mt-1">Contrate jogadores no Mercado antes de montar a escalação.</p>
+            <p className="font-display font-semibold">{t('empty_squad.title')}</p>
+            <p className="text-xs text-muted-foreground mt-1">{t('empty_squad.hint')}</p>
           </div>
         </div>
       </ManagerLayout>
@@ -677,8 +659,8 @@ export default function ManagerLineupPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-2xl font-bold">Escalação</h1>
-            <p className="text-sm text-muted-foreground">{assignments.length}/{slots.length} titulares • {benchPlayers.length}/{MAX_BENCH} banco</p>
+            <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
+            <p className="text-sm text-muted-foreground">{t('subtitle', { starters: assignments.length, maxStarters: slots.length, bench: benchPlayers.length, maxBench: MAX_BENCH })}</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <Select value={formation} onValueChange={handleFormationChange}>
@@ -690,19 +672,19 @@ export default function ManagerLineupPage() {
             <Button asChild variant="outline" className="gap-1.5">
               <Link to="/manager/lineup/tactics">
                 <Target className="h-4 w-4" />
-                Táticas — Jogo Situacional
+                {t('tactics_button')}
               </Link>
             </Button>
             <Button onClick={saveLineup} disabled={saving} className="gap-1.5">
               <Save className="h-4 w-4" />
-              {saving ? 'Salvando...' : 'Salvar'}
+              {saving ? t('saving') : t('save_button')}
             </Button>
           </div>
         </div>
 
         {emptySlots.length > 0 && (
           <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
-            {emptySlots.length} posição(ões) vazia(s): {emptySlots.map(s => s.label).join(', ')}
+            {t('empty_slots_warning', { count: emptySlots.length, labels: emptySlots.map(s => s.label).join(', ') })}
           </div>
         )}
 
@@ -740,7 +722,13 @@ export default function ManagerLineupPage() {
                       }
                     }}
                     title={player && penalty > 0
-                      ? `${player.full_name} fora de posição: ${player.primary_position}${player.secondary_position ? '/' + player.secondary_position : ''} escalado em ${slot.position} (−${penalty}% nos atributos). OVR efetivo: ${effectiveOvr}`
+                      ? t('field.out_of_position', {
+                          name: player.full_name,
+                          positions: `${player.primary_position}${player.secondary_position ? '/' + player.secondary_position : ''}`,
+                          slot: slot.position,
+                          penalty,
+                          ovr: effectiveOvr,
+                        })
                       : undefined}
                   >
                     <div className={`relative w-10 h-10 rounded-full flex items-center justify-center text-xs font-display font-bold transition-colors ${
@@ -758,7 +746,7 @@ export default function ManagerLineupPage() {
                     <span className="text-[10px] font-display font-bold text-foreground/80 max-w-[70px] truncate text-center">
                       {player ? (
                         <>
-                          {assigned && assigned.player_profile_id === captainId && <span title="Capitão">©️</span>}
+                          {assigned && assigned.player_profile_id === captainId && <span title={t('field.captain_label')}>©️</span>}
                           {player.full_name.split(' ').pop()}
                         </>
                       ) : slot.label}
@@ -786,13 +774,13 @@ export default function ManagerLineupPage() {
             {/* Bench */}
             <div className="stat-card">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-display font-semibold text-sm">Banco ({benchPlayers.length}/{MAX_BENCH})</span>
+                <span className="font-display font-semibold text-sm">{t('bench.title', { current: benchPlayers.length, max: MAX_BENCH })}</span>
                 <Button variant="ghost" size="sm" onClick={() => { setPickSlot('BENCH'); setPickType('bench'); }} disabled={benchPlayers.length >= MAX_BENCH} className="text-xs h-7">
-                  <UserPlus className="h-3 w-3 mr-1" /> Adicionar
+                  <UserPlus className="h-3 w-3 mr-1" /> {t('bench.add')}
                 </Button>
               </div>
               {benchPlayers.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-2">Nenhum jogador no banco</p>
+                <p className="text-xs text-muted-foreground text-center py-2">{t('bench.empty')}</p>
               ) : (
                 <div className="space-y-1.5">
                   {benchPlayers.map(id => {
@@ -804,9 +792,9 @@ export default function ManagerLineupPage() {
                           <div className="flex items-center gap-2">
                             <span className="font-display font-bold text-tactical w-6 text-center">{p.overall}</span>
                             {p.user_id ? (
-                              <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
+                              <User className="h-3 w-3 text-pitch shrink-0" aria-label={t('bench.human_label')} />
                             ) : (
-                              <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
+                              <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label={t('bench.bot_label')} />
                             )}
                             <span className="font-display font-bold text-xs">{p.full_name}</span>
                           </div>
@@ -823,9 +811,9 @@ export default function ManagerLineupPage() {
 
             {/* Available players */}
             <div className="stat-card">
-              <span className="font-display font-semibold text-sm mb-3 block">Disponíveis ({availablePlayers.length})</span>
+              <span className="font-display font-semibold text-sm mb-3 block">{t('available.title', { count: availablePlayers.length })}</span>
               {availablePlayers.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-2">Todos escalados</p>
+                <p className="text-xs text-muted-foreground text-center py-2">{t('available.all_assigned')}</p>
               ) : (
                 <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                   {availablePlayers.map(p => (
@@ -836,9 +824,9 @@ export default function ManagerLineupPage() {
                           <div>
                             <span className="font-display font-bold text-xs flex items-center gap-1">
                               {p.user_id ? (
-                                <User className="h-3 w-3 text-pitch shrink-0" aria-label="Humano" />
+                                <User className="h-3 w-3 text-pitch shrink-0" aria-label={t('available.human_label')} />
                               ) : (
-                                <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Bot" />
+                                <Bot className="h-3 w-3 text-muted-foreground shrink-0" aria-label={t('available.bot_label')} />
                               )}
                               {p.full_name}
                             </span>
@@ -865,13 +853,17 @@ export default function ManagerLineupPage() {
           const confirmedCount = humans.filter(p => confirmedPlayerIds.has(p.id)).length;
           return (
             <div className="space-y-4">
-              <h2 className="font-display text-xl font-bold">Convocação — Próximo Jogo</h2>
+              <h2 className="font-display text-xl font-bold">{t('callup.title')}</h2>
               <Card>
                 <CardContent className="pt-6 space-y-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
                       <p className="font-display font-bold text-sm">
-                        Rodada {nextFixture.round_number} — {nextFixture.is_home ? 'Casa' : 'Fora'} vs {nextFixture.opponent_name}
+                        {t('callup.round_summary', {
+                          round: nextFixture.round_number,
+                          venue: nextFixture.is_home ? t('callup.venue_home') : t('callup.venue_away'),
+                          opponent: nextFixture.opponent_name,
+                        })}
                       </p>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                         <CalendarClock className="h-3 w-3" />
@@ -882,12 +874,12 @@ export default function ManagerLineupPage() {
                       <p className="font-display text-lg font-extrabold text-pitch leading-none">
                         {confirmedCount}/{humans.length}
                       </p>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">confirmados</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t('callup.confirmed')}</p>
                     </div>
                   </div>
                   {humans.length === 0 ? (
                     <p className="text-xs text-muted-foreground text-center py-2">
-                      Nenhum jogador humano no elenco.
+                      {t('callup.no_humans')}
                     </p>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -906,7 +898,7 @@ export default function ManagerLineupPage() {
                               className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 ${
                                 confirmed ? 'bg-pitch text-pitch-foreground' : 'bg-muted text-muted-foreground'
                               }`}
-                              aria-label={confirmed ? 'Confirmou' : 'Não marcou'}
+                              aria-label={confirmed ? t('callup.confirmed_aria') : t('callup.not_confirmed_aria')}
                             >
                               {confirmed ? <Check className="h-3 w-3" /> : null}
                             </span>
@@ -918,7 +910,7 @@ export default function ManagerLineupPage() {
                     </div>
                   )}
                   <p className="text-[10px] text-muted-foreground italic">
-                    Informativo: os jogadores confirmam presença na tela "Minhas Partidas". Não afeta a escalação.
+                    {t('callup.info')}
                   </p>
                 </CardContent>
               </Card>
@@ -928,27 +920,27 @@ export default function ManagerLineupPage() {
 
         {/* Funções Táticas */}
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-bold">Funções Táticas</h2>
+          <h2 className="font-display text-xl font-bold">{t('tactical_roles.title')}</h2>
           <Card>
             <CardContent className="pt-6 space-y-4">
               {[
-                { label: 'Capitão', value: captainId, setter: setCaptainId },
-                { label: 'Batedor de Falta', value: freeKickId, setter: setFreeKickId },
-                { label: 'Cobrador de Escanteio Direito', value: cornerRightId, setter: setCornerRightId },
-                { label: 'Cobrador de Escanteio Esquerdo', value: cornerLeftId, setter: setCornerLeftId },
-                { label: 'Batedor de Lateral Direito', value: throwInRightId, setter: setThrowInRightId },
-                { label: 'Batedor de Lateral Esquerdo', value: throwInLeftId, setter: setThrowInLeftId },
-              ].map(({ label, value, setter }) => {
+                { key: 'captain', value: captainId, setter: setCaptainId },
+                { key: 'free_kick', value: freeKickId, setter: setFreeKickId },
+                { key: 'corner_right', value: cornerRightId, setter: setCornerRightId },
+                { key: 'corner_left', value: cornerLeftId, setter: setCornerLeftId },
+                { key: 'throw_right', value: throwInRightId, setter: setThrowInRightId },
+                { key: 'throw_left', value: throwInLeftId, setter: setThrowInLeftId },
+              ].map(({ key, value, setter }) => {
                 const starterPlayers = assignments.map(a => getPlayer(a.player_profile_id)).filter(Boolean) as SquadPlayer[];
                 return (
-                  <div key={label} className="flex items-center justify-between gap-4">
-                    <label className="text-sm font-display font-semibold text-muted-foreground whitespace-nowrap">{label}</label>
+                  <div key={key} className="flex items-center justify-between gap-4">
+                    <label className="text-sm font-display font-semibold text-muted-foreground whitespace-nowrap">{t(`tactical_roles.${key}`)}</label>
                     <select
                       className="flex-1 max-w-[250px] rounded-md border border-border bg-background px-3 py-2 text-sm"
                       value={value || ''}
                       onChange={(e) => setter(e.target.value || null)}
                     >
-                      <option value="">Selecionar...</option>
+                      <option value="">{t('tactical_roles.select_placeholder')}</option>
                       {starterPlayers.map(p => (
                         <option key={p.id} value={p.id}>
                           {p.full_name} ({p.primary_position})
@@ -960,7 +952,7 @@ export default function ManagerLineupPage() {
               })}
               <Button onClick={saveTacticalRoles} disabled={savingRoles || !lineupId} className="w-full gap-1.5">
                 <Save className="h-4 w-4" />
-                {savingRoles ? 'Salvando...' : 'Salvar Funções'}
+                {savingRoles ? t('tactical_roles.saving') : t('tactical_roles.save')}
               </Button>
             </CardContent>
           </Card>
@@ -969,21 +961,21 @@ export default function ManagerLineupPage() {
         {/* Assistente do Treinador (only the head manager can change) */}
         {isHeadManager && (
           <div className="space-y-4">
-            <h2 className="font-display text-xl font-bold">Assistente</h2>
+            <h2 className="font-display text-xl font-bold">{t('assistant.title')}</h2>
             <Card>
               <CardContent className="pt-6 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  O assistente pode editar toda a área de escalação (campo, banco, funções táticas) como você. Útil quando o treinador está ausente.
+                  {t('assistant.description')}
                 </p>
                 <div className="flex items-center justify-between gap-4">
-                  <label className="text-sm font-display font-semibold text-muted-foreground whitespace-nowrap">Assistente atual</label>
+                  <label className="text-sm font-display font-semibold text-muted-foreground whitespace-nowrap">{t('assistant.current')}</label>
                   <select
                     className="flex-1 max-w-[300px] rounded-md border border-border bg-background px-3 py-2 text-sm"
                     value={assistantUserId || ''}
                     disabled={savingAssistant}
                     onChange={(e) => saveAssistant(e.target.value || null)}
                   >
-                    <option value="">Sem assistente</option>
+                    <option value="">{t('assistant.none')}</option>
                     {squad
                       .filter(p => p.user_id && p.user_id !== managerProfile?.user_id)
                       .map(p => (
@@ -993,7 +985,7 @@ export default function ManagerLineupPage() {
                       ))}
                   </select>
                 </div>
-                {savingAssistant && <p className="text-xs text-muted-foreground">Salvando...</p>}
+                {savingAssistant && <p className="text-xs text-muted-foreground">{t('assistant.saving')}</p>}
               </CardContent>
             </Card>
           </div>
@@ -1002,7 +994,7 @@ export default function ManagerLineupPage() {
         {/* Uniformes */}
         {uniforms.length > 0 && (
           <div className="space-y-4">
-            <h2 className="font-display text-xl font-bold">Uniformes</h2>
+            <h2 className="font-display text-xl font-bold">{t('uniforms.title')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[1, 2, 3].map(num => {
                 const uniform = uniforms.find(u => u.uniform_number === num);
@@ -1015,7 +1007,9 @@ export default function ManagerLineupPage() {
                   <Card key={num}>
                     <CardHeader className="pb-3">
                       <CardTitle className="font-display text-base">
-                        {num === 3 ? 'Goleiro' : `Uniforme ${num} (${num === 1 ? 'Casa' : 'Fora'})`}
+                        {num === 3
+                          ? t('uniforms.goalkeeper')
+                          : t('uniforms.uniform_n', { n: num, type: num === 1 ? t('uniforms.home') : t('uniforms.away') })}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -1087,7 +1081,7 @@ export default function ManagerLineupPage() {
                       {/* Shirt color (Cor 1) */}
                       <div className="space-y-2">
                         <label className="text-sm font-display font-semibold text-muted-foreground">
-                          {edit.pattern === 'bicolor' ? 'Cor Esquerda' : 'Cor da Camisa'}
+                          {edit.pattern === 'bicolor' ? t('uniforms.left_color') : t('uniforms.shirt_color')}
                         </label>
                         <div className="flex flex-wrap gap-1.5">
                           {SHIRT_COLORS.map(color => (
@@ -1103,29 +1097,29 @@ export default function ManagerLineupPage() {
 
                       {/* Pattern category */}
                       <div className="space-y-2">
-                        <label className="text-sm font-display font-semibold text-muted-foreground">Padrao</label>
+                        <label className="text-sm font-display font-semibold text-muted-foreground">{t('uniforms.pattern_label')}</label>
                         <div className="flex flex-wrap gap-1.5">
-                          {PATTERN_CATEGORIES.map(p => {
+                          {PATTERN_CATEGORY_VALUES.map(value => {
                             const parsed = parsePattern(edit.pattern);
-                            const isActive = parsed.category === p.value;
+                            const isActive = parsed.category === value;
                             return (
                               <button
-                                key={p.value}
+                                key={value}
                                 className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${isActive ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
                                 onClick={() => {
                                   let newPattern: string;
-                                  if (p.value === 'bicolor') {
+                                  if (value === 'bicolor') {
                                     newPattern = parsed.category === 'bicolor' ? parsed.count : 'bicolor_vertical';
-                                  } else if (p.value === 'solid') {
+                                  } else if (value === 'solid') {
                                     newPattern = 'solid';
                                   } else {
                                     const currentCount = ['unique','single','double','triple'].includes(parsed.count) ? parsed.count : 'unique';
-                                    newPattern = buildPattern(p.value, currentCount);
+                                    newPattern = buildPattern(value, currentCount);
                                   }
                                   setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: newPattern } }));
                                 }}
                               >
-                                {p.label}
+                                {t(`patterns.${value}`)}
                               </button>
                             );
                           })}
@@ -1135,15 +1129,15 @@ export default function ManagerLineupPage() {
                       {/* Bicolor type selector */}
                       {parsePattern(edit.pattern).category === 'bicolor' && (
                         <div className="space-y-2">
-                          <label className="text-sm font-display font-semibold text-muted-foreground">Tipo Bicolor</label>
+                          <label className="text-sm font-display font-semibold text-muted-foreground">{t('uniforms.bicolor_type')}</label>
                           <div className="flex flex-wrap gap-1.5">
-                            {BICOLOR_TYPES.map(bt => (
+                            {BICOLOR_TYPE_VALUES.map(value => (
                               <button
-                                key={bt.value}
-                                className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${edit.pattern === bt.value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
-                                onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: bt.value } }))}
+                                key={value}
+                                className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${edit.pattern === value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
+                                onClick={() => setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: value } }))}
                               >
-                                {bt.label}
+                                {t(`bicolor_types.${value}`)}
                               </button>
                             ))}
                           </div>
@@ -1156,18 +1150,18 @@ export default function ManagerLineupPage() {
                         if (parsed.category === 'solid' || parsed.category === 'bicolor') return null;
                         return (
                           <div className="space-y-2">
-                            <label className="text-sm font-display font-semibold text-muted-foreground">Quantidade de Listras</label>
+                            <label className="text-sm font-display font-semibold text-muted-foreground">{t('uniforms.stripe_count')}</label>
                             <div className="flex flex-wrap gap-1.5">
-                              {STRIPE_COUNTS.map(sc => (
+                              {STRIPE_COUNT_VALUES.map(value => (
                                 <button
-                                  key={sc.value}
-                                  className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${parsed.count === sc.value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
+                                  key={value}
+                                  className={`px-2 py-1 text-[10px] font-display rounded border-2 transition-all ${parsed.count === value ? 'border-tactical bg-tactical/10' : 'border-border/50 hover:border-muted-foreground'}`}
                                   onClick={() => {
-                                    const newPattern = buildPattern(parsed.category, sc.value);
+                                    const newPattern = buildPattern(parsed.category, value);
                                     setUniformEdits(prev => ({ ...prev, [num]: { ...prev[num], pattern: newPattern } }));
                                   }}
                                 >
-                                  {sc.label}
+                                  {t(`stripe_counts.${value}`)}
                                 </button>
                               ))}
                             </div>
@@ -1179,7 +1173,7 @@ export default function ManagerLineupPage() {
                       {edit.pattern !== 'solid' && (
                         <div className="space-y-2">
                           <label className="text-sm font-display font-semibold text-muted-foreground">
-                            {edit.pattern === 'bicolor' ? 'Cor Direita' : 'Cor da Listra'}
+                            {edit.pattern === 'bicolor' ? t('uniforms.right_color') : t('uniforms.stripe_color')}
                           </label>
                           <div className="flex flex-wrap gap-1.5">
                             {SHIRT_COLORS.map(color => (
@@ -1196,7 +1190,7 @@ export default function ManagerLineupPage() {
 
                       {/* Number color */}
                       <div className="space-y-2">
-                        <label className="text-sm font-display font-semibold text-muted-foreground">Cor do Numero</label>
+                        <label className="text-sm font-display font-semibold text-muted-foreground">{t('uniforms.number_color')}</label>
                         <div className="flex flex-wrap gap-1.5">
                           {NUMBER_COLORS.map(color => (
                             <button
@@ -1215,7 +1209,7 @@ export default function ManagerLineupPage() {
                         className="w-full gap-1.5"
                       >
                         <Save className="h-4 w-4" />
-                        {savingUniform === num ? 'Salvando...' : 'Salvar'}
+                        {savingUniform === num ? t('uniforms.saving') : t('uniforms.save')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -1231,7 +1225,9 @@ export default function ManagerLineupPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="font-display">
-              {pickType === 'bench' ? `Banco de Reservas (${benchPlayers.length}/${MAX_BENCH})` : `Escolher Jogador — ${pickSlot}`}
+              {pickType === 'bench'
+                ? t('picker.bench_title', { current: benchPlayers.length, max: MAX_BENCH })
+                : t('picker.starter_title', { slot: pickSlot })}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
@@ -1239,7 +1235,7 @@ export default function ManagerLineupPage() {
               <>
                 {/* Show available players with toggle selection */}
                 {availablePlayers.length === 0 && benchPlayers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador disponível</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">{t('picker.no_available')}</p>
                 ) : (
                   <>
                     {/* Already selected bench players (can remove) */}
@@ -1275,7 +1271,7 @@ export default function ManagerLineupPage() {
                           onClick={() => assignToSlot(p.id)}
                           disabled={benchPlayers.length >= MAX_BENCH || isSuspended}
                           className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors disabled:opacity-40"
-                          title={isSuspended ? (reason === 'red_card' ? 'Suspenso — cartão vermelho' : 'Suspenso — 3 amarelos acumulados') : undefined}
+                          title={isSuspended ? (reason === 'red_card' ? t('picker.suspended_red') : t('picker.suspended_yellows')) : undefined}
                         >
                           <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
                           <div className="flex-1">
@@ -1286,7 +1282,7 @@ export default function ManagerLineupPage() {
                               <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
                               {isSuspended && (
                                 <span className="text-[10px] font-bold text-red-500">
-                                  {reason === 'red_card' ? '\uD83D\uDFE5 SUSPENSO' : '\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8 SUSPENSO'}
+                                  {reason === 'red_card' ? t('picker.suspended_label_red') : t('picker.suspended_label_yellows')}
                                 </span>
                               )}
                             </div>
@@ -1300,7 +1296,7 @@ export default function ManagerLineupPage() {
             ) : (
               <>
                 {availablePlayers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador disponível</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">{t('picker.no_available')}</p>
                 ) : (
                   availablePlayers.map(p => {
                     const isSuspended = suspendedPlayerIds.has(p.id);
@@ -1311,7 +1307,7 @@ export default function ManagerLineupPage() {
                         onClick={() => assignToSlot(p.id)}
                         disabled={isSuspended}
                         className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 text-left transition-colors disabled:opacity-40"
-                        title={isSuspended ? (reason === 'red_card' ? 'Suspenso — cartão vermelho' : 'Suspenso — 3 amarelos acumulados') : undefined}
+                        title={isSuspended ? (reason === 'red_card' ? t('picker.suspended_red') : t('picker.suspended_yellows')) : undefined}
                       >
                         <span className="font-display text-lg font-extrabold text-tactical w-8 text-center">{p.overall}</span>
                         <div className="flex-1">
@@ -1322,7 +1318,7 @@ export default function ManagerLineupPage() {
                             <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
                             {isSuspended && (
                               <span className="text-[10px] font-bold text-red-500">
-                                {reason === 'red_card' ? '\uD83D\uDFE5 SUSPENSO' : '\uD83D\uDFE8\uD83D\uDFE8\uD83D\uDFE8 SUSPENSO'}
+                                {reason === 'red_card' ? t('picker.suspended_label_red') : t('picker.suspended_label_yellows')}
                               </span>
                             )}
                           </div>
@@ -1337,7 +1333,7 @@ export default function ManagerLineupPage() {
           {pickType === 'bench' && (
             <div className="pt-2 border-t">
               <Button onClick={() => setPickSlot(null)} className="w-full">
-                Confirmar ({benchPlayers.length})
+                {t('picker.confirm_count', { count: benchPlayers.length })}
               </Button>
             </div>
           )}

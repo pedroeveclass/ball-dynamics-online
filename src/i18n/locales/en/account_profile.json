@@ -1,0 +1,58 @@
+{
+  "title": "Account Profile",
+  "localization": {
+    "section": "{{country}} & {{language}}"
+  },
+  "avatar": {
+    "section": "Your Avatar",
+    "use_character_title": "Use a Character Avatar",
+    "loading_chars": "Loading characters...",
+    "no_chars": "No characters found.",
+    "one_char": "One character found — click to apply.",
+    "many_chars": "{{count}} characters available — pick one.",
+    "remove": "Remove",
+    "swap": "Switch Character",
+    "use": "Use Character",
+    "using_char": "Using <0>{{name}}</0>'s look",
+    "using_char_fallback": "character",
+    "pick_hint": "Pick an icon, upload an image, or use one of your characters",
+    "uploading": "Uploading...",
+    "upload": "Upload Image",
+    "upload_hint": "PNG, JPG or WebP — max 2MB"
+  },
+  "fields": {
+    "username": "Username",
+    "email": "Email"
+  },
+  "password": {
+    "section": "Change Password",
+    "new": "New Password",
+    "new_placeholder": "At least 6 characters",
+    "confirm": "Confirm New Password",
+    "confirm_placeholder": "Repeat the new password",
+    "saving": "Saving...",
+    "submit": "Change Password"
+  },
+  "char_picker": {
+    "title": "Pick a Character",
+    "description": "Your account avatar will use the selected character's look. Appearance or club changes are reflected automatically.",
+    "kind_player": "Player",
+    "kind_manager": "Manager"
+  },
+  "toast": {
+    "password_short": "Password must be at least 6 characters.",
+    "password_mismatch": "Passwords don't match.",
+    "password_error": "Error changing password.",
+    "password_ok": "Password changed!",
+    "avatar_save_error": "Error saving avatar.",
+    "avatar_ok": "Avatar updated!",
+    "char_avatar_ok": "Character avatar applied!",
+    "char_avatar_remove_error": "Error removing character avatar.",
+    "char_avatar_removed": "Character avatar removed.",
+    "no_chars_yet": "You don't have any characters yet. Create a player or manager first.",
+    "image_too_big": "Image must be at most 2MB.",
+    "image_format": "Unsupported format. Use PNG, JPG, WEBP or GIF.",
+    "image_extension": "Invalid file extension.",
+    "upload_error": "Error uploading image."
+  }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -12,6 +13,7 @@ import { formatBRTDateTime, formatBRTTimeOnly, getNextClubMatch, type NextClubMa
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
   const { managerProfile, playerProfile, loading } = useAuth();
+  const { t } = useTranslation('league');
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
   if (playerProfile) return <AppLayout>{children}</AppLayout>;
@@ -23,7 +25,7 @@ function LeagueLayout({ children }: { children: ReactNode }) {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <Trophy className="h-5 w-5 text-tactical" />
-          <span className="font-display text-lg font-bold">Liga</span>
+          <span className="font-display text-lg font-bold">{t('title_fallback')}</span>
         </div>
       </nav>
       <div className="max-w-5xl mx-auto px-4 py-6">{children}</div>
@@ -95,6 +97,7 @@ const PRESET_COLORS = [
 export default function LeaguePage() {
   const { user, managerProfile, playerProfile, club, refreshManagerProfile } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('league');
   const [loading, setLoading] = useState(true);
   // The viewer's next league fixture — used both for the "Próximo Jogo"
   // highlight on the rounds list and to auto-scroll to that round.
@@ -370,7 +373,7 @@ export default function LeaguePage() {
         const clubData = (p.clubs as any) || clubLookup[p.club_id] || clubLookup[participantClubIds[p.id]];
         const name = payloadNames[p.id] || profile?.full_name || null;
         profileLookup[ppId] = {
-          player_name: name || 'Jogador',
+          player_name: name || t('stats.player_fallback'),
           club_name: clubData?.name || '',
           club_short_name: clubData?.short_name || '',
           club_primary_color: clubData?.primary_color || '#333',
@@ -387,7 +390,7 @@ export default function LeaguePage() {
           const clubId = anyPid ? participantClubIds[anyPid] : undefined;
           const clubData = clubId ? clubLookup[clubId] : null;
           profileLookup[profileId] = {
-            player_name: anyPid ? (payloadNames[anyPid] || 'Jogador') : 'Jogador',
+            player_name: anyPid ? (payloadNames[anyPid] || t('stats.player_fallback')) : t('stats.player_fallback'),
             club_name: clubData?.name || '',
             club_short_name: clubData?.short_name || '',
             club_primary_color: clubData?.primary_color || '#333',
@@ -458,12 +461,12 @@ export default function LeaguePage() {
       }
 
       await refreshManagerProfile();
-      toast.success('Time assumido com sucesso!');
+      toast.success(t('toast.assumed_ok'));
       setCustomizeOpen(false);
       navigate('/manager', { replace: true });
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Erro ao assumir time');
+      toast.error(err.message || t('toast.assume_error'));
     } finally {
       setSubmitting(false);
     }
@@ -472,11 +475,11 @@ export default function LeaguePage() {
   function getStatusBadge(status: string) {
     switch (status) {
       case 'scheduled':
-        return <Badge variant="outline" className="text-xs">Agendado</Badge>;
+        return <Badge variant="outline" className="text-xs">{t('status.scheduled')}</Badge>;
       case 'in_progress':
-        return <Badge className="bg-pitch text-white text-xs animate-pulse">Ao Vivo</Badge>;
+        return <Badge className="bg-pitch text-white text-xs animate-pulse">{t('status.live')}</Badge>;
       case 'finished':
-        return <Badge variant="secondary" className="text-xs">Finalizado</Badge>;
+        return <Badge variant="secondary" className="text-xs">{t('status.finished')}</Badge>;
       default:
         return <Badge variant="outline" className="text-xs">{status}</Badge>;
     }
@@ -500,18 +503,18 @@ export default function LeaguePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-tactical" />
-            <h1 className="font-display text-2xl font-bold">{leagueName || 'Liga'}</h1>
+            <h1 className="font-display text-2xl font-bold">{leagueName || t('title_fallback')}</h1>
           </div>
-          <span className="text-sm text-muted-foreground">Temporada {seasonNumber}</span>
+          <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
         </div>
         <Tabs defaultValue="standings" className="space-y-4">
           <TabsList className={`grid w-full ${isManagerWithoutClub ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
-            <TabsTrigger value="standings">Classificação</TabsTrigger>
-            <TabsTrigger value="rounds">Rodadas</TabsTrigger>
-            <TabsTrigger value="stats" onClick={() => fetchStatistics()}>Estatísticas</TabsTrigger>
+            <TabsTrigger value="standings">{t('tabs.standings')}</TabsTrigger>
+            <TabsTrigger value="rounds">{t('tabs.rounds')}</TabsTrigger>
+            <TabsTrigger value="stats" onClick={() => fetchStatistics()}>{t('tabs.stats')}</TabsTrigger>
             {isManagerWithoutClub && (
               <TabsTrigger value="available" className="relative">
-                Times
+                {t('tabs.available')}
                 {availableClubs.length > 0 && (
                   <span className="ml-1.5 bg-pitch text-white text-[10px] rounded-full px-1.5 py-0.5">
                     {availableClubs.length}
@@ -527,16 +530,16 @@ export default function LeaguePage() {
               <table className="data-table w-full">
                 <thead>
                   <tr>
-                    <th className="w-8">#</th>
-                    <th>Clube</th>
-                    <th className="text-center">P</th>
-                    <th className="text-center">V</th>
-                    <th className="text-center">E</th>
-                    <th className="text-center">D</th>
-                    <th className="text-center">GP</th>
-                    <th className="text-center">GC</th>
-                    <th className="text-center">SG</th>
-                    <th className="text-center">Pts</th>
+                    <th className="w-8">{t('standings.col.rank')}</th>
+                    <th>{t('standings.col.club')}</th>
+                    <th className="text-center">{t('standings.col.played')}</th>
+                    <th className="text-center">{t('standings.col.won')}</th>
+                    <th className="text-center">{t('standings.col.drawn')}</th>
+                    <th className="text-center">{t('standings.col.lost')}</th>
+                    <th className="text-center">{t('standings.col.goals_for')}</th>
+                    <th className="text-center">{t('standings.col.goals_against')}</th>
+                    <th className="text-center">{t('standings.col.goal_diff')}</th>
+                    <th className="text-center">{t('standings.col.points')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -589,7 +592,7 @@ export default function LeaguePage() {
 
               {standings.length === 0 && (
                 <p className="text-center text-muted-foreground py-8 text-sm">
-                  Nenhum dado de classificação disponível.
+                  {t('standings.empty')}
                 </p>
               )}
             </div>
@@ -599,11 +602,11 @@ export default function LeaguePage() {
               <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded-sm bg-green-500/30 border border-green-500" />
-                  <span>Zona de classificação</span>
+                  <span>{t('standings.legend.qualification')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded-sm bg-red-500/30 border border-red-500" />
-                  <span>Zona de rebaixamento</span>
+                  <span>{t('standings.legend.relegation')}</span>
                 </div>
               </div>
             )}
@@ -618,7 +621,7 @@ export default function LeaguePage() {
                 <div className="flex items-center gap-2 mb-2">
                   <Trophy className="h-4 w-4 text-tactical" />
                   <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
-                    Próximo Jogo — Rodada {nextMatch.round_number}
+                    {t('rounds.next_match_label', { n: nextMatch.round_number })}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -632,7 +635,7 @@ export default function LeaguePage() {
                     />
                     <div>
                       <p className="font-display font-bold text-sm">
-                        {nextMatch.is_home ? 'Casa' : 'Fora'} — vs {nextMatch.opponent_name}
+                        {t('rounds.vs_opponent', { home_or_away: nextMatch.is_home ? t('rounds.home') : t('rounds.away'), name: nextMatch.opponent_name })}
                       </p>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
@@ -645,11 +648,11 @@ export default function LeaguePage() {
                       to={`/match/${nextMatch.match_id}`}
                       className="text-xs font-display font-bold text-pitch hover:text-pitch/80 transition-colors"
                     >
-                      Entrar na Partida →
+                      {t('rounds.enter_match')}
                     </Link>
                   ) : (
                     <span className="text-[10px] text-muted-foreground italic">
-                      Link disponível 5 min antes do jogo
+                      {t('rounds.link_available_soon')}
                     </span>
                   )}
                 </div>
@@ -675,8 +678,8 @@ export default function LeaguePage() {
                           : 'bg-muted hover:bg-muted/80 text-muted-foreground'
                       }`}
                     >
-                      Rodada {r.round_number}
-                      {isViewerNext && selectedRound !== r.id && ' •'}
+                      {t('rounds.round_label', { n: r.round_number })}
+                      {isViewerNext && selectedRound !== r.id && t('rounds.next_marker')}
                     </button>
                   );
                 })}
@@ -690,7 +693,7 @@ export default function LeaguePage() {
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="font-display font-semibold">
-                      Rodada {activeRound.round_number}
+                      {t('rounds.round_label', { n: activeRound.round_number })}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -727,16 +730,16 @@ export default function LeaguePage() {
                               </span>
                               {isLive && lm.match_id && (
                                 <Link to={`/match/${lm.match_id}`} className="text-[10px] font-display font-bold text-pitch hover:text-pitch/80 transition-colors mt-0.5">
-                                  AO VIVO — Assistir
+                                  {t('rounds.watch_live')}
                                 </Link>
                               )}
                               {hasResult && lm.match_id && (
                                 <div className="flex gap-2 mt-0.5">
                                   <Link to={`/match/${lm.match_id}`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-                                    Ver Resultado
+                                    {t('rounds.view_result')}
                                   </Link>
                                   <Link to={`/match/${lm.match_id}/replay`} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-                                    Ver Replay
+                                    {t('rounds.view_replay')}
                                   </Link>
                                 </div>
                               )}
@@ -744,7 +747,7 @@ export default function LeaguePage() {
                           ) : lm.match_id ? (
                             <>
                               <Link to={`/match/${lm.match_id}`} className="text-muted-foreground text-sm hover:text-pitch transition-colors">
-                                Entrar
+                                {t('rounds.enter')}
                               </Link>
                               <span className="text-[10px] text-muted-foreground mt-0.5">
                                 {formatBRTTimeOnly(activeRound.scheduled_at)} BRT
@@ -752,7 +755,7 @@ export default function LeaguePage() {
                             </>
                           ) : (
                             <>
-                              <span className="text-muted-foreground text-sm">vs</span>
+                              <span className="text-muted-foreground text-sm">{t('rounds.vs_label')}</span>
                               <span className="text-[10px] text-muted-foreground mt-0.5">
                                 {formatBRTTimeOnly(activeRound.scheduled_at)} BRT
                               </span>
@@ -771,7 +774,7 @@ export default function LeaguePage() {
 
                   {activeRound.league_matches.length === 0 && (
                     <p className="text-center text-muted-foreground py-4 text-sm">
-                      Nenhuma partida nesta rodada.
+                      {t('rounds.no_matches')}
                     </p>
                   )}
                 </div>
@@ -780,7 +783,7 @@ export default function LeaguePage() {
 
             {rounds.length === 0 && (
               <p className="text-center text-muted-foreground py-8 text-sm">
-                Nenhuma rodada disponível.
+                {t('rounds.no_rounds')}
               </p>
             )}
           </TabsContent>
@@ -793,9 +796,9 @@ export default function LeaguePage() {
             ) : !statsLoaded || (topScorers.length === 0 && topAssisters.length === 0) ? (
               <div className="text-center py-12">
                 <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground font-medium">Dados disponíveis após próximos jogos</p>
+                <p className="text-muted-foreground font-medium">{t('stats.no_data_title')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  As estatísticas detalhadas serão exibidas conforme as partidas forem jogadas.
+                  {t('stats.no_data_subtitle')}
                 </p>
               </div>
             ) : (
@@ -814,12 +817,12 @@ export default function LeaguePage() {
                               <Swords className="h-5 w-5 text-green-500" />
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Melhor Ataque</p>
+                              <p className="text-xs text-muted-foreground">{t('stats.best_attack')}</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <ClubCrest crestUrl={bestAttack.clubs?.crest_url} primaryColor={bestAttack.clubs?.primary_color || '#333'} secondaryColor={bestAttack.clubs?.secondary_color || '#fff'} shortName={bestAttack.clubs?.short_name || '?'} className="h-5 w-5 rounded text-[8px] shrink-0" />
                                 <span className="font-display font-bold text-sm">{bestAttack.clubs?.name}</span>
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">{bestAttack.goals_for} gols</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{t('stats.best_attack_value', { n: bestAttack.goals_for })}</p>
                             </div>
                           </div>
                           <div className="stat-card flex items-center gap-3 p-4">
@@ -827,12 +830,12 @@ export default function LeaguePage() {
                               <Shield className="h-5 w-5 text-blue-500" />
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Melhor Defesa</p>
+                              <p className="text-xs text-muted-foreground">{t('stats.best_defense')}</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <ClubCrest crestUrl={bestDefense.clubs?.crest_url} primaryColor={bestDefense.clubs?.primary_color || '#333'} secondaryColor={bestDefense.clubs?.secondary_color || '#fff'} shortName={bestDefense.clubs?.short_name || '?'} className="h-5 w-5 rounded text-[8px] shrink-0" />
                                 <span className="font-display font-bold text-sm">{bestDefense.clubs?.name}</span>
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">{bestDefense.goals_against} gols sofridos</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{t('stats.best_defense_value', { n: bestDefense.goals_against })}</p>
                             </div>
                           </div>
                           <div className="stat-card flex items-center gap-3 p-4">
@@ -840,12 +843,12 @@ export default function LeaguePage() {
                               <Award className="h-5 w-5 text-yellow-500" />
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Mais Vitórias</p>
+                              <p className="text-xs text-muted-foreground">{t('stats.most_wins')}</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <ClubCrest crestUrl={mostWins.clubs?.crest_url} primaryColor={mostWins.clubs?.primary_color || '#333'} secondaryColor={mostWins.clubs?.secondary_color || '#fff'} shortName={mostWins.clubs?.short_name || '?'} className="h-5 w-5 rounded text-[8px] shrink-0" />
                                 <span className="font-display font-bold text-sm">{mostWins.clubs?.name}</span>
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">{mostWins.won} vitórias</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{t('stats.most_wins_value', { n: mostWins.won })}</p>
                             </div>
                           </div>
                         </>
@@ -859,16 +862,16 @@ export default function LeaguePage() {
                   <div className="stat-card overflow-x-auto">
                     <div className="flex items-center gap-2 mb-3 px-1">
                       <Trophy className="h-4 w-4 text-tactical" />
-                      <h3 className="font-display font-bold text-sm">Artilharia</h3>
+                      <h3 className="font-display font-bold text-sm">{t('stats.top_scorers')}</h3>
                     </div>
                     <table className="data-table w-full">
                       <thead>
                         <tr>
-                          <th className="w-8">#</th>
+                          <th className="w-8">{t('standings.col.rank')}</th>
                           <th className="w-10"></th>
-                          <th>Jogador</th>
+                          <th>{t('stats.col_player')}</th>
                           <th className="w-10"></th>
-                          <th className="text-center w-16">Gols</th>
+                          <th className="text-center w-16">{t('stats.col_goals')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -904,17 +907,17 @@ export default function LeaguePage() {
                 <div className="stat-card overflow-x-auto">
                   <div className="flex items-center gap-2 mb-3 px-1">
                     <Users className="h-4 w-4 text-tactical" />
-                    <h3 className="font-display font-bold text-sm">Assistências</h3>
+                    <h3 className="font-display font-bold text-sm">{t('stats.top_assists')}</h3>
                   </div>
                   {topAssisters.length > 0 ? (
                     <table className="data-table w-full">
                       <thead>
                         <tr>
-                          <th className="w-8">#</th>
+                          <th className="w-8">{t('standings.col.rank')}</th>
                           <th className="w-10"></th>
-                          <th>Jogador</th>
+                          <th>{t('stats.col_player')}</th>
                           <th className="w-10"></th>
-                          <th className="text-center w-16">Assist.</th>
+                          <th className="text-center w-16">{t('stats.col_assists')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -945,7 +948,7 @@ export default function LeaguePage() {
                     </table>
                   ) : (
                     <p className="text-center text-muted-foreground py-4 text-sm">
-                      Nenhuma assistência registrada ainda.
+                      {t('stats.no_assists_yet')}
                     </p>
                   )}
                 </div>
@@ -971,7 +974,7 @@ export default function LeaguePage() {
                         size="sm"
                       >
                         <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                        Assumir Time
+                        {t('available.assume_team')}
                       </Button>
                     </div>
                   ))}
@@ -979,8 +982,8 @@ export default function LeaguePage() {
               ) : (
                 <div className="text-center py-12">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">Nenhum time disponível no momento.</p>
-                  <p className="text-xs text-muted-foreground mt-1">Você será notificado quando houver vagas.</p>
+                  <p className="text-muted-foreground">{t('available.empty_title')}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t('available.empty_subtitle')}</p>
                 </div>
               )}
             </TabsContent>
@@ -992,7 +995,7 @@ export default function LeaguePage() {
       <Dialog open={customizeOpen} onOpenChange={setCustomizeOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display">Personalizar Time</DialogTitle>
+            <DialogTitle className="font-display">{t('customize.title')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {/* Badge preview */}
@@ -1006,18 +1009,18 @@ export default function LeaguePage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Nome do Time</Label>
+              <Label>{t('customize.team_name')}</Label>
               <Input value={clubName} onChange={e => setClubName(e.target.value)} maxLength={40} />
             </div>
 
             <div className="space-y-2">
-              <Label>Abreviação (3 letras)</Label>
+              <Label>{t('customize.short_name')}</Label>
               <Input value={shortName} onChange={e => setShortName(e.target.value.slice(0, 3).toUpperCase())} maxLength={3} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Cor Principal</Label>
+                <Label>{t('customize.primary_color')}</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {PRESET_COLORS.map(c => (
                     <button
@@ -1030,7 +1033,7 @@ export default function LeaguePage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Cor Secundária</Label>
+                <Label>{t('customize.secondary_color')}</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {['#FFFFFF', '#000000', '#FFD700', '#FF6347', '#00FA9A', '#FF4500'].map(c => (
                     <button
@@ -1045,25 +1048,25 @@ export default function LeaguePage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Cidade</Label>
+              <Label>{t('customize.city')}</Label>
               <Input value={cityName} onChange={e => setCityName(e.target.value)} />
             </div>
 
             <div className="space-y-2">
-              <Label>Nome do Estádio</Label>
+              <Label>{t('customize.stadium_name')}</Label>
               <Input value={stadiumName} onChange={e => setStadiumName(e.target.value)} />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCustomizeOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setCustomizeOpen(false)}>{t('customize.cancel')}</Button>
             <Button
               onClick={handleAssumeTeam}
               disabled={submitting || !clubName.trim() || shortName.trim().length !== 3}
               className="bg-pitch hover:bg-pitch/90 text-white"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Confirmar
+              {t('customize.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

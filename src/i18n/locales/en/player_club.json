@@ -1,0 +1,111 @@
+{
+  "loading": "Loading...",
+  "free_agent": {
+    "title": "My Club",
+    "no_club_title": "No club",
+    "no_club_body": "You don't have a club. Wait for contract offers or look for opportunities.",
+    "see_offers": "See available offers"
+  },
+  "stats": {
+    "team_overall": "Team OVR",
+    "team_overall_caption": "Starters average",
+    "league": "League",
+    "league_position": "{{n}}th place",
+    "league_caption": "{{points}} pts • {{played}} games",
+    "league_no_data": "No data",
+    "next_match": "Next Match",
+    "next_match_round": "R{{round}}",
+    "next_match_home": "Home vs {{name}}",
+    "next_match_away": "Away vs {{name}}",
+    "next_match_none": "Nothing scheduled",
+    "formation": "Formation",
+    "formation_count": "{{count}} players",
+    "reputation": "Reputation"
+  },
+  "coach": {
+    "label": "{{type}} (+{{pct}}% training)",
+    "manager": "Manager"
+  },
+  "uniforms": {
+    "title": "Uniforms",
+    "home": "Home",
+    "away": "Away",
+    "empty": "No uniforms registered."
+  },
+  "facilities": {
+    "title": "Facilities",
+    "level": "Lv. {{n}}",
+    "empty": "No facilities.",
+    "tc_summary": "Training Center Lv.{{level}} → +{{pct}}% training"
+  },
+  "facility_labels": {
+    "souvenir_shop": "Souvenirs",
+    "sponsorship": "Sponsorships",
+    "training_center": "Training Center",
+    "stadium": "Stadium"
+  },
+  "lineup": {
+    "title": "Lineup ({{formation}})",
+    "title_named": "Lineup — {{name}} ({{formation}})",
+    "edit_assistant": "Edit (assistant)",
+    "col_jersey": "#",
+    "col_position": "Position",
+    "col_player": "Player",
+    "col_ovr": "OVR",
+    "vacant": "Vacant",
+    "you": "(you)",
+    "bench": "Bench"
+  },
+  "results": {
+    "title": "Recent Results",
+    "vs": "vs",
+    "at": "@",
+    "opponent": "Opponent",
+    "empty": "No results yet."
+  },
+  "roster": {
+    "title": "Squad ({{count}})",
+    "humans_one": "{{count}} human",
+    "humans_other": "{{count}} humans",
+    "empty": "No players in the squad.",
+    "click_hint": "Click a player to open the full profile.",
+    "you": "(you)",
+    "human_label": "Human",
+    "bot_label": "Bot"
+  },
+  "contract": {
+    "title": "My Contract",
+    "weekly_salary": "Wage/Wk",
+    "release_clause": "Release Clause",
+    "start": "Start",
+    "end": "End"
+  },
+  "details": {
+    "title": "Player Profile",
+    "subtitle": "Technical profile and attributes of the selected athlete.",
+    "loading": "Loading player profile...",
+    "error_profile": "Could not load this player's profile.",
+    "error_attrs": "Could not load this player's attributes.",
+    "no_attrs": "This player has no attributes registered yet.",
+    "age": "Age",
+    "age_value": "{{count}} years old",
+    "foot": "Dominant foot",
+    "archetype": "Archetype",
+    "reputation": "Reputation",
+    "primary_position": "Primary position",
+    "secondary_position": "Secondary position",
+    "club": "Club",
+    "summary_title": "Attribute Summary",
+    "physical": "Physical",
+    "technical": "Technical",
+    "mental": "Mental",
+    "shooting": "Shooting",
+    "defending": "Defending",
+    "goalkeeping": "Goalkeeping"
+  },
+  "foot": {
+    "right": "Right",
+    "left": "Left",
+    "both": "Both"
+  }
+}

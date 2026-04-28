@@ -1,0 +1,39 @@
+{
+  "title": "Finanças",
+  "stats": {
+    "balance": "Saldo",
+    "weekly_revenue": "Receita/Semana",
+    "weekly_expenses": "Despesas/Semana",
+    "weekly_profit": "Resultado/Semana"
+  },
+  "facilities": {
+    "souvenir_shop": "Loja de Souvenirs",
+    "sponsorship": "Patrocínios",
+    "training_center": "Centro de Treinamento",
+    "stadium": "Estádio"
+  },
+  "level_short": "Nv. {{level}}",
+  "revenue_section": {
+    "title": "Receitas Semanais",
+    "total_facilities": "Total Receita Facilities",
+    "matchday": "Bilheteria (est. por jogo)"
+  },
+  "expense_section": {
+    "title": "Despesas Semanais",
+    "facility_maintenance": "Manutenção {{label}}",
+    "total_maintenance": "Total Manutenção",
+    "salaries": "Folha Salarial ({{count}} jogadores)",
+    "total_expenses": "Total Despesas"
+  },
+  "ticket_history": {
+    "title": "Receita de Bilheteria",
+    "ticket_label_prefix": "🎫 Bilheteria: "
+  },
+  "summary": {
+    "title": "Resumo Semanal",
+    "revenues": "Receitas",
+    "expenses": "Despesas",
+    "result": "Resultado",
+    "footnote": "* Não inclui receita de bilheteria, que varia por jogo. Estimativa por jogo em casa: {{amount}}"
+  }
+}

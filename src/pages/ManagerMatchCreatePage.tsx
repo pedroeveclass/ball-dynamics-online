@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { formatDate } from '@/lib/formatDate';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,6 +25,8 @@ interface ClubOption {
 }
 
 export default function ManagerMatchCreatePage() {
+  const { t } = useTranslation('manager_match_create');
+  const { current: lang } = useAppLanguage();
   const { club, managerProfile } = useAuth();
   const navigate = useNavigate();
   const [clubs, setClubs] = useState<ClubOption[]>([]);
@@ -64,7 +69,7 @@ export default function ManagerMatchCreatePage() {
         .single();
 
       if (!awayClubData?.manager_profile_id) {
-        toast.error('Clube adversário não tem manager registrado.');
+        toast.error(t('toast.no_manager'));
         setSending(false);
         return;
       }
@@ -95,38 +100,41 @@ export default function ManagerMatchCreatePage() {
 
       // Send notification to the challenged manager
       if (awayMgrData?.user_id) {
+        const formattedDate = formatDate(new Date(scheduledAt), lang, 'datetime_short');
         await supabase.from('notifications').insert({
           user_id: awayMgrData.user_id,
-          title: '⚔️ Convite de Amistoso',
-          body: `${club.name} quer jogar um amistoso contra você em ${new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.`,
+          title: t('notification.title'),
+          body: t('notification.body', { club: club.name, date: formattedDate }),
           type: 'match',
           link: '/manager/challenges',
-        });
+          i18n_key: 'friendly_invite',
+          i18n_params: { club: club.name, date: formattedDate },
+        } as any);
       }
 
-      toast.success('Convite enviado! Aguarde o adversário aceitar.');
+      toast.success(t('toast.sent'));
       navigate('/manager/challenges');
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao enviar convite');
+      toast.error(err.message || t('toast.send_error'));
       setSending(false);
     }
   };
 
-  if (loading) return <ManagerLayout><p className="text-muted-foreground">Carregando...</p></ManagerLayout>;
+  if (loading) return <ManagerLayout><p className="text-muted-foreground">{t('loading')}</p></ManagerLayout>;
 
   return (
     <ManagerLayout>
       <div className="space-y-6 max-w-lg">
         <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          <Swords className="h-6 w-6 text-tactical" /> Convidar para Amistoso
+          <Swords className="h-6 w-6 text-tactical" /> {t('title')}
         </h1>
 
         {!hasLineup && (
           <div className="stat-card border-destructive/30 bg-destructive/5 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
             <div>
-              <p className="font-display font-bold text-sm">Escalação necessária</p>
-              <p className="text-xs text-muted-foreground">Defina uma escalação ativa antes de enviar convite.</p>
+              <p className="font-display font-bold text-sm">{t('lineup_required.title')}</p>
+              <p className="text-xs text-muted-foreground">{t('lineup_required.subtitle')}</p>
             </div>
           </div>
         )}
@@ -134,7 +142,7 @@ export default function ManagerMatchCreatePage() {
         <div className="stat-card space-y-5">
           {/* Your club */}
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Seu Clube (Casa)</p>
+            <p className="text-xs text-muted-foreground mb-1">{t('your_club_label')}</p>
             <div className="flex items-center gap-2">
               <ClubCrest crestUrl={(club as any)?.crest_url} primaryColor={club?.primary_color || '#333'} secondaryColor={club?.secondary_color || '#fff'} shortName={club?.short_name || '?'} className="w-8 h-8 rounded text-xs" />
               <span className="font-display font-bold">{club?.name}</span>
@@ -143,22 +151,22 @@ export default function ManagerMatchCreatePage() {
 
           {/* Opponent */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Adversário</Label>
+            <Label className="text-xs text-muted-foreground">{t('opponent_label')}</Label>
             <Select value={awayClubId} onValueChange={setAwayClubId}>
               <SelectTrigger>
-                <SelectValue placeholder="Escolha o clube adversário" />
+                <SelectValue placeholder={t('opponent_placeholder')} />
               </SelectTrigger>
               <SelectContent>
                 {clubs.map(c => (
                   <SelectItem key={c.id} value={c.id}>
                     <span className="flex items-center gap-2">
                       <span className="w-4 h-4 rounded-sm inline-block" style={{ backgroundColor: c.primary_color }} />
-                      {c.name} <span className="text-muted-foreground text-xs">Rep: {c.reputation}</span>
+                      {c.name} <span className="text-muted-foreground text-xs">{t('opponent_reputation', { reputation: c.reputation })}</span>
                     </span>
                   </SelectItem>
                 ))}
                 {clubs.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum clube encontrado.</div>
+                  <div className="px-3 py-2 text-sm text-muted-foreground">{t('no_clubs_found')}</div>
                 )}
               </SelectContent>
             </Select>
@@ -166,7 +174,7 @@ export default function ManagerMatchCreatePage() {
 
           {/* Date & time */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Data e Hora</Label>
+            <Label className="text-xs text-muted-foreground">{t('datetime_label')}</Label>
             <Input
               type="datetime-local"
               value={scheduledAt}
@@ -177,9 +185,9 @@ export default function ManagerMatchCreatePage() {
 
           {/* Optional message */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Mensagem (opcional)</Label>
+            <Label className="text-xs text-muted-foreground">{t('message_label')}</Label>
             <Textarea
-              placeholder="Escreva uma mensagem para o adversário..."
+              placeholder={t('message_placeholder')}
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={2}
@@ -193,7 +201,7 @@ export default function ManagerMatchCreatePage() {
             className="w-full bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display"
           >
             <Send className="h-4 w-4 mr-2" />
-            {sending ? 'Enviando...' : 'ENVIAR CONVITE'}
+            {sending ? t('sending') : t('send_button')}
           </Button>
         </div>
       </div>

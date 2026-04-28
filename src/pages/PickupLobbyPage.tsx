@@ -1,7 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { useAppLanguage } from '@/hooks/useAppLanguage';
+import { formatDate } from '@/lib/formatDate';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,16 +32,16 @@ type ParticipantRow = {
   slot_id: string;
 };
 
-const STATUS_INFO: Record<PickupRow['status'], { label: string; className: string }> = {
-  open:         { label: 'Aberto',     className: 'bg-primary/10 text-primary border-primary/30' },
-  materialized: { label: 'Preparando', className: 'bg-amber-500/20 text-amber-600 border-amber-500/30' },
-  live:         { label: '🔴 Ao Vivo', className: 'bg-pitch/20 text-pitch border-pitch/30' },
-  finished:     { label: 'Encerrado',  className: 'bg-muted text-muted-foreground border-border' },
-  cancelled:    { label: 'Cancelado',  className: 'bg-destructive/10 text-destructive border-destructive/30' },
+const STATUS_CLASSNAMES: Record<PickupRow['status'], string> = {
+  open:         'bg-primary/10 text-primary border-primary/30',
+  materialized: 'bg-amber-500/20 text-amber-600 border-amber-500/30',
+  live:         'bg-pitch/20 text-pitch border-pitch/30',
+  finished:     'bg-muted text-muted-foreground border-border',
+  cancelled:    'bg-destructive/10 text-destructive border-destructive/30',
 };
 
-function formatCountdown(ms: number): string {
-  if (ms <= 0) return 'começando…';
+function formatCountdown(ms: number, startingLabel: string): string {
+  if (ms <= 0) return startingLabel;
   const totalSec = Math.floor(ms / 1000);
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
@@ -54,6 +57,8 @@ export default function PickupLobbyPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { playerProfile } = useAuth();
+  const { t } = useTranslation('pickup_lobby');
+  const { current: lang } = useAppLanguage();
   const [pickup, setPickup] = useState<PickupRow | null>(null);
   const [participants, setParticipants] = useState<ParticipantRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,10 +129,10 @@ export default function PickupLobbyPage() {
     });
     setActing(false);
     if (error) {
-      toast.error(error.message || 'Não foi possível entrar');
+      toast.error(error.message || t('toast.join_error'));
       return;
     }
-    toast.success('Entrou no jogo!');
+    toast.success(t('toast.joined_ok'));
   };
 
   const handleLeave = async () => {
@@ -135,29 +140,29 @@ export default function PickupLobbyPage() {
     setActing(true);
     const { error } = await supabase.rpc('leave_pickup_game', { p_pickup_id: pickup.id });
     setActing(false);
-    if (error) { toast.error(error.message || 'Erro ao sair'); return; }
-    toast.success('Você saiu do jogo');
+    if (error) { toast.error(error.message || t('toast.leave_error')); return; }
+    toast.success(t('toast.left_ok'));
   };
 
   const handleCancel = async () => {
     if (!pickup) return;
-    if (!confirm('Tem certeza que quer cancelar este jogo?')) return;
+    if (!confirm(t('confirm.cancel'))) return;
     setActing(true);
     const { error } = await supabase.rpc('cancel_pickup_game', { p_pickup_id: pickup.id });
     setActing(false);
-    if (error) { toast.error(error.message || 'Erro ao cancelar'); return; }
-    toast.success('Jogo cancelado');
+    if (error) { toast.error(error.message || t('toast.cancel_error')); return; }
+    toast.success(t('toast.cancelled_ok'));
   };
 
   if (loading) {
-    return <AppLayout><p className="text-sm text-muted-foreground">Carregando…</p></AppLayout>;
+    return <AppLayout><p className="text-sm text-muted-foreground">{t('loading')}</p></AppLayout>;
   }
   if (!pickup) {
     return (
       <AppLayout>
         <Card><CardContent className="p-6 text-center">
-          <p>Jogo não encontrado.</p>
-          <Button asChild variant="link"><Link to="/varzea">Voltar</Link></Button>
+          <p>{t('not_found')}</p>
+          <Button asChild variant="link"><Link to="/varzea">{t('back')}</Link></Button>
         </CardContent></Card>
       </AppLayout>
     );
@@ -167,11 +172,10 @@ export default function PickupLobbyPage() {
   const total = totalSlotsPerSide(pickup.format) * 2;
   const filled = participants.length;
   const kickoffMs = new Date(pickup.kickoff_at).getTime() - now;
-  const statusInfo = STATUS_INFO[pickup.status];
 
   const renderSide = (side: 'home' | 'away') => {
     const teamColor = side === 'home' ? '#22c55e' : '#ef4444';
-    const teamLabel = side === 'home' ? 'Time da Casa' : 'Time Visitante';
+    const teamLabel = side === 'home' ? t('team.home') : t('team.away');
     const rows = slots.map(s => {
       const taken = participants.find(p => p.team_side === side && p.slot_id === s.slot_id);
       return { slot: s, taken };
@@ -200,7 +204,7 @@ export default function PickupLobbyPage() {
                   <div className="min-w-0 text-sm truncate">
                     {taken ? (
                       <span className="font-medium">
-                        {taken.full_name || 'Humano'}
+                        {taken.full_name || t('team.human_fallback')}
                         {taken.primary_position && (
                           <span className="text-xs text-muted-foreground ml-1">
                             ({taken.primary_position})
@@ -209,7 +213,7 @@ export default function PickupLobbyPage() {
                       </span>
                     ) : (
                       <span className="text-muted-foreground italic flex items-center gap-1">
-                        <Bot className="h-3 w-3" /> vaga (vira bot se ninguém entrar)
+                        <Bot className="h-3 w-3" /> {t('team.open_slot')}
                       </span>
                     )}
                   </div>
@@ -221,7 +225,7 @@ export default function PickupLobbyPage() {
                     disabled={acting}
                     onClick={() => handleJoinSlot(side, slot.slot_id)}
                   >
-                    Entrar
+                    {t('team.join')}
                   </Button>
                 )}
               </div>
@@ -242,24 +246,24 @@ export default function PickupLobbyPage() {
             </Button>
             <div>
               <h1 className="text-xl font-display font-bold">
-                {pickup.format === '5v5' ? 'Pelada 5x5' : 'Jogo 11x11'}
+                {pickup.format === '5v5' ? t('format.5v5') : t('format.11v11')}
               </h1>
               <div className="text-xs text-muted-foreground flex items-center gap-3 mt-1">
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  {new Date(pickup.kickoff_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                  {formatDate(new Date(pickup.kickoff_at), lang, 'datetime_short')}
                 </span>
-                <span>{filled}/{total} preenchidos</span>
+                <span>{t('filled', { filled, total })}</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Badge className={statusInfo.className} variant="outline">{statusInfo.label}</Badge>
+            <Badge className={STATUS_CLASSNAMES[pickup.status]} variant="outline">{t(`status.${pickup.status}`)}</Badge>
             {pickup.status === 'open' && (
               <Badge variant="outline" className="font-mono">
                 <Clock className="h-3 w-3 mr-1" />
-                {formatCountdown(kickoffMs)}
+                {formatCountdown(kickoffMs, t('countdown.starting'))}
               </Badge>
             )}
           </div>
@@ -269,7 +273,7 @@ export default function PickupLobbyPage() {
           <Card className="border-destructive/40">
             <CardContent className="p-4 text-sm text-muted-foreground flex items-center gap-2">
               <XCircle className="h-4 w-4 text-destructive" />
-              Este jogo foi cancelado pelo criador.
+              {t('cancelled_notice')}
             </CardContent>
           </Card>
         )}
@@ -282,17 +286,17 @@ export default function PickupLobbyPage() {
         <div className="flex items-center justify-end gap-2">
           {canLeave && (
             <Button variant="outline" onClick={handleLeave} disabled={acting}>
-              <LogOut className="h-4 w-4 mr-2" /> Sair do jogo
+              <LogOut className="h-4 w-4 mr-2" /> {t('actions.leave')}
             </Button>
           )}
           {isCreator && pickup.status === 'open' && (
             <Button variant="destructive" onClick={handleCancel} disabled={acting}>
-              <XCircle className="h-4 w-4 mr-2" /> Cancelar jogo
+              <XCircle className="h-4 w-4 mr-2" /> {t('actions.cancel')}
             </Button>
           )}
           {pickup.match_id && (pickup.status === 'live' || pickup.status === 'materialized') && (
             <Button asChild>
-              <Link to={`/match/${pickup.match_id}`}>Ir para a partida</Link>
+              <Link to={`/match/${pickup.match_id}`}>{t('actions.go_to_match')}</Link>
             </Button>
           )}
         </div>

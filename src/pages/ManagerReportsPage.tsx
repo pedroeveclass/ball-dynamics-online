@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,10 +53,10 @@ interface MatchRow {
 }
 
 const PERIODS = [
-  { key: 7, label: '7 dias' },
-  { key: 30, label: '30 dias' },
-  { key: 90, label: '90 dias' },
-];
+  { key: 7, labelKey: 'periods.days_7' },
+  { key: 30, labelKey: 'periods.days_30' },
+  { key: 90, labelKey: 'periods.days_90' },
+] as const;
 
 function toLocalISODate(d: Date): string {
   const y = d.getFullYear();
@@ -71,6 +72,7 @@ function daysSince(iso: string | null): number | null {
 }
 
 export default function ManagerReportsPage() {
+  const { t } = useTranslation('manager_reports');
   const { managerProfile, club } = useAuth();
   const [periodDays, setPeriodDays] = useState(30);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
@@ -234,12 +236,12 @@ export default function ManagerReportsPage() {
         const myScore = isHome ? m.home_score : m.away_score;
         const oppScore = isHome ? m.away_score : m.home_score;
         const result = myScore != null && oppScore != null ? `${myScore}-${oppScore}` : null;
-        return { type: 'match' as const, date: m.match_created_at, data: { opponent: opponent ?? 'Adversário', goals: m.goals, assists: m.assists, result } };
+        return { type: 'match' as const, date: m.match_created_at, data: { opponent: opponent ?? t('fallback_opponent'), goals: m.goals, assists: m.assists, result } };
       }),
       ...pPurchases.map(pu => ({
         type: 'purchase' as const,
         date: pu.created_at,
-        data: { name: pu.store_items?.name ?? 'Item', category: pu.store_items?.category ?? null },
+        data: { name: pu.store_items?.name ?? t('fallback_item'), category: pu.store_items?.category ?? null },
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -300,7 +302,7 @@ export default function ManagerReportsPage() {
       <ManagerLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-3">
           <BarChart3 className="h-12 w-12 text-muted-foreground/40" />
-          <p className="text-muted-foreground">Você precisa gerenciar um clube para ver o relatório.</p>
+          <p className="text-muted-foreground">{t('no_club')}</p>
         </div>
       </ManagerLayout>
     );
@@ -311,10 +313,9 @@ export default function ManagerReportsPage() {
       <ManagerLayout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-3 max-w-md mx-auto">
           <Lock className="h-12 w-12 text-muted-foreground/40" />
-          <h2 className="font-display text-xl font-bold">Restrito ao técnico principal</h2>
+          <h2 className="font-display text-xl font-bold">{t('owner_only.title')}</h2>
           <p className="text-sm text-muted-foreground">
-            O Relatório de Jogadores só pode ser acessado pelo técnico responsável do clube.
-            Assistentes não têm acesso a essa área.
+            {t('owner_only.subtitle')}
           </p>
         </div>
       </ManagerLayout>
@@ -330,8 +331,8 @@ export default function ManagerReportsPage() {
           <div className="flex items-center gap-3">
             <BarChart3 className="h-6 w-6 text-pitch" />
             <div>
-              <h1 className="font-display text-2xl font-bold">Relatório de Jogadores</h1>
-              <p className="text-xs text-muted-foreground">Atividade, treinos, compras e desempenho do elenco.</p>
+              <h1 className="font-display text-2xl font-bold">{t('header.title')}</h1>
+              <p className="text-xs text-muted-foreground">{t('header.subtitle')}</p>
             </div>
           </div>
           <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
@@ -341,7 +342,7 @@ export default function ManagerReportsPage() {
                 onClick={() => setPeriodDays(p.key)}
                 className={`px-3 py-1 text-xs font-display font-semibold rounded transition-colors ${periodDays === p.key ? 'bg-pitch text-white' : 'text-muted-foreground hover:text-foreground'}`}
               >
-                {p.label}
+                {t(p.labelKey)}
               </button>
             ))}
           </div>
@@ -349,12 +350,12 @@ export default function ManagerReportsPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryCard icon={<Dumbbell className="h-4 w-4" />} label="Treinos totais" value={trainings.length} />
-          <SummaryCard icon={<Trophy className="h-4 w-4" />} label="Jogos disputados" value={matches.length} />
-          <SummaryCard icon={<ShoppingBag className="h-4 w-4" />} label="Compras na loja" value={purchases.length} />
+          <SummaryCard icon={<Dumbbell className="h-4 w-4" />} label={t('summary.trainings')} value={trainings.length} />
+          <SummaryCard icon={<Trophy className="h-4 w-4" />} label={t('summary.matches')} value={matches.length} />
+          <SummaryCard icon={<ShoppingBag className="h-4 w-4" />} label={t('summary.purchases')} value={purchases.length} />
           <SummaryCard
             icon={<Clock className="h-4 w-4" />}
-            label="Inativos (5+ dias)"
+            label={t('summary.inactive')}
             value={inactiveCount}
             highlight={inactiveCount > 0 ? 'warn' : undefined}
           />
@@ -366,22 +367,22 @@ export default function ManagerReportsPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="text-left px-3 py-2 font-display">Jogador</th>
-                  <th className="text-center px-2 py-2 font-display">Último treino</th>
-                  <th className="text-center px-2 py-2 font-display">Dias trein.</th>
-                  <th className="text-center px-2 py-2 font-display">Ganho atr.</th>
-                  <th className="text-center px-2 py-2 font-display">Jogos</th>
-                  <th className="text-center px-2 py-2 font-display">G / A</th>
-                  <th className="text-center px-2 py-2 font-display">Compras</th>
-                  <th className="text-center px-2 py-2 font-display">Score</th>
-                  <th className="text-right px-3 py-2 font-display">Ações</th>
+                  <th className="text-left px-3 py-2 font-display">{t('columns.player')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.last_training')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.days_trained')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.attribute_gain')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.matches')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.goals_assists')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.purchases')}</th>
+                  <th className="text-center px-2 py-2 font-display">{t('columns.score')}</th>
+                  <th className="text-right px-3 py-2 font-display">{t('columns.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">Carregando...</td></tr>
+                  <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">{t('table.loading')}</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">Sem jogadores no elenco.</td></tr>
+                  <tr><td colSpan={9} className="text-center py-8 text-muted-foreground">{t('table.empty')}</td></tr>
                 ) : (
                   rows.map(r => {
                     const p = r.player;
@@ -402,13 +403,13 @@ export default function ManagerReportsPage() {
                               <div className="font-display font-semibold truncate">{p.full_name}</div>
                               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                                 <PositionBadge position={p.primary_position} />
-                                <span>OVR {p.overall}</span>
+                                <span>{t('table.ovr', { value: p.overall })}</span>
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className={`text-center px-2 py-2 tabular-nums ${inactive ? 'text-amber-400 font-semibold' : 'text-muted-foreground'}`}>
-                          {lastTrain == null ? '—' : lastTrain === 0 ? 'hoje' : `${lastTrain}d`}
+                          {lastTrain == null ? '—' : lastTrain === 0 ? t('table.today') : t('table.days_short', { n: lastTrain })}
                         </td>
                         <td className="text-center px-2 py-2 tabular-nums">{r.daysTrained}</td>
                         <td className="text-center px-2 py-2 tabular-nums">
@@ -434,7 +435,7 @@ export default function ManagerReportsPage() {
                               onClick={e => { e.stopPropagation(); setNotifyTarget(p); }}
                             >
                               <Bell className="h-3 w-3 mr-1" />
-                              Notificar
+                              {t('table.notify')}
                             </Button>
                           )}
                         </td>
@@ -448,7 +449,7 @@ export default function ManagerReportsPage() {
         </div>
 
         <div className="text-[10px] text-muted-foreground italic">
-          Score = (dias treinados × 2) + (jogos disputados × 5) + (compras) • Tabela ordenada por score.
+          {t('score_explainer')}
         </div>
       </div>
 

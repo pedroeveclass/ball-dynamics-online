@@ -1,0 +1,56 @@
+{
+  "title": "Fórum FID",
+  "anonymous": "Anônimo",
+  "header": {
+    "forum_link": "Fórum"
+  },
+  "loading": "Carregando...",
+  "not_found": "Tópico não encontrado.",
+  "by": "por",
+  "share_title": "Compartilhar",
+  "menu": {
+    "edit": "Editar",
+    "unpin": "Desfixar",
+    "pin": "Fixar no topo",
+    "lock": "Trancar tópico",
+    "unlock": "Reabrir tópico",
+    "delete_topic": "Apagar tópico",
+    "delete_comment": "Apagar comentário"
+  },
+  "comments": {
+    "section": "Comentários ({{count}})",
+    "empty": "Nenhum comentário ainda.",
+    "edited": "(editado)",
+    "placeholder": "Escreva seu comentário...",
+    "submit": "Comentar",
+    "submitting": "Enviando...",
+    "comment_count": "{{count}} comentários",
+    "login_prompt": "Faça login para comentar"
+  },
+  "locked_notice": "Este tópico está encerrado.",
+  "edit_dialog": {
+    "title": "Editar Tópico",
+    "title_label": "Título",
+    "body_label": "Conteúdo",
+    "submit": "Salvar",
+    "submitting": "Salvando..."
+  },
+  "confirm": {
+    "delete_topic": "Tem certeza que deseja apagar este tópico? Esta ação não pode ser desfeita.",
+    "delete_comment": "Apagar este comentário?"
+  },
+  "toast": {
+    "comment_empty": "Escreva um comentário.",
+    "comment_error": "Erro ao comentar",
+    "comment_added": "Comentário adicionado!",
+    "share_copied": "Link copiado!",
+    "validation_edit": "Título min 5 chars, conteúdo min 10 chars.",
+    "topic_updated": "Tópico atualizado!",
+    "pinned": "Tópico fixado!",
+    "unpinned": "Tópico desfixado!",
+    "locked": "Tópico trancado!",
+    "unlocked": "Tópico reaberto!",
+    "topic_deleted": "Tópico apagado!",
+    "comment_deleted": "Comentário apagado!"
+  }
+}

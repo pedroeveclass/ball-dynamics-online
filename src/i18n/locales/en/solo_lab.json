@@ -1,0 +1,131 @@
+{
+  "header": {
+    "back": "Back",
+    "badge_lab": "SOLO LAB",
+    "badge_dummy": "PLAYER + DUMMY",
+    "badge_no_timer": "NO TIMER"
+  },
+  "buttons": {
+    "clear_inertia": "Clear inertia",
+    "ball_to_player": "Ball to player",
+    "ball_to_dummy": "Ball to dummy",
+    "drop_ball": "Drop ball",
+    "reset": "Reset"
+  },
+  "actions_section": {
+    "title": "Actions",
+    "click_to_open": "Click the player on the pitch to open the action menu.",
+    "current_action": "Current action: <0>{{name}}</0>",
+    "post_action_available": "Post-action step available: move up to {{pct}}% of the range."
+  },
+  "state_section": {
+    "title": "State",
+    "x": "X: {{value}}",
+    "y": "Y: {{value}}",
+    "dummy_x": "Dummy X: {{value}}",
+    "dummy_y": "Dummy Y: {{value}}",
+    "gk_x": "GK X: {{value}}",
+    "gk_y": "GK Y: {{value}}",
+    "current_range": "Current range: {{value}}",
+    "last_vector": "Last vector: {{value}}",
+    "stopped": "stopped",
+    "ball": "Ball: {{state}}",
+    "ball_in_flight": "in flight ({{pct}}%)",
+    "ball_with_player": "with the player",
+    "ball_with_dummy": "with the dummy",
+    "ball_with_gk": "with the keeper",
+    "ball_loose": "loose",
+    "result": "Result: {{label}}",
+    "error_severity": "Error severity: {{pct}}%",
+    "speed_penalty": "Speed penalty: {{pct}}%",
+    "real_deviation": "Real deviation: {{value}}",
+    "over_goal_suffix": " (over)"
+  },
+  "telemetry": {
+    "title": "Telemetry",
+    "speed": "Speed: {{value}}",
+    "speed_norm": "Speed norm.: {{pct}}%",
+    "accel": "Acceleration: {{value}}",
+    "accel_norm": "Accel. norm.: {{pct}}%",
+    "base_speed": "Base speed: {{value}}",
+    "accel_factor": "Accel factor: {{value}}",
+    "stamina_factor": "Stamina factor: {{value}}",
+    "strength_factor": "Strength factor: {{value}}",
+    "final_range": "Final range: {{value}}",
+    "preview_stride": "Hover stride: {{stride}} / {{max}}",
+    "directional_inertia": "Dir. inertia: x{{value}}",
+    "last_stride": "Last stride: {{value}}",
+    "speed_load": "Speed load: {{pct}}%",
+    "post_action_step": "Post-action step: {{state}}",
+    "post_action_freed": "{{pct}}% freed",
+    "post_action_unavailable": "unavailable"
+  },
+  "simulation": {
+    "title": "Simulation",
+    "error_label": "Action error"
+  },
+  "goalkeeper": {
+    "title": "GK Bot",
+    "remove": "Remove",
+    "add": "Add",
+    "active_help": "The keeper tracks the ball, defends only the right-side goal, and restarts after a save.",
+    "inactive_help": "Enable to add a keeper with automatic movement.",
+    "attrs_title": "GK attributes"
+  },
+  "dummy": {
+    "title": "Dummy",
+    "x_label": "Position X",
+    "y_label": "Position Y",
+    "attrs_title": "Dummy attributes"
+  },
+  "attrs_title": "Attributes",
+  "field_hint_post_action": "Post-action step freed: click the pitch to move up to <0>{{pct}}%</0> of the range.",
+  "field_hint_default": "Click the player to choose an action then click the pitch to apply <0>{{name}}</0>. Moving with possession dribbles the ball and only triggers a dribble contest if the path enters the dummy's zone.",
+  "menu": {
+    "active": "active"
+  },
+  "actions": {
+    "move": "Move",
+    "tackle": "Tackle",
+    "pass_low": "Low pass",
+    "pass_high": "High pass",
+    "pass_launch": "Long ball",
+    "shoot_controlled": "Controlled shot",
+    "shoot_power": "Power shot"
+  },
+  "player_attrs": {
+    "velocidade": "Speed",
+    "aceleracao": "Acceleration",
+    "stamina": "Stamina",
+    "forca": "Strength",
+    "drible": "Dribbling",
+    "agilidade": "Agility",
+    "desarme": "Tackling",
+    "marcacao": "Marking",
+    "antecipacao": "Anticipation",
+    "passe_baixo": "Low passing",
+    "passe_alto": "High passing",
+    "acuracia_chute": "Shot accuracy",
+    "forca_chute": "Shot power",
+    "controle_bola": "Ball control",
+    "um_toque": "One-touch"
+  },
+  "dummy_attrs": {
+    "drible": "Dribbling",
+    "desarme": "Tackling",
+    "marcacao": "Marking",
+    "antecipacao": "Anticipation",
+    "controle_bola": "Ball control",
+    "forca": "Strength",
+    "agilidade": "Agility",
+    "tomada_decisao": "Decision-making",
+    "um_toque": "One-touch"
+  },
+  "gk_attrs": {
+    "reflexo": "Reflexes",
+    "posicionamento_gol": "Positioning",
+    "um_contra_um": "One-on-one",
+    "tempo_reacao": "Reaction time",
+    "agilidade": "Agility"
+  }
+}

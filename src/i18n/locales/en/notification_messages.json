@@ -66,5 +66,25 @@
   "challenge_rejected": {
     "title": "❌ Friendly rejected",
     "body": "{{club}} rejected the friendly."
+  },
+  "contract_offer_received": {
+    "title": "New contract offer!",
+    "body": "{{club}} sent an offer of {{salary}}/week."
+  },
+  "friendly_invite": {
+    "title": "⚔️ Friendly Invite",
+    "body": "{{club}} wants to play a friendly against you on {{date}}."
+  },
+  "mutual_exit_requested": {
+    "title": "📋 Exit request",
+    "body": "{{player}} requested mutual termination."
+  },
+  "mutual_exit_player_accepted": {
+    "title": "✅ Mutual agreement accepted",
+    "body": "{{player}} accepted the mutual termination."
+  },
+  "mutual_exit_player_rejected": {
+    "title": "❌ Mutual agreement rejected",
+    "body": "{{player}} rejected the mutual termination."
   }
 }

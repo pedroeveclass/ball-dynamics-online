@@ -1,0 +1,18 @@
+{
+  "title": "Replay",
+  "back": "Voltar",
+  "badge": "Replay",
+  "errors": {
+    "match_not_found": "Partida não encontrada.",
+    "load_failed": "Erro ao carregar replay.",
+    "no_replay": "Replay não disponível para esta partida"
+  },
+  "fallbacks": {
+    "player_name": "Jogador"
+  },
+  "turn_label": "Turno {{current}} / {{total}}",
+  "events": {
+    "title": "Eventos",
+    "empty": "Nenhum evento neste turno"
+  }
+}

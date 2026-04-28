@@ -1,0 +1,104 @@
+{
+  "no_club": {
+    "message": "Você não gerencia nenhum time.",
+    "see_league": "Ver Liga"
+  },
+  "header": {
+    "edit_club": "Editar Clube",
+    "leave_club": "Deixar Clube",
+    "reputation": "Rep. {{value}}"
+  },
+  "coach_types": {
+    "defensive": "Defensivo",
+    "offensive": "Ofensivo",
+    "technical": "Técnico",
+    "all_around": "Completo",
+    "complete": "Completo"
+  },
+  "facility_labels": {
+    "souvenir_shop": "Souvenirs",
+    "sponsorship": "Patrocínios",
+    "training_center": "Treinamento",
+    "stadium": "Estádio"
+  },
+  "stats": {
+    "balance": "Saldo",
+    "balance_per_week": "{{value}}/sem",
+    "squad": "Elenco",
+    "squad_count": "{{count}} jogadores",
+    "wage_bill": "Folha: {{value}}/sem",
+    "stadium": "Estádio",
+    "stadium_capacity": "{{capacity}} lugares • Q{{quality}}",
+    "league": "Liga",
+    "league_position": "{{position}}º lugar",
+    "league_summary": "{{points}} pts • {{played}} jogos",
+    "no_data": "Sem dados"
+  },
+  "identity": {
+    "title": "Identidade & Treinador",
+    "manager": "Manager",
+    "coach_type": "Tipo Coach",
+    "manager_rep": "Rep. Manager",
+    "club_rep": "Rep. Clube",
+    "formation": "Formação",
+    "colors": "Cores"
+  },
+  "facilities": {
+    "title": "Facilities",
+    "see": "Ver",
+    "level": "Nv. {{level}}",
+    "empty": "Nenhuma facility."
+  },
+  "next_match": {
+    "title": "Próximo Jogo",
+    "home": "Casa",
+    "away": "Fora",
+    "vs": "vs",
+    "tbd": "TBD",
+    "empty": "Nenhum jogo agendado."
+  },
+  "recent_results": {
+    "title": "Últimos Resultados",
+    "empty": "Nenhum resultado ainda.",
+    "win": "V",
+    "loss": "D",
+    "draw": "E"
+  },
+  "edit_dialog": {
+    "title": "Editar Clube",
+    "description": "Alterar as informações do clube custa <strong>{{cost}}</strong> dos cofres do clube.",
+    "insufficient_balance": "Saldo insuficiente! Atual: {{balance}}",
+    "crest_label": "Escudo do Time",
+    "crest_default_title": "Usar sigla (padrão)",
+    "crest_default_letters": "ABC",
+    "crest_upload": "Upload",
+    "crest_remove": "Remover",
+    "crest_help": "Escolha um emoji, faça upload (PNG/JPG/WebP, máx 2MB) ou mantenha a sigla.",
+    "name_label": "Nome do Time",
+    "short_label": "Abreviação (3 letras)",
+    "primary_color_label": "Cor Principal",
+    "secondary_color_label": "Cor Secundária",
+    "city_label": "Cidade",
+    "stadium_name_label": "Nome do Estádio",
+    "cancel": "Cancelar",
+    "save": "Salvar ({{cost}})",
+    "short_placeholder": "???"
+  },
+  "leave_dialog": {
+    "title": "Deixar Clube",
+    "description": "Tem certeza que deseja deixar o <strong>{{club}}</strong>? O time voltará a ser controlado por bot e ficará disponível para outro manager assumir. Suas melhorias (facilities, jogadores) permanecem no time.",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar Saída"
+  },
+  "toast": {
+    "left": "Você deixou o clube. Pode assumir outro time na Liga.",
+    "leave_error": "Erro ao deixar o clube",
+    "image_too_big": "Imagem muito grande. Limite: 2MB.",
+    "invalid_format": "Formato inválido. Use PNG, JPG ou WebP.",
+    "crest_uploaded": "Escudo carregado!",
+    "crest_error": "Erro ao carregar escudo",
+    "insufficient_required": "Saldo insuficiente. Necessário: {{cost}}",
+    "saved": "Informações atualizadas! Custo: {{cost}}",
+    "save_error": "Erro ao salvar"
+  }
+}
