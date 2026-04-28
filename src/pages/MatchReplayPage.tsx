@@ -1015,62 +1015,6 @@ export default function MatchReplayPage() {
                 ))}
               </g>
 
-              {/* Action arrows (only during motion) */}
-              {phase === 'motion' && (() => {
-                const acts = usingLegacy ? (currentLegacy?.actions ?? []) : (currentScene?.actions ?? []);
-                const startMap = usingLegacy
-                  ? (prevLegacy?.positions ?? currentLegacy?.positions ?? {})
-                  : (currentScene?.initialPositions ?? {});
-                return acts.map((action) => {
-                  if (action.target_x == null || action.target_y == null) return null;
-                  const startPos = startMap[action.participant_id];
-                  if (!startPos) return null;
-                  const from = toSVG(startPos.x, startPos.y);
-                  const to = toSVG(action.target_x, action.target_y);
-                  const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
-                  if (dist < 3) return null;
-
-                  const isPass = ['pass_low', 'pass_high', 'pass_launch', 'header_low', 'header_high'].includes(action.action_type);
-                  const isShoot = ['shoot_controlled', 'shoot_power', 'header_controlled', 'header_power'].includes(action.action_type);
-                  const isReceive = action.action_type === 'receive';
-                  const isBlock = action.action_type === 'block';
-                  const isMove = action.action_type === 'move';
-
-                  let stroke = '#1a1a2e';
-                  let marker = 'rp-ah-black';
-                  let strokeW = 1.5;
-                  let dashArray = 'none';
-
-                  if (isPass) {
-                    stroke = '#22c55e'; marker = 'rp-ah-green'; strokeW = 2.5;
-                    if (action.action_type === 'pass_high' || action.action_type === 'header_high' || action.action_type === 'pass_launch') {
-                      stroke = '#f59e0b';
-                    }
-                  } else if (isShoot) {
-                    stroke = '#f59e0b'; marker = 'rp-ah-green'; strokeW = 3;
-                  } else if (isReceive) {
-                    stroke = '#06b6d4'; marker = 'rp-ah-cyan'; strokeW = 1.5; dashArray = '3,2';
-                  } else if (isBlock) {
-                    stroke = '#f59e0b'; marker = 'rp-ah-yellow'; strokeW = 2; dashArray = '3,2';
-                  } else if (isMove) {
-                    dashArray = '4,3';
-                  }
-
-                  const opacity = animProgress < 1 ? 0.7 : 0.35;
-
-                  return (
-                    <line
-                      key={action.id}
-                      x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                      stroke={stroke} strokeWidth={strokeW}
-                      strokeLinecap="round" opacity={opacity}
-                      strokeDasharray={dashArray}
-                      markerEnd={`url(#${marker})`}
-                    />
-                  );
-                });
-              })()}
-
               {/* Players */}
               {fieldParts.map((p) => {
                 const pos = getInterpolatedPos(p.id);
