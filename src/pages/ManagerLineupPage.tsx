@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ManagerLayout } from '@/components/ManagerLayout';
+import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -192,7 +193,8 @@ const parsePattern = (pattern: string): { category: string; count: string } => {
 
 export default function ManagerLineupPage() {
   const { t } = useTranslation('manager_lineup');
-  const { club: ownClub, assistantClub, managerProfile } = useAuth();
+  const { club: ownClub, assistantClub, managerProfile, profile } = useAuth();
+  const Layout = profile?.role_selected === 'manager' ? ManagerLayout : AppLayout;
   // Head manager edits their own club; an assistant edits the club that nominated them.
   const club = ownClub || assistantClub;
   const isHeadManager = !!ownClub;
@@ -631,15 +633,15 @@ export default function ManagerLineupPage() {
 
   if (loading) {
     return (
-      <ManagerLayout>
+      <Layout>
         <div className="text-center py-12 text-muted-foreground">{t('loading')}</div>
-      </ManagerLayout>
+      </Layout>
     );
   }
 
   if (squad.length === 0) {
     return (
-      <ManagerLayout>
+      <Layout>
         <div className="space-y-6">
           <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
           <div className="stat-card text-center py-12">
@@ -648,14 +650,14 @@ export default function ManagerLineupPage() {
             <p className="text-xs text-muted-foreground mt-1">{t('empty_squad.hint')}</p>
           </div>
         </div>
-      </ManagerLayout>
+      </Layout>
     );
   }
 
   const emptySlots = slots.filter(s => !assignments.find(a => a.slot_position === s.position));
 
   return (
-    <ManagerLayout>
+    <Layout>
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -1339,6 +1341,6 @@ export default function ManagerLineupPage() {
           )}
         </DialogContent>
       </Dialog>
-    </ManagerLayout>
+    </Layout>
   );
 }

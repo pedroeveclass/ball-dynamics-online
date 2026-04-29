@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, useAnimationControls } from 'framer-motion';
 import { ManagerLayout } from '@/components/ManagerLayout';
+import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -414,7 +415,8 @@ function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
 // ── Page ──────────────────────────────────────────────────────
 export default function SituationalTacticsPage() {
   const { t } = useTranslation('situational_tactics');
-  const { club: ownClub, assistantClub } = useAuth();
+  const { club: ownClub, assistantClub, profile } = useAuth();
+  const Layout = profile?.role_selected === 'manager' ? ManagerLayout : AppLayout;
   const club = ownClub || assistantClub;
   const navigate = useNavigate();
 
@@ -823,11 +825,11 @@ export default function SituationalTacticsPage() {
   }, [phaseMap, phase]);
 
   if (!club) {
-    return <ManagerLayout><div className="p-6">{t('club_not_found')}</div></ManagerLayout>;
+    return <Layout><div className="p-6">{t('club_not_found')}</div></Layout>;
   }
 
   return (
-    <ManagerLayout>
+    <Layout>
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between flex-wrap gap-3">
@@ -1321,6 +1323,6 @@ export default function SituationalTacticsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </ManagerLayout>
+    </Layout>
   );
 }
