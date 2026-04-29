@@ -111,7 +111,7 @@ interface TrainingRecord {
 }
 
 const NEW_PLAYER_COST = 1_000_000;
-const SECONDARY_POS_COST = 100_000;
+const SECONDARY_POS_COST = 0;
 const PRIMARY_POS_CHANGE_COST = 100_000;
 const ALL_POSITIONS = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'] as const;
 
