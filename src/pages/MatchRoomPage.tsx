@@ -720,7 +720,7 @@ export default function MatchRoomPage() {
     }, TURN_ACTION_RECONCILE_DELAY_MS);
   }, [matchId, runTurnActionsReconcile]);
 
-  const applyIncomingTurnAction = useCallback((actionRow: MatchAction | null | undefined) => {
+  const applyIncomingTurnAction = useCallback((actionRow: MatchAction | null | undefined, eventType: 'INSERT' | 'UPDATE' | 'DELETE' | string = 'INSERT') => {
     if (!actionRow) return;
     const turnMeta = turnMetaByIdRef.current.get(actionRow.match_turn_id);
     if (!turnMeta || turnMeta.turn_number == null) {
@@ -744,27 +744,26 @@ export default function MatchRoomPage() {
 
     if (turnMeta.turn_number !== currentTurnNumberRef.current) return;
 
-    // Skip bot actions arriving via realtime during an active phase.
-    // Bot actions are generated server-side when a phase expires. Showing them
-    // before resolution causes a visual flash (bot arrow appearing then disappearing
-    // when the human action arrives or the phase transitions).
+    // Skip bot INSERTs arriving via realtime during an active phase.
+    // Original concern: a bot action inserted while a phase is still active
+    // could "flash" briefly before a higher-priority manager action arrives
+    // and dedupe replaces it. So pure INSERTs from bots are deferred to the
+    // resolution phase.
     //
-    // BUT: we MUST allow UPDATES of an action that's already in our local list.
-    // The early-deviation step UPDATEs the BH bot's pass/shoot action at the
-    // ball_holder → attacking_support transition (overwriting target_x/target_y
-    // with the deviated values + payload.deviated=true). Treating that UPDATE
-    // as a fresh INSERT and skipping it leaves the client showing the
-    // pre-deviation arrow until resolution, which doesn't match what the engine
-    // will animate. Existing-id presence is the simplest UPDATE signal that
-    // doesn't require plumbing eventType through this callback.
-    if (actionRow.controlled_by_type === 'bot') {
+    // BUT: UPDATEs must always be applied. The early-deviation step UPDATEs
+    // the BH's pass/shoot action at the ball_holder → attacking_support
+    // transition with deviated coords + payload.deviated=true. Skipping that
+    // UPDATE leaves the pre-deviation arrow on screen until resolution, which
+    // is exactly the "deviation isn't appearing" symptom users hit. The
+    // realtime listener now threads eventType in so we can distinguish.
+    // Local-existence fallback covers both the case where the bot INSERT
+    // already snuck through (e.g. resolution snapshot reload) and the rare
+    // path where eventType is unset.
+    if (actionRow.controlled_by_type === 'bot' && eventType === 'INSERT') {
       const currentPhase = activeTurnRef.current?.phase;
-      const isUpdateOfKnownAction = !!actionRow.id
+      const isAlreadyKnownLocally = !!actionRow.id
         && turnActionsRef.current.some(a => a.id === actionRow.id);
-      if (currentPhase && currentPhase !== 'resolution' && !isUpdateOfKnownAction) {
-        // Pure INSERT during an active phase: hide it so the human's action
-        // wins the visual until resolution. UPDATEs (e.g. early deviation)
-        // fall through and refresh the existing arrow in place.
+      if (currentPhase && currentPhase !== 'resolution' && !isAlreadyKnownLocally) {
         return;
       }
     }
@@ -2202,7 +2201,7 @@ export default function MatchRoomPage() {
           scheduleTurnActionsReconcile();
           return;
         }
-        applyIncomingTurnAction(actionRow);
+        applyIncomingTurnAction(actionRow, eventType);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'match_participants', filter: `match_id=eq.${matchId}` }, (payload: any) => {
         const eventType = payload.eventType as string;
