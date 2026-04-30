@@ -3808,6 +3808,11 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   gkSaveAttempt?: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean };
   failedReceiveAttempts?: Array<{ participantId: string; chance: string }>;
   failedBlockAttempts?: Array<{ participantId: string; clubId: string; chance: string }>;
+  // Human/manager receive/block attempts that were silently rejected before the
+  // chance roll because the click target wasn't reachable (off trajectory, out
+  // of physical range, or arrived too late). Bot rejections are NOT tracked
+  // here to avoid matchflow noise. Caller emits `receive_unreachable` events.
+  unreachableReceiveAttempts?: Array<{ participantId: string; reason: string; distance?: number }>;
   blocker_participant_id?: string;
   blocker_club_id?: string;
   block_chance?: string;
@@ -3821,6 +3826,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   let gkSaveAttempt: { gkParticipantId: string; gkClubId: string; chance: string; saved: boolean } | undefined;
   const failedReceiveAttempts: Array<{ participantId: string; chance: string }> = [];
   const failedBlockAttempts: Array<{ participantId: string; clubId: string; chance: string }> = [];
+  const unreachableReceiveAttempts: Array<{ participantId: string; reason: string; distance?: number }> = [];
   const getFullAttrs = (participant: any) => {
     const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
     const result: Record<string, number> = {};
@@ -3844,7 +3850,12 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
   const bh = participants.find((p: any) => p.id === _attacker.participant_id);
   const bhAttrs = getFullAttrs(bh);
   const bhActionType = _attacker.action_type || action;
-  const interceptors = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId, tackleBlockedIds, match);
+  const { candidates: interceptors, unreachable: _unreachableFromIntercept } = findInterceptorCandidates(allActions, _attacker, participants, turnNumber, attrByProfile, setPieceType, possClubId, tackleBlockedIds, match);
+  // Carry forward the off-trajectory / out-of-range / too-late attempts that
+  // the candidate scan filtered out before chance rolls. Caller will emit
+  // `receive_unreachable` events for these so users get matchflow feedback
+  // when their click was too far from the actual ball trajectory.
+  for (const u of _unreachableFromIntercept) unreachableReceiveAttempts.push(u);
 
   // ── DISPUTE DETECTION ──
   // If multiple interceptors from DIFFERENT teams target the same area (within 3 units),
@@ -4120,16 +4131,21 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
 
   const frAttempts = failedReceiveAttempts.length > 0 ? failedReceiveAttempts : undefined;
   const fbAttempts = failedBlockAttempts.length > 0 ? failedBlockAttempts : undefined;
-  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts };
-  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts };
-  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts };
+  const urAttempts = unreachableReceiveAttempts.length > 0 ? unreachableReceiveAttempts : undefined;
+  if (isShootType(action) || isHeaderShootType(action)) return { success: true, event: 'goal', description: '⚽ GOL!', possession_change: false, goal: true, gkSaveAttempt, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts, unreachableReceiveAttempts: urAttempts };
+  if (isPassType(action) || isHeaderPassType(action)) return { success: true, event: 'pass_complete', description: '✅ Passe completo', possession_change: false, goal: false, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts, unreachableReceiveAttempts: urAttempts };
+  if (action === 'move') return { success: true, event: 'move', description: '🔄 Condução', possession_change: false, goal: false, failedReceiveAttempts: frAttempts, failedBlockAttempts: fbAttempts, unreachableReceiveAttempts: urAttempts };
   return { success: true, event: 'no_action', description: '🔄 Sem ação', possession_change: false, goal: false };
 }
 
-function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>, match?: { home_club_id: string; away_club_id: string; current_half?: number }): Array<{ participant: any; progress: number; interceptX: number; interceptY: number; moveRatio: number }> {
-  if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return [];
+function findInterceptorCandidates(allActions: any[], ballHolderAction: any, participants: any[], turnNumber?: number, attrByProfile?: Record<string, any>, setPieceType?: string | null, possClubId?: string | null, tackleBlockedIds?: Set<string>, match?: { home_club_id: string; away_club_id: string; current_half?: number }): {
+  candidates: Array<{ participant: any; progress: number; interceptX: number; interceptY: number; moveRatio: number }>;
+  unreachable: Array<{ participantId: string; reason: string; distance?: number }>;
+} {
+  if (!ballHolderAction || ballHolderAction.target_x == null || ballHolderAction.target_y == null) return { candidates: [], unreachable: [] };
   const bh = participants.find((p: any) => p.id === ballHolderAction.participant_id);
-  if (!bh) return [];
+  if (!bh) return { candidates: [], unreachable: [] };
+  const unreachable: Array<{ participantId: string; reason: string; distance?: number }> = [];
 
   const startX = bh.pos_x ?? 50;
   const startY = bh.pos_y ?? 50;
@@ -4182,6 +4198,14 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
 
     // Player's action target must be within 1 unit of the ball trajectory
     const INTERCEPT_THRESHOLD = 1.0;
+    const isHumanInitiated = a.controlled_by_type === 'player' || a.controlled_by_type === 'manager';
+    if (dist > INTERCEPT_THRESHOLD && isHumanInitiated) {
+      unreachable.push({
+        participantId: a.participant_id,
+        reason: 'off_trajectory',
+        distance: Number(dist.toFixed(2)),
+      });
+    }
     if (dist <= INTERCEPT_THRESHOLD) {
       // Check interceptable zones (block vs receive have different allowed trajectory segments)
       const interceptableRanges = getInterceptableRanges(bhActionType, a.action_type);
@@ -4223,6 +4247,13 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           // Range check: can the player physically reach the intercept point?
           if (distToIntercept > adjustedMaxRange) {
             if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor}${isInterceptorGK ? ' GK_FULL_RANGE' : ''})`);
+            if (isHumanInitiated) {
+              unreachable.push({
+                participantId: a.participant_id,
+                reason: 'too_far',
+                distance: Number(distToIntercept.toFixed(2)),
+              });
+            }
             continue;
           }
           // Strict timing formula (same as the client's purple-circle check): the defender
@@ -4235,6 +4266,13 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           const timingRange = adjustedMaxRange * t + TIMING_TOLERANCE;
           if (distToIntercept > timingRange) {
             if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
+            if (isHumanInitiated) {
+              unreachable.push({
+                participantId: a.participant_id,
+                reason: 'too_late',
+                distance: Number(distToIntercept.toFixed(2)),
+              });
+            }
             continue;
           }
         }
@@ -4242,18 +4280,22 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
         interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy, moveRatio: candidateMoveRatio });
       } else {
         if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
+        // Note: zone-rejected human attempts not surfaced as events because the
+        // off_trajectory event already covers the typical "I clicked far" case.
+        // Wrong-zone rejections happen when the click was on the trajectory
+        // but in a t-segment reserved for blocks/receives only — narrow edge.
       }
     }
   }
 
   interceptors.sort((a, b) => a.progress - b.progress);
-  return interceptors;
+  return { candidates: interceptors, unreachable };
 }
 
 // Keep legacy findInterceptor for compatibility (unused now but safe)
 function findInterceptor(allActions: any[], ballHolderAction: any, participants: any[]): any | null {
-  const candidates = findInterceptorCandidates(allActions, ballHolderAction, participants);
-  return candidates.length > 0 ? candidates[0].participant : null;
+  const result = findInterceptorCandidates(allActions, ballHolderAction, participants);
+  return result.candidates.length > 0 ? result.candidates[0].participant : null;
 }
 
 const KICKOFF_X = 50;
@@ -4446,9 +4488,13 @@ function computeBallControlDifficulty(
   return Math.max(0.1, Math.min(1.0, chance));
 }
 
-function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number, ballPos?: { x: number; y: number } | null, ballEndPos?: { x: number; y: number } | null): any | null {
+function findLooseBallClaimer(allActions: any[], participants: any[], attrByProfile?: Record<string, any>, turnNumber?: number, ballPos?: { x: number; y: number } | null, ballEndPos?: { x: number; y: number } | null): {
+  winner: any | null;
+  unreachable: Array<{ participantId: string; reason: string; distance?: number }>;
+} {
   const receiveActions = allActions.filter((a) => (a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null);
   const ranked: Array<{ participant: any; distance: number; createdAt: number; stationary: boolean }> = [];
+  const unreachable: Array<{ participantId: string; reason: string; distance?: number }> = [];
 
   for (const action of receiveActions) {
     const participant = participants.find((p: any) => p.id === action.participant_id);
@@ -4486,6 +4532,9 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
       // "what I see is what happens" (circleRadiusField + INTERCEPT_RADIUS + 1).
       if (distToBall > 2.65) {
         if (LOG_VERBOSE) console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball path (${distToBall.toFixed(2)} > 2.65)`);
+        if (action.controlled_by_type === 'player' || action.controlled_by_type === 'manager') {
+          unreachable.push({ participantId: participant.id, reason: 'off_trajectory', distance: Number(distToBall.toFixed(2)) });
+        }
         continue;
       }
     }
@@ -4510,6 +4559,9 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
       maxRangeForPlayer = maxRange;
       if (dist > maxRange + 0.5) { // small tolerance for floating point
         if (LOG_VERBOSE) console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+        if (action.controlled_by_type === 'player' || action.controlled_by_type === 'manager') {
+          unreachable.push({ participantId: participant.id, reason: 'too_far', distance: Number(dist.toFixed(2)) });
+        }
         continue;
       }
     }
@@ -4528,6 +4580,9 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
       const tPlayer = dist / maxRangeForPlayer;
       if (tPlayer > tBallAtTarget + 0.15) {
         if (LOG_VERBOSE) console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} arrives at t=${tPlayer.toFixed(2)} but ball passes at t=${tBallAtTarget.toFixed(2)} (too late)`);
+        if (action.controlled_by_type === 'player' || action.controlled_by_type === 'manager') {
+          unreachable.push({ participantId: participant.id, reason: 'too_late', distance: Number(dist.toFixed(2)) });
+        }
         continue;
       }
     }
@@ -4540,13 +4595,13 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     });
   }
 
-  if (ranked.length === 0) return null;
+  if (ranked.length === 0) return { winner: null, unreachable };
   ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
   const winner = ranked[0];
   if (winner.stationary) {
     if (LOG_VERBOSE) console.log(`[ENGINE] Stationary loose ball claimed by ${winner.participant.id.slice(0,8)} dist=${winner.distance.toFixed(2)}`);
   }
-  return winner.participant;
+  return { winner: winner.participant, unreachable };
 }
 // ─── Out of bounds detection ─────────────────────────────────
 interface OOBResult {
@@ -7141,6 +7196,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
+        // Log unreachable receive attempts (human/manager clicked but the
+        // chosen point was off-trajectory / out-of-range / too-late). The
+        // receiver-side filter dropped these BEFORE the chance roll, so the
+        // user got no matchflow feedback prior to this event being introduced.
+        // Bot rejections are NOT surfaced (would clutter the feed).
+        if (result.unreachableReceiveAttempts) {
+          for (const ura of result.unreachableReceiveAttempts) {
+            const reasonText = ura.reason === 'off_trajectory' ? 'fora da trajetória da bola'
+              : ura.reason === 'too_far' ? 'fora do alcance físico'
+              : ura.reason === 'too_late' ? 'jogador chegaria tarde demais'
+              : 'ponto inalcançável';
+            eventsToLog.push({
+              match_id, event_type: 'receive_unreachable',
+              title: `❌ Domínio não foi possível`,
+              body: `Tentativa de domínio descartada: ${reasonText}.`,
+              payload: {
+                participant_id: ura.participantId,
+                reason: ura.reason,
+                distance: ura.distance ?? null,
+                message_key: 'match_events:bodies.receive_unreachable',
+              },
+            });
+          }
+        }
+
         // Log failed block attempts (non-GK field blockers who tried and didn't deflect)
         if (result.failedBlockAttempts) {
           for (const fba of result.failedBlockAttempts) {
@@ -7878,10 +7958,31 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       // Claim check now uses the full rolling segment so the client's purple
       // circle (which extends along the arrow) agrees with what the server
       // will accept.
-      const looseBallClaimer = findLooseBallClaimer(
+      const looseBallResult = findLooseBallClaimer(
         allActions, participants || [], attrByProfile, match.current_turn_number ?? 1,
         ballStartPos, inertiaEndPos,
       );
+      const looseBallClaimer = looseBallResult.winner;
+      // Surface human/manager unreachable claim attempts so users get matchflow
+      // feedback when they clicked too far from the ball path / out of range /
+      // too late. Bot rejections are already filtered out inside the helper.
+      for (const ura of looseBallResult.unreachable) {
+        const reasonText = ura.reason === 'off_trajectory' ? 'fora da trajetória da bola'
+          : ura.reason === 'too_far' ? 'fora do alcance físico'
+          : ura.reason === 'too_late' ? 'jogador chegaria tarde demais'
+          : 'ponto inalcançável';
+        eventsToLog.push({
+          match_id, event_type: 'receive_unreachable',
+          title: `❌ Domínio não foi possível`,
+          body: `Tentativa de domínio descartada: ${reasonText}.`,
+          payload: {
+            participant_id: ura.participantId,
+            reason: ura.reason,
+            distance: ura.distance ?? null,
+            message_key: 'match_events:bodies.receive_unreachable',
+          },
+        });
+      }
 
       // ── Delayed-offside check ──
       // Read the snapshot the pass-resolution turn (or a prior loose-ball turn
