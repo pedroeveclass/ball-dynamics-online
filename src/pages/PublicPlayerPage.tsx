@@ -122,6 +122,14 @@ export default function PublicPlayerPage() {
   const [player, setPlayer] = useState<any>(null);
   const [attrs, setAttrs] = useState<any>(null);
   const [clubInfo, setClubInfo] = useState<{ name: string; primary: string; secondary: string; crestUrl: string | null } | null>(null);
+  // Active kit for the avatar: uniform 3 if GK, uniform 1 otherwise. Falls
+  // back to the club's primary/secondary colors when the row isn't seeded.
+  const [activeKit, setActiveKit] = useState<{
+    shirt_color: string;
+    number_color: string;
+    pattern: string;
+    stripe_color: string;
+  } | null>(null);
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [loading, setLoading] = useState(true);
 
@@ -145,12 +153,25 @@ export default function PublicPlayerPage() {
         setAttrs(a);
 
         if (p.club_id) {
-          const { data: c } = await supabase
-            .from('clubs')
-            .select('name, primary_color, secondary_color, crest_url')
-            .eq('id', p.club_id)
-            .maybeSingle();
+          const [{ data: c }, { data: kits }] = await Promise.all([
+            supabase
+              .from('clubs')
+              .select('name, primary_color, secondary_color, crest_url')
+              .eq('id', p.club_id)
+              .maybeSingle(),
+            supabase
+              .from('club_uniforms')
+              .select('uniform_number, shirt_color, number_color, pattern, stripe_color')
+              .eq('club_id', p.club_id),
+          ]);
           if (c) setClubInfo({ name: c.name, primary: c.primary_color, secondary: c.secondary_color, crestUrl: (c as any).crest_url ?? null });
+          // GK → uniform 3, outfield → uniform 1.
+          const isGK = (p.primary_position || '').toUpperCase() === 'GK';
+          const home = (kits || []).find((k: any) => k.uniform_number === 1) || null;
+          const gk = (kits || []).find((k: any) => k.uniform_number === 3) || null;
+          setActiveKit((isGK ? (gk || home) : home) as any);
+        } else {
+          setActiveKit(null);
         }
       }
       setLoading(false);
@@ -195,8 +216,8 @@ export default function PublicPlayerPage() {
             <PlayerAvatar
               appearance={(player as any).appearance}
               variant="face"
-              clubPrimaryColor={clubInfo?.primary}
-              clubSecondaryColor={clubInfo?.secondary}
+              clubPrimaryColor={activeKit?.shirt_color ?? clubInfo?.primary}
+              clubSecondaryColor={activeKit?.stripe_color ?? clubInfo?.secondary}
               playerName={player.full_name}
               className="h-20 w-20 shrink-0 border-2"
               fallbackSeed={player.id}
@@ -287,11 +308,14 @@ export default function PublicPlayerPage() {
                   appearance={(player as any).appearance}
                   variant={bodyVariant}
                   height={player.height}
-                  clubPrimaryColor={clubInfo?.primary}
-                  clubSecondaryColor={clubInfo?.secondary}
+                  clubPrimaryColor={activeKit?.shirt_color ?? clubInfo?.primary}
+                  clubSecondaryColor={activeKit?.stripe_color ?? clubInfo?.secondary}
                   clubCrestUrl={clubInfo?.crestUrl}
                   playerName={player.full_name}
                   jerseyNumber={(player as any).jersey_number}
+                  uniformPattern={activeKit?.pattern}
+                  uniformStripeColor={activeKit?.stripe_color}
+                  uniformNumberColor={activeKit?.number_color}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />
