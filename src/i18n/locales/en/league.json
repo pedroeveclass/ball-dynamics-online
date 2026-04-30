@@ -25,6 +25,8 @@
     "intro": "Bot-managed clubs sign you on the spot. Human-managed clubs need to send you an offer.",
     "bot_team": "Bot manager",
     "human_team": "Human manager",
+    "humans_one": "{{count}} human player",
+    "humans_other": "{{count}} human players",
     "sign_button": "Sign contract",
     "view_button": "View club",
     "empty": "No clubs available.",

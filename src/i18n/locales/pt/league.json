@@ -25,6 +25,8 @@
     "intro": "Clubes com técnico bot aceitam contrato automaticamente. Clubes com técnico humano precisam te enviar uma proposta.",
     "bot_team": "Técnico bot",
     "human_team": "Técnico humano",
+    "humans_one": "{{count}} jogador humano",
+    "humans_other": "{{count}} jogadores humanos",
     "sign_button": "Assinar contrato",
     "view_button": "Ver clube",
     "empty": "Nenhum clube disponível.",

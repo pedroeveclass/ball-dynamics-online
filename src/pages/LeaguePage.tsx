@@ -102,6 +102,7 @@ interface JoinableClub {
   city: string | null;
   is_bot_managed: boolean;
   manager_profile_id: string | null;
+  human_count: number;
 }
 
 // Free-agent default contract when a player auto-signs with a bot-managed
@@ -302,14 +303,36 @@ export default function LeaguePage() {
 
   // Player flow: list every league club so a free agent can pick one. Bot
   // teams sign on the spot; human-managed teams just deep-link to the public
-  // page so the manager can send an offer.
+  // page so the manager can send an offer. Each card also surfaces how many
+  // human players currently sit in the squad so free agents can prefer
+  // populated teams.
   async function fetchJoinableClubs() {
-    const { data } = await supabase
+    const { data: clubs } = await supabase
       .from('clubs')
       .select('id, name, short_name, primary_color, secondary_color, crest_url, city, is_bot_managed, manager_profile_id')
       .not('league_id', 'is', null)
       .order('name');
-    setJoinableClubs((data as any) || []);
+    const ids = (clubs || []).map((c: any) => c.id);
+    let humanByClub = new Map<string, number>();
+    if (ids.length > 0) {
+      // Pull all human-controlled rosters in a single query, then tally.
+      // RLS allows reading other clubs' human roster size (per project memory
+      // "teammate_visibility": same-club opens attrs, but counts are public).
+      const { data: humans } = await supabase
+        .from('player_profiles')
+        .select('club_id')
+        .in('club_id', ids)
+        .not('user_id', 'is', null);
+      for (const row of (humans || [])) {
+        const k = row.club_id as string;
+        humanByClub.set(k, (humanByClub.get(k) ?? 0) + 1);
+      }
+    }
+    const enriched = (clubs || []).map((c: any) => ({
+      ...c,
+      human_count: humanByClub.get(c.id) ?? 0,
+    }));
+    setJoinableClubs(enriched as JoinableClub[]);
   }
 
   async function handleJoinBotTeam() {
@@ -1174,7 +1197,15 @@ export default function LeaguePage() {
               </p>
               {joinableClubs.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {joinableClubs.map((jc) => (
+                  {[...joinableClubs]
+                    // Sort: human-managed first, then by human roster count desc, then by name.
+                    // Free agents tend to prefer populated rooms, so we surface them at the top.
+                    .sort((a, b) => {
+                      if (a.is_bot_managed !== b.is_bot_managed) return a.is_bot_managed ? 1 : -1;
+                      if (b.human_count !== a.human_count) return b.human_count - a.human_count;
+                      return a.name.localeCompare(b.name);
+                    })
+                    .map((jc) => (
                     <div key={jc.id} className="stat-card flex flex-col items-center text-center gap-3 p-4">
                       <ClubCrest
                         crestUrl={jc.crest_url}
@@ -1198,6 +1229,16 @@ export default function LeaguePage() {
                               <span className="text-pitch">{t('join.human_team', { defaultValue: 'Técnico humano' })}</span>
                             </>
                           )}
+                        </div>
+                        {/* Human roster headcount — color-coded so cards with people stand out */}
+                        <div className={`flex items-center justify-center gap-1 mt-1 text-[11px] ${jc.human_count > 0 ? 'text-pitch' : 'text-muted-foreground'}`}>
+                          <UserIcon className="h-3 w-3" />
+                          <span>
+                            {t(jc.human_count === 1 ? 'join.humans_one' : 'join.humans_other', {
+                              defaultValue: jc.human_count === 1 ? '{{count}} jogador humano' : '{{count}} jogadores humanos',
+                              count: jc.human_count,
+                            })}
+                          </span>
                         </div>
                       </div>
                       {jc.is_bot_managed ? (
