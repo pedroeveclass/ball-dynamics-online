@@ -1850,7 +1850,18 @@ function pickBestPassTarget(
   const humanPriority = getHumanPriorityTargets(bot, eligibleTeammates, isHome);
   const humanBias = getHumanPriorityBias(role);
 
-  const scored = eligibleTeammates.map((t: any) => {
+  // First pass: compute forwardGain for every candidate so we can decide whether
+  // to filter out backward passes. Pedro's rule: prefer the LONGEST FORWARD pass,
+  // and avoid passing backward (forwardGain < -3) whenever a forward option exists.
+  const forwardGains: number[] = eligibleTeammates.map((t: any) => {
+    const tx = Number(t.pos_x ?? 50);
+    const bx = Number(bot.pos_x ?? 50);
+    const forwardDir = isHome ? 1 : -1;
+    return (tx - bx) * forwardDir;
+  });
+  const hasForwardOption = forwardGains.some(fg => fg >= 0);
+
+  const scored = eligibleTeammates.map((t: any, idx: number) => {
     const tx = Number(t.pos_x ?? 50);
     const ty = Number(t.pos_y ?? 50);
     const bx = Number(bot.pos_x ?? 50);
@@ -1858,6 +1869,7 @@ function pickBestPassTarget(
     const dist = Math.sqrt((tx - bx) ** 2 + (ty - by) ** 2);
     const forwardDir = isHome ? 1 : -1;
     const forwardness = (tx - bx) * forwardDir;
+    const forwardGain = forwardGains[idx];
 
     // Check how covered the target is (closest opponent distance)
     let closestOppDist = 999;
@@ -1911,8 +1923,29 @@ function pickBestPassTarget(
     if (humanPriority.directHumanIds.has(t.id)) humanBonus = humanBias.direct;
     else if (humanPriority.progressionBotIds.has(t.id)) humanBonus = humanBias.progression;
 
-    const score = forwardness * 0.3 + freedom * 8 + rolePreference * 3 - dist * 0.08 + humanBonus;
-    return { ...t, score, dist, freedom };
+    // Pedro's heuristic: prefer LONGEST forward pass, avoid backward when forward exists.
+    //   - forwardGain * 1.0 rewards advancing the ball up the attacking axis
+    //   - dist * 0.4 rewards length (so among forward options, pick the longest)
+    //   - opponent risk penalty via freedom (0..1): less free → bigger malus
+    //   - candidates that gain ≥10u on the attacking axis get a +15 bonus
+    //   - backward passes (forwardGain < -3) are heavily penalized when any
+    //     forward option exists; they remain reachable as a true last resort
+    const longForwardBonus = forwardGain >= 10 ? 15 : 0;
+    const opponentRiskPenalty = (1 - freedom) * 10;
+    const backwardPenalty = (hasForwardOption && forwardGain < -3) ? 100 : 0;
+    // Keep forwardness as an extra mild lever (kept from previous heuristic so
+    // role-pref / human bias still tilt sensibly between similarly-forward options).
+    const score =
+      forwardGain * 1.0
+      + dist * 0.4
+      - opponentRiskPenalty
+      + longForwardBonus
+      + freedom * 4
+      + rolePreference * 3
+      + humanBonus
+      + forwardness * 0.1
+      - backwardPenalty;
+    return { ...t, score, dist, freedom, forwardGain };
   }).sort((a: any, b: any) => b.score - a.score);
 
   const best = scored[0];
