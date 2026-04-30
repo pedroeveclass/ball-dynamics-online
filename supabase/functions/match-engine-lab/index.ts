@@ -5597,7 +5597,40 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
   return started;
 }
 
+// Per-invocation parallelism for processDueMatches's match loop. The cron
+// fires up to 6 invocations/minute and this is bounded BELOW the PostgREST
+// pool ceiling so concurrent ticks don't queue on connection acquisition.
+// Empirically, 4 in flight clears 6-match leagues without saturating the
+// pool (each tick peaks at ~6-10 inflight queries in fast-path mode).
+const PROCESS_DUE_CONCURRENCY = 4;
+
+// Cron-cycle dedup TTL. The cron fires every 10s; processing a 6-match
+// batch in parallel completes in ~5-15s, so a 30s TTL covers the slowest
+// observed batch + slack. If a holder dies mid-batch, the lock auto-frees
+// after TTL and the next cron-fire can pick up.
+const ENGINE_CRON_LOCK_TTL_S = 30;
+
 async function processDueMatches(supabase: any, functionUrl: string, matchId?: string | null) {
+  // Cron-mode dedup: only ONE invocation does work per ~30s window. Other
+  // cron firings bail in <50ms. Client-fired calls (matchId set) bypass —
+  // user-driven matches must never queue behind a cron lock.
+  if (!matchId) {
+    const { data: lockResult } = await supabase
+      .rpc('try_acquire_engine_cron_lock', { p_ttl_seconds: ENGINE_CRON_LOCK_TTL_S });
+    const acquired = lockResult === true || (Array.isArray(lockResult) && lockResult[0] === true);
+    if (!acquired) {
+      return {
+        started: [],
+        started_count: 0,
+        advanced: 0,
+        busy: 0,
+        failed: 0,
+        due_matches: 0,
+        skipped: 'cron_locked',
+      };
+    }
+  }
+
   const started = matchId ? [] : await autoStartDueMatches(supabase, matchId);
   const now = new Date().toISOString();
   let query = supabase
@@ -5617,20 +5650,26 @@ async function processDueMatches(supabase: any, functionUrl: string, matchId?: s
   let busy = 0;
   let failed = 0;
 
-  for (const dueMatchId of dueMatchIds) {
-    try {
-      const result = await executeTickForMatch(supabase, String(dueMatchId), false);
-      if (result?.status === 'busy') {
-        busy += 1;
-        continue;
+  // Chunked parallel execution. Each match tick is independent (different
+  // match_id; concurrency safety guaranteed by the per-turn claim lock and
+  // processing_token), so we can fan out within a bounded concurrency budget
+  // instead of serializing them. Was: O(sum of tick durations); now: O(max).
+  for (let i = 0; i < dueMatchIds.length; i += PROCESS_DUE_CONCURRENCY) {
+    const chunk = dueMatchIds.slice(i, i + PROCESS_DUE_CONCURRENCY);
+    const results = await Promise.allSettled(
+      chunk.map((id) => executeTickForMatch(supabase, String(id), false)),
+    );
+    for (let k = 0; k < results.length; k++) {
+      const r = results[k];
+      if (r.status === 'fulfilled') {
+        const out = r.value;
+        if (out?.status === 'busy') { busy += 1; continue; }
+        if (out?.status === 'waiting') { continue; }
+        advanced += 1;
+      } else {
+        failed += 1;
+        console.error('[ENGINE] process_due_matches tick error', { matchId: chunk[k], error: r.reason });
       }
-      if (result?.status === 'waiting') {
-        continue;
-      }
-      advanced += 1;
-    } catch (error) {
-      failed += 1;
-      console.error('[ENGINE] process_due_matches tick error', { matchId: dueMatchId, error });
     }
   }
 
