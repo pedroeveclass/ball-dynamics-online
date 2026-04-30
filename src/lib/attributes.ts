@@ -644,6 +644,13 @@ export function attrLabel(key: string): string {
   return translated || FALLBACK_ATTR_LABELS[key] || key;
 }
 
+// Short, in-game-effect description for an attribute. Reads through
+// i18next so PT/EN follow the active language. Returns '' if missing.
+export function attrDescription(key: string): string {
+  if (!key) return '';
+  return i18n.t(`attributes:descriptions.${key}`, { defaultValue: '' });
+}
+
 export function attrCategoryLabel(category: string): string {
   if (!category) return '';
   const translated = i18n.t(`attributes:categories.${category}`, { defaultValue: '' });

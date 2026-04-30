@@ -19,6 +19,12 @@
     "private_trainer": "Private Trainer bonus (Lv.{{level}}):",
     "combined_max": "Max combined bonus:"
   },
+  "equipment_card": {
+    "title": "Active Equipment",
+    "go_to_store": "Go to store",
+    "empty": "No boots or gloves equipped. Visit the store to gain in-match bonuses.",
+    "cancelling": "cancelling"
+  },
   "history": {
     "title": "Training History",
     "empty": "No training sessions recorded yet."

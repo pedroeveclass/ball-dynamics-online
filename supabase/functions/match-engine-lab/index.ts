@@ -5769,6 +5769,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const nextPhaseEnd = new Date(Date.now() + (isAttackPhase ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS)).toISOString();
 
     // ── Enforce exclusion zones BEFORE ball_holder starts ──
+    // Also captures the BH's post-positioning, post-exclusion position so we can
+    // persist it as `ball_x/ball_y` on the ball_holder phase row. The engine's
+    // later loose-ball-chain inertia computation (resolve_action / ball_inertia
+    // ticks) relies on this stored value; without it, `bhStartPos` falls back to
+    // `passer.pos_x` (the passer's CURRENT pos), which keeps drifting as the
+    // passer runs in subsequent positioning phases — making the inertia arrow
+    // rotate / flip turn-by-turn instead of staying along the original pass line.
+    let ballHolderPersistX: number | null = null;
+    let ballHolderPersistY: number | null = null;
     if (!isAttackPhase) {
       const { data: allParts } = await supabase
         .from('match_participants')
@@ -5910,6 +5919,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         ));
         console.log(`[ENGINE] Exclusion zone enforcement: moved ${exclusionUpdates.length} players`);
       }
+
+      // Capture the BH's final position (post-positioning + post-exclusion) so
+      // the ball_holder phase row can persist `ball_x/ball_y`. Exclusion update
+      // wins over the stale `allParts` snapshot (e.g. on penalty the kicker is
+      // snapped to the spot).
+      if (bhId) {
+        const bhExclusion = exclusionUpdates.find(u => u.id === bhId);
+        if (bhExclusion) {
+          ballHolderPersistX = bhExclusion.pos_x;
+          ballHolderPersistY = bhExclusion.pos_y;
+        } else {
+          const bhPart = (allParts || []).find((p: any) => p.id === bhId);
+          if (bhPart) {
+            ballHolderPersistX = Number(bhPart.pos_x ?? 50);
+            ballHolderPersistY = Number(bhPart.pos_y ?? 50);
+          }
+        }
+      }
     }
 
     // IMPORTANT: resolve the current active turn BEFORE inserting the next one.
@@ -5942,6 +5969,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         started_at: nextPhaseStart, ends_at: nextPhaseEnd,
         status: 'active',
         set_piece_type: activeTurn.set_piece_type ?? null,
+        ball_x: ballHolderPersistX,
+        ball_y: ballHolderPersistY,
       }),
       supabase.from('match_event_logs').insert({
         match_id, event_type: 'positioning',

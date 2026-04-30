@@ -9,6 +9,7 @@ import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS,
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
+import { AttributeInfo } from '@/components/AttributeInfo';
 import { PositionFieldSelector } from '@/components/PositionFieldSelector';
 import { CountrySelect } from '@/components/CountrySelect';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -315,6 +316,7 @@ export default function OnboardingPlayerPage() {
               const total = finalAttrs[key] || base;
               return (
                 <div key={key} className="flex items-center gap-1">
+                  <AttributeInfo attrKey={key} />
                   <span className="text-xs text-muted-foreground flex-1 min-w-0">{ATTR_LABELS[key] || key}</span>
                   <span className="font-display text-sm font-bold w-7 text-right shrink-0">{Math.round(total)}</span>
                   {extra > 0 && <span className="text-[10px] text-pitch w-5 shrink-0 text-center">+{extra}</span>}
@@ -335,7 +337,7 @@ export default function OnboardingPlayerPage() {
 
             return (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="sticky top-0 z-10 -mx-6 px-6 py-3 bg-card border-b border-border flex items-center justify-between">
                   <Label>{t('onboarding:player.attributes.label')}</Label>
                   <span className={`font-display text-lg font-bold ${remainingPoints === 0 ? 'text-pitch' : 'text-tactical'}`}>
                     {t('onboarding:player.attributes.remaining', { count: remainingPoints })}

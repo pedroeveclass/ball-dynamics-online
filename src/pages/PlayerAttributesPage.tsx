@@ -6,13 +6,16 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR, tierLabel, archetypeLabel, attrCategoryLabel } from '@/lib/attributes';
+import { fetchAttributeBonuses, type AttributeBonuses } from '@/lib/attributeBonuses';
 import { formatDate } from '@/lib/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
-import { Dumbbell, TrendingUp, History, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap } from 'lucide-react';
+import { Dumbbell, TrendingUp, History, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap, Footprints, Hand, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { getStoreItemName } from '@/lib/storeItemLabel';
 
 const ENERGY_COST = 25;
 
@@ -38,6 +41,7 @@ export default function PlayerAttributesPage() {
   const [showBonusInfo, setShowBonusInfo] = useState(false);
   const [hasClub, setHasClub] = useState<boolean>(true);
   const [trainerBonus, setTrainerBonus] = useState<{ level: number; value: number } | null>(null);
+  const [itemBonuses, setItemBonuses] = useState<AttributeBonuses>({ byAttr: {}, items: [] });
   // Today's match (if any) — used to warn the player before they burn energy on
   // a training session that'd leave them short for kickoff.
   const [todayMatch, setTodayMatch] = useState<{ scheduledAt: string; opponent: string | null } | null>(null);
@@ -146,7 +150,12 @@ export default function PlayerAttributesPage() {
     });
   };
 
-  useEffect(() => { fetchAttrs(); fetchHistory(); fetchTrainingBonuses(); fetchTodayMatch(); }, [playerProfile]);
+  const fetchItemBonuses = async () => {
+    if (!playerProfile) { setItemBonuses({ byAttr: {}, items: [] }); return; }
+    setItemBonuses(await fetchAttributeBonuses(playerProfile.id));
+  };
+
+  useEffect(() => { fetchAttrs(); fetchHistory(); fetchTrainingBonuses(); fetchTodayMatch(); fetchItemBonuses(); }, [playerProfile]);
 
   if (!playerProfile || !attrs) {
     return <AppLayout><p className="text-muted-foreground">{t('loading')}</p></AppLayout>;
@@ -269,6 +278,8 @@ export default function PlayerAttributesPage() {
                     showTier
                     evo={evo}
                     showEvoSlot={sectionHasEvo}
+                    bonus={itemBonuses.byAttr[key]}
+                    infoKey={key}
                   />
                 </button>
               </PopoverTrigger>
@@ -441,6 +452,45 @@ export default function PlayerAttributesPage() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Equipamento ativo (boots / gloves) — what's adding bonuses to attrs right now */}
+        <div className="stat-card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald-400" />
+              <span className="font-display font-semibold text-sm">{t('equipment_card.title')}</span>
+            </div>
+            <Link to="/store" className="text-xs text-tactical hover:underline">{t('equipment_card.go_to_store')}</Link>
+          </div>
+          {itemBonuses.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('equipment_card.empty')}</p>
+          ) : (
+            <div className="space-y-2">
+              {itemBonuses.items.map(item => {
+                const Icon = item.category === 'boots' ? Footprints : Hand;
+                const attrLabel = ATTR_LABELS[item.bonus_type] || item.bonus_type;
+                const name = getStoreItemName({ name: item.name, name_pt: item.name_pt, name_en: item.name_en }, lang);
+                return (
+                  <div key={item.purchase_id} className="flex items-center justify-between text-sm p-2 rounded bg-muted/30">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Icon className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-display font-semibold truncate">{name} <span className="text-xs font-normal text-muted-foreground">Nv.{item.level}</span></p>
+                        <p className="text-xs text-muted-foreground truncate">{attrLabel}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.status === 'cancelling' && (
+                        <span className="text-[10px] font-display font-semibold px-1.5 py-0.5 rounded bg-warning/15 text-warning">{t('equipment_card.cancelling')}</span>
+                      )}
+                      <span className="font-display font-bold text-emerald-400">+{item.bonus_value}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -19,6 +19,12 @@
     "private_trainer": "Bônus Treinador Particular (Nv.{{level}}):",
     "combined_max": "Bônus combinado máximo:"
   },
+  "equipment_card": {
+    "title": "Equipamento Ativo",
+    "go_to_store": "Ir para loja",
+    "empty": "Nenhuma chuteira ou luva equipada. Visite a loja para ganhar bônus em jogo.",
+    "cancelling": "cancelando"
+  },
   "history": {
     "title": "Histórico de Treinos",
     "empty": "Nenhum treino registrado ainda."
