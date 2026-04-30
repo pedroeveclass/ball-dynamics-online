@@ -17,6 +17,7 @@ import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal
 import { toast } from 'sonner';
 import { Trans, useTranslation } from 'react-i18next';
 import { FORMATIONS } from './ManagerLineupPage';
+import { positionLabel } from '@/lib/positions';
 
 // ── Grid geometry ─────────────────────────────────────────────
 // Field is 5 cols × 7 rows = 35 quadrants. Coordinates in % (0-100),
@@ -928,7 +929,7 @@ export default function SituationalTacticsPage() {
                       <PlayerChip
                         key={`sp-${formation}-${setPieceType}-${setPiecePhase}-${slot.position}`}
                         jersey={i + 1}
-                        label={slot.label}
+                        label={positionLabel(slot.position)}
                         slotPosition={slot.position}
                         pos={p}
                         fieldRef={setPieceFieldRef}
@@ -1201,7 +1202,7 @@ export default function SituationalTacticsPage() {
                         <PlayerChip
                           key={`ghost-${formation}-${slot.position}`}
                           jersey={i + 1}
-                          label={slot.label}
+                          label={positionLabel(slot.position)}
                           slotPosition={slot.position}
                           pos={p}
                           fieldRef={fieldRef}
@@ -1222,7 +1223,7 @@ export default function SituationalTacticsPage() {
                     <PlayerChip
                       key={`opp-${opponentFormation}-${slot.position}`}
                       jersey={i + 1}
-                      label={slot.label}
+                      label={positionLabel(slot.position)}
                       slotPosition={slot.position}
                       pos={p}
                       fieldRef={fieldRef}
@@ -1240,7 +1241,7 @@ export default function SituationalTacticsPage() {
                   <PlayerChip
                     key={`${formation}-${slot.position}`}
                     jersey={i + 1}
-                    label={slot.label}
+                    label={positionLabel(slot.position)}
                     slotPosition={slot.position}
                     pos={p}
                     fieldRef={fieldRef}

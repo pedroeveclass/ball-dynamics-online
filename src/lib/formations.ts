@@ -151,10 +151,10 @@ function nudgeFor(role: string | null | undefined): { dx: number; dy: number } {
 
 /**
  * Slot's effective (x,y) on the lineup field given an optional role override.
- * Returns `baseline + nudge(override) − nudge(baselineRole)`. Mirrored on
- * X for slots whose baseline sits on the right half so a "−dx" nudge always
- * means "move toward the player's tactical sideline" (works for symmetric
- * pairs like LM/RM regardless of formation).
+ * Returns `baseline + (nudge(override) − nudge(baselineRole))`. Nudges are
+ * defined in absolute editor coords (−dx = visual left, +dx = visual right,
+ * −dy = forward, +dy = backward), so they apply directly regardless of
+ * which side of center the slot's baseline sits on.
  */
 export function applyRoleNudge(
   baselineX: number,
@@ -165,11 +165,8 @@ export function applyRoleNudge(
   if (!override) return { x: baselineX, y: baselineY };
   const eff = nudgeFor(override);
   const base = nudgeFor(baselineRole);
-  let dx = eff.dx - base.dx;
-  let dy = eff.dy - base.dy;
-  // Mirror dx for right-side slots so the nudge keeps its semantic
-  // "toward own flank" / "toward center" meaning.
-  if (baselineX > 50) dx = -dx;
+  const dx = eff.dx - base.dx;
+  const dy = eff.dy - base.dy;
   return {
     x: Math.max(2, Math.min(98, baselineX + dx)),
     y: Math.max(2, Math.min(98, baselineY + dy)),

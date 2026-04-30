@@ -733,7 +733,7 @@ export default function ManagerLineupPage() {
 
         {emptySlots.length > 0 && (
           <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
-            {t('empty_slots_warning', { count: emptySlots.length, labels: emptySlots.map(s => s.label).join(', ') })}
+            {t('empty_slots_warning', { count: emptySlots.length, labels: emptySlots.map(s => positionLabel(s.position)).join(', ') })}
           </div>
         )}
 
@@ -820,7 +820,7 @@ export default function ManagerLineupPage() {
                           {assigned && assigned.player_profile_id === captainId && <span title={t('field.captain_label')}>©️</span>}
                           {player.full_name.split(' ').pop()}
                         </>
-                      ) : slot.label}
+                      ) : positionLabel(slot.position)}
                     </span>
                     {player && swapOptions.length > 0 ? (
                       <DropdownMenu>
@@ -869,7 +869,7 @@ export default function ManagerLineupPage() {
                       </DropdownMenu>
                     ) : (
                       player && (
-                        <span className="text-[9px] text-muted-foreground">{slot.label}</span>
+                        <span className="text-[9px] text-muted-foreground">{positionLabel(slot.position)}</span>
                       )
                     )}
                   </div>
