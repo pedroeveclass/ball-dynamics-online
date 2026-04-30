@@ -3,8 +3,9 @@
   "free_agent": {
     "title": "My Club",
     "no_club_title": "No club",
-    "no_club_body": "You don't have a club. Wait for contract offers or look for opportunities.",
-    "see_offers": "See available offers"
+    "no_club_body": "You don't have a club. Find a team in the league or wait for offers.",
+    "see_offers": "See available offers",
+    "find_club": "Find a club in the league"
   },
   "stats": {
     "team_overall": "Team OVR",

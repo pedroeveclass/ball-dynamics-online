@@ -549,15 +549,29 @@ export default function PlayerClubPage() {
       <AppLayout>
         <div className="max-w-2xl space-y-6">
           <h1 className="font-display text-2xl font-bold">{t('free_agent.title')}</h1>
-          <div className="stat-card py-12 text-center">
-            <Shield className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-            <p className="font-display text-lg font-semibold">{t('free_agent.no_club_title')}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('free_agent.no_club_body')}
-            </p>
-            <Link to="/player/offers" className="mt-4 inline-block text-sm font-semibold text-tactical hover:underline">
-              {t('free_agent.see_offers')}
-            </Link>
+          <div className="stat-card py-12 text-center space-y-4">
+            <Shield className="mx-auto h-10 w-10 text-muted-foreground/40" />
+            <div>
+              <p className="font-display text-lg font-semibold">{t('free_agent.no_club_title')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('free_agent.no_club_body')}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <Link
+                to="/league?tab=join"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-tactical px-4 py-2 text-sm font-display font-semibold text-tactical-foreground hover:bg-tactical/90 transition-colors"
+              >
+                <Trophy className="h-4 w-4" />
+                {t('free_agent.find_club', { defaultValue: 'Procurar time na liga' })}
+              </Link>
+              <Link
+                to="/player/offers"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
+              >
+                {t('free_agent.see_offers')}
+              </Link>
+            </div>
           </div>
         </div>
       </AppLayout>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -158,6 +158,15 @@ export default function LeaguePage() {
   const isManagerWithoutClub = !!managerProfile && !club;
   // Free-agent player: shown the league teams list with "join bot team" CTAs.
   const isPlayerFreeAgent = !!playerProfile && !playerProfile.club_id;
+  // Lets /player/club send free agents straight to the join tab via
+  // ?tab=join. Falls back to the Standings tab for everyone else.
+  const [searchParams] = useSearchParams();
+  const tabFromQuery = searchParams.get('tab');
+  const initialTab = tabFromQuery === 'join' && isPlayerFreeAgent
+    ? 'join'
+    : tabFromQuery === 'available' && isManagerWithoutClub
+      ? 'available'
+      : 'standings';
 
   // Player join flow state
   const [joinableClubs, setJoinableClubs] = useState<JoinableClub[]>([]);
@@ -634,7 +643,7 @@ export default function LeaguePage() {
           </div>
           <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
         </div>
-        <Tabs defaultValue="standings" className="space-y-4">
+        <Tabs defaultValue={initialTab} className="space-y-4">
           <TabsList className={`grid w-full ${(isManagerWithoutClub || isPlayerFreeAgent) ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
             <TabsTrigger value="standings">{t('tabs.standings')}</TabsTrigger>
             <TabsTrigger value="rounds">{t('tabs.rounds')}</TabsTrigger>

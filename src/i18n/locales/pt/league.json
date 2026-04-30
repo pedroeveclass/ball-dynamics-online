@@ -19,7 +19,7 @@
     "rounds": "Rodadas",
     "stats": "Estatísticas",
     "available": "Times",
-    "join": "Times"
+    "join": "Procurar time"
   },
   "join": {
     "intro": "Clubes com técnico bot aceitam contrato automaticamente. Clubes com técnico humano precisam te enviar uma proposta.",

@@ -3,8 +3,9 @@
   "free_agent": {
     "title": "Meu Clube",
     "no_club_title": "Sem clube",
-    "no_club_body": "Você está sem clube. Aguarde propostas de contrato ou procure oportunidades.",
-    "see_offers": "Ver ofertas disponíveis"
+    "no_club_body": "Você está sem clube. Procure um time na liga ou aguarde propostas.",
+    "see_offers": "Ver ofertas disponíveis",
+    "find_club": "Procurar time na liga"
   },
   "stats": {
     "team_overall": "OVR do Time",
