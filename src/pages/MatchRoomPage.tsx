@@ -2942,13 +2942,18 @@ export default function MatchRoomPage() {
             console.log('[REACH][click]', { _t: _t.toFixed(2), d: Math.hypot(mdx, mdy).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj });
           }
 
-          // When accepted but the click itself was slightly off the line, snap to the line.
+          // ALWAYS snap to the projection on the trajectory when the click is
+          // accepted. Previously we snapped only when `distClickToTraj > INTERCEPT_RADIUS`
+          // (0.6), so a click between 0.0 and 0.6u of the line submitted the raw
+          // cursor position. Engine `findInterceptorCandidates` measures
+          // `dist = ||action.target - projection||` against `INTERCEPT_THRESHOLD = 1.0`,
+          // and a sub-frame mouse jitter or coord-rounding could push `dist` above 1.0
+          // (e.g. user "clicked on the line" at 0.4u offset visually but coords
+          // resolved to ~5u via Y_SCALE on a near-vertical pass). Always snapping
+          // guarantees `dist == 0` server-side — no more spurious off_trajectory.
           if (canReach) {
-            const distClickToTraj = pointToSegmentDistance(pctX, pctY, bfx, bfy, btx, bty);
-            if (distClickToTraj > INTERCEPT_RADIUS) {
-              interceptTargetX = projX;
-              interceptTargetY = projY;
-            }
+            interceptTargetX = projX;
+            interceptTargetY = projY;
           }
         }
         
@@ -2980,11 +2985,18 @@ export default function MatchRoomPage() {
           const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
           const circleRadiusField = 9 / INNER_W * 100;
 
-          // Path A — cursor on the inertia arrow (ball rolling). Aligns with the
-          // purple-circle render's trajectory branch. The engine's
-          // findLooseBallClaimer now checks distance to the full ball-rolling
-          // segment, so we can submit the projection point as target and the
-          // server will accept it.
+          // Path A — cursor on the inertia arrow (ball rolling). MUST mirror
+          // the purple-circle render's loose-ball branch AND the engine's
+          // `findLooseBallClaimer` — otherwise click rejects what the user
+          // saw in purple.
+          //   - proximity threshold 2.65 (NOT 1.0): matches engine's
+          //     `distToBall > 2.65 → reject` plus the render's
+          //     `circleRadiusField + INTERCEPT_RADIUS + 1`.
+          //   - reach formula: `distPlayerToTarget ≤ range + 0.5` AND temporal
+          //     `tPlayer ≤ tBallAtTarget + 0.15`. NOT `canReachTrajectoryPoint`
+          //     (that's the live-pass curve `d ≤ t*range + 0.5` which is
+          //     stricter and gives false-rejects against the loose-ball curve
+          //     `d ≤ range*t + range*0.15`).
           if (ballInertiaDir) {
             const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
             const bfx = looseBallPos.x;
@@ -2999,12 +3011,14 @@ export default function MatchRoomPage() {
               const projX = bfx + tdx * t;
               const projY = bfy + tdy * t;
               const distToTraj = pointToSegmentDistance(decideX, decideY, bfx, bfy, btx, bty);
-              const reachesTrajPoint = canReachTrajectoryPoint(
-                { x: dp.field_x, y: dp.field_y },
-                { x: bfx, y: bfy }, { x: btx, y: bty },
-                t, baseRange, 'pass_low', 0.5,
-              );
-              if (distToTraj <= 1.0 && reachesTrajPoint) {
+              const pxToT = (projX - dp.field_x);
+              const pyToT = (projY - dp.field_y) * FIELD_Y_SCALE;
+              const distPlayerToTarget = Math.sqrt(pxToT * pxToT + pyToT * pyToT);
+              const withinReach = distPlayerToTarget <= baseRange + 0.5;
+              const tPlayer = baseRange > 0 ? distPlayerToTarget / baseRange : 1;
+              const inTime = tPlayer <= t + 0.15;
+              const cursorOnPath = distToTraj <= circleRadiusField + INTERCEPT_RADIUS + 1;
+              if (cursorOnPath && withinReach && inTime) {
                 setPendingInterceptChoice({
                   participantId: drawingAction.fromParticipantId,
                   targetX: projX,
