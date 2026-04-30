@@ -202,7 +202,7 @@ export default function PlayerDashboard() {
                 <CalendarClock className="h-3 w-3" />
                 {formatDate(nextMatch.scheduled_at, lang, 'datetime_long')}
               </div>
-              <Link to={`/match/${nextMatch.id}`}>
+              <Link to={`/match/${nextMatch.id}`} target="_blank" rel="noopener noreferrer">
                 <Button size="sm" className="text-xs font-display bg-pitch text-pitch-foreground hover:bg-pitch/90">
                   <Play className="h-3 w-3 mr-1" />
                   {nextMatch.status === 'live' || nextMatch.status === 'waiting' ? t('player.next_match.enter') : t('player.next_match.watch')}

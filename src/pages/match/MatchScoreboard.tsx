@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Square, LogOut, User } from 'lucide-react';
+import { Square, User } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ClubInfo, EventLog } from './types';
 import { computeMatchMinute, HALF_DURATION_MS_CLIENT } from './constants';
@@ -119,7 +118,7 @@ export interface MatchScoreboardProps {
   myRole: 'player' | 'manager' | 'spectator';
   isBenchPlayer: boolean;
   isManager: boolean;
-  onFinishMatch: () => void; onExit: () => void;
+  onFinishMatch: () => void;
   homeUniformNum: number; awayUniformNum: number;
   homeActiveUniform: { shirt_color: string; number_color: string };
   awayActiveUniform: { shirt_color: string; number_color: string };
@@ -136,7 +135,7 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
     isLive, isFinished, isTestMatch, isLooseBall, isPhaseProcessing, isPositioningTurn,
     homeClub, awayClub, homeScore, awayScore, currentTurnNumber, activeTurnPhase,
     halfStartedAt, currentHalf,
-    myRole, isBenchPlayer, isManager, onFinishMatch, onExit,
+    myRole, isBenchPlayer, isManager, onFinishMatch,
     homeUniformNum, awayUniformNum, homeActiveUniform, awayActiveUniform, onToggleUniform, myClubId,
     possessionClubId, leagueRoundNumber, events,
   } = props;
@@ -257,10 +256,9 @@ export const MatchScoreboard = React.memo(function MatchScoreboard(props: MatchS
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onExit} className="h-8 text-[10px] font-display">
-          <LogOut className="h-3 w-3" /> {t('buttons.leave')}
-        </Button>
+      {/* Right padding leaves room for the three floating top-right buttons
+          (Sair, ?, hamburger) so they don't overlap the scoreboard contents. */}
+      <div className="flex items-center gap-2 pr-28">
         {isManager && isTestMatch && isLive && (
           <button
             onClick={onFinishMatch}

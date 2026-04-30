@@ -471,7 +471,7 @@ export default function ManagerChallengesPage() {
       ]);
       await supabase.from('match_event_logs').insert({ match_id: match.id, event_type: 'system', title: '🧪 Partida de teste criada', body: '5v5 — GK + 4 jogadores vs GK + 4 jogadores' });
       if (target === 'lab') { toast.success('Laboratório criado!'); navigate(`/match-lab/${match.id}`); }
-      else { toast.success('Partida de teste criada!'); navigate(`/match/${match.id}`); }
+      else { toast.success('Partida de teste criada!'); window.open(`/match/${match.id}`, '_blank', 'noopener'); }
     } catch (err: any) { toast.error(err.message || 'Erro'); }
     finally { setCreatingTarget(null); }
   };
@@ -586,7 +586,7 @@ export default function ManagerChallengesPage() {
       });
 
       toast.success('Amistoso contra BOTs criado!');
-      navigate(`/match/${match.id}`);
+      window.open(`/match/${match.id}`, '_blank', 'noopener');
     } catch (err: any) { toast.error(err.message || 'Erro ao criar amistoso'); }
     finally { setCreatingBotMatch(false); }
   };
@@ -650,7 +650,7 @@ export default function ManagerChallengesPage() {
                 </div>
               </div>
               {nextLeagueMatch.match_id ? (
-                <Link to={`/match/${nextLeagueMatch.match_id}`}>
+                <Link to={`/match/${nextLeagueMatch.match_id}`} target="_blank" rel="noopener noreferrer">
                   <Button size="sm" className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs">
                     Entrar na Partida
                   </Button>
@@ -706,7 +706,7 @@ export default function ManagerChallengesPage() {
                 const scheduledDate = new Date(m.scheduled_at);
                 return (
                   <div key={m.id} className="stat-card flex items-center justify-between hover:border-tactical/40 transition-colors">
-                    <Link to={`/match/${m.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                    <Link to={`/match/${m.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 flex-1 min-w-0">
                       <ClubCrest crestUrl={opponent?.crest_url} primaryColor={opponent?.primary_color || '#333'} secondaryColor={opponent?.secondary_color || '#fff'} shortName={opponent?.short_name || '?'} className="h-8 w-8 rounded text-[8px] shrink-0" />
                       <div>
                         <p className="font-display font-semibold text-sm">
@@ -753,7 +753,7 @@ export default function ManagerChallengesPage() {
           <div className="space-y-3">
             {received.map(c => (
               <ChallengeCard key={c.id} challenge={c} direction="received" isActing={acting === c.id}
-                onAccept={() => handleAccept(c)} onReject={() => handleReject(c)} onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)} />
+                onAccept={() => handleAccept(c)} onReject={() => handleReject(c)} onViewMatch={() => c.match_id && window.open(`/match/${c.match_id}`, '_blank', 'noopener')} />
             ))}
           </div>
           </CollapsibleContent>
@@ -770,7 +770,7 @@ export default function ManagerChallengesPage() {
           <div className="space-y-3">
             {sent.map(c => (
               <ChallengeCard key={c.id} challenge={c} direction="sent" isActing={acting === c.id}
-                onCancel={() => handleCancel(c)} onViewMatch={() => c.match_id && navigate(`/match/${c.match_id}`)} />
+                onCancel={() => handleCancel(c)} onViewMatch={() => c.match_id && window.open(`/match/${c.match_id}`, '_blank', 'noopener')} />
             ))}
           </div>
           </CollapsibleContent>

@@ -287,7 +287,9 @@ export default function PlayerMatchesPage() {
       });
 
       toast.success(t('test_match.title'));
-      navigate(`/match/${match.id}`);
+      // Open the match in a new tab so the player can keep this page open and
+      // review their roster while the test match runs.
+      window.open(`/match/${match.id}`, '_blank', 'noopener');
     } catch (err: any) {
       toast.error(err.message || t('test_match.create_error'));
     } finally {
@@ -341,7 +343,7 @@ export default function PlayerMatchesPage() {
                 </div>
               </div>
               {nextLeagueMatch.match_id ? (
-                <Link to={`/match/${nextLeagueMatch.match_id}`}>
+                <Link to={`/match/${nextLeagueMatch.match_id}`} target="_blank" rel="noopener noreferrer">
                   <Button size="sm" className="bg-pitch text-pitch-foreground hover:bg-pitch/90 font-display text-xs">
                     <Play className="h-3 w-3 mr-1" />
                     {t('buttons.enter')}
@@ -447,9 +449,9 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
             {formatDate(m.scheduled_at, lang, 'datetime_long')}
           </div>
           {is_bot ? (
-            <span className="flex items-center gap-1 text-xs text-amber-500"><Bot className="h-3 w-3" /> Bot</span>
+            <span className="flex items-center gap-1 text-xs text-amber-500"><Bot className="h-3 w-3" /> {t('participant.bot')}</span>
           ) : (
-            <span className="flex items-center gap-1 text-xs text-pitch"><User className="h-3 w-3" /> Você</span>
+            <span className="flex items-center gap-1 text-xs text-pitch"><User className="h-3 w-3" /> {t('participant.you')}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
@@ -460,11 +462,11 @@ function MatchCard({ entry }: { entry: MatchEntry }) {
               </Button>
             </Link>
           )}
-          <Link to={`/match/${m.id}`}>
+          <Link to={`/match/${m.id}`} target="_blank" rel="noopener noreferrer">
             <Button size="sm" variant={isLive ? 'default' : 'outline'}
               className={`text-xs font-display ${isLive ? 'bg-pitch text-pitch-foreground hover:bg-pitch/90' : ''}`}>
               {isLive ? <Radio className="h-3 w-3 mr-1 animate-pulse" /> : <Play className="h-3 w-3 mr-1" />}
-              {isLive ? 'Entrar' : m.status === 'finished' ? 'Ver' : 'Acompanhar'}
+              {isLive ? t('buttons.enter_live') : m.status === 'finished' ? t('buttons.view') : t('buttons.follow')}
             </Button>
           </Link>
         </div>

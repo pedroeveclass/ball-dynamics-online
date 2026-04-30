@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
@@ -106,7 +106,10 @@ export default function PickupListPage() {
     return () => { supabase.removeChannel(channel); };
   }, [loadAll]);
 
-  // Redirect to match when a pickup the user joined goes live.
+  // Open the match in a new tab when a pickup the user joined goes live.
+  // Tracks already-opened matchIds in a ref so realtime re-renders of pickups
+  // / participants don't repeatedly fire window.open for the same match.
+  const openedMatchesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!playerProfile) return;
     const mine = pickups.find(p => {
@@ -114,8 +117,11 @@ export default function PickupListPage() {
       if (p.status !== 'materialized' && p.status !== 'live') return false;
       return participants.some(pt => pt.pickup_game_id === p.id && pt.player_profile_id === playerProfile.id);
     });
-    if (mine?.match_id) navigate(`/match/${mine.match_id}`);
-  }, [pickups, participants, playerProfile, navigate]);
+    if (mine?.match_id && !openedMatchesRef.current.has(mine.match_id)) {
+      openedMatchesRef.current.add(mine.match_id);
+      window.open(`/match/${mine.match_id}`, '_blank', 'noopener');
+    }
+  }, [pickups, participants, playerProfile]);
 
   const countsById = useMemo(() => {
     const map = new Map<string, number>();

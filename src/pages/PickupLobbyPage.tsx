@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AppLayout } from '@/components/AppLayout';
 import { useAuth } from '@/hooks/useAuth';
@@ -55,7 +55,6 @@ function formatCountdown(ms: number, startingLabel: string): string {
 
 export default function PickupLobbyPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { playerProfile } = useAuth();
   const { t } = useTranslation('pickup_lobby');
   const { current: lang } = useAppLanguage();
@@ -98,16 +97,23 @@ export default function PickupLobbyPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Auto-redirect to match when materialization happens. Only for players
-  // who joined — spectators (creator who left?) stay here.
+  // Auto-open the match in a new tab when materialization happens. Only for
+  // players who joined — spectators (creator who left?) stay here. The lobby
+  // page stays mounted so the user can return to it after the match.
+  // Track already-opened matches so realtime re-renders don't fire window.open
+  // multiple times for the same match.
+  const openedMatchesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!pickup || !playerProfile) return;
     const iJoined = participants.some(p => p.player_profile_id === playerProfile.id);
     if (!iJoined) return;
     if (pickup.match_id && (pickup.status === 'materialized' || pickup.status === 'live')) {
-      navigate(`/match/${pickup.match_id}`);
+      if (!openedMatchesRef.current.has(pickup.match_id)) {
+        openedMatchesRef.current.add(pickup.match_id);
+        window.open(`/match/${pickup.match_id}`, '_blank', 'noopener');
+      }
     }
-  }, [pickup, participants, playerProfile, navigate]);
+  }, [pickup, participants, playerProfile]);
 
   const myPart = useMemo(
     () => (playerProfile ? participants.find(p => p.player_profile_id === playerProfile.id) : undefined),
@@ -296,7 +302,7 @@ export default function PickupLobbyPage() {
           )}
           {pickup.match_id && (pickup.status === 'live' || pickup.status === 'materialized') && (
             <Button asChild>
-              <Link to={`/match/${pickup.match_id}`}>{t('actions.go_to_match')}</Link>
+              <Link to={`/match/${pickup.match_id}`} target="_blank" rel="noopener noreferrer">{t('actions.go_to_match')}</Link>
             </Button>
           )}
         </div>
