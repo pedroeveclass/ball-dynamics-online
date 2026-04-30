@@ -83,6 +83,15 @@
     "toast_success": "Secondary position changed to {{pos}}!",
     "toast_error": "Error changing secondary position."
   },
+  "slot_choice": {
+    "title": "Create New Slot",
+    "description": "What do you want to create in this new slot?",
+    "player_title": "Create Player",
+    "player_desc": "A new athlete with full onboarding for position, attributes and looks. Cost: {{cost}}.",
+    "manager_title": "Create Manager",
+    "manager_desc": "A new coach to take over an available club.",
+    "cancel": "Cancel"
+  },
   "new_player": {
     "title": "New Player",
     "hint": "Create a new player and switch between them at any time. Your current player will be kept.",
