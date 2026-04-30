@@ -3184,20 +3184,20 @@ function computeDeviation(
   switch (actionType) {
     case 'pass_low': {
       // Short (<15): ~1u | Medium (20-30): 5-11u | Long (50): ~20u
-      difficultyMultiplier = 25;
+      difficultyMultiplier = 20;
       skillFactor = normalizeAttr(isGK ? (attrs.distribuicao_curta ?? 40) : (attrs.passe_baixo ?? 40));
       minRandomDeviation = dist < 15 ? 0.5 : dist < 30 ? 3.0 + (dist / 50) * 6.0 : 6.0 + (dist / 50) * 10.0;
       break;
     }
     case 'pass_high':
       // dist=25: 8-15u | dist=35: 10-18u | dist=50: 15-25u
-      difficultyMultiplier = 40;
+      difficultyMultiplier = 30;
       skillFactor = normalizeAttr(isGK ? (attrs.distribuicao_longa ?? 40) : (attrs.passe_alto ?? 40));
       minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
     case 'pass_launch':
       // dist=30: 10-18u | dist=50: 18-30u | dist=70: 30-50u
-      difficultyMultiplier = 35;
+      difficultyMultiplier = 30;
       skillFactor = isGK
         ? normalizeAttr(attrs.distribuicao_longa ?? 40)
         : (normalizeAttr(attrs.passe_baixo ?? 40) + normalizeAttr(attrs.passe_alto ?? 40)) / 2;
@@ -3217,13 +3217,13 @@ function computeDeviation(
       minRandomDeviation = 4.0 + (dist / 50) * 8.0;
       break;
     case 'header_low': {
-      difficultyMultiplier = 30; // slightly harder than pass_low
+      difficultyMultiplier = 20;
       skillFactor = normalizeAttr(attrs.cabeceio ?? 40);
       minRandomDeviation = dist < 15 ? 1.0 : dist < 30 ? 4.0 + (dist / 50) * 7.0 : 7.0 + (dist / 50) * 11.0;
       break;
     }
     case 'header_high':
-      difficultyMultiplier = 45; // harder than pass_high
+      difficultyMultiplier = 30;
       skillFactor = normalizeAttr(attrs.cabeceio ?? 40);
       minRandomDeviation = 5.0 + (dist / 50) * 9.0;
       break;
