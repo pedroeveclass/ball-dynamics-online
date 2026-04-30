@@ -132,6 +132,14 @@ export default function PlayerProfilePage() {
 
   const [clubName, setClubName] = useState<string | null>(null);
   const [clubColors, setClubColors] = useState<{ primary: string; secondary: string; crestUrl: string | null } | null>(null);
+  // Active player's kit: uniform 3 if GK, uniform 1 otherwise. Null when the
+  // player is a free agent or kits aren't seeded yet.
+  const [activeKit, setActiveKit] = useState<{
+    shirt_color: string;
+    number_color: string;
+    pattern: string;
+    stripe_color: string;
+  } | null>(null);
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
@@ -169,19 +177,33 @@ export default function PlayerProfilePage() {
 
   // ── Fetch club info ──
   useEffect(() => {
-    if (!p?.club_id) { setClubName(null); setClubColors(null); return; }
+    if (!p?.club_id) { setClubName(null); setClubColors(null); setActiveKit(null); return; }
     (async () => {
-      const { data } = await supabase
-        .from('clubs')
-        .select('name, primary_color, secondary_color, crest_url')
-        .eq('id', p.club_id!)
-        .single();
-      if (data) {
-        setClubName(data.name);
-        setClubColors({ primary: data.primary_color, secondary: data.secondary_color, crestUrl: (data as any).crest_url ?? null });
+      const [{ data: club }, { data: kits }] = await Promise.all([
+        supabase
+          .from('clubs')
+          .select('name, primary_color, secondary_color, crest_url')
+          .eq('id', p.club_id!)
+          .single(),
+        supabase
+          .from('club_uniforms')
+          .select('uniform_number, shirt_color, number_color, pattern, stripe_color')
+          .eq('club_id', p.club_id!),
+      ]);
+      if (club) {
+        setClubName(club.name);
+        setClubColors({ primary: club.primary_color, secondary: club.secondary_color, crestUrl: (club as any).crest_url ?? null });
       }
+      // Pick uniform 3 (goalkeeper) if the player is a GK, else uniform 1
+      // (home). Falls back to whichever exists, or null when the club has no
+      // kit rows yet.
+      const isGK = (p.primary_position || '').toUpperCase() === 'GK';
+      const home = (kits || []).find((k: any) => k.uniform_number === 1) || null;
+      const gk = (kits || []).find((k: any) => k.uniform_number === 3) || null;
+      const chosen = isGK ? (gk || home) : home;
+      setActiveKit(chosen as any);
     })();
-  }, [p?.club_id]);
+  }, [p?.club_id, p?.primary_position]);
 
   // ── Fetch attributes ──
   useEffect(() => {
@@ -460,8 +482,8 @@ export default function PlayerProfilePage() {
             <PlayerAvatar
               appearance={(p as any).appearance}
               variant="face"
-              clubPrimaryColor={clubColors?.primary}
-              clubSecondaryColor={clubColors?.secondary}
+              clubPrimaryColor={activeKit?.shirt_color ?? clubColors?.primary}
+              clubSecondaryColor={activeKit?.stripe_color ?? clubColors?.secondary}
               playerName={p.full_name}
               className="h-20 w-20 shrink-0"
               fallbackSeed={p.id}
@@ -560,11 +582,14 @@ export default function PlayerProfilePage() {
                   appearance={(p as any).appearance}
                   variant={bodyVariant}
                   height={p.height}
-                  clubPrimaryColor={clubColors?.primary}
-                  clubSecondaryColor={clubColors?.secondary}
+                  clubPrimaryColor={activeKit?.shirt_color ?? clubColors?.primary}
+                  clubSecondaryColor={activeKit?.stripe_color ?? clubColors?.secondary}
                   clubCrestUrl={clubColors?.crestUrl}
                   playerName={p.full_name}
                   jerseyNumber={(p as any).jersey_number}
+                  uniformPattern={activeKit?.pattern}
+                  uniformStripeColor={activeKit?.stripe_color}
+                  uniformNumberColor={activeKit?.number_color}
                   className="w-full h-full"
                   fallbackSeed={p.id}
                 />

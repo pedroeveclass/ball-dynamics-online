@@ -75,6 +75,8 @@ interface UniformInfo {
   uniform_number: number;
   shirt_color: string;
   number_color: string;
+  pattern: string;
+  stripe_color: string;
 }
 
 interface FacilityInfo {
@@ -320,7 +322,7 @@ export default function PlayerClubPage() {
         supabase.from('contracts').select('weekly_salary, release_clause, start_date, end_date')
           .eq('player_profile_id', playerProfile.id).eq('status', 'active').maybeSingle(),
         supabase.from('contracts').select('player_profile_id').eq('club_id', clubId).eq('status', 'active'),
-        supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color').eq('club_id', clubId).order('uniform_number'),
+        supabase.from('club_uniforms').select('uniform_number, shirt_color, number_color, pattern, stripe_color').eq('club_id', clubId).order('uniform_number'),
         supabase.from('club_facilities').select('facility_type, level').eq('club_id', clubId),
         supabase.from('club_settings').select('default_formation').eq('club_id', clubId).maybeSingle(),
         supabase.from('lineups').select('id, formation, name').eq('club_id', clubId).eq('is_active', true).maybeSingle(),
@@ -787,19 +789,26 @@ export default function PlayerClubPage() {
               )}
             </div>
 
-            {/* Starting XI avatars (mirror PublicClubPage) */}
+            {/* Starting XI avatars (mirror PublicClubPage). Uniform 1 (home)
+                for outfielders + uniform 3 (goalkeeper) for the GK, falling
+                back to club primary color when the kit row is missing. */}
             {(() => {
               const starters = lineup.slots
                 .filter((s) => s.role_type === 'starter' && s.player)
                 .sort((a, b) => a.sort_order - b.sort_order);
               if (starters.length === 0) return null;
+              const homeKit = uniforms.find((u) => u.uniform_number === 1) ?? null;
+              const gkKit = uniforms.find((u) => u.uniform_number === 3) ?? null;
               return (
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {t('lineup.starting_xi', { defaultValue: 'Starting XI' })}
                   </h4>
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-3">
-                    {starters.map((s) => (
+                    {starters.map((s) => {
+                      const isGK = (s.player!.primary_position || s.slot_position).toUpperCase().replace(/[0-9]/g, '') === 'GK';
+                      const kit = isGK ? (gkKit ?? homeKit) : homeKit;
+                      return (
                       <Link
                         key={s.player!.id}
                         to={`/player/${s.player!.id}`}
@@ -810,11 +819,14 @@ export default function PlayerClubPage() {
                             appearance={s.player!.appearance}
                             variant="full-front"
                             height={s.player!.height || undefined}
-                            clubPrimaryColor={clubInfo?.primary_color}
-                            clubSecondaryColor={clubInfo?.secondary_color}
+                            clubPrimaryColor={kit?.shirt_color ?? clubInfo?.primary_color}
+                            clubSecondaryColor={kit?.stripe_color ?? clubInfo?.secondary_color}
                             clubCrestUrl={clubInfo?.crest_url || undefined}
                             playerName={s.player!.full_name}
                             jerseyNumber={s.player!.jersey_number ?? undefined}
+                            uniformPattern={kit?.pattern}
+                            uniformStripeColor={kit?.stripe_color}
+                            uniformNumberColor={kit?.number_color}
                             className="w-full h-full"
                             fallbackSeed={s.player!.id}
                           />
@@ -832,7 +844,8 @@ export default function PlayerClubPage() {
                           className="text-[9px] px-1 py-0"
                         />
                       </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );

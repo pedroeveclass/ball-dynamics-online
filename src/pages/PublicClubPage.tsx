@@ -154,6 +154,14 @@ export default function PublicClubPage() {
     sort_order: number;
     player_profile_id: string;
   }>>([]);
+  // home (1) + goalkeeper (3) kits — used to paint the Starting XI avatars
+  // with the actual jersey pattern instead of just the club's primary color.
+  const [uniforms, setUniforms] = useState<Record<number, {
+    shirt_color: string;
+    number_color: string;
+    pattern: string;
+    stripe_color: string;
+  }>>({});
 
   // Player detail dialog
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
@@ -254,6 +262,15 @@ export default function PublicClubPage() {
     } else {
       setStartingXI([]);
     }
+
+    // Club uniforms — uniform 1 for outfielders, 3 for the goalkeeper.
+    const { data: kits } = await supabase
+      .from('club_uniforms')
+      .select('uniform_number, shirt_color, number_color, pattern, stripe_color')
+      .eq('club_id', id);
+    const kitMap: Record<number, any> = {};
+    for (const k of (kits || [])) kitMap[k.uniform_number as number] = k;
+    setUniforms(kitMap);
 
     // League standing
     const { data: season } = await supabase
@@ -629,11 +646,16 @@ export default function PublicClubPage() {
             .map(s => ({ slot: s, player: playerById.get(s.player_profile_id) }))
             .filter(x => x.player);
           if (xi.length === 0) return null;
+          const homeKit = uniforms[1] ?? null;
+          const gkKit = uniforms[3] ?? null;
           return (
             <div className="stat-card space-y-3">
               <h3 className="font-display font-semibold text-sm">{t('starting_xi.title', { defaultValue: 'Onze inicial' })}</h3>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-3">
-                {xi.map(({ slot, player }) => (
+                {xi.map(({ slot, player }) => {
+                  const isGK = (player.primary_position || slot.slot_position).toUpperCase().replace(/[0-9]/g, '') === 'GK';
+                  const kit = isGK ? (gkKit ?? homeKit) : homeKit;
+                  return (
                   <Link
                     key={slot.player_profile_id}
                     to={`/player/${player.id}`}
@@ -644,11 +666,14 @@ export default function PublicClubPage() {
                         appearance={player.appearance}
                         variant="full-front"
                         height={player.height}
-                        clubPrimaryColor={clubData?.primary_color}
-                        clubSecondaryColor={clubData?.secondary_color}
+                        clubPrimaryColor={kit?.shirt_color ?? clubData?.primary_color}
+                        clubSecondaryColor={kit?.stripe_color ?? clubData?.secondary_color}
                         clubCrestUrl={clubData?.crest_url}
                         playerName={player.full_name}
                         jerseyNumber={player.jersey_number}
+                        uniformPattern={kit?.pattern}
+                        uniformStripeColor={kit?.stripe_color}
+                        uniformNumberColor={kit?.number_color}
                         className="w-full h-full"
                         fallbackSeed={player.id}
                       />
@@ -666,7 +691,8 @@ export default function PublicClubPage() {
                       className="text-[9px] px-1 py-0"
                     />
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );

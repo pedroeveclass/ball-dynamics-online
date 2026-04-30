@@ -18,6 +18,15 @@ interface PlayerAvatarProps {
   className?: string;
   fallbackSeed?: string;
   outfit?: AvatarOutfit;
+  // ── Optional uniform fields, sourced from `club_uniforms`. When set, the
+  // jersey is painted with the actual kit (pattern + 2 colors + number color)
+  // instead of just the club's primary color. `clubPrimaryColor`/`clubSecondaryColor`
+  // remain the fallback for callers that don't pass an explicit uniform.
+  uniformPattern?: string | null;        // 'solid' | 'stripe_vertical_double' | 'bicolor_diagonal' | …
+  uniformStripeColor?: string | null;    // pattern's secondary color
+  uniformNumberColor?: string | null;    // jersey number color (back & front)
+  // GK kit lives at uniform_number = 3. The caller decides whether to pass
+  // the GK uniform's colors here based on the player's primary position.
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -95,6 +104,9 @@ export function PlayerAvatar({
   className,
   fallbackSeed,
   outfit = 'player',
+  uniformPattern,
+  uniformStripeColor,
+  uniformNumberColor,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
@@ -102,7 +114,11 @@ export function PlayerAvatar({
   // so ignore the incoming club colors for clothing purposes.
   const primary = isCoach ? COACH_SHIRT : (clubPrimaryColor || DEFAULT_PRIMARY);
   const secondary = isCoach ? COACH_SHIRT_DETAIL : (clubSecondaryColor || DEFAULT_SECONDARY);
-  const shirtText = readableForeground(primary);
+  const stripe = uniformStripeColor || secondary;
+  const numberHex = isCoach
+    ? readableForeground(primary)
+    : (uniformNumberColor || readableForeground(primary));
+  const pattern = isCoach ? 'solid' : (uniformPattern || 'solid');
   const seed = fallbackSeed ?? 'player';
   const clipId = useId().replace(/:/g, '_');
 
@@ -163,19 +179,24 @@ export function PlayerAvatar({
                 appearance={effective}
                 primary={primary}
                 secondary={secondary}
-                shirtText={shirtText}
+                stripe={stripe}
+                pattern={pattern}
+                numberHex={numberHex}
                 playerName={playerName}
                 jerseyNumber={jerseyNumber}
                 crestUrl={clubCrestUrl}
                 outfit={outfit}
+                clipId={clipId}
               />
             ) : (
               <FrontBody
                 faceDataUri={faceDataUri}
                 primary={primary}
                 secondary={secondary}
+                stripe={stripe}
+                pattern={pattern}
+                numberHex={numberHex}
                 skinTone={effective.skinTone}
-                shirtText={shirtText}
                 crestUrl={clubCrestUrl}
                 jerseyNumber={jerseyNumber}
                 clipId={`avClip_${clipId}`}
@@ -188,6 +209,141 @@ export function PlayerAvatar({
         </g>
       </svg>
     </div>
+  );
+}
+
+// ── Repeating pattern <pattern> defs for striped jerseys.
+// Mirrors the renderer in ManagerLineupPage so the avatar matches the kit
+// editor preview byte-for-byte. `solid`, `bicolor_*` and `stripe_*_unique`
+// don't return a <pattern> — they're drawn as overlay shapes inside the
+// torso clip.
+function getRepeatingPatternDef(pattern: string, shirt: string, stripe: string, id: string) {
+  switch (pattern) {
+    case 'stripe_vertical_single':
+      return (<pattern id={id} width="20" height="96" patternUnits="userSpaceOnUse">
+        <rect width="10" height="96" fill={shirt} /><rect x="10" width="10" height="96" fill={stripe} />
+      </pattern>);
+    case 'stripe_vertical_double':
+      return (<pattern id={id} width="24" height="96" patternUnits="userSpaceOnUse">
+        <rect width="8" height="96" fill={shirt} /><rect x="8" width="4" height="96" fill={stripe} />
+        <rect x="12" width="8" height="96" fill={shirt} /><rect x="20" width="4" height="96" fill={stripe} />
+      </pattern>);
+    case 'stripe_vertical_triple':
+      return (<pattern id={id} width="18" height="96" patternUnits="userSpaceOnUse">
+        <rect width="4" height="96" fill={shirt} /><rect x="4" width="2" height="96" fill={stripe} />
+        <rect x="6" width="4" height="96" fill={shirt} /><rect x="10" width="2" height="96" fill={stripe} />
+        <rect x="12" width="4" height="96" fill={shirt} /><rect x="16" width="2" height="96" fill={stripe} />
+      </pattern>);
+    case 'stripe_horizontal_single':
+      return (<pattern id={id} width="80" height="20" patternUnits="userSpaceOnUse">
+        <rect width="80" height="10" fill={shirt} /><rect y="10" width="80" height="10" fill={stripe} />
+      </pattern>);
+    case 'stripe_horizontal_double':
+      return (<pattern id={id} width="80" height="24" patternUnits="userSpaceOnUse">
+        <rect width="80" height="8" fill={shirt} /><rect y="8" width="80" height="4" fill={stripe} />
+        <rect y="12" width="80" height="8" fill={shirt} /><rect y="20" width="80" height="4" fill={stripe} />
+      </pattern>);
+    case 'stripe_horizontal_triple':
+      return (<pattern id={id} width="80" height="18" patternUnits="userSpaceOnUse">
+        <rect width="80" height="4" fill={shirt} /><rect y="4" width="80" height="2" fill={stripe} />
+        <rect y="6" width="80" height="4" fill={shirt} /><rect y="10" width="80" height="2" fill={stripe} />
+        <rect y="12" width="80" height="4" fill={shirt} /><rect y="16" width="80" height="2" fill={stripe} />
+      </pattern>);
+    case 'stripe_diagonal_single':
+      return (<pattern id={id} width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="7" height="14" fill={shirt} /><rect x="7" width="7" height="14" fill={stripe} />
+      </pattern>);
+    case 'stripe_diagonal_double':
+      return (<pattern id={id} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="6" height="18" fill={shirt} /><rect x="6" width="3" height="18" fill={stripe} />
+        <rect x="9" width="6" height="18" fill={shirt} /><rect x="15" width="3" height="18" fill={stripe} />
+      </pattern>);
+    case 'stripe_diagonal_triple':
+      return (<pattern id={id} width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="3" height="18" fill={shirt} /><rect x="3" width="3" height="18" fill={stripe} />
+        <rect x="6" width="3" height="18" fill={shirt} /><rect x="9" width="3" height="18" fill={stripe} />
+        <rect x="12" width="3" height="18" fill={shirt} /><rect x="15" width="3" height="18" fill={stripe} />
+      </pattern>);
+    default:
+      return null;
+  }
+}
+
+// ── Torso fill (front or back). Renders the kit base color, then layers the
+// pattern (stripes/bicolor/unique stripe) clipped to the torso shape, then
+// the side + center shadows the avatar already had for depth. Sleeves and
+// shorts are drawn separately by the parent body component.
+function TorsoPaint({
+  primary,
+  stripe,
+  pattern,
+  isCoach,
+  patternId,
+  torsoClipId,
+}: {
+  primary: string;
+  stripe: string;
+  pattern: string;
+  isCoach: boolean;
+  patternId: string;
+  torsoClipId: string;
+}) {
+  // Torso bounding box used by all overlays.
+  const X = 58, Y = 114, W = 84, H = 121;
+  const isBicolor = pattern.startsWith('bicolor');
+  const isUnique = pattern.endsWith('_unique');
+  const isRepeating = !isBicolor && !isUnique && pattern !== 'solid';
+
+  return (
+    <>
+      <defs>
+        <clipPath id={torsoClipId}>
+          <path d="M 58 116 Q 58 114 62 114 L 138 114 Q 142 114 142 116 L 136 235 L 64 235 Z" />
+        </clipPath>
+        {isRepeating && getRepeatingPatternDef(pattern, primary, stripe, patternId)}
+      </defs>
+      {/* Shape outline (catches anti-aliased edges so the curve stays clean) */}
+      <path d="M 58 116 Q 58 114 62 114 L 138 114 Q 142 114 142 116 L 136 235 L 64 235 Z" fill={primary} />
+      {/* Pattern fill, clipped to the torso shape */}
+      <g clipPath={`url(#${torsoClipId})`}>
+        {isBicolor ? (
+          <>
+            <rect x={X} y={Y} width={W} height={H} fill={primary} />
+            {pattern === 'bicolor_horizontal' && (
+              <rect x={X} y={Y + H / 2} width={W} height={H / 2} fill={stripe} />
+            )}
+            {pattern === 'bicolor_vertical' && (
+              <rect x={X + W / 2} y={Y} width={W / 2} height={H} fill={stripe} />
+            )}
+            {pattern === 'bicolor_diagonal' && (
+              <polygon points={`${X},${Y + H} ${X + W},${Y} ${X + W},${Y + H}`} fill={stripe} />
+            )}
+          </>
+        ) : isUnique ? (
+          <>
+            <rect x={X} y={Y} width={W} height={H} fill={primary} />
+            {pattern === 'stripe_vertical_unique' && (
+              <rect x={X + W / 2 - 8} y={Y} width="16" height={H} fill={stripe} />
+            )}
+            {pattern === 'stripe_horizontal_unique' && (
+              <rect x={X} y={Y + H / 2 - 7} width={W} height="14" fill={stripe} />
+            )}
+            {pattern === 'stripe_diagonal_unique' && (
+              <polygon points={`${X},${Y + H - 16} ${X},${Y + H} ${X + W},${Y} ${X + W},${Y + 16}`} fill={stripe} />
+            )}
+          </>
+        ) : isRepeating ? (
+          <rect x={X} y={Y} width={W} height={H} fill={`url(#${patternId})`} />
+        ) : (
+          <rect x={X} y={Y} width={W} height={H} fill={primary} />
+        )}
+      </g>
+      {/* Side + center shadows on top of the painted torso */}
+      <path d="M 64 118 L 70 118 L 72 232 L 66 232 Z" fill="#000" opacity="0.14" />
+      <path d="M 130 118 L 136 118 L 134 232 L 128 232 Z" fill="#000" opacity="0.14" />
+      <path d="M 99 132 L 101 132 L 101 230 L 99 230 Z" fill="#000" opacity={isCoach ? 0.35 : 0.07} />
+      <line x1="62" y1="234" x2="138" y2="234" stroke="#000" strokeWidth="1" opacity="0.18" />
+    </>
   );
 }
 
@@ -278,8 +434,10 @@ function FrontBody({
   faceDataUri,
   primary,
   secondary,
+  stripe,
+  pattern,
+  numberHex,
   skinTone,
-  shirtText,
   crestUrl,
   jerseyNumber,
   clipId,
@@ -290,8 +448,10 @@ function FrontBody({
   faceDataUri: string;
   primary: string;
   secondary: string;
+  stripe: string;
+  pattern: string;
+  numberHex: string;
   skinTone: string;
-  shirtText: string;
   crestUrl: string | null | undefined;
   jerseyNumber: number | null | undefined;
   clipId: string;
@@ -301,6 +461,8 @@ function FrontBody({
 }) {
   const skin = `#${skinTone}`;
   const isCoach = outfit === 'coach';
+  const torsoClipId = `torsoFront_${clipId}`;
+  const patternId = `pat_front_${clipId}`;
 
   return (
     <>
@@ -371,17 +533,18 @@ function FrontBody({
         </>
       )}
 
-      {/* ── Torso: athletic V-taper. Top sits at the new shoulder line (y=114)
-          and is narrower so it blends cleanly with DiceBear's neck/collar
-          above. Bottom (62-138 = 76 px) matches the shorts width. ── */}
-      <path d="M 58 116 Q 58 114 62 114 L 138 114 Q 142 114 142 116 L 136 235 L 64 235 Z" fill={primary} />
-      {/* Side shadows for depth — sit fully inside the shirt edges */}
-      <path d="M 64 118 L 70 118 L 72 232 L 66 232 Z" fill="#000" opacity="0.14" />
-      <path d="M 130 118 L 136 118 L 134 232 L 128 232 Z" fill="#000" opacity="0.14" />
-      {/* Chest centerline shadow (subtle) */}
-      <path d="M 99 132 L 101 132 L 101 230 L 99 230 Z" fill="#000" opacity={isCoach ? 0.35 : 0.07} />
-      {/* Shirt hem */}
-      <line x1="62" y1="234" x2="138" y2="234" stroke="#000" strokeWidth="1" opacity="0.18" />
+      {/* ── Torso: athletic V-taper. TorsoPaint clips an internal pattern
+          (stripes/bicolor) to the torso shape so non-solid kits read clearly.
+          Top sits at the new shoulder line (y=114) and is narrower so it
+          blends cleanly with DiceBear's neck/collar above. ── */}
+      <TorsoPaint
+        primary={primary}
+        stripe={stripe}
+        pattern={pattern}
+        isCoach={isCoach}
+        patternId={patternId}
+        torsoClipId={torsoClipId}
+      />
 
       {/* ── Coach-only lapels hinting at a blazer silhouette ── */}
       {isCoach && (
@@ -407,7 +570,7 @@ function FrontBody({
 
       {!isCoach && jerseyNumber != null && (
         <text x="116" y="158" textAnchor="middle" fontFamily="Arial Black, sans-serif"
-              fontWeight="900" fontSize="18" fill={shirtText}>
+              fontWeight="900" fontSize="18" fill={numberHex}>
           {jerseyNumber}
         </text>
       )}
@@ -447,25 +610,33 @@ function BackBody({
   appearance,
   primary,
   secondary,
-  shirtText,
+  stripe,
+  pattern,
+  numberHex,
   playerName,
   jerseyNumber,
   crestUrl,
   outfit,
+  clipId,
 }: {
   appearance: PlayerAppearance;
   primary: string;
   secondary: string;
-  shirtText: string;
+  stripe: string;
+  pattern: string;
+  numberHex: string;
   playerName: string | null | undefined;
   jerseyNumber: number | null | undefined;
   crestUrl: string | null | undefined;
   outfit: AvatarOutfit;
+  clipId: string;
 }) {
   const skin = `#${appearance.skinTone}`;
   const hair = `#${appearance.hairColor}`;
   const isBald = appearance.hair === 'noHair';
   const isCoach = outfit === 'coach';
+  const torsoClipId = `torsoBack_${clipId}`;
+  const patternId = `pat_back_${clipId}`;
   const isLong = appearance.hair.startsWith('straight')
     || appearance.hair === 'longButNotTooLong'
     || appearance.hair === 'curly'
@@ -535,10 +706,16 @@ function BackBody({
         </>
       )}
 
-      {/* ── Torso (same as front so toggling reads coherent) ── */}
-      <path d="M 58 116 Q 58 114 62 114 L 138 114 Q 142 114 142 116 L 136 235 L 64 235 Z" fill={primary} />
-      <path d="M 64 118 L 70 118 L 72 232 L 66 232 Z" fill="#000" opacity="0.14" />
-      <path d="M 130 118 L 136 118 L 134 232 L 128 232 Z" fill="#000" opacity="0.14" />
+      {/* ── Torso (same as front so toggling reads coherent). TorsoPaint
+          handles solid/striped/bicolor kits. ── */}
+      <TorsoPaint
+        primary={primary}
+        stripe={stripe}
+        pattern={pattern}
+        isCoach={isCoach}
+        patternId={patternId}
+        torsoClipId={torsoClipId}
+      />
       {/* Collar/yoke shadow line on the back */}
       <path d="M 80 114 Q 100 122 120 114 L 118 118 Q 100 126 82 118 Z" fill="#000" opacity="0.22" />
       {/* Coach-only back center seam */}
@@ -554,7 +731,7 @@ function BackBody({
           fontWeight="900"
           fontSize="11"
           letterSpacing="0.5"
-          fill={shirtText}
+          fill={numberHex}
           textLength={Math.min(80, shirtBackName.length * 8)}
           lengthAdjust="spacingAndGlyphs"
         >
@@ -564,7 +741,7 @@ function BackBody({
 
       {!isCoach && jerseyNumber != null && (
         <text x="100" y="190" textAnchor="middle" fontFamily="Arial Black, sans-serif"
-              fontWeight="900" fontSize="42" fill={shirtText}>
+              fontWeight="900" fontSize="42" fill={numberHex}>
           {jerseyNumber}
         </text>
       )}
