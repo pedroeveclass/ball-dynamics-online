@@ -5,6 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Verbose per-action / per-player engine logs are gated behind this flag.
+// Default OFF in prod (cuts ~14 logs/tick → ~2 logs/tick, removes string-format
+// overhead and Logflare ingestion pressure). Flip on via Supabase secret:
+//   supabase secrets set LOG_VERBOSE_ENGINE=1
+// Always-on logs preserved: errors, [TICK-PERF], match lifecycle, goals,
+// halftime/seeding, token-stolen, chaining trace.
+const LOG_VERBOSE = (() => {
+  try { return Deno.env.get('LOG_VERBOSE_ENGINE') === '1'; }
+  catch { return false; }
+})();
+
 const PHASE_DURATION_MS = 7000;
 const POSITIONING_PHASE_DURATION_MS = 7000;
 const RESOLUTION_PHASE_DURATION_MS = 2000; // 2s for client animation
@@ -649,22 +660,22 @@ function getGoalkeeperIdsByClub(
 // ─── Enrich participants with slot_position ──────────────────
 async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[], formationByClub?: Record<string, string>): Promise<any[]> {
   const slotIds = participants.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
-  const { data: slots } = slotIds.length > 0
-    ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
-    : { data: [] };
-  const slotMap = new Map<string, string>((slots || []).map((s: any) => [s.id, s.slot_position]));
-
-  // Also load player profiles for primary_position fallback + name + secondary_position (for positional penalty)
   const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
-  let profilePosMap = new Map<string, string>();
-  let profileSecondaryPosMap = new Map<string, string | null>();
-  let profileNameMap = new Map<string, string>();
-  if (profileIds.length > 0) {
-    const { data: profiles } = await supabase.from('player_profiles').select('id, primary_position, secondary_position, full_name').in('id', profileIds);
-    profilePosMap = new Map((profiles || []).map((p: any) => [p.id, p.primary_position]));
-    profileSecondaryPosMap = new Map((profiles || []).map((p: any) => [p.id, p.secondary_position]));
-    profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.full_name]));
-  }
+
+  // Parallel fetch: lineup_slots + player_profiles (independent queries).
+  // Was sequential, costing ~100-300ms on the hot path.
+  const [slotsRes, profilesRes] = await Promise.all([
+    slotIds.length > 0
+      ? supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
+      : Promise.resolve({ data: [] }),
+    profileIds.length > 0
+      ? supabase.from('player_profiles').select('id, primary_position, secondary_position, full_name').in('id', profileIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const slotMap = new Map<string, string>((slotsRes.data || []).map((s: any) => [s.id, s.slot_position]));
+  const profilePosMap = new Map<string, string>((profilesRes.data || []).map((p: any) => [p.id, p.primary_position]));
+  const profileSecondaryPosMap = new Map<string, string | null>((profilesRes.data || []).map((p: any) => [p.id, p.secondary_position]));
+  const profileNameMap = new Map<string, string>((profilesRes.data || []).map((p: any) => [p.id, p.full_name]));
 
   const gkIdByClub = getGoalkeeperIdsByClub(participants, slotMap, profilePosMap);
 
@@ -747,6 +758,54 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     }
   }
   return result;
+}
+
+// Build a cross-tick skeleton with only IMMUTABLE-during-match fields.
+// Used to skip the lineup_slots + player_profiles SELECTs in
+// enrichParticipantsWithSlotPosition on subsequent ticks.
+function buildParticipantSkeleton(enriched: any[]): any[] {
+  return enriched.map((p) => ({
+    id: p.id,
+    club_id: p.club_id,
+    player_profile_id: p.player_profile_id,
+    lineup_slot_id: p.lineup_slot_id,
+    jersey_number: p.jersey_number ?? null,
+    is_bot: p.is_bot ?? false,
+    player_name: p.player_name ?? null,
+    _slot_position: p._slot_position ?? null,
+    _editor_slot_position: p._editor_slot_position ?? null,
+    _player_name: p._player_name ?? null,
+    _primary_position: p._primary_position ?? null,
+    _secondary_position: p._secondary_position ?? null,
+    slot_position: p.slot_position ?? null,
+  }));
+}
+
+// Merge cross-tick skeleton with this tick's volatile fetch (pos_x/pos_y,
+// is_sent_off, role_type, match_energy). Returns null if any volatile row
+// references an unknown participant — caller must fall through to slow path
+// (e.g., a new bot was inserted mid-match).
+function hydrateParticipantsFromSkeleton(
+  skeleton: any[],
+  freshVolatile: Array<{ id: string; pos_x: number | null; pos_y: number | null;
+                         is_sent_off: boolean | null; role_type: string;
+                         match_energy: number | null }>,
+): any[] | null {
+  const skMap = new Map(skeleton.map((p: any) => [p.id, p]));
+  const merged: any[] = [];
+  for (const fresh of freshVolatile) {
+    const sk = skMap.get(fresh.id);
+    if (!sk) return null; // skeleton stale; reload
+    merged.push({
+      ...sk,
+      pos_x: fresh.pos_x,
+      pos_y: fresh.pos_y,
+      is_sent_off: fresh.is_sent_off,
+      match_energy: fresh.match_energy,
+      role_type: fresh.role_type,
+    });
+  }
+  return merged;
 }
 
 // ─── GK detection helper (handles EN + PT-BR) ───────────────
@@ -2001,6 +2060,14 @@ interface TickCache {
   clubSettings?: { homeFormation: string; awayFormation: string };
   attrByProfile?: Record<string, any>;
   enrichedParticipants?: any[];
+  // Cross-tick skeleton: immutable fields per participant (id, club_id,
+  // player_profile_id, lineup_slot_id, jersey_number, is_bot, _slot_position,
+  // _editor_slot_position, _player_name, _primary_position, _secondary_position).
+  // Persisted in matches.engine_cache.enrichedSkeleton so subsequent ticks
+  // skip the 2 SELECTs + slot-mapping work in enrichParticipantsWithSlotPosition.
+  // pos_x/pos_y/role_type/is_sent_off/match_energy stay volatile and are
+  // re-fetched per tick. Invalidated when a fresh participant_id is unknown.
+  enrichedSkeleton?: any[];
   lineupRoles?: { home: any | null; away: any | null };
   coachBonuses?: { home: CoachBonus[]; away: CoachBonus[] };
   situationalTactics?: SituCache;
@@ -3053,9 +3120,20 @@ async function generateBotActions(
   }
 
   if (actions.length > 0) {
+    // Stamp created_at locally so callers that consume the returned array
+    // (skipping the re-SELECT in ball_holder phase) get correct sort order
+    // alongside human-submitted actions. Server may overwrite with its
+    // generated_at default, but the local copy stays consistent for this tick.
+    const now = new Date().toISOString();
+    for (const a of actions) {
+      if (!(a as any).created_at) (a as any).created_at = now;
+    }
     await supabase.from('match_actions').insert(actions);
-    console.log(`[ENGINE] Bot tactical AI generated ${actions.length} actions for phase ${phase}`);
+    if (LOG_VERBOSE) console.log(`[ENGINE] Bot tactical AI generated ${actions.length} actions for phase ${phase}`);
   }
+  // Return the generated actions so the caller can append to its in-memory
+  // action set instead of re-SELECTing match_actions after bot generation.
+  return actions;
 }
 type Phase = typeof PHASES[number];
 
@@ -3181,7 +3259,7 @@ function computeDeviation(
     const delta = prevMoveRatio - 0.70;
     const moveMultiplier = 1 + delta * 0.30; // moveRatio=0 → 0.79x, 1 → 1.09x
     deviationRadius *= moveMultiplier;
-    console.log(`[ENGINE] Deviation prev-move adjust: prevMoveRatio=${prevMoveRatio.toFixed(2)} multiplier=${moveMultiplier.toFixed(3)}`);
+    if (LOG_VERBOSE) console.log(`[ENGINE] Deviation prev-move adjust: prevMoveRatio=${prevMoveRatio.toFixed(2)} multiplier=${moveMultiplier.toFixed(3)}`);
   }
 
   const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || isHeaderShootType(actionType);
@@ -3232,7 +3310,7 @@ function computeDeviation(
 
   const deviationDist = Math.sqrt((actualX - targetX) ** 2 + (actualY - targetY) ** 2);
 
-  console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal} shotOutcome=${shotOutcome || 'n/a'} lateral=${isShot}`);
+  if (LOG_VERBOSE) console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal} shotOutcome=${shotOutcome || 'n/a'} lateral=${isShot}`);
 
   return { actualX, actualY, deviationDist, overGoal, shotOutcome };
 }
@@ -3595,7 +3673,7 @@ function computeInterceptSuccess(
     }
   }
 
-  console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} foul=${foul} card=${card || 'none'} zone=${ballHeightZone || 'green'}`);
+  if (LOG_VERBOSE) console.log(`[ENGINE] Intercept ${context.type}: defSkill=${defenderSkill.toFixed(2)} atkSkill=${attackerSkill.toFixed(2)} chance=${(successChance*100).toFixed(1)}% roll=${roll.toFixed(3)} success=${success} foul=${foul} card=${card || 'none'} zone=${ballHeightZone || 'green'}`);
   return { success, chance: successChance, foul, card };
 }
 
@@ -3685,7 +3763,7 @@ function resolveDispute(
   const roll = Math.random();
   const winner = roll < attackerChance ? 'attacker' : 'defender';
 
-  console.log(`[ENGINE] Dispute: atkSkill=${atkSkill.toFixed(2)} defSkill=${defSkill.toFixed(2)} atkChance=${(attackerChance*100).toFixed(0)}% roll=${roll.toFixed(3)} winner=${winner}`);
+  if (LOG_VERBOSE) console.log(`[ENGINE] Dispute: atkSkill=${atkSkill.toFixed(2)} defSkill=${defSkill.toFixed(2)} atkChance=${(attackerChance*100).toFixed(0)}% roll=${roll.toFixed(3)} winner=${winner}`);
 
   return { winner, chance: attackerChance };
 }
@@ -3830,7 +3908,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
                 },
               });
             }
-            console.log(`[ENGINE] Dispute resolved: ${finalWinner === 'attacker' ? 'ATK' : 'DEF'} goes first (header bonus: atk=${atkIsHeader} def=${defIsHeader})`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] Dispute resolved: ${finalWinner === 'attacker' ? 'ATK' : 'DEF'} goes first (header bonus: atk=${atkIsHeader} def=${defIsHeader})`);
             disputeHandled = true;
           }
         }
@@ -3856,7 +3934,7 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       else if (t > 0.05 && t < 0.95) ballHeightZone = 'yellow';
     }
     if (ballHeightZone === 'red') {
-      console.log(`[ENGINE] Intercept skipped (red zone): ball too high at t=${t.toFixed(2)}`);
+      if (LOG_VERBOSE) console.log(`[ENGINE] Intercept skipped (red zone): ball too high at t=${t.toFixed(2)}`);
       continue;
     }
     const defHeight = getPlayerHeight(candidate.participant);
@@ -4052,7 +4130,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
     // Tackle cooldown: players who failed a tackle last turn cannot tackle this turn
     // Tackle context = ball holder is moving (dribbling) and opponent is contesting
     if (tackleBlockedIds && tackleBlockedIds.has(a.participant_id) && bhActionType === 'move' && actionParticipant && actionParticipant.club_id !== possClubId) {
-      console.log(`[ENGINE] Tackle blocked by cooldown: player ${a.participant_id.slice(0,8)} failed tackle last turn`);
+      if (LOG_VERBOSE) console.log(`[ENGINE] Tackle blocked by cooldown: player ${a.participant_id.slice(0,8)} failed tackle last turn`);
       continue;
     }
 
@@ -4062,7 +4140,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
       const posY = Number(actionParticipant.pos_y ?? 50);
       const distToBallOrigin = Math.sqrt((posX - startX) ** 2 + (posY - startY) ** 2);
       if (distToBallOrigin < 10) {
-        console.log(`[ENGINE] Intercept rejected (free kick exclusion): player ${a.participant_id.slice(0,8)} dist=${distToBallOrigin.toFixed(1)} < 10 from ball origin`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected (free kick exclusion): player ${a.participant_id.slice(0,8)} dist=${distToBallOrigin.toFixed(1)} < 10 from ball origin`);
         continue;
       }
     }
@@ -4118,7 +4196,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           candidateMoveRatio = adjustedMaxRange > 0 ? Math.min(1, distToIntercept / adjustedMaxRange) : 0;
           // Range check: can the player physically reach the intercept point?
           if (distToIntercept > adjustedMaxRange) {
-            console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor}${isInterceptorGK ? ' GK_FULL_RANGE' : ''})`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor}${isInterceptorGK ? ' GK_FULL_RANGE' : ''})`);
             continue;
           }
           // Strict timing formula (same as the client's purple-circle check): the defender
@@ -4130,14 +4208,14 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           const TIMING_TOLERANCE = 0.5; // field % — absorbs grid-rounding / floating-point noise
           const timingRange = adjustedMaxRange * t + TIMING_TOLERANCE;
           if (distToIntercept > timingRange) {
-            console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected (timing): player ${interceptor.id} dist=${distToIntercept.toFixed(1)} > timingRange=${timingRange.toFixed(1)} (progress=${t.toFixed(2)})`);
             continue;
           }
         }
-        console.log(`[ENGINE] Intercept ACCEPTED: player ${a.participant_id.slice(0,8)} at t=${t.toFixed(2)} dist=${dist.toFixed(1)} intercept=(${cx.toFixed(1)},${cy.toFixed(1)}) moveRatio=${candidateMoveRatio.toFixed(2)}`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Intercept ACCEPTED: player ${a.participant_id.slice(0,8)} at t=${t.toFixed(2)} dist=${dist.toFixed(1)} intercept=(${cx.toFixed(1)},${cy.toFixed(1)}) moveRatio=${candidateMoveRatio.toFixed(2)}`);
         interceptors.push({ participant: participants.find((p: any) => p.id === a.participant_id), progress: t, interceptX: cx, interceptY: cy, moveRatio: candidateMoveRatio });
       } else {
-        console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected: t=${t.toFixed(2)} outside interceptable zones for ${bhActionType}`);
       }
     }
   }
@@ -4381,7 +4459,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
       // Threshold 2.65 mirrors the client's purple-circle proximity check so
       // "what I see is what happens" (circleRadiusField + INTERCEPT_RADIUS + 1).
       if (distToBall > 2.65) {
-        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball path (${distToBall.toFixed(2)} > 2.65)`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} target too far from ball path (${distToBall.toFixed(2)} > 2.65)`);
         continue;
       }
     }
@@ -4405,7 +4483,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
       const maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
       maxRangeForPlayer = maxRange;
       if (dist > maxRange + 0.5) { // small tolerance for floating point
-        console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Receive rejected: player ${participant.id.slice(0,8)} dist=${dist.toFixed(1)} > maxRange=${maxRange.toFixed(1)}`);
         continue;
       }
     }
@@ -4423,7 +4501,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
     if (tBallAtTarget != null && maxRangeForPlayer != null && maxRangeForPlayer > 0) {
       const tPlayer = dist / maxRangeForPlayer;
       if (tPlayer > tBallAtTarget + 0.15) {
-        console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} arrives at t=${tPlayer.toFixed(2)} but ball passes at t=${tBallAtTarget.toFixed(2)} (too late)`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Loose ball receive rejected: player ${participant.id.slice(0,8)} arrives at t=${tPlayer.toFixed(2)} but ball passes at t=${tBallAtTarget.toFixed(2)} (too late)`);
         continue;
       }
     }
@@ -4440,7 +4518,7 @@ function findLooseBallClaimer(allActions: any[], participants: any[], attrByProf
   ranked.sort((a, b) => a.distance - b.distance || a.createdAt - b.createdAt);
   const winner = ranked[0];
   if (winner.stationary) {
-    console.log(`[ENGINE] Stationary loose ball claimed by ${winner.participant.id.slice(0,8)} dist=${winner.distance.toFixed(2)}`);
+    if (LOG_VERBOSE) console.log(`[ENGINE] Stationary loose ball claimed by ${winner.participant.id.slice(0,8)} dist=${winner.distance.toFixed(2)}`);
   }
   return winner.participant;
 }
@@ -5366,6 +5444,8 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       ends_at: phaseEnd,
       status: 'active',
       set_piece_type: 'kickoff',
+      ball_x: KICKOFF_X,
+      ball_y: KICKOFF_Y,
     });
 
     await supabase.from('match_event_logs').insert({
@@ -5627,6 +5707,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ec.coachBonuses) tickCache.coachBonuses = ec.coachBonuses;
     if (ec.situationalTactics) tickCache.situationalTactics = ec.situationalTactics;
     if (ec.setPieceTactics) tickCache.setPieceTactics = ec.setPieceTactics;
+    if (Array.isArray(ec.enrichedSkeleton)) tickCache.enrichedSkeleton = ec.enrichedSkeleton;
   }
   // Set-piece-aware bot positioning: bots in this tick will pick the
   // user-configured Bola Parada layout when the active turn is a set-piece
@@ -5642,14 +5723,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   // ── Compute loose ball position if ball is loose (parallel with next phase queries) ──
   let looseBallPos: { x: number; y: number } | null = null;
   const isLooseBallTurn = !activeTurn.ball_holder_participant_id;
-  // Fire loose ball query early (will be awaited later)
-  // Only include event types that actually CARRY the ball position. Including types
-  // with null/empty payloads (e.g. loose_ball_phase, loose_ball_recovered,
-  // possession_change) and LIMIT 1 caused the engine to pick the most recent
-  // coord-less event and fall back to the stale original pass target — making the
-  // ball visibly teleport back to where the pass started on the second consecutive
-  // loose turn.
-  const looseBallEventsPromise = isLooseBallTurn
+
+  // Fast path: every match_turns INSERT now persists ball_x/ball_y. If the
+  // active turn already carries them, we skip both fallback queries entirely
+  // (saving ~50-200ms on every loose-ball tick).
+  if (isLooseBallTurn && activeTurn.ball_x != null && activeTurn.ball_y != null) {
+    looseBallPos = { x: Number(activeTurn.ball_x), y: Number(activeTurn.ball_y) };
+  }
+
+  // Fallback: legacy turns (resolved before ball_x/y was persisted on every
+  // path) need the event-log lookup. Only the SELECT that's actually needed
+  // is fired. Includes only event types that CARRY the ball position;
+  // including coord-less types (loose_ball_phase, loose_ball_recovered,
+  // possession_change) made the engine pick a stale original pass target.
+  const looseBallEventsPromise = (isLooseBallTurn && !looseBallPos)
     ? supabase.from('match_event_logs')
         .select('event_type, payload, body')
         .eq('match_id', match_id)
@@ -5660,8 +5747,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   // Helper to resolve loose ball position (called when needed)
   const resolveLooseBallPos = async () => {
-    if (!isLooseBallTurn) return;
-    const { data: lastEvents } = await looseBallEventsPromise!;
+    if (!isLooseBallTurn || looseBallPos) return; // fast-path already covered it
+    if (!looseBallEventsPromise) return;
+    const { data: lastEvents } = await looseBallEventsPromise;
     if (lastEvents && lastEvents.length > 0) {
       const evt = lastEvents[0];
       const payload = evt.payload as any;
@@ -5689,34 +5777,52 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         looseBallPos = { x: Number(prevActions[0].target_x), y: Number(prevActions[0].target_y) };
       }
     }
-    if (looseBallPos) console.log(`[ENGINE] Loose ball position: (${looseBallPos.x.toFixed(1)}, ${looseBallPos.y.toFixed(1)})`);
+    if (LOG_VERBOSE && looseBallPos) console.log(`[ENGINE] Loose ball position: (${looseBallPos.x.toFixed(1)}, ${looseBallPos.y.toFixed(1)})`);
   };
 
   // ── POSITIONING PHASES ──
   if (isPositioningPhase(activeTurn.phase)) {
-    // Load participants, actions, and loose ball position in parallel
+    // Three-tier participant load (mirror of the resolution/ball_holder path):
+    // skeleton → tickCache → slow path. See the longer comment below the
+    // positioning block for invariants.
+    const fastSourcePos = tickCache.enrichedParticipants ?? tickCache.enrichedSkeleton ?? null;
     const [participantsResult, actionsResult] = await Promise.all([
-      tickCache.enrichedParticipants
-        ? supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off').eq('match_id', match_id).eq('role_type', 'player')
-        : supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
+      fastSourcePos
+        ? supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off, match_energy, role_type').eq('match_id', match_id).eq('role_type', 'player')
+        : supabase.from('match_participants').select('*').eq('match_id', match_id),
       supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending').order('created_at', { ascending: false }),
     ]);
     await resolveLooseBallPos();
-    let participants: any[];
-    if (tickCache.enrichedParticipants) {
-      const posMap = new Map((participantsResult.data || []).map((p: any) => [p.id, p]));
-      participants = tickCache.enrichedParticipants.map((p: any) => {
-        const fresh: any = posMap.get(p.id);
-        return fresh ? { ...p, pos_x: fresh.pos_x, pos_y: fresh.pos_y, is_sent_off: fresh.is_sent_off } : p;
-      });
-    } else {
+    let participants: any[] = [];
+    if (fastSourcePos) {
+      const merged = hydrateParticipantsFromSkeleton(fastSourcePos as any[], (participantsResult.data || []) as any[]);
+      if (merged) {
+        participants = merged;
+        tickCache.enrichedParticipants = participants;
+      } else {
+        // Skeleton stale; reload with all participants.
+        tickCache.enrichedSkeleton = undefined;
+        tickCache.enrichedParticipants = undefined;
+      }
+    }
+    if (participants.length === 0 && !tickCache.enrichedParticipants) {
+      // Slow path: re-fetch ALL participants (incl. bench) for skeleton building.
+      const { data: rawAllPos } = fastSourcePos
+        ? await supabase.from('match_participants').select('*').eq('match_id', match_id)
+        : { data: participantsResult.data };
       const formByClub: Record<string, string> = {};
       if (tickCache.clubSettings) {
         formByClub[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
         formByClub[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
       }
-      participants = await enrichParticipantsWithSlotPosition(supabase, participantsResult.data || [], formByClub);
+      const enrichedAll = await enrichParticipantsWithSlotPosition(supabase, rawAllPos || [], formByClub);
+      participants = enrichedAll.filter((p: any) => p.role_type === 'player');
       tickCache.enrichedParticipants = participants;
+      tickCache.enrichedSkeleton = buildParticipantSkeleton(enrichedAll);
+      supabase.rpc('cache_engine_skeleton', {
+        p_match_id: match_id,
+        p_skeleton: tickCache.enrichedSkeleton,
+      }).then(() => {}).catch((e: any) => console.error('[ENGINE] cache_engine_skeleton failed:', e));
     }
     const rawActions = actionsResult.data;
     mark('pos_participants');
@@ -5836,7 +5942,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       targetY = Math.max(1, Math.min(99, targetY));
 
       positioningBatch.push({ id: part.id, x: targetX, y: targetY });
-      console.log(`[ENGINE] Positioning move: ${part.id.slice(0,8)} → (${targetX.toFixed(1)},${targetY.toFixed(1)})`);
+      if (LOG_VERBOSE) console.log(`[ENGINE] Positioning move: ${part.id.slice(0,8)} → (${targetX.toFixed(1)},${targetY.toFixed(1)})`);
     }
     if (positioningBatch.length > 0) {
       await supabase.rpc('batch_update_participant_positions', { p_updates: positioningBatch });
@@ -5882,7 +5988,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       const exclusionUpdates: Array<{ id: string; pos_x: number; pos_y: number }> = [];
       const setPiece = activeTurn.set_piece_type;
-      console.log(`[ENGINE] Exclusion zone check: setPiece=${setPiece} possClub=${possClubId} players=${(allParts || []).length}`);
+      if (LOG_VERBOSE) console.log(`[ENGINE] Exclusion zone check: setPiece=${setPiece} possClub=${possClubId} players=${(allParts || []).length}`);
 
       if (setPiece === 'kickoff') {
         // Kickoff: opposing team must stay out of center circle (10 units from center)
@@ -6008,7 +6114,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         await Promise.all(exclusionUpdates.map(u =>
           supabase.from('match_participants').update({ pos_x: u.pos_x, pos_y: u.pos_y }).eq('id', u.id)
         ));
-        console.log(`[ENGINE] Exclusion zone enforcement: moved ${exclusionUpdates.length} players`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Exclusion zone enforcement: moved ${exclusionUpdates.length} players`);
       }
 
       // Capture the BH's final position (post-positioning + post-exclusion) so
@@ -6051,17 +6157,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     await Promise.all([
       actionIds.length > 0 ? supabase.from('match_actions').update({ status: 'used' }).in('id', actionIds) : Promise.resolve(),
-      supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id),
-      supabase.from('match_turns').insert({
-        match_id, turn_number: activeTurn.turn_number,
-        phase: nextPhase,
-        possession_club_id: possClubId,
-        ball_holder_participant_id: bhId,
-        started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-        status: 'active',
-        set_piece_type: activeTurn.set_piece_type ?? null,
-        ball_x: ballHolderPersistX,
-        ball_y: ballHolderPersistY,
+      // Atomic phase advance (single round-trip).
+      supabase.rpc('advance_match_phase', {
+        p_match_id: match_id,
+        p_next_phase: nextPhase,
+        p_turn_number: activeTurn.turn_number,
+        p_possession_club_id: possClubId,
+        p_ball_holder_participant_id: bhId,
+        p_started_at: nextPhaseStart,
+        p_ends_at: nextPhaseEnd,
+        p_set_piece_type: activeTurn.set_piece_type ?? null,
+        p_ball_x: ballHolderPersistX,
+        p_ball_y: ballHolderPersistY,
       }),
       supabase.from('match_event_logs').insert({
         match_id, event_type: 'positioning',
@@ -6075,52 +6182,77 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     return { status: 'advanced' };
   }
 
-  // Parallelize: load participants + turnRows + looseBallPos simultaneously
+  // Parallelize: load participants + turnRows + looseBallPos simultaneously.
+  //
+  // Three-tier participant load:
+  //   (1) `tickCache.enrichedSkeleton`   — cross-tick cache from engine_cache
+  //                                        (immutable fields; volatile re-fetched).
+  //   (2) `tickCache.enrichedParticipants` — set by a prior path within this tick.
+  //   (3) Slow path                       — full SELECT + enrichParticipants.
+  //
+  // Volatile fetch returns role_type='player' rows only with the per-tick fields
+  // (pos_x/pos_y/is_sent_off/match_energy/role_type). Substitution is handled
+  // because the skeleton stores ALL participants (including bench), so the
+  // incoming substitute is found in the skeleton when the volatile fetch
+  // surfaces them as role_type='player'. If a fresh row's id is unknown to
+  // the skeleton (e.g., new bot inserted mid-match), `hydrateParticipantsFromSkeleton`
+  // returns null and we fall through to the slow path.
   const isResolution = activeTurn.phase === 'resolution';
   let participants: any[];
+  let turnRowsResult: any = null;
 
-  if (tickCache.enrichedParticipants) {
+  const fastSource = tickCache.enrichedParticipants ?? tickCache.enrichedSkeleton ?? null;
+  if (fastSource) {
     const [{ data: freshParts }, turnRowsRes] = await Promise.all([
-      supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off').eq('match_id', match_id).eq('role_type', 'player') as Promise<{ data: any[] | null }>,
+      supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off, match_energy, role_type').eq('match_id', match_id).eq('role_type', 'player') as Promise<{ data: any[] | null }>,
       isResolution
         ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
         : Promise.resolve({ data: null }),
     ]) as [{ data: any[] | null }, any];
     await resolveLooseBallPos();
-    var turnRowsResult: any = turnRowsRes;
-    const posMap = new Map((freshParts || []).map((p: any) => [p.id, p]));
-    participants = tickCache.enrichedParticipants.map((p: any) => {
-      const fresh = posMap.get(p.id);
-      return fresh ? { ...p, pos_x: fresh.pos_x, pos_y: fresh.pos_y, is_sent_off: fresh.is_sent_off } : p;
-    });
+    turnRowsResult = turnRowsRes;
+    const merged = hydrateParticipantsFromSkeleton(fastSource as any[], (freshParts || []) as any[]);
+    if (merged) {
+      participants = merged;
+      tickCache.enrichedParticipants = participants;
+    } else {
+      // Skeleton stale (unknown participant in fresh fetch). Drop and re-enrich.
+      tickCache.enrichedSkeleton = undefined;
+      tickCache.enrichedParticipants = undefined;
+      participants = [];
+    }
   } else {
-    const [{ data: rawParticipants2 }, turnRowsRes] = await Promise.all([
-      supabase.from('match_participants').select('*').eq('match_id', match_id).eq('role_type', 'player'),
-      isResolution
+    participants = [];
+  }
+
+  if (participants.length === 0 && !tickCache.enrichedParticipants) {
+    // Slow path: load all participants (incl. bench) and enrich. This runs
+    // exactly once per match lifetime in the steady state.
+    const [{ data: rawAllParticipants }, turnRowsRes2] = await Promise.all([
+      supabase.from('match_participants').select('*').eq('match_id', match_id),
+      (isResolution && !turnRowsResult)
         ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
         : Promise.resolve({ data: null }),
     ]);
-    await resolveLooseBallPos();
-    var turnRowsResult: any = turnRowsRes;
-    if (isResolution) {
-      // Full enrichment only needed for resolution (slot positions, etc.)
-      const formByClub2: Record<string, string> = {};
-      if (tickCache.clubSettings) {
-        formByClub2[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
-        formByClub2[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
-      }
-      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || [], formByClub2);
-      tickCache.enrichedParticipants = participants;
-    } else {
-      // Non-resolution phases also need enrichment for bot AI to know slot_position
-      const formByClub3: Record<string, string> = {};
-      if (tickCache.clubSettings) {
-        formByClub3[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
-        formByClub3[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
-      }
-      participants = await enrichParticipantsWithSlotPosition(supabase, rawParticipants2 || [], formByClub3);
-      tickCache.enrichedParticipants = participants;
+    if (!turnRowsResult) {
+      await resolveLooseBallPos();
+      turnRowsResult = turnRowsRes2;
     }
+    const formByClub: Record<string, string> = {};
+    if (tickCache.clubSettings) {
+      formByClub[match.home_club_id] = tickCache.clubSettings.homeFormation || '4-4-2';
+      formByClub[match.away_club_id] = tickCache.clubSettings.awayFormation || '4-4-2';
+    }
+    const enrichedAll = await enrichParticipantsWithSlotPosition(supabase, rawAllParticipants || [], formByClub);
+    participants = enrichedAll.filter((p: any) => p.role_type === 'player');
+    tickCache.enrichedParticipants = participants;
+    // Persist immutable skeleton (covers all participants, robust to substitution)
+    // async so the slow path doesn't pay a write round-trip on the hot path.
+    tickCache.enrichedSkeleton = buildParticipantSkeleton(enrichedAll);
+    supabase.rpc('cache_engine_skeleton', {
+      p_match_id: match_id,
+      p_skeleton: tickCache.enrichedSkeleton,
+    }).then(() => {}).catch((e: any) => console.error('[ENGINE] cache_engine_skeleton failed:', e));
   }
   _partsCount = participants?.length ?? 0;
   mark('participants');
@@ -6173,7 +6305,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const { data: nrActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
     nonResolutionActions = nrActions || [];
     const submittedParticipantIds = new Set<string>((nonResolutionActions || []).map((a: any) => a.participant_id));
-    await generateBotActions(
+    const newBotActions = await generateBotActions(
       supabase,
       match_id,
       activeTurn.id,
@@ -6188,10 +6320,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       activeTurn.set_piece_type,
       looseBallPos,
     );
-    // Refresh actions after bot generation to include newly created bot actions (needed for early deviation)
-    if (activeTurn.phase === 'ball_holder') {
-      const { data: refreshedActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
-      nonResolutionActions = refreshedActions || [];
+    // Append newly-generated bot actions in-memory instead of doing a second
+    // SELECT (which used to dominate ball_holder ticks). Skipped on every
+    // phase except ball_holder because that's the only place early-deviation
+    // reads nonResolutionActions downstream — adding bot actions to other
+    // phases is harmless but pointless.
+    if (activeTurn.phase === 'ball_holder' && Array.isArray(newBotActions) && newBotActions.length > 0) {
+      nonResolutionActions = [...(nonResolutionActions || []), ...newBotActions];
     }
     mark('bots_nonres');
   }
@@ -6221,7 +6356,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   let initialBallPos: { x: number; y: number } | null = null;
 
   if (isResolution) {
-    console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
+    if (LOG_VERBOSE) console.log(`[ENGINE] Resolution phase: turn=${match.current_turn_number} ballHolder=${activeTurn.ball_holder_participant_id?.slice(0,8) ?? 'NONE'} possession=${possClubId?.slice(0,8) ?? 'NONE'}`);
     for (const p of (participants || [])) {
       if (p.pos_x == null || p.pos_y == null) continue;
       initialPositions[p.id] = { x: Number(p.pos_x), y: Number(p.pos_y) };
@@ -6521,7 +6656,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           // "Chute para fora!" title when isOverGoal is true). Emitting shot_over
           // here on top of that produced duplicate "por cima" entries in MatchFlow.
         } else {
-          console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
+          if (LOG_VERBOSE) console.log(`[ENGINE] Deviation already applied at phase transition, using stored values`);
         }
       }
     }
@@ -6602,11 +6737,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
       }
       if (tackleBlockedIds.size > 0) {
-        console.log(`[ENGINE] Tackle cooldown active for ${tackleBlockedIds.size} players`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Tackle cooldown active for ${tackleBlockedIds.size} players`);
       }
     }
 
-    console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction} inertia=${prevMoveDirMap.size} players`);
+    if (LOG_VERBOSE) console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction} inertia=${prevMoveDirMap.size} players`);
     const resolutionMoveBatch: Array<{id: string, x: number, y: number}> = [];
     // Accumulate per-action JSONB patches and flush once at the end of the
     // movement loop (single RPC) instead of N sequential `merge_match_action_payload`
@@ -6614,11 +6749,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // turned this loop into the dominant tick cost (~5.5s of res_motion).
     const movePayloadPatches: Array<{ action_id: string; patch: Record<string, unknown> }> = [];
     for (const a of allActions) {
-      console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
+      if (LOG_VERBOSE) console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
       if ((a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null) {
         // Skip ball holder's move if they have a ball action — defer it after ball resolution
         if (a.participant_id === ballHolder?.id && a.action_type === 'move' && bhHasBallAction) {
-          console.log(`[ENGINE] Deferring BH move until after ball resolution`);
+          if (LOG_VERBOSE) console.log(`[ENGINE] Deferring BH move until after ball resolution`);
           continue;
         }
         const part = (participants || []).find(p => p.id === a.participant_id);
@@ -6710,7 +6845,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           finalY = startY + dy * scale;
         }
 
-        console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} dirMult=${dirMultiplier.toFixed(2)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} dirMult=${dirMultiplier.toFixed(2)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
         resolutionMoveBatch.push({ id: a.participant_id, x: finalX, y: finalY });
 
@@ -7030,7 +7165,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 shooter_name: (ballHolder as any)?._player_name ?? null,
               },
             });
-            console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
           }
         } else if (result.looseBallPos) {
           // Shot/pass blocked — ball deflects to a position near the blocker
@@ -7512,7 +7647,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               offside_teammate_ids: teammateIds,
               pass_turn_number: match.current_turn_number ?? 1,
             };
-            console.log(`[ENGINE] offside_pending snapshot: passer=${ballHolder.id.slice(0,8)} offside_teammates=[${teammateIds.map(id => id.slice(0,8)).join(',')}]`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] offside_pending snapshot: passer=${ballHolder.id.slice(0,8)} offside_teammates=[${teammateIds.map(id => id.slice(0,8)).join(',')}]`);
           }
         }
       }
@@ -7664,7 +7799,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const inertiaDistance = dirLen * inertiaFactor;
         inertiaBallX = ballStartPos.x + normDirX * inertiaDistance;
         inertiaBallY = ballStartPos.y + normDirY * inertiaDistance;
-        if (deflectOverride) console.log(`[ENGINE] Inertia from DEFLECT: ${dirLen.toFixed(1)} * ${inertiaFactor} = ${inertiaDistance.toFixed(1)} in direction (${normDirX.toFixed(2)},${normDirY.toFixed(2)})`);
+        if (LOG_VERBOSE && deflectOverride) console.log(`[ENGINE] Inertia from DEFLECT: ${dirLen.toFixed(1)} * ${inertiaFactor} = ${inertiaDistance.toFixed(1)} in direction (${normDirX.toFixed(2)},${normDirY.toFixed(2)})`);
       }
       const inertiaEndPos = { x: inertiaBallX, y: inertiaBallY };
 
@@ -7895,7 +8030,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           bhFinalY = bhStartY + bhDy * scale;
         }
         bhDeferredMove = { id: ballHolder.id, pos_x: bhFinalX, pos_y: bhFinalY };
-        console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Deferred BH move applied: (${bhFinalX.toFixed(1)},${bhFinalY.toFixed(1)}) maxRange=${bhMaxRange.toFixed(1)}`);
       }
     }
 
@@ -7952,7 +8087,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         title: '', body: '',
         payload: { progress: interruptT, turn_number: match.current_turn_number },
       });
-      console.log(`[ENGINE] Interruption at T=${interruptT.toFixed(2)}: scaled ${resolutionMoveBatch.length} moves + BH deferred=${bhDeferredMove ? 'yes' : 'no'}`);
+      if (LOG_VERBOSE) console.log(`[ENGINE] Interruption at T=${interruptT.toFixed(2)}: scaled ${resolutionMoveBatch.length} moves + BH deferred=${bhDeferredMove ? 'yes' : 'no'}`);
     }
 
     if (bhDeferredMove) {
@@ -8218,7 +8353,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         }
         if (snapBatch.length > 0) {
           setPieceSnapUpdates.push(...snapBatch.map(b => ({ id: b.id, pos_x: b.x, pos_y: b.y })));
-          console.log(`[ENGINE] Set-piece (${nextSetPieceType}) snap: ${snapBatch.length} bots moved to situational target`);
+          if (LOG_VERBOSE) console.log(`[ENGINE] Set-piece (${nextSetPieceType}) snap: ${snapBatch.length} bots moved to situational target`);
         }
       }
     }
@@ -8279,57 +8414,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
     mark('res_energy');
 
-    // ── Save turn snapshot for replay ──
-    try {
-      const snapshotPlayers = (participants || []).filter((p: any) => p.role_type === 'player').map((p: any) => {
-        // Find this player's move action to get their final position
-        const moveAction = allActions.find((a: any) => a.participant_id === p.id && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block'));
-        const finalX = moveAction?.target_x != null ? Number(moveAction.target_x) : Number(p.pos_x ?? 50);
-        const finalY = moveAction?.target_y != null ? Number(moveAction.target_y) : Number(p.pos_y ?? 50);
-        return {
-          id: p.id,
-          club_id: p.club_id,
-          pos_x: finalX,
-          pos_y: finalY,
-          jersey_number: p.jersey_number || null,
-          player_name: p.player_name || null,
-          field_pos: p._slot_position || p.slot_position || null,
-          is_bot: p.is_bot,
-        };
-      });
-
-      // Get the ball position
-      const snapshotBallHolder = nextBallHolderParticipantId
-        ? snapshotPlayers.find((p: any) => p.id === nextBallHolderParticipantId)
-        : null;
-      const snapshotBallPos = snapshotBallHolder
-        ? { x: snapshotBallHolder.pos_x, y: snapshotBallHolder.pos_y }
-        : (ballEndPos || { x: 50, y: 50 });
-
-      // Get recent events for this turn
-      const { data: turnEvents } = await supabase
-        .from('match_event_logs')
-        .select('event_type, title, body')
-        .eq('match_id', match_id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      await supabase.from('match_snapshots').insert({
-        match_id,
-        turn_number: match.current_turn_number,
-        snapshot: {
-          players: snapshotPlayers,
-          ball: snapshotBallPos,
-          ball_holder_id: nextBallHolderParticipantId,
-          possession_club_id: newPossessionClubId,
-          home_score: homeScore,
-          away_score: awayScore,
-          events: (turnEvents || []).reverse(),
-        },
-      });
-    } catch (snapErr) {
-      console.error('[ENGINE] Snapshot save failed:', snapErr);
-    }
+    // ── match_snapshots: removed 2026-04-30 — table was dead code (never read).
+    // MatchReplayPage reads from match_turns.resolution_script (which holds
+    // initial/final positions, ball pos, events, ball_end_pos). Stats come from
+    // player_match_stats (computed on final_whistle). The INSERT was costing
+    // ~370ms avg (p95 639ms, max 10s) on the resolution hot path including a
+    // SELECT on match_event_logs that the engine already had in `eventsToLog`.
     mark('res_snapshot');
 
     const newTurnNumber = match.current_turn_number + 1;
@@ -8415,26 +8505,23 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       offside_pending: offsidePendingSnapshot,
     };
 
-    // Token-guarded resolve: bail if claim was stolen during long resolution.
-    const { data: resResolvedRows } = await supabase.from('match_turns')
-      .update({
-        status: 'resolved',
-        resolved_at: new Date().toISOString(),
-        resolution_script: resolutionScript,
-      })
-      .eq('id', activeTurn.id)
-      .eq('processing_token', processingToken)
-      .select('id');
-    if (!resResolvedRows || resResolvedRows.length === 0) {
+    // Atomic token-guarded resolve + event flush (single round-trip):
+    // resolve_turn_with_events runs the token-guarded UPDATE on match_turns
+    // and the INSERT into match_event_logs in the same Postgres transaction.
+    // The internal ordering preserves the existing invariant that event
+    // inserts only fire after the token-guarded resolve succeeds — a
+    // stolen-token tick still bails before any event row is appended.
+    const { data: resolveOut } = await supabase.rpc('resolve_turn_with_events', {
+      p_turn_id: activeTurn.id,
+      p_processing_token: processingToken,
+      p_resolution_script: resolutionScript,
+      p_events: eventsToLog,
+    });
+    const resolveRow = Array.isArray(resolveOut) ? resolveOut[0] : resolveOut;
+    if (!resolveRow || resolveRow.resolved !== true) {
       console.log(`[ENGINE] Token stolen on resolution end for turn ${activeTurn.id.slice(0,8)} — bailing`);
       tickExitStatus = 'skipped:token_stolen_on_resolve_end';
       return { status: 'skipped' };
-    }
-
-    // Token win confirmed → flush event logs now. Doing this AFTER the
-    // resolve update guarantees a stolen-token loser never inserts duplicates.
-    if (eventsToLog.length > 0) {
-      await supabase.from('match_event_logs').insert(eventsToLog);
     }
     mark(`res_events_flush:${eventsToLog.length}`);
 
@@ -8508,6 +8595,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         started_at: halftimeStart, ends_at: halftimeEnd,
         status: 'active',
         set_piece_type: 'kickoff',
+        ball_x: KICKOFF_X,
+        ball_y: KICKOFF_Y,
       });
 
       // Reset ready flags so players can re-check ready for the 2nd half start.
@@ -9133,15 +9222,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const nextPhaseStart = new Date().toISOString();
     const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
 
-    await supabase.from('matches').update({ current_phase: 'attacking_support' }).eq('id', match_id);
-
-    await supabase.from('match_turns').insert({
-      match_id, turn_number: activeTurn.turn_number,
-      phase: 'attacking_support',
-      possession_club_id: possClubId,
-      ball_holder_participant_id: null,
-      started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-      status: 'active',
+    // Atomic phase advance (single round-trip): UPDATE matches + INSERT match_turns.
+    // Carry ball_x/ball_y forward — this branch fires when the ball stays
+    // loose into attacking_support, so the next tick must read the same
+    // coords without an event-log scan.
+    await supabase.rpc('advance_match_phase', {
+      p_match_id: match_id,
+      p_next_phase: 'attacking_support',
+      p_turn_number: activeTurn.turn_number,
+      p_possession_club_id: possClubId,
+      p_ball_holder_participant_id: null,
+      p_started_at: nextPhaseStart,
+      p_ends_at: nextPhaseEnd,
+      p_set_piece_type: null,
+      p_ball_x: (activeTurn as any).ball_x ?? looseBallPos?.x ?? null,
+      p_ball_y: (activeTurn as any).ball_y ?? looseBallPos?.y ?? null,
     });
   } else {
     // ── Early deviation at ball_holder → attacking_support transition ──
@@ -9207,7 +9302,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome },
         }).eq('id', bhAction.id);
 
-        console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
+        if (LOG_VERBOSE) console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);
 
         // No event log here on purpose: the final outcome (goal/shot_missed) is logged
         // during resolution so the MatchFlow reads as "player shot → outcome". Emitting
@@ -9220,7 +9315,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const nextPhase = PHASES[currentPhaseIndex + 1] || 'resolution';
 
     const nextPhaseStart = new Date().toISOString();
-    const phaseDuration = nextPhase === 'resolution' ? RESOLUTION_PHASE_DURATION_MS : PHASE_DURATION_MS;
+    // Resolution phase used to chain synchronously in the same HTTP request,
+    // doubling defending_response tick time (p95 18s, max 89s on the hot
+    // sample). Now we INSERT the resolution turn with a SHORT ends_at
+    // (RESOLUTION_KICKOFF_DELAY_MS) so the next tick — driven by the client
+    // setTimeout right after MatchRoomPage receives the new match_turn row,
+    // with cron as 10s fallback — picks it up almost immediately. The
+    // server-authoritative `resolution_script` still drives client animation,
+    // and MatchRoomPage already waits up to MAX_WAIT_MS=5000 for it.
+    const RESOLUTION_KICKOFF_DELAY_MS = 200;
+    const phaseDuration = nextPhase === 'resolution'
+      ? RESOLUTION_KICKOFF_DELAY_MS
+      : PHASE_DURATION_MS;
     const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
 
     // Token-guarded resolve: only proceed if we still own the claim.
@@ -9237,38 +9343,38 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       return { status: 'skipped' };
     }
 
-    await supabase.from('matches').update({ current_phase: nextPhase }).eq('id', match_id);
-
-    await supabase.from('match_turns').insert({
-      match_id, turn_number: activeTurn.turn_number,
-      phase: nextPhase,
-      possession_club_id: possClubId,
-      ball_holder_participant_id: activeTurn.ball_holder_participant_id,
-      started_at: nextPhaseStart, ends_at: nextPhaseEnd,
-      status: 'active',
-      set_piece_type: activeTurn.set_piece_type ?? null,
+    // Atomic phase advance (single round-trip): UPDATE matches.current_phase
+    // + INSERT match_turns inside one transaction (RPC). Replaces 2 sequential
+    // queries that were ~200ms each on the hot path. Ball position is
+    // carried forward from the active turn so loose-ball turns can be
+    // re-hydrated without a match_event_logs scan.
+    await supabase.rpc('advance_match_phase', {
+      p_match_id: match_id,
+      p_next_phase: nextPhase,
+      p_turn_number: activeTurn.turn_number,
+      p_possession_club_id: possClubId,
+      p_ball_holder_participant_id: activeTurn.ball_holder_participant_id,
+      p_started_at: nextPhaseStart,
+      p_ends_at: nextPhaseEnd,
+      p_set_piece_type: activeTurn.set_piece_type ?? null,
+      p_ball_x: (activeTurn as any).ball_x ?? null,
+      p_ball_y: (activeTurn as any).ball_y ?? null,
     });
 
-    // ── Immediate resolution chaining ──
-    // When we just advanced from defending_response into resolution, run the
-    // resolution tick synchronously in the same HTTP round-trip. The
-    // resolution phase's timer (RESOLUTION_PHASE_DURATION_MS) becomes a pure
-    // animation window driven by the client's resolution_script consumer —
-    // the server no longer waits for it to expire before computing the
-    // outcome. Guarded so a recursion loop can't happen (resolution only
-    // chains from defending_response).
+    // Decoupled resolution (2026-04-30): the chained synchronous resolution
+    // tick was removed. The just-inserted resolution turn carries
+    // ends_at = NOW + RESOLUTION_KICKOFF_DELAY_MS, so:
+    //   • MatchRoomPage's setTimeout (msUntilExpiry + 300ms buffer) fires
+    //     `process_due_matches` with this match_id and the resolution tick
+    //     runs in a fresh HTTP request, isolated from the defending tick.
+    //   • If the tab is closed, the next 10s cron picks it up.
+    // The defending_response → resolution split previously paid for both
+    // ticks in a single HTTP round-trip, doubling its latency (p95 ~18s).
+    // After this change, defending_response returns as soon as it persists
+    // the next turn, and resolution runs on its own clock.
     if (nextPhase === 'resolution' && activeTurn.phase === 'defending_response') {
       mark('advance_persist');
-      try {
-        console.log(`[ENGINE] Chaining immediate resolution tick for match=${match_id.slice(0,8)} turn=${activeTurn.turn_number}`);
-        const chainedResult = await executeTickForMatch(supabase, match_id, true);
-        console.log(`[ENGINE] Chained resolution tick result: ${JSON.stringify(chainedResult)}`);
-        tickExitStatus = `advanced:${activeTurn.phase}+chained_resolution`;
-      } catch (chainErr) {
-        console.error('[ENGINE] Chained resolution tick failed:', chainErr);
-        tickExitStatus = `advanced:${activeTurn.phase}+chain_failed`;
-      }
-      mark('chained_resolution');
+      tickExitStatus = `advanced:${activeTurn.phase}+resolution_queued`;
       return { status: 'advanced' };
     }
   }
@@ -9675,7 +9781,7 @@ Deno.serve(async (req) => {
             const advancedEnd = new Date(Date.now() + 1000).toISOString();
             await supabase.from('match_turns').update({ ends_at: advancedEnd })
               .eq('id', activeTurn.id).eq('status', 'active');
-            console.log(`[ENGINE] Auto-advance: all ${expectedHumans.length} humans acted in ${phase}, skipping timer`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] Auto-advance: all ${expectedHumans.length} humans acted in ${phase}, skipping timer`);
           }
         }
       } catch (e) {
