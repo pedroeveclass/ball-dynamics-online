@@ -748,11 +748,23 @@ export default function MatchRoomPage() {
     // Bot actions are generated server-side when a phase expires. Showing them
     // before resolution causes a visual flash (bot arrow appearing then disappearing
     // when the human action arrives or the phase transitions).
-    // Only apply bot actions if we're in resolution phase or the phase is already over.
+    //
+    // BUT: we MUST allow UPDATES of an action that's already in our local list.
+    // The early-deviation step UPDATEs the BH bot's pass/shoot action at the
+    // ball_holder → attacking_support transition (overwriting target_x/target_y
+    // with the deviated values + payload.deviated=true). Treating that UPDATE
+    // as a fresh INSERT and skipping it leaves the client showing the
+    // pre-deviation arrow until resolution, which doesn't match what the engine
+    // will animate. Existing-id presence is the simplest UPDATE signal that
+    // doesn't require plumbing eventType through this callback.
     if (actionRow.controlled_by_type === 'bot') {
       const currentPhase = activeTurnRef.current?.phase;
-      if (currentPhase && currentPhase !== 'resolution') {
-        // Don't show bot actions during active phases — they'll appear during resolution
+      const isUpdateOfKnownAction = !!actionRow.id
+        && turnActionsRef.current.some(a => a.id === actionRow.id);
+      if (currentPhase && currentPhase !== 'resolution' && !isUpdateOfKnownAction) {
+        // Pure INSERT during an active phase: hide it so the human's action
+        // wins the visual until resolution. UPDATEs (e.g. early deviation)
+        // fall through and refresh the existing arrow in place.
         return;
       }
     }
