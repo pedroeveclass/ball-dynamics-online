@@ -1841,7 +1841,7 @@ export default function MatchRoomPage() {
         // player the manager didn't intend to control.
         const candidateId = selectedParticipantId || null;
         const candidate = candidateId ? parts.find(p => p.id === candidateId) : null;
-        if (candidate && candidate.role_type === 'player') {
+        if (candidate && candidate.role_type === 'player' && !candidate.is_sent_off) {
           const candidateIsAttacking = candidate.club_id === possClubId;
           const managerControlsCandidate = isTest || candidate.club_id === myClubId;
           const candidateShouldAct = isLooseBallTurn || isMergedOpen
@@ -1965,6 +1965,7 @@ export default function MatchRoomPage() {
         || null;
       const candidate = candidateId ? parts.find(p => p.id === candidateId) : null;
       if (!candidate || candidate.role_type !== 'player') return;
+      if (candidate.is_sent_off) return;
 
       const canControl = (myRole === 'player' && myParticipant?.id === candidate.id)
         || (myRole === 'manager' && (isTest || candidate.club_id === myClubId));
@@ -3181,7 +3182,10 @@ export default function MatchRoomPage() {
     const canControlInTest = isTest && myRole === 'manager';
     const canControlOwn = myRole === 'manager' && p.club_id === myClubId;
     const canControlSelf = myRole === 'player' && myParticipant?.id === participantId;
-    const isControllable = (canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player';
+    // A sent-off player can never be selected — neither the player themselves
+    // nor the manager. They stay rendered hidden on the field but produce no
+    // selection / no menu / no submittable action.
+    const isControllable = (canControlInTest || canControlOwn || canControlSelf) && p.role_type === 'player' && !p.is_sent_off;
 
     if (isControllable) {
       setSelectedParticipantId(participantId);

@@ -6796,6 +6796,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           continue;
         }
         const part = (participants || []).find(p => p.id === a.participant_id);
+        // Sent-off players cannot move or take any action; even if a stale
+        // client somehow submits one, the engine drops it here as a defence
+        // in depth (UI selection is already blocked client-side).
+        if (part?.is_sent_off) {
+          if (LOG_VERBOSE) console.log(`[ENGINE] Dropping action from sent-off player ${a.participant_id.slice(0,8)} (${a.action_type})`);
+          continue;
+        }
         const startX = Number(part?.pos_x ?? 50);
         const startY = Number(part?.pos_y ?? 50);
         let finalX = Number(a.target_x);
