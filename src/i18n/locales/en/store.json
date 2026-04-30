@@ -17,7 +17,9 @@
   },
   "header": {
     "title": "Store",
-    "subtitle": "Buy items to upgrade your players!"
+    "subtitle": "Buy items to upgrade your players!",
+    "your_balance": "Your balance",
+    "club_balance": "Club balance"
   },
   "states": {
     "loading": "Loading items...",

@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import {
   Store, ShoppingBag, Footprints, Zap, Shield, GraduationCap,
   Heart, Gift, CreditCard, Check, ShoppingCart, Package, XCircle, BatteryCharging,
-  AlertTriangle, RefreshCw, TrendingUp, TrendingDown,
+  AlertTriangle, RefreshCw, TrendingUp, TrendingDown, Wallet, Landmark,
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
 import { getStoreItemName, getStoreItemDescription } from '@/lib/storeItemLabel';
@@ -118,6 +118,9 @@ export default function StorePage() {
 
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
+  // Club balance for the manager view — comes from club_finances and is
+  // refetched whenever fetchData runs so a purchase reflects in the header.
+  const [clubBalance, setClubBalance] = useState<number | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -170,6 +173,18 @@ export default function StorePage() {
           item: itemMap.get(p.store_item_id),
         }))
       );
+    }
+
+    // Club balance for the manager — same source the finance page uses.
+    if (isManager && club?.id) {
+      const { data: fin } = await supabase
+        .from('club_finances')
+        .select('balance')
+        .eq('club_id', club.id)
+        .maybeSingle();
+      setClubBalance(typeof fin?.balance === 'number' ? Number(fin.balance) : null);
+    } else {
+      setClubBalance(null);
     }
 
     // Load team players for gift (manager only)
@@ -392,13 +407,42 @@ export default function StorePage() {
 
   const content = (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          <Store className="h-6 w-6 text-tactical" /> {t('header.title')}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {t('header.subtitle')}
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="font-display text-2xl font-bold flex items-center gap-2">
+            <Store className="h-6 w-6 text-tactical" /> {t('header.title')}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('header.subtitle')}
+          </p>
+        </div>
+        {/* Saldo card — player view shows their personal money; manager view
+            shows the club balance (which is what funds the gift purchases). */}
+        {isManager ? (
+          <div className="rounded-lg border border-tactical/30 bg-tactical/5 px-4 py-2.5 flex items-center gap-2.5 shrink-0">
+            <Landmark className="h-4 w-4 text-tactical" />
+            <div className="text-right leading-tight">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                {t('header.club_balance', { defaultValue: 'Saldo do clube' })}
+              </p>
+              <p className="font-display font-extrabold text-lg text-tactical tabular-nums">
+                {clubBalance != null ? formatBRL(clubBalance) : '—'}
+              </p>
+            </div>
+          </div>
+        ) : playerProfile ? (
+          <div className="rounded-lg border border-tactical/30 bg-tactical/5 px-4 py-2.5 flex items-center gap-2.5 shrink-0">
+            <Wallet className="h-4 w-4 text-tactical" />
+            <div className="text-right leading-tight">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                {t('header.your_balance', { defaultValue: 'Seu saldo' })}
+              </p>
+              <p className="font-display font-extrabold text-lg text-tactical tabular-nums">
+                {formatBRL(playerProfile.money ?? 0)}
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {loading ? (

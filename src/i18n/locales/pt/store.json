@@ -17,7 +17,9 @@
   },
   "header": {
     "title": "Loja",
-    "subtitle": "Compre itens para melhorar seus jogadores!"
+    "subtitle": "Compre itens para melhorar seus jogadores!",
+    "your_balance": "Seu saldo",
+    "club_balance": "Saldo do clube"
   },
   "states": {
     "loading": "Carregando itens...",
