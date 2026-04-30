@@ -476,10 +476,15 @@ export default function MatchRoomPage() {
   const animatedResolutionIdRef = useRef<string | null>(null);
   // Holds a pending "apply next turn" callback when it arrives during an active resolution
   // animation. Flushed either when the animation ends (useEffect on `animating`) or after a
-  // safety timeout so the match never stalls.
+  // safety timeout so the match never stalls. Animation can run up to scriptDurationMs
+  // (capped at 2500 server-side) AND there's a script-wait gate up to MAX_WAIT_MS=5000
+  // before animation starts; the safety timer must outlast the longest realistic
+  // "script-arrived → animation-complete" path so a clean run never gets cut. The
+  // animation-end useEffect remains the primary trigger; this timer is purely the
+  // "the rAF loop genuinely crashed" fallback.
   const pendingTurnApplyRef = useRef<(() => void) | null>(null);
   const pendingTurnSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const MAX_TURN_APPLY_WAIT_MS = 1800;
+  const MAX_TURN_APPLY_WAIT_MS = 5000;
   const playerGroupRefsMap = useRef<Map<string, SVGGElement>>(new Map());
   const ballGroupRef = useRef<SVGGElement>(null);
   const lastMouseMoveTimeRef = useRef(0);
