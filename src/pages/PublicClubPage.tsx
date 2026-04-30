@@ -674,6 +674,7 @@ export default function PublicClubPage() {
                         uniformPattern={kit?.pattern}
                         uniformStripeColor={kit?.stripe_color}
                         uniformNumberColor={kit?.number_color}
+                        isGoalkeeper={isGK}
                         className="w-full h-full"
                         fallbackSeed={player.id}
                       />

@@ -316,6 +316,7 @@ export default function PublicPlayerPage() {
                   uniformPattern={activeKit?.pattern}
                   uniformStripeColor={activeKit?.stripe_color}
                   uniformNumberColor={activeKit?.number_color}
+                  isGoalkeeper={isGK}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />

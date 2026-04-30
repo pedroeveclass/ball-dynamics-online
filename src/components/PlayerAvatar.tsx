@@ -25,8 +25,10 @@ interface PlayerAvatarProps {
   uniformPattern?: string | null;        // 'solid' | 'stripe_vertical_double' | 'bicolor_diagonal' | …
   uniformStripeColor?: string | null;    // pattern's secondary color
   uniformNumberColor?: string | null;    // jersey number color (back & front)
-  // GK kit lives at uniform_number = 3. The caller decides whether to pass
-  // the GK uniform's colors here based on the player's primary position.
+  // When true, the avatar wears long sleeves and dark-gray gloves to read as
+  // a goalkeeper. Caller is expected to also feed in the GK kit colors via
+  // uniformPattern/uniformStripeColor (uniform_number = 3 in club_uniforms).
+  isGoalkeeper?: boolean;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -107,9 +109,12 @@ export function PlayerAvatar({
   uniformPattern,
   uniformStripeColor,
   uniformNumberColor,
+  isGoalkeeper = false,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
+  // Coach outfit overrides any GK rendering — coaches are never goalkeepers.
+  const isGK = !isCoach && isGoalkeeper;
   // Coach outfit is hardcoded black regardless of the club the coach manages,
   // so ignore the incoming club colors for clothing purposes.
   const primary = isCoach ? COACH_SHIRT : (clubPrimaryColor || DEFAULT_PRIMARY);
@@ -186,6 +191,7 @@ export function PlayerAvatar({
                 jerseyNumber={jerseyNumber}
                 crestUrl={clubCrestUrl}
                 outfit={outfit}
+                isGoalkeeper={isGK}
                 clipId={clipId}
               />
             ) : (
@@ -203,6 +209,7 @@ export function PlayerAvatar({
                 hasLongHair={isLongHair(effective.hair)}
                 hasBigBeard={isBigBeard(effective.facialHair)}
                 outfit={outfit}
+                isGoalkeeper={isGK}
               />
             )}
           </g>
@@ -426,6 +433,29 @@ function Arm({ primary, secondary, skin, mirror = false }: { primary: string; se
   );
 }
 
+// ── Goalkeeper arm — long sleeve in the GK kit color all the way to the
+// wrist, plus a dark-gray glove (kept gray regardless of skin tone so the
+// glove always reads as a glove). Shape mirrors the coach blazer sleeve so
+// the silhouette stays coherent.
+const GLOVE_COLOR = '#2a2a2a';
+function GoalkeeperArm({ primary, secondary, mirror = false }: { primary: string; secondary: string; mirror?: boolean }) {
+  return (
+    <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
+      {/* Full long sleeve from shoulder (y=114) down to the cuff (y=234) */}
+      <path d="M 40 118 Q 36 124 36 136 L 38 232 Q 38 236 42 236 L 58 236 Q 62 236 62 232 L 60 124 Q 60 116 52 114 Q 44 114 40 118 Z"
+            fill={primary} />
+      {/* Side shadow for shape */}
+      <path d="M 38 150 L 42 150 L 41 228 L 38 228 Z" fill="#000" opacity="0.18" />
+      {/* Cuff band (secondary color trim) */}
+      <rect x="39" y="230" width="22" height="3" fill={secondary} opacity="0.9" />
+      {/* Glove — same outline as the regular hand but dark gray, with a thin
+          highlight strip for some texture */}
+      <path d="M 42 236 L 58 236 Q 60 240 58 246 Q 56 252 50 252 Q 44 252 42 246 Q 40 240 42 236 Z" fill={GLOVE_COLOR} />
+      <path d="M 44 240 L 56 240 Q 56 244 54 246 L 46 246 Q 44 244 44 240 Z" fill="#444" opacity="0.5" />
+    </g>
+  );
+}
+
 // ── Front body: DiceBear portrait scaled small and CLIPPED at the collar
 // so only head + neck + collar top survive. Everything from the collar
 // downward (shoulders, torso, arms, body) is drawn by us for full control
@@ -444,6 +474,7 @@ function FrontBody({
   hasLongHair,
   hasBigBeard,
   outfit,
+  isGoalkeeper,
 }: {
   faceDataUri: string;
   primary: string;
@@ -458,6 +489,7 @@ function FrontBody({
   hasLongHair: boolean;
   hasBigBeard: boolean;
   outfit: AvatarOutfit;
+  isGoalkeeper: boolean;
 }) {
   const skin = `#${skinTone}`;
   const isCoach = outfit === 'coach';
@@ -525,6 +557,11 @@ function FrontBody({
         <>
           <CoachArm skin={skin} />
           <CoachArm skin={skin} mirror />
+        </>
+      ) : isGoalkeeper ? (
+        <>
+          <GoalkeeperArm primary={primary} secondary={stripe} />
+          <GoalkeeperArm primary={primary} secondary={stripe} mirror />
         </>
       ) : (
         <>
@@ -617,6 +654,7 @@ function BackBody({
   jerseyNumber,
   crestUrl,
   outfit,
+  isGoalkeeper,
   clipId,
 }: {
   appearance: PlayerAppearance;
@@ -629,6 +667,7 @@ function BackBody({
   jerseyNumber: number | null | undefined;
   crestUrl: string | null | undefined;
   outfit: AvatarOutfit;
+  isGoalkeeper: boolean;
   clipId: string;
 }) {
   const skin = `#${appearance.skinTone}`;
@@ -698,6 +737,11 @@ function BackBody({
         <>
           <CoachArm skin={skin} />
           <CoachArm skin={skin} mirror />
+        </>
+      ) : isGoalkeeper ? (
+        <>
+          <GoalkeeperArm primary={primary} secondary={stripe} />
+          <GoalkeeperArm primary={primary} secondary={stripe} mirror />
         </>
       ) : (
         <>

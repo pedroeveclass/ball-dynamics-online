@@ -590,6 +590,7 @@ export default function PlayerProfilePage() {
                   uniformPattern={activeKit?.pattern}
                   uniformStripeColor={activeKit?.stripe_color}
                   uniformNumberColor={activeKit?.number_color}
+                  isGoalkeeper={(p.primary_position || '').toUpperCase() === 'GK'}
                   className="w-full h-full"
                   fallbackSeed={p.id}
                 />
