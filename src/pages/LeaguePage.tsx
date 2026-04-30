@@ -611,28 +611,20 @@ export default function LeaguePage() {
     if (!selectedTeam || !managerProfile) return;
     setSubmitting(true);
     try {
-      // Update club with manager info
-      const { error: clubError } = await supabase
-        .from('clubs')
-        .update({
-          manager_profile_id: managerProfile.id,
-          name: clubName.trim(),
-          short_name: shortName.trim().toUpperCase(),
-          primary_color: primaryColor,
-          secondary_color: secondaryColor,
-          city: cityName.trim() || null,
-          is_bot_managed: false,
-        })
-        .eq('id', selectedTeam.id);
-      if (clubError) throw clubError;
-
-      // Update stadium name if changed
-      const originalStadium = selectedTeam.stadiums?.[0];
-      if (originalStadium && stadiumName.trim() !== originalStadium.name) {
-        await supabase.from('stadiums')
-          .update({ name: stadiumName.trim() })
-          .eq('id', originalStadium.id);
-      }
+      // Atomic takeover via SECURITY DEFINER RPC. The previous flow did
+      // two client-side UPDATEs (clubs + stadiums) and the stadium one
+      // failed silently against RLS — see assume_bot_team migration note.
+      const { error } = await supabase.rpc('assume_bot_team' as any, {
+        p_club_id: selectedTeam.id,
+        p_manager_profile_id: managerProfile.id,
+        p_club_name: clubName.trim(),
+        p_short_name: shortName.trim().toUpperCase(),
+        p_primary_color: primaryColor,
+        p_secondary_color: secondaryColor,
+        p_city: cityName.trim() || null,
+        p_stadium_name: stadiumName.trim() || null,
+      });
+      if (error) throw error;
 
       await refreshManagerProfile();
       toast.success(t('toast.assumed_ok'));
