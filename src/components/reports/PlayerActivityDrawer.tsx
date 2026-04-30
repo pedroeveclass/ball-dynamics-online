@@ -25,6 +25,7 @@ export interface PlayerReportDetail {
     full_name: string;
     age: number;
     primary_position: string;
+    secondary_position?: string | null;
     overall: number;
     appearance: any;
   };
@@ -82,7 +83,7 @@ export function PlayerActivityDrawer({ open, onOpenChange, detail, periodDays }:
               <div className="flex-1 min-w-0 text-left">
                 <SheetTitle className="truncate">{player.full_name}</SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-0.5">
-                  <PositionBadge position={player.primary_position} />
+                  <PositionBadge position={player.primary_position} secondary={player.secondary_position} />
                   <span className="text-xs">
                     {t('header.years_old', { count: player.age })} • {t('header.ovr', { value: player.overall })}
                   </span>

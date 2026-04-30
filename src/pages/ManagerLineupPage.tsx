@@ -13,7 +13,7 @@ import { PlayerHoverStats } from '@/components/PlayerHoverStats';
 import { Save, UserPlus, X, Users, Target, User, Bot, Check, CalendarClock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { sortPlayersByPosition, positionalPenaltyPercent } from '@/lib/positions';
+import { sortPlayersByPosition, positionalPenaltyPercent, formatPlayerPositions } from '@/lib/positions';
 import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 import type { Tables } from '@/integrations/supabase/types';
 
@@ -833,7 +833,7 @@ export default function ManagerLineupPage() {
                               {p.full_name}
                             </span>
                             <div className="flex items-center gap-1 mt-0.5">
-                              <PositionBadge position={p.primary_position} />
+                              <PositionBadge position={p.primary_position} secondary={p.secondary_position} />
                               <span className="text-[10px] text-muted-foreground">{p.archetype}</span>
                             </div>
                           </div>
@@ -905,7 +905,9 @@ export default function ManagerLineupPage() {
                               {confirmed ? <Check className="h-3 w-3" /> : null}
                             </span>
                             <span className="font-display font-bold text-xs truncate flex-1">{p.full_name}</span>
-                            <span className="text-[10px] text-muted-foreground shrink-0">{p.primary_position}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {formatPlayerPositions(p.primary_position, p.secondary_position)}
+                            </span>
                           </div>
                         );
                       })}
@@ -945,7 +947,7 @@ export default function ManagerLineupPage() {
                       <option value="">{t('tactical_roles.select_placeholder')}</option>
                       {starterPlayers.map(p => (
                         <option key={p.id} value={p.id}>
-                          {p.full_name} ({p.primary_position})
+                          {p.full_name} ({formatPlayerPositions(p.primary_position, p.secondary_position)})
                         </option>
                       ))}
                     </select>
@@ -982,7 +984,7 @@ export default function ManagerLineupPage() {
                       .filter(p => p.user_id && p.user_id !== managerProfile?.user_id)
                       .map(p => (
                         <option key={p.user_id!} value={p.user_id!}>
-                          {p.full_name} ({p.primary_position})
+                          {p.full_name} ({formatPlayerPositions(p.primary_position, p.secondary_position)})
                         </option>
                       ))}
                   </select>

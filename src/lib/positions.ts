@@ -37,6 +37,23 @@ export function positionLabel(pos: string | null | undefined, variant: 'short' |
   return translated || clean;
 }
 
+// Formats a player's position pair for display.
+// - Returns just the localized primary label when no secondary is set.
+// - Returns "PRIMARY / SECONDARY" (both localized) otherwise.
+// Use this anywhere a player position is shown so the secondary
+// surfaces consistently across the UI (squad lists, scorers, sidebar, …).
+export function formatPlayerPositions(
+  primary: string | null | undefined,
+  secondary: string | null | undefined,
+  variant: 'short' | 'long' = 'short',
+): string {
+  const p = positionLabel(primary, variant);
+  if (!secondary) return p;
+  const s = positionLabel(secondary, variant);
+  if (!s || s === '?' || s === p) return p;
+  return `${p} / ${s}`;
+}
+
 // Legacy: kept so existing imports keep working. Always returns the
 // active-language short label (matches the function's prior behavior
 // when only PT existed).

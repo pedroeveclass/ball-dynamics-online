@@ -8,6 +8,9 @@
     "label": "Manager",
     "no_manager": "No Manager"
   },
+  "starting_xi": {
+    "title": "Starting XI"
+  },
   "stats": {
     "standing": "Standing",
     "standing_value": "{{points}} pts • {{played}} matches",

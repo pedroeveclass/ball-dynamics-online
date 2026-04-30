@@ -8,6 +8,9 @@
     "label": "Treinador",
     "no_manager": "Sem Treinador"
   },
+  "starting_xi": {
+    "title": "Onze inicial"
+  },
   "stats": {
     "standing": "Classificação",
     "standing_value": "{{points}} pts • {{played}} jogos",

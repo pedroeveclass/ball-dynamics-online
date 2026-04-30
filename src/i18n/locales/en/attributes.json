@@ -47,6 +47,13 @@
     "Defensivo": "Defensive",
     "Distribuição": "Distribution"
   },
+  "coach_types": {
+    "defensive": "Defensive",
+    "offensive": "Offensive",
+    "technical": "Technical",
+    "all_around": "All-around",
+    "complete": "All-around"
+  },
   "fallback_messages": {
     "no_attrs_short": "No attributes available."
   },

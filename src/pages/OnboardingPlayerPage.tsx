@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, archetypeDescription, heightLabel as heightLabelI18n, heightDescription, getArchetypeAttributeImpact, getHeightAttributeImpact } from '@/lib/attributes';
+import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, archetypeDescription, heightLabel as heightLabelI18n, heightDescription, getArchetypeAttributeImpact, getHeightAttributeImpact, attrCategoryLabel } from '@/lib/attributes';
+import { positionLabel } from '@/lib/positions';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
@@ -156,7 +157,7 @@ export default function OnboardingPlayerPage() {
     }
   };
 
-  const posLabel = POSITIONS.find(p => p.value === primaryPosition)?.label || '';
+  const posLabel = primaryPosition ? positionLabel(primaryPosition, 'long') : '';
   const bodyLabel = archetypeLabel(bodyType);
   const heightLabel = heightLabelI18n(height, height);
 
@@ -356,7 +357,7 @@ export default function OnboardingPlayerPage() {
                 <div className="space-y-5">
                   {sections.map(section => (
                     <div key={section.title}>
-                      <h3 className="font-display text-sm font-bold text-foreground mb-2 border-b border-border pb-1">{section.title}</h3>
+                      <h3 className="font-display text-sm font-bold text-foreground mb-2 border-b border-border pb-1">{attrCategoryLabel(section.title)}</h3>
                       <div className="space-y-1.5">
                         {section.keys.map(k => renderAttrRow(k))}
                       </div>

@@ -19,6 +19,7 @@ interface RosterPlayer {
   full_name: string;
   age: number;
   primary_position: string;
+  secondary_position: string | null;
   overall: number;
   appearance: any;
   last_trained_at: string | null;
@@ -102,7 +103,7 @@ export default function ManagerReportsPage() {
       // 1. Roster
       const { data: rosterData } = await supabase
         .from('player_profiles')
-        .select('id, user_id, full_name, age, primary_position, overall, appearance, last_trained_at, last_match_at')
+        .select('id, user_id, full_name, age, primary_position, secondary_position, overall, appearance, last_trained_at, last_match_at')
         .eq('club_id', club.id)
         .order('full_name');
 
@@ -279,6 +280,7 @@ export default function ManagerReportsPage() {
         full_name: p.full_name,
         age: p.age,
         primary_position: p.primary_position,
+        secondary_position: (p as any).secondary_position ?? null,
         overall: p.overall,
         appearance: p.appearance,
       },
@@ -405,7 +407,7 @@ export default function ManagerReportsPage() {
                             <div className="min-w-0">
                               <div className="font-display font-semibold truncate">{p.full_name}</div>
                               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                <PositionBadge position={p.primary_position} />
+                                <PositionBadge position={p.primary_position} secondary={p.secondary_position} />
                                 <span>{t('table.ovr', { value: p.overall })}</span>
                               </div>
                             </div>

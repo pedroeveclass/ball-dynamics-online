@@ -673,6 +673,7 @@ interface HumanPlayer {
   user_id: string;
   full_name: string;
   primary_position: string;
+  secondary_position: string | null;
   overall: number;
   club_id: string | null;
   club_name: string | null;
@@ -742,7 +743,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
     setLoading(true);
     const { data: players } = await supabase
       .from('player_profiles')
-      .select('id, user_id, full_name, primary_position, overall, club_id')
+      .select('id, user_id, full_name, primary_position, secondary_position, overall, club_id')
       .not('user_id', 'is', null)
       .order('full_name');
 
@@ -761,6 +762,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
       user_id: p.user_id,
       full_name: p.full_name || t('players.no_name'),
       primary_position: p.primary_position || '?',
+      secondary_position: p.secondary_position ?? null,
       overall: p.overall ?? 0,
       club_id: p.club_id,
       club_name: p.club_id ? (clubMap.get(p.club_id) || p.club_id?.slice(0, 8)) : null,
@@ -819,7 +821,9 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-display font-bold text-sm">{p.full_name}</span>
-                        <Badge variant="outline" className="text-[10px]">{p.primary_position}</Badge>
+                        <Badge variant="outline" className="text-[10px]">
+                          {p.primary_position}{p.secondary_position ? ` / ${p.secondary_position}` : ''}
+                        </Badge>
                         <span className="text-xs text-muted-foreground">{t('players.ovr_label', { value: Math.round(p.overall) })}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">

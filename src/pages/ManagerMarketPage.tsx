@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -180,7 +181,14 @@ export default function ManagerMarketPage() {
                     <p className="text-[10px] text-muted-foreground">{t('card.ovr')}</p>
                   </div>
                   <div>
-                    <p className="font-display font-bold">{p.full_name}</p>
+                    <Link
+                      to={`/player/${p.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-display font-bold hover:text-tactical transition-colors"
+                    >
+                      {p.full_name}
+                    </Link>
                     <div className="flex items-center gap-2 mt-0.5">
                       <PositionBadge position={p.primary_position} />
                       {p.secondary_position && <PositionBadge position={p.secondary_position} />}

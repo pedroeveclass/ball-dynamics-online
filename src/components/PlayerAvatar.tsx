@@ -131,7 +131,18 @@ export function PlayerAvatar({
   // land at y≈127 and be visible inside the 0:114:200:286 viewBox, and long
   // hair would drape down to y≈146 in normal height — both bugs that the
   // viewBox-swap alone could not catch.
-  const viewBox = isBack ? '0 114 200 286' : '0 0 200 400';
+  //
+  // Front view: the height transform is anchored at the feet (y=400) and
+  // scaled outward — so for tall archetypes (scale>1) the head extends ABOVE
+  // y=0 in source coords (e.g. scale 1.12 → top ≈ -54). To avoid cropping
+  // the top of the head, we widen the front viewBox upward by 60 units. The
+  // value is fixed (not dynamic) so short and tall players keep the SAME
+  // pixel scale in the same container — i.e. tall players still look
+  // visibly taller, they just no longer get their head sliced off.
+  const FRONT_HEAD_PAD = 60;
+  const viewBox = isBack
+    ? '0 114 200 286'
+    : `0 ${-FRONT_HEAD_PAD} 200 ${400 + FRONT_HEAD_PAD}`;
   const backCropId = `avBackCrop_${clipId}`;
 
   return (

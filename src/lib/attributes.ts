@@ -233,13 +233,46 @@ export const COACH_BONUS_RATE: Record<string, number> = {
   complete: 0.10,
 };
 
-export const COACH_TYPE_LABELS: Record<string, string> = {
+// Fallback labels (PT) — used only if the i18n bundle is missing the
+// `attributes:coach_types.*` keys for some reason. Prefer `coachTypeLabel()`
+// in JSX so PT/EN follow the active language.
+const COACH_TYPE_LABELS_FALLBACK: Record<string, string> = {
   defensive: 'Defensivo',
   offensive: 'Ofensivo',
   technical: 'Técnico',
   all_around: 'Completo',
   complete: 'Completo',
 };
+
+// Localized coach-type label. Reads through i18next; falls back to PT.
+export function coachTypeLabel(type: string | null | undefined): string {
+  if (!type) return '';
+  const v = i18n.t(`attributes:coach_types.${type}`, { defaultValue: '' });
+  return v || COACH_TYPE_LABELS_FALLBACK[type] || type;
+}
+
+// Read-only Proxy keeping the legacy `COACH_TYPE_LABELS[type]` pattern
+// working while resolving labels through i18next on every access. Existing
+// consumers (PlayerAttributesPage, PlayerClubPage) keep working without
+// any code change.
+export const COACH_TYPE_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_target, prop: string) {
+    if (typeof prop !== 'string') return undefined;
+    return coachTypeLabel(prop);
+  },
+  has(_target, prop) {
+    return typeof prop === 'string' && prop in COACH_TYPE_LABELS_FALLBACK;
+  },
+  ownKeys() {
+    return Object.keys(COACH_TYPE_LABELS_FALLBACK);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    if (typeof prop === 'string' && prop in COACH_TYPE_LABELS_FALLBACK) {
+      return { configurable: true, enumerable: true, writable: false, value: coachTypeLabel(prop) };
+    }
+    return undefined;
+  },
+});
 
 // ── Training Center Level Bonuses ──
 export const TRAINING_CENTER_BONUS: Record<number, number> = {

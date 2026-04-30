@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { POSITIONS } from '@/lib/attributes';
-import { positionToPT } from '@/lib/positions';
+import { positionLabel, positionToPT } from '@/lib/positions';
 import { Briefcase, Users } from 'lucide-react';
 
 // Grid slot for each of the 16 positions on a 5-col × 8-row field
@@ -101,7 +101,7 @@ export function PositionFieldSelector({ value, onChange }: Props) {
                     : 'border-border bg-card text-muted-foreground hover:border-tactical/50'
               }`}
               title={t('position_field_selector.tooltip', {
-                label: p.label,
+                label: positionLabel(p.value, 'long'),
                 humans,
                 humansWord: humans === 1 ? t('position_field_selector.humans_one') : t('position_field_selector.humans_other'),
                 demand,
@@ -134,7 +134,7 @@ export function PositionFieldSelector({ value, onChange }: Props) {
         <div className="flex items-center justify-between rounded-md border border-tactical/30 bg-tactical/5 px-3 py-2 text-xs">
           <span className="text-muted-foreground">{t('position_field_selector.selected_label')}</span>
           <span className="font-display font-bold text-tactical">
-            {POSITIONS.find(p => p.value === value)?.label}
+            {positionLabel(value, 'long')}
           </span>
         </div>
       )}

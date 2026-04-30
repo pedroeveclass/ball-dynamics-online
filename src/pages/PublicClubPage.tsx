@@ -142,6 +142,11 @@ export default function PublicClubPage() {
   const [recentResults, setRecentResults] = useState<any[]>([]);
   const [nextMatch, setNextMatch] = useState<NextClubMatch | null>(null);
   const [teamOverall, setTeamOverall] = useState<number | null>(null);
+  const [startingXI, setStartingXI] = useState<Array<{
+    slot_position: string;
+    sort_order: number;
+    player_profile_id: string;
+  }>>([]);
 
   // Player detail dialog
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
@@ -201,7 +206,7 @@ export default function PublicClubPage() {
 
       const { data: playerData } = await supabase
         .from('player_profiles')
-        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, height, appearance, user_id')
+        .select('id, full_name, age, primary_position, secondary_position, archetype, overall, dominant_foot, height, appearance, user_id, jersey_number')
         .in('id', playerIds)
         .order('overall', { ascending: false });
 
@@ -211,6 +216,36 @@ export default function PublicClubPage() {
       })));
     } else {
       setSquad([]);
+    }
+
+    // Active lineup → starting XI
+    const { data: activeLineup } = await supabase
+      .from('lineups')
+      .select('id')
+      .eq('club_id', id)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (activeLineup) {
+      const { data: slots } = await supabase
+        .from('lineup_slots')
+        .select('slot_position, sort_order, player_profile_id, role_type')
+        .eq('lineup_id', activeLineup.id)
+        .eq('role_type', 'starter')
+        .order('sort_order', { ascending: true });
+
+      setStartingXI(
+        (slots || [])
+          .filter((s: any) => s.player_profile_id)
+          .map((s: any) => ({
+            slot_position: s.slot_position,
+            sort_order: s.sort_order,
+            player_profile_id: s.player_profile_id,
+          }))
+      );
+    } else {
+      setStartingXI([]);
     }
 
     // League standing
@@ -579,6 +614,56 @@ export default function PublicClubPage() {
           </div>
         </div>
 
+        {/* ── Starting XI (avatars) ── */}
+        {startingXI.length > 0 && (() => {
+          const playerById = new Map<string, any>(squad.map((p: any) => [p.id, p]));
+          const xi = startingXI
+            .map(s => ({ slot: s, player: playerById.get(s.player_profile_id) }))
+            .filter(x => x.player);
+          if (xi.length === 0) return null;
+          return (
+            <div className="stat-card space-y-3">
+              <h3 className="font-display font-semibold text-sm">{t('starting_xi.title', { defaultValue: 'Onze inicial' })}</h3>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-3">
+                {xi.map(({ slot, player }) => (
+                  <Link
+                    key={slot.player_profile_id}
+                    to={`/player/${player.id}`}
+                    className="group flex flex-col items-center text-center gap-1.5 rounded-lg p-2 hover:bg-muted/40 transition-colors"
+                  >
+                    <div className="w-14 h-28 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-md overflow-hidden">
+                      <PlayerAvatar
+                        appearance={player.appearance}
+                        variant="full-front"
+                        height={player.height}
+                        clubPrimaryColor={clubData?.primary_color}
+                        clubSecondaryColor={clubData?.secondary_color}
+                        clubCrestUrl={clubData?.crest_url}
+                        playerName={player.full_name}
+                        jerseyNumber={player.jersey_number}
+                        className="w-full h-full"
+                        fallbackSeed={player.id}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 min-w-0 w-full">
+                      {player.jersey_number != null && (
+                        <span className="font-display font-extrabold text-[11px] text-tactical shrink-0">#{player.jersey_number}</span>
+                      )}
+                      <span className="text-[11px] font-semibold truncate group-hover:text-tactical transition-colors">
+                        {player.full_name.split(' ').slice(-1)[0] || player.full_name}
+                      </span>
+                    </div>
+                    <PositionBadge
+                      position={slot.slot_position.replace(/[0-9]/g, '')}
+                      className="text-[9px] px-1 py-0"
+                    />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Squad table ── */}
         <div className="stat-card space-y-3">
           <h3 className="font-display font-semibold text-sm">{t('squad.title')}</h3>
@@ -625,7 +710,13 @@ export default function PublicClubPage() {
                           ) : (
                             <Bot className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-label={t('squad.bot')} />
                           )}
-                          <span>{p.full_name}</span>
+                          <Link
+                            to={`/player/${p.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="hover:text-tactical transition-colors"
+                          >
+                            {p.full_name}
+                          </Link>
                         </div>
                       </td>
                       <td className="py-3 pr-3">

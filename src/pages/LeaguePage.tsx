@@ -938,7 +938,14 @@ export default function LeaguePage() {
                               />
                             </td>
                             <td>
-                              <span className="font-medium text-sm">{s.player_name}</span>
+                              <Link
+                                to={`/player/${s.participant_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-sm hover:text-tactical transition-colors"
+                              >
+                                {s.player_name}
+                              </Link>
                             </td>
                             <td>
                               <ClubCrest crestUrl={(s as any).club_crest_url} primaryColor={s.club_primary_color} secondaryColor={s.club_secondary_color} shortName={s.club_short_name} className="h-5 w-5 rounded text-[8px] shrink-0" />
@@ -1007,7 +1014,14 @@ export default function LeaguePage() {
                                 />
                               </td>
                               <td>
-                                <span className="font-medium text-sm">{a.player_name}</span>
+                                <Link
+                                  to={`/player/${a.participant_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-sm hover:text-tactical transition-colors"
+                                >
+                                  {a.player_name}
+                                </Link>
                               </td>
                               <td>
                                 <ClubCrest crestUrl={(a as any).club_crest_url} primaryColor={a.club_primary_color} secondaryColor={a.club_secondary_color} shortName={a.club_short_name} className="h-5 w-5 rounded text-[8px] shrink-0" />
