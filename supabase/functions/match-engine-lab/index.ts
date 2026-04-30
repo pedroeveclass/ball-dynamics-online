@@ -6472,6 +6472,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     console.log(`[ENGINE] Processing ${allActions.length} actions (from ${(rawActions || []).length} raw) bhHasBallAction=${bhHasBallAction} inertia=${prevMoveDirMap.size} players`);
     const resolutionMoveBatch: Array<{id: string, x: number, y: number}> = [];
+    // Accumulate per-action JSONB patches and flush once at the end of the
+    // movement loop (single RPC) instead of N sequential `merge_match_action_payload`
+    // round-trips. Under 6 concurrent league matches the per-RPC contention
+    // turned this loop into the dominant tick cost (~5.5s of res_motion).
+    const movePayloadPatches: Array<{ action_id: string; patch: Record<string, unknown> }> = [];
     for (const a of allActions) {
       console.log(`[ENGINE] Action: ${a.participant_id.slice(0,8)} ${a.action_type} → (${Number(a.target_x ?? 0).toFixed(1)},${Number(a.target_y ?? 0).toFixed(1)}) target_part=${a.target_participant_id?.slice(0,8) ?? 'none'}`);
       if ((a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block') && a.target_x != null && a.target_y != null) {
@@ -6579,9 +6584,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           // Atomic JSONB merge in Postgres. Using `.update({ payload: {...} })`
           // with an in-memory spread would overwrite whatever the client wrote
           // between our SELECT and UPDATE (e.g. the inertia_power slider).
-          await supabase.rpc('merge_match_action_payload', {
-            p_action_id: a.id,
-            p_patch: { move_ratio: moveRatioVal, move_dx: intendedDx, move_dy: intendedDy },
+          // Flushed in a single batch RPC after the loop.
+          movePayloadPatches.push({
+            action_id: a.id,
+            patch: { move_ratio: moveRatioVal, move_dx: intendedDx, move_dy: intendedDy },
           });
         }
       }
@@ -6692,6 +6698,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       offside_teammate_ids: string[];
       pass_turn_number: number;
     } | null = null;
+
+    // Flush all queued payload patches in a single batch RPC. Replaces N
+    // sequential `merge_match_action_payload` round-trips that dominated
+    // res_motion under concurrent matches.
+    if (movePayloadPatches.length > 0) {
+      await supabase.rpc('batch_merge_match_action_payload', { p_updates: movePayloadPatches });
+    }
 
     if (ballHolder) {
       // Find the ball holder's BALL action (pass/shoot preferred, fallback to move)
