@@ -360,7 +360,22 @@ export default function LeaguePage() {
       });
       if (error) throw error;
 
-      toast.success(t('join.toast_signed', { club: joinTarget.name }));
+      // Best-fit slot in the starting XI + first-human-as-assistant promotion.
+      // Failures here are non-fatal — the contract is already signed; the
+      // user can re-arrange later.
+      const { data: placeRes, error: placeErr } = await supabase.rpc('auto_place_after_signing' as any, {
+        p_player_id: playerProfile.id,
+        p_club_id: joinTarget.id,
+      });
+      if (placeErr) console.warn('[JOIN BOT TEAM] auto_place failed:', placeErr);
+
+      const placed = (placeRes as any)?.placed === true;
+      const assistantAssigned = (placeRes as any)?.assistant_assigned === true;
+      // Tailor the toast: signed + (optional) starter + (optional) assistant.
+      let msg = t('join.toast_signed', { club: joinTarget.name });
+      if (placed) msg += ' ' + t('join.toast_placed_starter', { defaultValue: 'Você entrou no time titular.' });
+      if (assistantAssigned) msg += ' ' + t('join.toast_assistant', { defaultValue: 'Você é o assistente do clube agora.' });
+      toast.success(msg);
       setJoinTarget(null);
       await refreshPlayerProfile();
       navigate('/player/club');
@@ -1207,15 +1222,24 @@ export default function LeaguePage() {
                     })
                     .map((jc) => (
                     <div key={jc.id} className="stat-card flex flex-col items-center text-center gap-3 p-4">
-                      <ClubCrest
-                        crestUrl={jc.crest_url}
-                        primaryColor={jc.primary_color}
-                        secondaryColor={jc.secondary_color}
-                        shortName={jc.short_name}
-                        className="h-14 w-14 rounded-lg text-lg"
-                      />
+                      {/* Crest + name link to the public club page so players
+                          can scout the squad/formation/positions before signing. */}
+                      <Link to={`/club/${jc.id}`} className="contents">
+                        <ClubCrest
+                          crestUrl={jc.crest_url}
+                          primaryColor={jc.primary_color}
+                          secondaryColor={jc.secondary_color}
+                          shortName={jc.short_name}
+                          className="h-14 w-14 rounded-lg text-lg cursor-pointer hover:scale-105 transition-transform"
+                        />
+                      </Link>
                       <div>
-                        <h3 className="font-display font-bold">{jc.name}</h3>
+                        <Link
+                          to={`/club/${jc.id}`}
+                          className="font-display font-bold hover:text-tactical hover:underline transition-colors"
+                        >
+                          {jc.name}
+                        </Link>
                         {jc.city && <p className="text-xs text-muted-foreground">{jc.city}</p>}
                         <div className="flex items-center justify-center gap-1 mt-1 text-[11px]">
                           {jc.is_bot_managed ? (
