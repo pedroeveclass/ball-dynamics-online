@@ -3154,8 +3154,17 @@ async function generateBotActions(
     for (const a of actions) {
       if (!(a as any).created_at) (a as any).created_at = now;
     }
-    await supabase.from('match_actions').insert(actions);
+    // .select() so the returned rows carry the DB-assigned `id`. The
+    // ball_holder → attacking_support early-deviation step UPDATEs the BH's
+    // pass/shoot by `eq('id', bhAction.id)`; without ids it would silently
+    // match no rows and the deviation would only land at resolution-time
+    // fallback — so opponents would see the bot's intended arrow during
+    // attacking_support and `dominate` math would use non-deviated coords.
+    const { data: inserted } = await supabase.from('match_actions').insert(actions).select();
     if (LOG_VERBOSE) console.log(`[ENGINE] Bot tactical AI generated ${actions.length} actions for phase ${phase}`);
+    if (Array.isArray(inserted) && inserted.length === actions.length) {
+      return inserted;
+    }
   }
   // Return the generated actions so the caller can append to its in-memory
   // action set instead of re-SELECTing match_actions after bot generation.
