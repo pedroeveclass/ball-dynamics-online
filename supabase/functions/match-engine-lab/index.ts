@@ -1282,12 +1282,29 @@ function getGkAreaMultiplier(
   bhTargetX: number | null | undefined,
   bhTargetY: number | null | undefined,
   setPieceType: string | null | undefined,
+  looseBallPos?: { x: number; y: number } | null,
 ): number {
   if (!participant || !match) return 1.0;
   const slotPos = participant._slot_position || participant.slot_position || participant.primary_position || '';
   if (!isGKPosition(slotPos)) return 1.0;
   // Penalty: resolves first per spec.
   if (setPieceType === 'penalty') return 1.5;
+  // GK's own-goal side: home defends LEFT (x≤18) in H1 and RIGHT (x≥82) in H2; away is the mirror.
+  const isSecondHalf = (match.current_half ?? 1) >= 2;
+  const isHomeRaw = participant.club_id === match.home_club_id;
+  const defendsLeft = isHomeRaw ? !isSecondHalf : isSecondHalf;
+  const inOwnArea = (x: number | null | undefined, y: number | null | undefined): boolean => {
+    if (x == null || y == null) return false;
+    const xn = Number(x); const yn = Number(y);
+    const yInArea = yn >= 20 && yn <= 80;
+    const xInOwnArea = defendsLeft ? xn <= 18 : xn >= 82;
+    return yInArea && xInOwnArea;
+  };
+  // Loose ball already in the GK's own area → he gets the boost regardless of
+  // what the BH was doing (e.g. a pass_failed that ricocheted near the box, or
+  // a deflected shot resting in front of the goal). Mirror-mirrors the rule
+  // for shots (boost on any shot) so a GK can dominate the chase.
+  if (looseBallPos && inOwnArea(looseBallPos.x, looseBallPos.y)) return 2.0;
   if (!bhActionType) return 1.0;
   // Any shot → 2.0× regardless of destination (deviated shots can land outside the area).
   const isShot =
@@ -1300,15 +1317,7 @@ function getGkAreaMultiplier(
     bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' ||
     bhActionType === 'header_low' || bhActionType === 'header_high';
   if (!isBallAction) return 1.0;
-  // GK's own-goal side: home defends LEFT (x≤18) in H1 and RIGHT (x≥82) in H2; away is the mirror.
-  const isSecondHalf = (match.current_half ?? 1) >= 2;
-  const isHomeRaw = participant.club_id === match.home_club_id;
-  const defendsLeft = isHomeRaw ? !isSecondHalf : isSecondHalf;
-  const tx = Number(bhTargetX);
-  const ty = Number(bhTargetY);
-  const yInArea = ty >= 20 && ty <= 80;
-  const xInOwnArea = defendsLeft ? tx <= 18 : tx >= 82;
-  return (yInArea && xInOwnArea) ? 2.0 : 1.0;
+  return inOwnArea(bhTargetX, bhTargetY) ? 2.0 : 1.0;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1488,6 +1497,7 @@ function resolveSetPieceTarget(
   isDefending: boolean,
   setPieceType: SetPieceTypeKey,
   setPieceCache: SetPieceCache | undefined,
+  currentHalf: number = 1,
 ): { x: number; y: number } | null {
   if (!setPieceCache) return null;
   const slotPos = (bot._editor_slot_position || bot._slot_position || bot.slot_position || '').toUpperCase();
@@ -1499,12 +1509,20 @@ function resolveSetPieceTarget(
   const editorPos = layout[slotPos];
   if (!editorPos) return null;
   // Engine ball pos → editor frame so we can decide mirror by side. Same
-  // formula as engineBallToEditorQuadrant but we only need editorX.
+  // formula as engineBallToEditorQuadrant but we only need editorX. Apply the
+  // 2H ball-mirror up front so both halves agree on which side the ball is on
+  // in the team's own editor frame.
+  const effBallX = currentHalf >= 2 ? 100 - ballPos.x : ballPos.x;
   const editorBallX = isHome ? ballPos.y : 100 - ballPos.y;
+  // Note: editorBallX uses ballY only — the mirror decision (left/right side
+  // of the editor frame) hinges on the lateral axis, which is unaffected by
+  // the half flip. effBallX kept for potential future use; eslint silenced
+  // by referencing it in a debug log only when needed.
+  void effBallX;
   const mirrored = editorBallX > 50
     ? { x: 100 - editorPos.x, y: editorPos.y }
     : editorPos;
-  return editorPosToEngine(mirrored.x, mirrored.y, isHome);
+  return editorPosToEngine(mirrored.x, mirrored.y, isHome, currentHalf);
 }
 
 /** Replicates SituationalTacticsPage.applyKnobs for a single slot, on the dynamic default. */
@@ -1534,19 +1552,29 @@ function applyKnobsToDynamicSlotPos(
   return { x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) };
 }
 
-/** Engine ball position → editor quadrant index (0..34), in the team's own frame. */
-function engineBallToEditorQuadrant(ballX: number, ballY: number, isHome: boolean): number {
+/** Engine ball position → editor quadrant index (0..34), in the team's own frame.
+ *  `isHome` here is the team's TRUE ownership (not pre-flipped for half). The
+ *  half flip is applied internally so callers don't have to compose it. */
+function engineBallToEditorQuadrant(ballX: number, ballY: number, isHome: boolean, currentHalf: number = 1): number {
+  // In 2H sides swap on the engine field, but the editor frame is per-team
+  // (own goal at editorY=100). Mirror the ball X so a ball "near home's own
+  // goal" maps to the same editor cell in both halves.
+  const effBallX = currentHalf >= 2 ? 100 - ballX : ballX;
   const editorX = isHome ? ballY : 100 - ballY;
-  const editorY = isHome ? 100 - ballX : ballX;
+  const editorY = isHome ? 100 - effBallX : effBallX;
   const col = Math.max(0, Math.min(SITU_COLS - 1, Math.floor(editorX / SITU_QW)));
   const row = Math.max(0, Math.min(SITU_ROWS - 1, Math.floor(editorY / SITU_QH)));
   return row * SITU_COLS + col;
 }
 
-/** Editor coords → engine coords, mirroring for away team. */
-function editorPosToEngine(editorX: number, editorY: number, isHome: boolean): { x: number; y: number } {
-  if (isHome) return { x: 100 - editorY, y: editorX };
-  return { x: editorY, y: 100 - editorX };
+/** Editor coords → engine coords, mirroring for away team and for 2nd half.
+ *  `isHome` is the team's TRUE ownership; 2H side-flip is handled inside. */
+function editorPosToEngine(editorX: number, editorY: number, isHome: boolean, currentHalf: number = 1): { x: number; y: number } {
+  const base = isHome
+    ? { x: 100 - editorY, y: editorX }
+    : { x: editorY, y: 100 - editorX };
+  if (currentHalf >= 2) base.x = 100 - base.x;
+  return base;
 }
 
 /** Frontend's dynamic-default formula: base formation pos shifted by ball quadrant.
@@ -1583,6 +1611,7 @@ function resolveSituationalTarget(
   isDefending: boolean,
   formation: string,
   tickCache?: TickCache,
+  currentHalf: number = 1,
 ): { x: number; y: number } | null {
   // Prefer _editor_slot_position (guaranteed unique by enrichment), fall back to raw slot.
   const slotPos = (bot._editor_slot_position || bot._slot_position || bot.slot_position || '').toUpperCase();
@@ -1594,7 +1623,7 @@ function resolveSituationalTarget(
 
   const side = isHome ? 'home' : 'away';
   const phaseKey: 'with_ball' | 'without_ball' = isDefending ? 'without_ball' : 'with_ball';
-  const quadrantIdx = engineBallToEditorQuadrant(ballPos.x, ballPos.y, isHome);
+  const quadrantIdx = engineBallToEditorQuadrant(ballPos.x, ballPos.y, isHome, currentHalf);
 
   const sideTactics = tickCache?.situationalTactics?.[side];
   const savedQuadrant = sideTactics?.[phaseKey]?.[String(quadrantIdx)];
@@ -1607,14 +1636,14 @@ function resolveSituationalTarget(
   // commit f628834); ignoring savedSlot for GK keeps the engine consistent
   // with the editor's lock-on-drag behavior even before the DB cleanup runs.
   if (slotPos === 'GK') {
-    return editorPosToEngine(SITU_GK_CENTER.x, SITU_GK_CENTER.y, isHome);
+    return editorPosToEngine(SITU_GK_CENTER.x, SITU_GK_CENTER.y, isHome, currentHalf);
   }
 
   // Custom quadrant → use the stored layout as-is (knobs don't re-apply, matching editor behavior).
   // Dynamic → apply knobs on top of the default formula.
   const editorPos = savedSlot
     ?? applyKnobsToDynamicSlotPos(quadrantIdx, slotDef, editorForm, knobs);
-  return editorPosToEngine(editorPos.x, editorPos.y, isHome);
+  return editorPosToEngine(editorPos.x, editorPos.y, isHome, currentHalf);
 }
 
 function computeTacticalTarget(
@@ -1629,20 +1658,25 @@ function computeTacticalTarget(
   maxMoveRange?: number,
   attractOverride?: { x: number; y: number },
   tickCache?: TickCache,
+  currentHalf: number = 1,
 ): { x: number; y: number } {
   // ── Situational tactics override ─────────────────────────────
   // Only when NOT marking a specific attacker (marking hint wins — it's a reactive
   // assignment, not a shape decision). Also skip for GKs so their reactive "shadow
   // the ball" behavior below stays intact.
+  // Callers pass `isHome` PRE-FLIPPED for half (geometry-friendly: home in 2H gets
+  // isHome=false so all the goal-side / zone-mirror code below works). For tactics
+  // cache lookup we need the TRUE ownership, so derive raw isHome from the half.
+  const isHomeRaw = currentHalf >= 2 ? !isHome : isHome;
   if (!attractOverride && role !== 'goalkeeper') {
     // Bola Parada wins when the active turn is a set-piece restart AND the
     // user configured a layout for this (type, phase). Otherwise fall back
     // to the regular 35-quadrant situational target.
     const spType = tickCache?.currentSetPieceType;
     const setPieceTarget = spType
-      ? resolveSetPieceTarget(bot, ballPos, isHome, isDefending, spType, tickCache?.setPieceTactics)
+      ? resolveSetPieceTarget(bot, ballPos, isHomeRaw, isDefending, spType, tickCache?.setPieceTactics, currentHalf)
       : null;
-    const situ = setPieceTarget ?? resolveSituationalTarget(bot, ballPos, isHome, isDefending, formation, tickCache);
+    const situ = setPieceTarget ?? resolveSituationalTarget(bot, ballPos, isHomeRaw, isDefending, formation, tickCache, currentHalf);
     if (situ) {
       let targetX = situ.x + (Math.random() - 0.5) * 1.5;
       let targetY = situ.y + (Math.random() - 0.5) * 1.5;
@@ -2016,6 +2050,7 @@ async function generateBotActions(
 
   const homeClubId = match?.home_club_id;
   const isSecondHalfBot = (match?.current_half ?? 1) >= 2;
+  const currentHalfBot = match?.current_half ?? 1;
 
   // Load formations: prefer active lineup formation, fallback to club_settings
   let homeFormation = '4-4-2';
@@ -2494,7 +2529,7 @@ async function generateBotActions(
         }
       } else {
         // Not closest — move toward ball but maintain some formation
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex, maxMoveRange, undefined, tickCache);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2553,7 +2588,7 @@ async function generateBotActions(
                   target_x: interceptX, target_y: interceptY, status: 'pending',
                 });
               } else {
-                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
                 actions.push({
                   match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                   controlled_by_type: 'bot', action_type: 'move',
@@ -2561,7 +2596,7 @@ async function generateBotActions(
                 });
               }
             } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -2634,7 +2669,7 @@ async function generateBotActions(
               });
             } else {
               // Too far even for trajectory — just move tactically
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -2660,7 +2695,7 @@ async function generateBotActions(
                 const ownGoalX = isHome ? 0 : 100;
                 const markX = oppX + (ownGoalX - oppX) * 0.25;
                 const markY = oppY + (50 - oppY) * 0.1;
-                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, { x: markX, y: markY }, tickCache);
+                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, { x: markX, y: markY }, tickCache, currentHalfBot);
                 actions.push({
                   match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                   controlled_by_type: 'bot', action_type: 'move',
@@ -2668,7 +2703,7 @@ async function generateBotActions(
                 });
               }
             } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -2734,7 +2769,7 @@ async function generateBotActions(
                 target_x: tackleX, target_y: tackleY, status: 'pending',
               });
             } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
                 controlled_by_type: 'bot', action_type: 'move',
@@ -2752,7 +2787,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -2771,7 +2806,7 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -2780,7 +2815,7 @@ async function generateBotActions(
           }
         }
       } else {
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2793,7 +2828,7 @@ async function generateBotActions(
       if (isBH) continue;
       if (isGK) {
         // GK stays back
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache, currentHalfBot);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2821,7 +2856,7 @@ async function generateBotActions(
         }
       } else {
         // Move to tactical position with attacking push
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache);
+        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache, currentHalfBot);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2831,7 +2866,7 @@ async function generateBotActions(
     } else {
       // ── Positioning phases or fallback ──
       const isDefending = phase === 'positioning_defense';
-      let target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex, undefined, undefined, tickCache);
+      let target = computeTacticalTarget(bot, role, ballPos, isHome, !isDefending, isDefending, formation, slotIndex, undefined, undefined, tickCache, currentHalfBot);
 
       // ── Set piece specific positioning ──
       if (setPieceType && isDefending) {
@@ -2931,7 +2966,7 @@ async function generateBotActions(
         let maxRange = computeMaxMoveRange(moveAttrs, turnNumber);
         // GK extra reach when ball action aims at his own penalty area (or penalty kick).
         // Must come BEFORE BH/cooldown penalties so they stack on top of the boosted base.
-        const gkMult = getGkAreaMultiplier(bot, match, bhActionType, bhTargetX, bhTargetY, setPieceType);
+        const gkMult = getGkAreaMultiplier(bot, match, bhActionType, bhTargetX, bhTargetY, setPieceType, looseBallPosition);
         if (gkMult !== 1.0) maxRange *= gkMult;
         // Mirror engine's move-resolution penalties:
         // BH conducting (move, no ball action): × 0.85
@@ -4069,6 +4104,7 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
           const gkAreaMult = getGkAreaMultiplier(
             interceptor, match, bhActionType,
             ballHolderAction.target_x, ballHolderAction.target_y, setPieceType,
+            null, // resolveAction processes live ball trajectory; no loose-ball position yet
           );
           if (gkAreaMult !== 1.0) maxRange *= gkAreaMult;
           // GK uses full range on shots, everyone else gets ballSpeed reduction
@@ -5761,6 +5797,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             targetY = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
             if (isHome) targetX = Math.min(targetX, 49);
             else targetX = Math.max(targetX, 51);
+            // Re-check after half-field clamp: if we've been pulled back inside the
+            // 10u circle (e.g. push hit the half-field line at x=49/51), slide along
+            // that vertical line to the closest y satisfying (x−50)²+(y−50)²≥100.
+            // Keeps the sign of (targetY−50) so the player doesn't hop sides.
+            const distAfterClamp = Math.sqrt((targetX - 50) ** 2 + (targetY - 50) ** 2);
+            if (distAfterClamp < CENTER_CIRCLE_R) {
+              const dxFromCenter = targetX - 50; // = -1 or +1 after the half-field clamp
+              const ySign = (targetY - 50) >= 0 ? 1 : -1;
+              const ySpan = Math.sqrt(Math.max(0, CENTER_CIRCLE_R * CENTER_CIRCLE_R - dxFromCenter * dxFromCenter));
+              targetY = 50 + ySign * (ySpan + 1);
+            }
           }
         }
       }
@@ -5847,13 +5894,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const distToCenter = Math.sqrt((px - 50) ** 2 + (py - 50) ** 2);
           if (distToCenter < CENTER_CIRCLE_R) {
             const angle = Math.atan2(py - 50, px - 50);
-            const newX = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
-            const newY = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
+            const newX0 = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
+            const newY0 = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
             // Also enforce own half
             const isHomeP = p.club_id === match.home_club_id;
             const isSecondHalfNow = (match.current_half ?? 1) >= 2;
             const ownHalfLeft = isHomeP ? !isSecondHalfNow : isSecondHalfNow;
-            const clampedX = ownHalfLeft ? Math.min(newX, 49) : Math.max(newX, 51);
+            let clampedX = ownHalfLeft ? Math.min(newX0, 49) : Math.max(newX0, 51);
+            let newY = newY0;
+            // Re-check exclusion after half-field clamp (clampedX may have re-entered
+            // the circle when pushed onto x=49/51). Slide along the clamped vertical
+            // line keeping the sign of (newY−50).
+            const distAfterClamp = Math.sqrt((clampedX - 50) ** 2 + (newY - 50) ** 2);
+            if (distAfterClamp < CENTER_CIRCLE_R) {
+              const dxFromCenter = clampedX - 50;
+              const ySign = (newY - 50) >= 0 ? 1 : -1;
+              const ySpan = Math.sqrt(Math.max(0, CENTER_CIRCLE_R * CENTER_CIRCLE_R - dxFromCenter * dxFromCenter));
+              newY = 50 + ySign * (ySpan + 1);
+            }
             exclusionUpdates.push({ id: p.id, pos_x: Math.max(1, Math.min(99, clampedX)), pos_y: Math.max(1, Math.min(99, newY)) });
           }
           // Also enforce own half for all defending players at kickoff
@@ -6500,8 +6558,24 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
           // Inertia power (0-100) — controls how much of the directional effect applies.
+          // Three cases:
+          //   1) Explicit `inertia_power` on payload → honour the slider value.
+          //   2) No explicit value AND prev was receive/block → default 0.
+          //      Receive/block direction is dictated by the ball, not by the
+          //      player's intent to keep running, so it should NOT punish the
+          //      next move when the user didn't opt in. (Mimikyu #7: a player
+          //      stepping LEFT to receive then attacking RIGHT was getting
+          //      "opposite inertia" 0.5× penalty without ever asking for it.)
+          //   3) No explicit value AND prev was a `move` → fallback 100 (legacy
+          //      behaviour, all moves used to imply full inertia power).
           if (typeof p?.inertia_power === 'number') {
             prevInertiaPowerMap.set(pm.participant_id, p.inertia_power);
+          } else if (pm.action_type === 'receive' || pm.action_type === 'block') {
+            // Only set if not already set by a sibling 'move' row for the same
+            // participant (move wins, same precedence as prevMoveDirMap above).
+            if (!prevInertiaPowerMap.has(pm.participant_id)) {
+              prevInertiaPowerMap.set(pm.participant_id, 0);
+            }
           }
         }
       }
@@ -6569,6 +6643,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             bhBallAct?.target_x ?? null,
             bhBallAct?.target_y ?? null,
             activeTurn.set_piece_type,
+            looseBallPos,
           );
           if (gkMult !== 1.0) maxRange *= gkMult;
         }
@@ -6617,8 +6692,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const dirMultiplier = 1.0 + (rawDirMultiplier - 1.0) * prevInertiaPower;
         maxRange *= dirMultiplier;
 
-        if (dist > maxRange) {
-          const scale = maxRange / dist;
+        // No-inertia visual circle: when the player has no directional inertia
+        // (no prev move dir OR inertia_power=0), the range should look like a
+        // PERFECT visual circle on screen. Y_SCALE compresses physical Y into
+        // smaller pixel space, so the Y-scaled `dist` lets vertical moves go
+        // farther in field-units than horizontal — visually asymmetric. When
+        // inertia is neutral, switch to plain euclidean dx²+dy² so dx_max =
+        // dy_max = maxRange (visually the same arc in any direction). When the
+        // player IS using inertia, keep Y-scaled physics (running is harder
+        // along the longer field axis, which is what inertia actually models).
+        const hasInertia = !!prevMoveDir && prevInertiaPower > 0;
+        const clampDist = hasInertia ? dist : Math.sqrt(dx * dx + dy * dy);
+
+        if (clampDist > maxRange) {
+          const scale = maxRange / clampDist;
           finalX = startX + dx * scale;
           finalY = startY + dy * scale;
         }
@@ -8089,21 +8176,25 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const homeForm = tickCache.clubSettings?.homeFormation || '4-4-2';
         const awayForm = tickCache.clubSettings?.awayFormation || '4-4-2';
         const isSecondHalfSnap = (match.current_half ?? 1) >= 2;
+        const currentHalfSnap = match.current_half ?? 1;
         const setPieceTypeKey = nextSetPieceType as SetPieceTypeKey;
         const snapBatch: Array<{ id: string; x: number; y: number }> = [];
         for (const p of (participants || [])) {
           if (p.role_type !== 'player' || p.is_sent_off) continue;
           if (p.id === takerId) continue; // taker stays at set-piece spot
           const isHomeRaw = p.club_id === match.home_club_id;
-          const isHome = isSecondHalfSnap ? !isHomeRaw : isHomeRaw;
+          const isHome = isSecondHalfSnap ? !isHomeRaw : isHomeRaw; // geometry-flipped (kept for downstream use, e.g. logs/exclusion)
+          void isHome;
           const formation = isHomeRaw ? homeForm : awayForm;
           const isDefending = p.club_id !== newPossessionClubId;
           // Bola Parada wins when configured for this (type, phase) — single
           // saved layout per situation, no quadrants. Falls back to the
           // 35-quadrant situational target if the user never customized this
-          // set-piece type.
-          const setPieceTarget = resolveSetPieceTarget(p, snapBallPos, isHome, isDefending, setPieceTypeKey, tickCache.setPieceTactics);
-          const situ = setPieceTarget ?? resolveSituationalTarget(p, snapBallPos, isHome, isDefending, formation, tickCache);
+          // set-piece type. Pass `isHomeRaw` (true ownership) + currentHalf so
+          // the resolver can apply the correct half mirror internally and look
+          // up the right side of the tactics cache.
+          const setPieceTarget = resolveSetPieceTarget(p, snapBallPos, isHomeRaw, isDefending, setPieceTypeKey, tickCache.setPieceTactics, currentHalfSnap);
+          const situ = setPieceTarget ?? resolveSituationalTarget(p, snapBallPos, isHomeRaw, isDefending, formation, tickCache, currentHalfSnap);
           if (!situ) continue;
           // Push defenders outside the 10u exclusion zone around the ball (FIFA ~9.15m)
           let tx = situ.x;

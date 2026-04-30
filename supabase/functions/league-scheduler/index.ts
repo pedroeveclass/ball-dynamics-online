@@ -64,6 +64,25 @@ Deno.serve(async (req) => {
 
     // Helper: materialize a single league_match row into a real matches row (race-safe)
     async function materializeLeagueMatch(lm: { id: string; home_club_id: string; away_club_id: string }, scheduledAt: string): Promise<{ matchId: string | null; warning?: string }> {
+      // Guard: refuse to materialize if EITHER club is already in a `live` match.
+      // Prevents the Samba-style desync where an orphaned live match (engine
+      // never finished it) and a freshly-materialized round both try to act
+      // on the same club. The DB also enforces this via UNIQUE indexes on
+      // matches.home_club_id / matches.away_club_id WHERE status='live'
+      // (migration 20260430030000), but checking here lets us short-circuit
+      // BEFORE the INSERT and emit a useful diagnostic.
+      const { data: liveBusy } = await supabase
+        .from('matches')
+        .select('id, home_club_id, away_club_id, status')
+        .eq('status', 'live')
+        .or(`home_club_id.in.(${lm.home_club_id},${lm.away_club_id}),away_club_id.in.(${lm.home_club_id},${lm.away_club_id})`)
+        .limit(1);
+      if (liveBusy && liveBusy.length > 0) {
+        const existing = liveBusy[0];
+        console.log(`[SCHEDULER] club_busy lm=${lm.id} match=${existing.id} (home=${existing.home_club_id} away=${existing.away_club_id})`);
+        return { matchId: null, warning: `club_busy lm=${lm.id} match=${existing.id}` };
+      }
+
       const [homeLineupId, awayLineupId] = await Promise.all([
         resolveLineupId(lm.home_club_id),
         resolveLineupId(lm.away_club_id),
