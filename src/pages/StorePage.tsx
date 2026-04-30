@@ -19,6 +19,9 @@ import { formatBRL } from '@/lib/formatting';
 import { getStoreItemName, getStoreItemDescription } from '@/lib/storeItemLabel';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import i18n from '@/i18n';
+import { useTranslation } from 'react-i18next';
+import { ATTR_LABELS } from '@/lib/attributes';
+import { formatDate as formatDateI18n } from '@/lib/formatDate';
 
 interface StoreItem {
   id: string;
@@ -86,6 +89,7 @@ function getDurationLabel(duration: string | null): string | null {
 export default function StorePage() {
   const { profile, playerProfile, managerProfile, club, refreshPlayerProfile } = useAuth();
   const { current: lang } = useAppLanguage();
+  const { t } = useTranslation('store');
   const [items, setItems] = useState<StoreItem[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,7 +203,7 @@ export default function StorePage() {
     setBuying(true);
     try {
       const playerId = targetPlayerId || playerProfile?.id;
-      if (!playerId) { toast.error('Jogador não encontrado'); return; }
+      if (!playerId) { toast.error(t('errors.no_player')); return; }
 
       const { data, error } = await (supabase as any).rpc('purchase_store_item', {
         p_player_profile_id: playerId,
@@ -227,13 +231,13 @@ export default function StorePage() {
       }
 
       if (result?.error) { toast.error(result.error); return; }
-      toast.success(result?.message || 'Compra realizada!');
+      toast.success(result?.message || t('errors.buy_success'));
       setGiftItem(null);
       setGiftPlayerId('');
       setSwapConflict(null);
       await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
-      toast.error(e.message || 'Erro na compra');
+      toast.error(e.message || t('errors.purchase_generic'));
     } finally {
       setBuying(false);
     }
@@ -246,10 +250,10 @@ export default function StorePage() {
       if (error) { toast.error(error.message); return; }
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
-      toast.success(result?.message || 'Renovação reativada!');
+      toast.success(result?.message || t('errors.reactivate_success'));
       fetchData();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao reativar');
+      toast.error(e.message || t('errors.reactivate_error'));
     } finally {
       setActing(false);
     }
@@ -262,10 +266,10 @@ export default function StorePage() {
       if (error) { toast.error(error.message); return; }
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
-      toast.success(result?.message || 'Item equipado!');
+      toast.success(result?.message || t('errors.equip_success'));
       fetchData();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao equipar');
+      toast.error(e.message || t('errors.equip_error'));
     } finally {
       setActing(false);
     }
@@ -278,10 +282,10 @@ export default function StorePage() {
       if (error) { toast.error(error.message); return; }
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
-      toast.success(result?.message || 'Item desequipado!');
+      toast.success(result?.message || t('errors.unequip_success'));
       fetchData();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao desequipar');
+      toast.error(e.message || t('errors.unequip_error'));
     } finally {
       setActing(false);
     }
@@ -294,10 +298,10 @@ export default function StorePage() {
       if (error) { toast.error(error.message); return; }
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
-      toast.success(result?.message || 'Energético usado!');
+      toast.success(result?.message || t('errors.energetico_success'));
       await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao usar energético');
+      toast.error(e.message || t('errors.energetico_error'));
     } finally {
       setActing(false);
     }
@@ -310,10 +314,10 @@ export default function StorePage() {
       if (error) { toast.error(error.message); return; }
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
-      toast.success(result?.message || 'Assinatura cancelada!');
+      toast.success(result?.message || t('errors.cancel_success'));
       fetchData();
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao cancelar');
+      toast.error(e.message || t('errors.cancel_error'));
     } finally {
       setActing(false);
     }
@@ -332,6 +336,9 @@ export default function StorePage() {
   function renderItemCard(item: StoreItem) {
     const owned = isOwned(item.id);
     const durationLabel = getDurationLabel(item.duration);
+    // Localize the bonus_type label (forca_chute -> "Shot Power"). Fallback
+    // to the raw key if no translation exists so the badge is never empty.
+    const bonusLabel = item.bonus_type ? (ATTR_LABELS[item.bonus_type] || item.bonus_type) : '';
 
     return (
       <Card key={item.id} className={`overflow-hidden ${owned ? 'border-pitch/50 bg-pitch/5' : ''}`}>
@@ -341,11 +348,11 @@ export default function StorePage() {
               {getItemIcon(item.category)}
               <CardTitle className="text-sm font-display leading-tight">
                 {getStoreItemName(item, lang)}
-                {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">Nv. {item.level}</span>}
+                {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">{t('states.level_short', { value: item.level })}</span>}
               </CardTitle>
             </div>
             <div className="flex gap-1">
-              {owned && <Badge className="bg-pitch text-[10px]"><Check className="h-3 w-3 mr-0.5" />Ativo</Badge>}
+              {owned && <Badge className="bg-pitch text-[10px]"><Check className="h-3 w-3 mr-0.5" />{t('badges.active')}</Badge>}
               {durationLabel && <Badge variant="outline" className="text-[10px] shrink-0">{durationLabel}</Badge>}
             </div>
           </div>
@@ -353,7 +360,7 @@ export default function StorePage() {
         <CardContent className="space-y-2 pb-3">
           {(() => { const d = getStoreItemDescription(item, lang); return d ? <p className="text-xs text-muted-foreground leading-relaxed">{d}</p> : null; })()}
           {item.bonus_type && item.bonus_value != null && (
-            <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {item.bonus_type}</Badge>
+            <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {bonusLabel}</Badge>
           )}
           <div className="flex items-center justify-between pt-1 gap-2">
             <span className="font-display text-sm font-bold">{formatBRL(item.price)}</span>
@@ -362,20 +369,20 @@ export default function StorePage() {
                 <>
                   {!isManager && (
                     <Button size="sm" className="h-7 text-xs" disabled={buying} onClick={() => handleBuy(item, 'player')}>
-                      <ShoppingCart className="h-3 w-3 mr-1" />Comprar
+                      <ShoppingCart className="h-3 w-3 mr-1" />{t('actions.buy')}
                     </Button>
                   )}
                   {isManager && (
                     <>
                       <Button size="sm" variant="outline" className="h-7 text-xs" disabled={buying}
                         onClick={() => { setGiftItem(item); setGiftPlayerId(''); }}>
-                        <Gift className="h-3 w-3 mr-1" />Dar
+                        <Gift className="h-3 w-3 mr-1" />{t('actions.give')}
                       </Button>
                     </>
                   )}
                 </>
               )}
-              {owned && <span className="text-xs text-pitch font-medium">Adquirido</span>}
+              {owned && <span className="text-xs text-pitch font-medium">{t('badges.owned')}</span>}
             </div>
           </div>
         </CardContent>
@@ -387,17 +394,17 @@ export default function StorePage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          <Store className="h-6 w-6 text-tactical" /> Loja
+          <Store className="h-6 w-6 text-tactical" /> {t('header.title')}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Compre itens para melhorar seus jogadores!
+          {t('header.subtitle')}
         </p>
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Carregando itens...</div>
+        <div className="text-sm text-muted-foreground py-8 text-center">{t('states.loading')}</div>
       ) : items.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Nenhum item disponível.</div>
+        <div className="text-sm text-muted-foreground py-8 text-center">{t('states.no_items')}</div>
       ) : (
         <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="flex flex-wrap h-auto gap-1">
@@ -424,7 +431,7 @@ export default function StorePage() {
           {!isManager && (
             <TabsContent value="meus_itens" className="mt-4 space-y-4">
               {playerPurchases.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Nenhum item no inventário.</p>
+                <p className="text-sm text-muted-foreground text-center py-8">{t('states.empty_inventory')}</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {playerPurchases.map(p => {
@@ -445,57 +452,57 @@ export default function StorePage() {
                               {getItemIcon(item.category)}
                               <CardTitle className="text-sm font-display leading-tight">
                                 {getStoreItemName(item, lang)}
-                                {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">Nv. {item.level}</span>}
+                                {item.level != null && <span className="ml-1.5 text-xs text-muted-foreground">{t('states.level_short', { value: item.level })}</span>}
                               </CardTitle>
                             </div>
-                            {isActive && <Badge className="bg-pitch text-[10px]"><Check className="h-3 w-3 mr-0.5" />Ativo</Badge>}
-                            {isCancelling && <Badge className="bg-amber-600 text-[10px]">Não renova</Badge>}
-                            {isInventory && <Badge variant="outline" className="text-[10px]">Inventário</Badge>}
+                            {isActive && <Badge className="bg-pitch text-[10px]"><Check className="h-3 w-3 mr-0.5" />{t('badges.active')}</Badge>}
+                            {isCancelling && <Badge className="bg-amber-600 text-[10px]">{t('badges.not_renewing')}</Badge>}
+                            {isInventory && <Badge variant="outline" className="text-[10px]">{t('badges.inventory')}</Badge>}
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-2 pb-3">
                           {(() => { const d = getStoreItemDescription(item, lang); return d ? <p className="text-xs text-muted-foreground leading-relaxed">{d}</p> : null; })()}
                           {item.bonus_type && item.bonus_value != null && (
-                            <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {item.bonus_type}</Badge>
+                            <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {ATTR_LABELS[item.bonus_type] || item.bonus_type}</Badge>
                           )}
                           {p.expires_at && (
-                            <p className="text-xs text-muted-foreground">Expira: {new Date(p.expires_at).toLocaleDateString('pt-BR')}</p>
+                            <p className="text-xs text-muted-foreground">{t('states.expires_at', { date: formatDateI18n(p.expires_at, lang, 'date_short') })}</p>
                           )}
                           <div className="flex items-center gap-2 pt-1 flex-wrap">
                             {/* Equipment: equip/unequip */}
                             {isEquipment && isInventory && (
                               <Button size="sm" className="h-7 text-xs" disabled={acting}
                                 onClick={() => handleEquip(p.id)}>
-                                <Check className="h-3 w-3 mr-1" />Equipar
+                                <Check className="h-3 w-3 mr-1" />{t('actions.equip')}
                               </Button>
                             )}
                             {isEquipment && isActive && (
                               <Button size="sm" variant="outline" className="h-7 text-xs" disabled={acting}
                                 onClick={() => handleUnequip(p.id)}>
-                                <XCircle className="h-3 w-3 mr-1" />Desequipar
+                                <XCircle className="h-3 w-3 mr-1" />{t('actions.unequip')}
                               </Button>
                             )}
                             {/* Consumable: use */}
                             {isConsumable && (
                               <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700" disabled={acting}
                                 onClick={() => handleUseEnergetico(p.id)}>
-                                <BatteryCharging className="h-3 w-3 mr-1" />Usar
+                                <BatteryCharging className="h-3 w-3 mr-1" />{t('actions.use')}
                               </Button>
                             )}
                             {/* Monthly subscription: cancel renewal */}
                             {isMonthly && isActive && (
                               <Button size="sm" variant="destructive" className="h-7 text-xs" disabled={acting}
                                 onClick={() => handleCancelSubscription(p.id)}>
-                                <XCircle className="h-3 w-3 mr-1" />Cancelar renovação
+                                <XCircle className="h-3 w-3 mr-1" />{t('actions.cancel_renewal')}
                               </Button>
                             )}
                             {isCancelling && p.expires_at && (
                               <>
                                 <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700" disabled={acting}
                                   onClick={() => handleReactivateSubscription(p.id)}>
-                                  <RefreshCw className="h-3 w-3 mr-1" />Reativar renovação
+                                  <RefreshCw className="h-3 w-3 mr-1" />{t('actions.reactivate')}
                                 </Button>
-                                <span className="text-xs text-amber-500">Ativo até {new Date(p.expires_at).toLocaleDateString('pt-BR')}</span>
+                                <span className="text-xs text-amber-500">{t('states.active_until', { date: formatDateI18n(p.expires_at, lang, 'date_short') })}</span>
                               </>
                             )}
                           </div>
@@ -523,21 +530,21 @@ export default function StorePage() {
                 {hasFilters && (
                   <div className="flex flex-wrap gap-2">
                     <select value={filterLevel ?? ''} onChange={e => setFilterLevel(e.target.value ? Number(e.target.value) : null)} className="text-xs border rounded px-2 py-1 bg-card">
-                      <option value="">Todos os Níveis</option>
-                      {levels.map(l => <option key={l} value={l}>Nível {l}</option>)}
+                      <option value="">{t('filters.all_levels')}</option>
+                      {levels.map(l => <option key={l} value={l}>{t('filters.level', { value: l })}</option>)}
                     </select>
                     <select value={filterBonus ?? ''} onChange={e => setFilterBonus(e.target.value || null)} className="text-xs border rounded px-2 py-1 bg-card">
-                      <option value="">Todas as Habilidades</option>
-                      {bonusTypes.map(b => <option key={b} value={b!}>{b}</option>)}
+                      <option value="">{t('filters.all_skills')}</option>
+                      {bonusTypes.map(b => <option key={b} value={b!}>{ATTR_LABELS[b!] || b}</option>)}
                     </select>
                     {(filterLevel != null || filterBonus) && (
-                      <button onClick={() => { setFilterLevel(null); setFilterBonus(null); }} className="text-xs text-destructive hover:underline">Limpar</button>
+                      <button onClick={() => { setFilterLevel(null); setFilterBonus(null); }} className="text-xs text-destructive hover:underline">{t('filters.clear')}</button>
                     )}
                   </div>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {catItems.map(item => renderItemCard(item))}
-                  {catItems.length === 0 && <p className="text-sm text-muted-foreground col-span-full text-center py-8">Nenhum item com esses filtros.</p>}
+                  {catItems.length === 0 && <p className="text-sm text-muted-foreground col-span-full text-center py-8">{t('states.no_filter_match')}</p>}
                 </div>
               </TabsContent>
             );
@@ -551,7 +558,7 @@ export default function StorePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
-              {swapConflict?.item.category === 'trainer' ? 'Trocar Treinador?' : 'Trocar Fisioterapeuta?'}
+              {swapConflict?.item.category === 'trainer' ? t('swap.title_trainer') : t('swap.title_physio')}
             </DialogTitle>
           </DialogHeader>
           {swapConflict && (() => {
@@ -561,51 +568,58 @@ export default function StorePage() {
             const isDowngrade = newLvl < curLvl;
             return (
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Você só pode ter <strong>um {swapConflict.item.category === 'trainer' ? 'treinador' : 'fisioterapeuta'}</strong> ativo por vez.
-                </p>
+                <p
+                  className="text-sm text-muted-foreground"
+                  dangerouslySetInnerHTML={{
+                    __html: swapConflict.item.category === 'trainer'
+                      ? t('swap.exclusive_player_trainer')
+                      : t('swap.exclusive_player_physio'),
+                  }}
+                />
 
                 <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Atual:</span>
+                    <span className="text-muted-foreground">{t('swap.current')}</span>
                     <span className="font-medium">
                       {swapConflict.currentName}
-                      {swapConflict.currentLevel != null && ` — Nv.${swapConflict.currentLevel}`}
+                      {swapConflict.currentLevel != null && ` — ${t('states.level_short', { value: swapConflict.currentLevel })}`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Novo:</span>
+                    <span className="text-muted-foreground">{t('swap.new')}</span>
                     <span className="font-medium flex items-center gap-1">
                       {isUpgrade && <TrendingUp className="h-3.5 w-3.5 text-pitch" />}
                       {isDowngrade && <TrendingDown className="h-3.5 w-3.5 text-destructive" />}
                       {swapConflict.newName}
-                      {swapConflict.newLevel != null && ` — Nv.${swapConflict.newLevel}`}
+                      {swapConflict.newLevel != null && ` — ${t('states.level_short', { value: swapConflict.newLevel })}`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-border/50">
-                    <span className="text-muted-foreground">Custo do novo:</span>
+                    <span className="text-muted-foreground">{t('swap.new_cost')}</span>
                     <span className="font-display font-bold">{formatBRL(swapConflict.newPrice)}</span>
                   </div>
                 </div>
 
                 {isDowngrade && (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-                    <strong>Atenção:</strong> você está trocando para um nível <strong>INFERIOR</strong>. O bônus atual (Nv.{curLvl}) será perdido.
-                  </div>
+                  <div
+                    className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive"
+                    dangerouslySetInnerHTML={{ __html: t('swap.downgrade_warning', { level: curLvl }) }}
+                  />
                 )}
-                <p className="text-xs text-muted-foreground">
-                  O item atual será substituído imediatamente. <strong>O valor já pago pelo item atual não é reembolsado.</strong>
-                </p>
+                <p
+                  className="text-xs text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: t('swap.no_refund') }}
+                />
 
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" disabled={buying}
                     onClick={() => setSwapConflict(null)}>
-                    Cancelar
+                    {t('actions.cancel')}
                   </Button>
                   <Button variant={isDowngrade ? 'destructive' : 'default'} className="flex-1" disabled={buying}
                     onClick={() => handleBuy(swapConflict.item, swapConflict.buyerType, swapConflict.targetPlayerId, true)}>
                     <RefreshCw className="h-4 w-4 mr-1" />
-                    {buying ? 'Processando...' : 'Confirmar troca'}
+                    {buying ? t('actions.processing') : t('actions.confirm_swap')}
                   </Button>
                 </div>
               </div>
@@ -618,18 +632,25 @@ export default function StorePage() {
       <Dialog open={!!giftItem} onOpenChange={open => { if (!open) setGiftItem(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Dar {giftItem?.name} {giftItem?.level ? `Nv.${giftItem.level}` : ''}</DialogTitle>
+            <DialogTitle>
+              {t('gift.title', {
+                name: giftItem ? getStoreItemName(giftItem, lang) : '',
+                level: giftItem?.level ? t('states.level_short', { value: giftItem.level }) : '',
+              })}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Selecione o jogador que vai receber o item. O custo ({giftItem ? formatBRL(giftItem.price) : ''}) será debitado do caixa do clube.</p>
+            <p className="text-sm text-muted-foreground">
+              {t('gift.description', { price: giftItem ? formatBRL(giftItem.price) : '' })}
+            </p>
             <Select value={giftPlayerId} onValueChange={setGiftPlayerId}>
-              <SelectTrigger><SelectValue placeholder="Selecione um jogador" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t('gift.select_player')} /></SelectTrigger>
               <SelectContent>
                 {teamPlayers.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Button className="w-full" disabled={!giftPlayerId || buying} onClick={() => giftItem && handleBuy(giftItem, 'club', giftPlayerId)}>
-              <Gift className="h-4 w-4 mr-2" />Comprar e Dar ao Jogador
+              <Gift className="h-4 w-4 mr-2" />{t('gift.buy_and_give')}
             </Button>
           </div>
         </DialogContent>

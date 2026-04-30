@@ -6873,7 +6873,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             match_id, event_type: 'receive_success',
             title: `🤲 Dominio com sucesso! (${chance})`,
             body: `Jogador dominou a bola com ${chance} de chance.`,
-            payload: { participant_id: result.newBallHolderId, chance },
+            // message_key + chance let the client translate the body
+            // ("Player controlled the ball with X% chance"). Body stays
+            // for legacy clients without i18n support.
+            payload: { participant_id: result.newBallHolderId, chance, message_key: 'match_events:bodies.receive_success' },
           });
         }
 
@@ -7270,6 +7273,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 // Right after a pass goes loose, the very next loose turn applies
                 // the 0.15 decay (first inertia tick).
                 next_decay: 0.15,
+                message_key: 'match_events:bodies.loose_ball',
               },
             });
 
@@ -7283,6 +7287,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 passer_name: (ballHolder as any)?._player_name ?? null,
                 intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                 failure_reason: 'receive_failed',
+                message_key: 'match_events:bodies.pass_failed_receive',
               },
             });
           }
@@ -7347,6 +7352,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 caught_name: (receiver as any)?._player_name ?? null,
                 passer_participant_id: ballHolder.id,
                 passer_name: (ballHolder as any)?._player_name ?? null,
+                message_key: 'match_events:bodies.offside',
               },
             });
 
@@ -7360,6 +7366,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 passer_name: (ballHolder as any)?._player_name ?? null,
                 intended_receiver_participant_id: receiver.id,
                 failure_reason: 'offside',
+                message_key: 'match_events:bodies.pass_failed_offside',
               },
             });
 
@@ -7650,6 +7657,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             caught_name: (looseBallClaimer as any)?._player_name ?? null,
             passer_participant_id: null,
             passer_name: prevOffsidePending.passer_name,
+            message_key: 'match_events:bodies.offside',
           },
         });
 
@@ -7680,8 +7688,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 new_ball_holder_participant_id: looseBallClaimer.id,
                 new_ball_holder_name: (looseBallClaimer as any)?._player_name ?? null,
                 cause: 'other',
+                message_key: 'match_events:bodies.loose_ball_recovered',
               }
-            : undefined,
+            : { message_key: 'match_events:bodies.loose_ball_recovered' },
         });
         // Any claim (opponent steal or teammate recovery that wasn't offside)
         // closes the offside window — don't carry the snapshot forward.
@@ -7745,6 +7754,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               x: inertiaBallX, y: inertiaBallY,
               ball_x: inertiaBallX, ball_y: inertiaBallY,
               dir_x: dirX, dir_y: dirY,
+              message_key: 'match_events:bodies.ball_inertia',
               // Every subsequent loose turn uses 0.08 (only the very first uses 0.15).
               // After this event lands, the chain is at least one inertia tick deep,
               // so the next tick will always be 0.08.
@@ -8982,6 +8992,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 participant_id: nextBallHolderParticipantId,
                 player_name: (otPlayer as any)?._player_name ?? null,
                 next_action_type: otPayload.next_action_type,
+                message_key: 'match_events:bodies.one_touch',
               },
             });
           }
@@ -8999,6 +9010,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           match_id, event_type: 'positioning',
           title: '📍 Posicionamento',
           body: 'Time com a bola posiciona seus jogadores primeiro.',
+          payload: { message_key: 'match_events:bodies.positioning' },
         });
       } else if (isPenalty) {
         const takerPart = nextBallHolderParticipantId

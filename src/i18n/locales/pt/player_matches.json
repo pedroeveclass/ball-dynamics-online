@@ -10,8 +10,15 @@
   },
   "buttons": {
     "enter": "Entrar na Partida",
+    "enter_live": "Entrar",
     "watch": "Ver Partida",
+    "view": "Ver",
+    "follow": "Acompanhar",
     "replay": "Ver Replay"
+  },
+  "participant": {
+    "bot": "Bot",
+    "you": "Você"
   },
   "status": {
     "scheduled": "Agendada",

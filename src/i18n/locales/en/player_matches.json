@@ -10,8 +10,15 @@
   },
   "buttons": {
     "enter": "Enter Match",
+    "enter_live": "Enter",
     "watch": "View Match",
+    "view": "View",
+    "follow": "Follow",
     "replay": "View Replay"
+  },
+  "participant": {
+    "bot": "Bot",
+    "you": "You"
   },
   "status": {
     "scheduled": "Scheduled",

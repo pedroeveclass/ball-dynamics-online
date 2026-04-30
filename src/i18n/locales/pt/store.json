@@ -14,5 +14,74 @@
     "single_use": "Uso Único",
     "daily": "1x por dia",
     "seasonal": "1 Temporada"
+  },
+  "header": {
+    "title": "Loja",
+    "subtitle": "Compre itens para melhorar seus jogadores!"
+  },
+  "states": {
+    "loading": "Carregando itens...",
+    "no_items": "Nenhum item disponível.",
+    "empty_inventory": "Nenhum item no inventário.",
+    "no_filter_match": "Nenhum item com esses filtros.",
+    "level_short": "Nv. {{value}}",
+    "expires_at": "Expira: {{date}}",
+    "active_until": "Ativo até {{date}}"
+  },
+  "badges": {
+    "active": "Ativo",
+    "not_renewing": "Não renova",
+    "inventory": "Inventário",
+    "owned": "Adquirido"
+  },
+  "actions": {
+    "buy": "Comprar",
+    "give": "Dar",
+    "equip": "Equipar",
+    "unequip": "Desequipar",
+    "use": "Usar",
+    "cancel_renewal": "Cancelar renovação",
+    "reactivate": "Reativar renovação",
+    "confirm_swap": "Confirmar troca",
+    "cancel": "Cancelar",
+    "processing": "Processando..."
+  },
+  "filters": {
+    "all_levels": "Todos os Níveis",
+    "all_skills": "Todas as Habilidades",
+    "level": "Nível {{value}}",
+    "clear": "Limpar"
+  },
+  "swap": {
+    "title_trainer": "Trocar Treinador?",
+    "title_physio": "Trocar Fisioterapeuta?",
+    "exclusive_player_trainer": "Você só pode ter <strong>um treinador</strong> ativo por vez.",
+    "exclusive_player_physio": "Você só pode ter <strong>um fisioterapeuta</strong> ativo por vez.",
+    "current": "Atual:",
+    "new": "Novo:",
+    "new_cost": "Custo do novo:",
+    "downgrade_warning": "<strong>Atenção:</strong> você está trocando para um nível <strong>INFERIOR</strong>. O bônus atual (Nv.{{level}}) será perdido.",
+    "no_refund": "O item atual será substituído imediatamente. <strong>O valor já pago pelo item atual não é reembolsado.</strong>"
+  },
+  "gift": {
+    "title": "Dar {{name}} {{level}}",
+    "description": "Selecione o jogador que vai receber o item. O custo ({{price}}) será debitado do caixa do clube.",
+    "select_player": "Selecione um jogador",
+    "buy_and_give": "Comprar e Dar ao Jogador"
+  },
+  "errors": {
+    "no_player": "Jogador não encontrado",
+    "purchase_generic": "Erro na compra",
+    "buy_success": "Compra realizada!",
+    "reactivate_success": "Renovação reativada!",
+    "reactivate_error": "Erro ao reativar",
+    "equip_success": "Item equipado!",
+    "equip_error": "Erro ao equipar",
+    "unequip_success": "Item desequipado!",
+    "unequip_error": "Erro ao desequipar",
+    "energetico_success": "Energético usado!",
+    "energetico_error": "Erro ao usar energético",
+    "cancel_success": "Assinatura cancelada!",
+    "cancel_error": "Erro ao cancelar"
   }
 }

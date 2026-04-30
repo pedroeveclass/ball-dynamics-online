@@ -12,7 +12,7 @@
     "controle_bola": "Ball Control",
     "marcacao": "Marking",
     "desarme": "Tackling",
-    "um_toque": "First Touch",
+    "um_toque": "One Touch",
     "curva": "Curve",
     "passe_baixo": "Short Pass",
     "passe_alto": "Long Pass",
@@ -35,7 +35,7 @@
     "distribuicao_curta": "Kicking (Short)",
     "distribuicao_longa": "Kicking (Long)",
     "tempo_reacao": "Reaction Time",
-    "comando_area": "Command of Area"
+    "comando_area": "Command of Box"
   },
   "categories": {
     "Físico": "Physical",
@@ -94,7 +94,7 @@
     "controle_bola": "Receiving and trapping the ball.",
     "marcacao": "Tracking and pressuring opponents.",
     "desarme": "Winning the ball in tackles.",
-    "um_toque": "First-time touches without trapping.",
+    "um_toque": "One-touch passes/shots without trapping.",
     "curva": "Curl on passes and shots.",
     "passe_baixo": "Accuracy on ground passes.",
     "passe_alto": "Accuracy on lofted long balls.",

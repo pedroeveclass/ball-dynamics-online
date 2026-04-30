@@ -35,15 +35,41 @@ export function renderMatchEventTitle(event: MatchEventLike): string {
 
 export function renderMatchEventBody(event: MatchEventLike): string {
   const type = event.event_type;
-  if (type) {
-    // For event types whose body is a fixed string (no payload params), the
-    // localized version lives at `match_events:bodies.<event_type>`.
-    // Highly dynamic bodies (gol de condução turno X, x/y coordinates,
-    // chances, fouler names) keep their engine-emitted PT — they include
-    // values we can't reconstruct safely on the client without payload
-    // changes engine-side.
-    const translated = i18n.t(`match_events:bodies.${type}`, { defaultValue: '' });
+  if (!type) return event.body || '';
+
+  const p = (event.payload as Record<string, any>) || {};
+
+  // Common payload-derived params we expose to translation strings.
+  const params: Record<string, string | number> = {
+    chance: p.chance ?? '',
+    next_action_type: p.next_action_type ?? '',
+    turn_number: p.turn_number ?? '',
+    amount: p.amount ?? '',
+  };
+
+  // 1. If the engine attached `payload.message_key`, prefer it. Lets the
+  //    engine pin the exact body translation per event without relying on
+  //    body-by-event_type tables. Params come from payload too.
+  const explicitKey = typeof p.message_key === 'string' ? p.message_key : null;
+  if (explicitKey) {
+    const explicitParams = (p.message_params && typeof p.message_params === 'object')
+      ? p.message_params as Record<string, string | number>
+      : params;
+    const translated = i18n.t(explicitKey, { ...params, ...explicitParams, defaultValue: '' });
     if (translated) return translated;
   }
+
+  // 2. Some event_types share the same `event_type` but emit different
+  //    bodies depending on payload. Resolve those to a sub-key first so
+  //    each variant can carry its own translation.
+  let key = `match_events:bodies.${type}`;
+  if (type === 'pass_failed') {
+    const reason = p.failure_reason;
+    if (reason === 'offside') key = 'match_events:bodies.pass_failed_offside';
+    else if (reason === 'receive_failed') key = 'match_events:bodies.pass_failed_receive';
+  }
+
+  const translated = i18n.t(key, { ...params, defaultValue: '' });
+  if (translated) return translated;
   return event.body || '';
 }

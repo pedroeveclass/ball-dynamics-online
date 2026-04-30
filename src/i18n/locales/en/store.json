@@ -14,5 +14,74 @@
     "single_use": "Single Use",
     "daily": "1x per day",
     "seasonal": "1 Season"
+  },
+  "header": {
+    "title": "Store",
+    "subtitle": "Buy items to upgrade your players!"
+  },
+  "states": {
+    "loading": "Loading items...",
+    "no_items": "No items available.",
+    "empty_inventory": "No items in your inventory.",
+    "no_filter_match": "No items match those filters.",
+    "level_short": "Lv. {{value}}",
+    "expires_at": "Expires: {{date}}",
+    "active_until": "Active until {{date}}"
+  },
+  "badges": {
+    "active": "Active",
+    "not_renewing": "Not renewing",
+    "inventory": "Inventory",
+    "owned": "Owned"
+  },
+  "actions": {
+    "buy": "Buy",
+    "give": "Give",
+    "equip": "Equip",
+    "unequip": "Unequip",
+    "use": "Use",
+    "cancel_renewal": "Cancel renewal",
+    "reactivate": "Reactivate renewal",
+    "confirm_swap": "Confirm swap",
+    "cancel": "Cancel",
+    "processing": "Processing..."
+  },
+  "filters": {
+    "all_levels": "All Levels",
+    "all_skills": "All Skills",
+    "level": "Level {{value}}",
+    "clear": "Clear"
+  },
+  "swap": {
+    "title_trainer": "Swap Trainer?",
+    "title_physio": "Swap Physio?",
+    "exclusive_player_trainer": "You can only have <strong>one trainer</strong> active at a time.",
+    "exclusive_player_physio": "You can only have <strong>one physio</strong> active at a time.",
+    "current": "Current:",
+    "new": "New:",
+    "new_cost": "Cost of new:",
+    "downgrade_warning": "<strong>Heads up:</strong> you are switching to a <strong>LOWER</strong> level. The current bonus (Lv.{{level}}) will be lost.",
+    "no_refund": "The current item is replaced immediately. <strong>No refund is issued for the existing item.</strong>"
+  },
+  "gift": {
+    "title": "Give {{name}} {{level}}",
+    "description": "Pick the player who will receive the item. The cost ({{price}}) is debited from the club coffers.",
+    "select_player": "Pick a player",
+    "buy_and_give": "Buy and Give to Player"
+  },
+  "errors": {
+    "no_player": "Player not found",
+    "purchase_generic": "Purchase failed",
+    "buy_success": "Purchase complete!",
+    "reactivate_success": "Renewal reactivated!",
+    "reactivate_error": "Failed to reactivate",
+    "equip_success": "Item equipped!",
+    "equip_error": "Failed to equip",
+    "unequip_success": "Item unequipped!",
+    "unequip_error": "Failed to unequip",
+    "energetico_success": "Energy drink used!",
+    "energetico_error": "Failed to use energy drink",
+    "cancel_success": "Subscription cancelled!",
+    "cancel_error": "Failed to cancel"
   }
 }

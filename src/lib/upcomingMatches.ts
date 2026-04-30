@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import i18nInstance from '@/i18n';
 
 /**
  * Shape returned to any UI that wants to render a club's next scheduled
@@ -88,14 +89,18 @@ const WEEKDAY_SHORT_PTBR = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 /**
  * Formats an ISO timestamp as e.g. "Dom 20/04 21:00 BRT" using the
- * São Paulo timezone. Kept helper-local so the UI layers don't have
- * to each reimplement the same formatter.
+ * São Paulo timezone. The weekday + date layout follow the active i18n
+ * language (PT short = "Dom", EN short = "Sun"; date stays dd/MM in PT
+ * and MM/dd in EN). Kept helper-local so UI layers don't reimplement it.
  */
 export function formatBRTDateTime(iso: string): string {
   const date = new Date(iso);
+  const lang = (i18nInstance.language || 'pt').startsWith('en') ? 'en' : 'pt';
+  const intlLocale = lang === 'en' ? 'en-US' : 'pt-BR';
+
   // Pull the individual parts in America/Sao_Paulo so the output is
   // correct regardless of the user's browser timezone.
-  const parts = new Intl.DateTimeFormat('pt-BR', {
+  const parts = new Intl.DateTimeFormat(intlLocale, {
     timeZone: 'America/Sao_Paulo',
     weekday: 'short',
     day: '2-digit',
@@ -106,22 +111,31 @@ export function formatBRTDateTime(iso: string): string {
   }).formatToParts(date);
 
   const pick = (type: string) => parts.find(p => p.type === type)?.value ?? '';
-  // `weekday: 'short'` in pt-BR returns things like "dom." — normalize
-  // to the three-letter capitalized form the design expects.
+  // `weekday: 'short'` may include a trailing period (pt-BR: "dom.").
+  // Strip and capitalize so PT normalizes back to the expected
+  // three-letter form ("Dom"). EN returns the canonical "Sun"/"Mon".
   const rawWeekday = pick('weekday').replace(/\./g, '');
   const normalized = rawWeekday.charAt(0).toUpperCase() + rawWeekday.slice(1).toLowerCase();
-  // Safety net: if the platform returns an unexpected weekday string,
-  // fall back to computing the weekday from the São Paulo-localized
-  // date parts directly.
   const day = pick('day');
   const month = pick('month');
   const hour = pick('hour');
   const minute = pick('minute');
 
-  const weekday = normalized && WEEKDAY_SHORT_PTBR.some(w => w.toLowerCase() === normalized.toLowerCase())
-    ? WEEKDAY_SHORT_PTBR.find(w => w.toLowerCase() === normalized.toLowerCase())!
-    : normalized || '';
+  // PT keeps the legacy curated short table for safety on platforms that
+  // localize differently. EN trusts whatever Intl returns.
+  const weekday = lang === 'pt'
+    ? (normalized && WEEKDAY_SHORT_PTBR.some(w => w.toLowerCase() === normalized.toLowerCase())
+        ? WEEKDAY_SHORT_PTBR.find(w => w.toLowerCase() === normalized.toLowerCase())!
+        : normalized || '')
+    : (normalized || '');
 
+  // PT: "Dom 20/04 21:00 BRT". EN: "Sun 04/20 9:00 PM BRT".
+  if (lang === 'en') {
+    const h = parseInt(hour, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = ((h + 11) % 12) + 1;
+    return `${weekday} ${month}/${day} ${h12}:${minute} ${ampm} BRT`;
+  }
   return `${weekday} ${day}/${month} ${hour}:${minute} BRT`;
 }
 

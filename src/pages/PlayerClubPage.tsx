@@ -564,7 +564,11 @@ export default function PlayerClubPage() {
   const coachBonusLabel = (() => {
     const ct = coachType || 'all_around';
     const rate = COACH_BONUS_RATE[ct] || 0.10;
-    const label = COACH_TYPE_LABELS[ct] || 'Completo';
+    // Use the localized coach-type label (manager_club.coach_types.<key>)
+    // instead of the hardcoded PT label from lib/attributes so the EN tab
+    // shows "All-around" instead of "Completo".
+    const localized = t(`manager_club:coach_types.${ct}`, { defaultValue: '' });
+    const label = localized || COACH_TYPE_LABELS[ct] || 'Completo';
     return t('coach.label', { type: label, pct: Math.round(rate * 100) });
   })();
 
