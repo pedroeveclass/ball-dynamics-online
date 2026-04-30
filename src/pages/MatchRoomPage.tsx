@@ -351,7 +351,7 @@ export default function MatchRoomPage() {
   // to the unmount effect below). Defined as inline functions so they always
   // close over the latest state/refs.
   // Flush the pending move with the given power (default 100) if any.
-  const flushPendingMoveRef = useRef<((power?: number) => void) | null>(null);
+  const flushPendingMoveRef = useRef<((movePower?: number, receivePower?: number) => void) | null>(null);
 
   // Inertia arrow: after confirming a move, a thick orange arrow extends from
   // the move endpoint in the same direction. The player clicks to set how far
@@ -368,28 +368,48 @@ export default function MatchRoomPage() {
   // insert — no more payload race with the engine's resolve. If the player
   // doesn't confirm, a safety net auto-flushes with 100% before phase end.
   const pendingMoveRef = useRef<{ participantId: string; targetX: number; targetY: number } | null>(null);
+  // Pending receive (Bug 6): same deferral pattern as move, but defaults to
+  // 0% (clean-slate inertia after dominate — never carry the receive vector
+  // into the next turn unless the player explicitly drags the slider).
+  // Captures `extraPayload` so the `hard_tackle` flag for "Carrinho" survives
+  // until the slider confirms.
+  const pendingReceiveRef = useRef<{
+    participantId: string;
+    targetX: number;
+    targetY: number;
+    extraPayload?: Record<string, any>;
+  } | null>(null);
 
   // Safety: auto-submit any deferred move with 100% before the phase timer
   // expires. Also fires on unmount (tab close / navigate away) so the move
-  // isn't silently lost.
+  // isn't silently lost. Bug 6: extends to also flush deferred receives, but
+  // with default 0% (clean-slate inertia — preserves the "no inertia unless
+  // explicitly chosen" semantics for dominates).
   useEffect(() => {
-    flushPendingMoveRef.current = (power: number = 100) => {
+    flushPendingMoveRef.current = (movePower: number = 100, receivePower: number = 0) => {
       const pending = pendingMoveRef.current;
-      if (!pending) return;
-      pendingMoveRef.current = null;
-      setInertiaArrow(null);
-      submitAction('move', pending.participantId, pending.targetX, pending.targetY, undefined, { inertia_power: power });
+      const pendingRcv = pendingReceiveRef.current;
+      if (pending) {
+        pendingMoveRef.current = null;
+        submitAction('move', pending.participantId, pending.targetX, pending.targetY, undefined, { inertia_power: movePower });
+      }
+      if (pendingRcv) {
+        pendingReceiveRef.current = null;
+        const payload: Record<string, any> = { inertia_power: receivePower, ...(pendingRcv.extraPayload || {}) };
+        submitAction('receive', pendingRcv.participantId, pendingRcv.targetX, pendingRcv.targetY, undefined, payload);
+      }
+      if (pending || pendingRcv) setInertiaArrow(null);
     };
   });
   // Phase timer watcher: when time is getting low, flush pending.
   useEffect(() => {
-    if (phaseTimeLeft <= 1 && pendingMoveRef.current) {
-      flushPendingMoveRef.current?.(100);
+    if (phaseTimeLeft <= 1 && (pendingMoveRef.current || pendingReceiveRef.current)) {
+      flushPendingMoveRef.current?.(100, 0);
     }
   }, [phaseTimeLeft]);
   // Unmount flush.
   useEffect(() => {
-    return () => { flushPendingMoveRef.current?.(100); };
+    return () => { flushPendingMoveRef.current?.(100, 0); };
   }, []);
   const finalBallPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastBallDirRef = useRef<{ dx: number; dy: number } | null>(null);
@@ -646,8 +666,26 @@ export default function MatchRoomPage() {
       // committing the DELETE+INSERT, the DB query returns the OLD row and the UI
       // reverts to it for a frame before the realtime events catch up — visual flicker
       // between the two moves. Dedupe picks the newer optimistic after this merge.
+      //
+      // Ghost-arrow guard (Bug 1): when an optimistic row is still pending for the same
+      // (participant_id, turn_phase, action_type) tuple, drop the colliding server row
+      // BEFORE concatenation. Without this, both rows arrive at dedupe with different
+      // `id`s; even though dedupe picks one per (phase, pid), there's a 1-frame window
+      // (and edge cases where action_type/turn_phase mix differently) that produces a
+      // visual "two arrows blinking" until realtime catches up. Always trust the optimistic
+      // until the matching server row arrives via Realtime — at which point the optimistic
+      // is replaced by the normal (id !== nextAction.id) filter in applyIncomingTurnAction.
       const pendingOptimistic = turnActionsRef.current.filter(a => String(a.id).startsWith('optimistic-'));
-      setTurnActionsState([...enrichedActions, ...pendingOptimistic]);
+      const optimisticKeySet = new Set(
+        pendingOptimistic.map(a => `${a.participant_id}|${a.turn_phase ?? 'unknown'}|${a.action_type}`)
+      );
+      const filteredServer = optimisticKeySet.size === 0
+        ? enrichedActions
+        : enrichedActions.filter(a => {
+            const key = `${a.participant_id}|${a.turn_phase ?? 'unknown'}|${a.action_type}`;
+            return !optimisticKeySet.has(key);
+          });
+      setTurnActionsState([...filteredServer, ...pendingOptimistic]);
     } finally {
       turnActionsFetchInFlightRef.current = false;
       if (turnActionsFetchQueuedRef.current) {
@@ -725,8 +763,22 @@ export default function MatchRoomPage() {
       turn_number: turnMeta.turn_number,
     };
 
+    // Ghost-arrow guard (Bug 1): when the server INSERT for THIS action arrives, also evict
+    // any optimistic row that represented the same (pid, phase, action_type). Otherwise both
+    // coexist for a frame and dedupe (which is per-(phase, pid)) may pick the optimistic if
+    // its created_at is fresher, leaving the real server row dropped — or, in the opposite
+    // case, both render briefly. Atomic swap: drop matching optimistic + drop same-id, then
+    // append the server row.
+    const incomingKey = `${nextAction.participant_id}|${nextAction.turn_phase ?? 'unknown'}|${nextAction.action_type}`;
     setTurnActionsState([
-      ...turnActionsRef.current.filter(existing => existing.id !== nextAction.id),
+      ...turnActionsRef.current.filter(existing => {
+        if (existing.id === nextAction.id) return false;
+        if (String(existing.id).startsWith('optimistic-')) {
+          const optKey = `${existing.participant_id}|${existing.turn_phase ?? 'unknown'}|${existing.action_type}`;
+          if (optKey === incomingKey) return false;
+        }
+        return true;
+      }),
       nextAction,
     ]);
     scheduleTurnActionsReconcile();
@@ -1426,8 +1478,9 @@ export default function MatchRoomPage() {
   useEffect(() => {
     // Before wiping, flush any deferred move so we don't silently lose it
     // across phase transitions (the phase-timer watcher should have fired
-    // first, but belt-and-suspenders).
-    flushPendingMoveRef.current?.(100);
+    // first, but belt-and-suspenders). Bug 6: also flushes deferred receives
+    // with default 0% inertia (clean-slate dominate).
+    flushPendingMoveRef.current?.(100, 0);
     setSubmittedActions(new Set());
     menuAutoOpenedRef.current = new Set();
     setInertiaArrow(null);
@@ -1486,17 +1539,22 @@ export default function MatchRoomPage() {
         // null and we fall back to dir_x/dir_y from the latest server event so
         // the inertia arrow + animation stay correct without observing the pass.
         if (!alreadySeededForThisTurn) {
-          let seededDir: { dx: number; dy: number } | null = lastBallDirRef.current;
-          let serverNextDecay: number | null = null;
-          if (!seededDir) {
-            const recovered = resolveLooseBallInertiaFromHistory(events);
-            if (recovered) {
-              seededDir = recovered.dir;
-              serverNextDecay = recovered.nextDecay;
-              // Also revive lastBallDirRef so subsequent same-session turns
-              // don't keep paying the event-history scan cost.
-              lastBallDirRef.current = recovered.dir;
-            }
+          // Bug 4 hardening: always prefer the FRESHEST server-emitted dir
+          // from event history over the in-memory `lastBallDirRef.current`.
+          // The latter is updated from the resolution-end RAF tail, which
+          // can race with this turn-transition effect — when it does, the
+          // ref still holds a stale direction from a much earlier pass and
+          // the inertia arrow points the wrong way ("seta apontando pra
+          // trás após passe pra frente"). The server's `dir_x/dir_y` on the
+          // most recent loose_ball/ball_inertia/blocked event is computed
+          // from the actual ball-flight vector and is always correct.
+          const recovered = resolveLooseBallInertiaFromHistory(events);
+          let seededDir: { dx: number; dy: number } | null = recovered?.dir ?? lastBallDirRef.current;
+          let serverNextDecay: number | null = recovered?.nextDecay ?? null;
+          if (recovered) {
+            // Re-prime the ref with the server's vector so subsequent same-
+            // session ticks stay synced and skip the event-history scan.
+            lastBallDirRef.current = recovered.dir;
           }
           if (seededDir) {
             setBallInertiaDir(seededDir);
@@ -1722,9 +1780,15 @@ export default function MatchRoomPage() {
       const hCount = parts.filter(pp => pp.club_id === match?.home_club_id && pp.role_type === 'player').length;
       const aCount = parts.filter(pp => pp.club_id === match?.away_club_id && pp.role_type === 'player').length;
       const isTest = hCount <= 4 && aCount <= 4;
+      // Bug 3: in manager mode, the BH menu must only auto-open when the manager has
+      // explicitly selected the BH. If the manager has another player selected (or
+      // hasn't picked anyone yet), respect that — opening the BH menu unprompted
+      // hijacks the manager's intent. Player mode is unchanged: a player only ever
+      // controls their own participant, so myParticipant.id === bh.id implies they
+      // explicitly want the BH menu.
       const canControlBH = bh && (
         (myRole === 'player' && myParticipant?.id === bh.id) ||
-        (myRole === 'manager' && (bh.club_id === myClubId || isTest))
+        (myRole === 'manager' && (bh.club_id === myClubId || isTest) && selectedParticipantId === bh.id)
       );
       if (canControlBH && !menuAutoOpenedRef.current.has(bh.id)) {
         setShowActionMenu(bh.id);
@@ -1909,6 +1973,7 @@ export default function MatchRoomPage() {
       e.preventDefault();
       // Cancel any pending inertia-confirmation: the Z is overriding the move.
       pendingMoveRef.current = null;
+      pendingReceiveRef.current = null;
       setInertiaArrow(null);
       setSelectedParticipantId(candidate.id);
       setDrawingAction(null);
@@ -2537,11 +2602,92 @@ export default function MatchRoomPage() {
     if (actionType === 'receive' || actionType === 'receive_hard') {
       // `receive_hard` is the "Carrinho" variant — submitted as a normal receive with the
       // hard_tackle flag in the payload so the engine picks up the success/foul/card bias.
-      const payload = actionType === 'receive_hard' ? { hard_tackle: true } : undefined;
+      const extraPayload: Record<string, any> = actionType === 'receive_hard' ? { hard_tackle: true } : {};
       if (pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
-        submitAction('receive', participantId, pendingInterceptChoice.targetX, pendingInterceptChoice.targetY, undefined, payload);
+        // Bug 5 part 2: clamp the receive target to `min(distance_to_ball, maxMoveRange)`
+        // along the direction-to-target. Without this clamp, when the user clicks
+        // dominate on a loose ball whose projected claim point is beyond their stride,
+        // the optimistic arrow teleports to the "começo da inércia" (looseBallPos) and
+        // the engine subsequently rejects the over-range action. Clamping here keeps the
+        // visual move within the player's actual reach, and the engine's range gate
+        // (dist > maxRange + 0.5) still applies as the final authority.
+        const dp = participants.find(x => x.id === participantId);
+        let tx = pendingInterceptChoice.targetX;
+        let ty = pendingInterceptChoice.targetY;
+        if (dp && dp.field_x != null && dp.field_y != null) {
+          const dx = tx - dp.field_x;
+          const dy = ty - dp.field_y;
+          const dist = getFieldMoveDist(dx, dy);
+          const maxRange = computeMaxMoveRange(participantId);
+          if (dist > maxRange && dist > 0.001) {
+            const scale = maxRange / dist;
+            tx = dp.field_x + dx * scale;
+            ty = dp.field_y + dy * scale;
+          }
+        }
+
+        // Bug 6: receive inertia slider — defer the submit and show the same
+        // 0–100% inertia arrow used by move. Default 0% (clean slate after
+        // dominate) means the next-turn directional multiplier is neutral
+        // unless the player explicitly drags the slider. Submit goes via the
+        // shared `flushPendingMove` path (timer watcher + phase-flip + unmount
+        // safety nets all flush `pendingReceiveRef` with 0% if untouched).
+        if (dp && dp.field_x != null && dp.field_y != null) {
+          const adx = tx - dp.field_x;
+          const ady = ty - dp.field_y;
+          const alen = Math.sqrt(adx * adx + ady * ady);
+          // Optimistic arrow so the receive renders immediately while we wait
+          // for the slider confirmation. Carries inertia_power=0 so even if
+          // realtime arrives before the slider commits, the optimistic mirrors
+          // the default the auto-flush would write.
+          const turnAtClick = activeTurnRef.current;
+          if (turnAtClick) {
+            pushOptimisticTurnAction({
+              match_id: matchId!,
+              match_turn_id: turnAtClick.id,
+              participant_id: participantId,
+              controlled_by_type: myRole === 'manager' ? 'manager' : 'player',
+              controlled_by_user_id: user?.id ?? null,
+              action_type: 'receive',
+              target_x: tx,
+              target_y: ty,
+              target_participant_id: null,
+              status: 'pending',
+              created_at: new Date().toISOString(),
+              turn_phase: turnAtClick.phase,
+              turn_number: turnAtClick.turn_number,
+              payload: { inertia_power: 0, ...extraPayload },
+            });
+            setSubmittedActions(prev => new Set([...prev, participantId]));
+          }
+          pendingReceiveRef.current = {
+            participantId,
+            targetX: tx,
+            targetY: ty,
+            extraPayload: Object.keys(extraPayload).length > 0 ? extraPayload : undefined,
+          };
+          if (alen > 0.3) {
+            setInertiaArrow({
+              participantId,
+              startX: tx,
+              startY: ty,
+              dirX: adx / alen,
+              dirY: ady / alen,
+              maxLen: alen,
+            });
+          } else {
+            // Zero-length receive (cursor on ball, player adjacent) — submit
+            // immediately at 0%, no slider step needed.
+            submitAction('receive', participantId, tx, ty, undefined, { inertia_power: 0, ...extraPayload });
+            pendingReceiveRef.current = null;
+          }
+        } else {
+          // No drawing-from data — fall back to the legacy immediate submit.
+          submitAction('receive', participantId, tx, ty, undefined, extraPayload);
+        }
       } else {
-        submitAction('receive', participantId, undefined, undefined, undefined, payload);
+        const fallbackPayload = Object.keys(extraPayload).length > 0 ? extraPayload : undefined;
+        submitAction('receive', participantId, undefined, undefined, undefined, fallbackPayload);
       }
       setShowActionMenu(null);
       setPendingInterceptChoice(null);
@@ -2593,9 +2739,9 @@ export default function MatchRoomPage() {
   };
 
   const handleFieldClick = (pctX: number, pctY: number) => {
-    // Inertia arrow confirmation: submit the DEFERRED move with the chosen
-    // power. No more racing the engine's resolve — the single insert carries
-    // the final inertia_power from the start.
+    // Inertia arrow confirmation: submit the DEFERRED move (or receive) with
+    // the chosen power. No more racing the engine's resolve — the single
+    // insert carries the final inertia_power from the start.
     if (inertiaArrow) {
       const { startX, startY, dirX, dirY, maxLen } = inertiaArrow;
       const cdx = pctX - startX;
@@ -2608,6 +2754,15 @@ export default function MatchRoomPage() {
       if (pending) {
         submitAction('move', pending.participantId, pending.targetX, pending.targetY, undefined, { inertia_power: power });
         pendingMoveRef.current = null;
+      }
+      // Bug 6: same slider confirms the receive (Pedro chose to share the
+      // existing UX). The slider's `power` value uses the same 0–100% mapping;
+      // the only difference vs move is the auto-flush default (0% for receive).
+      const pendingRcv = pendingReceiveRef.current;
+      if (pendingRcv) {
+        const payload: Record<string, any> = { inertia_power: power, ...(pendingRcv.extraPayload || {}) };
+        submitAction('receive', pendingRcv.participantId, pendingRcv.targetX, pendingRcv.targetY, undefined, payload);
+        pendingReceiveRef.current = null;
       }
       setInertiaArrow(null);
       return;
@@ -3128,24 +3283,27 @@ export default function MatchRoomPage() {
     // Primary signal: a resolution_script arrived on this turn via Realtime
     // (the engine emits it at the end of the defense processing). When that
     // lands, we kick off immediately — no MIN_WAIT_MS gate, no event-log
-    // polling. Legacy fallback: any resolution event in the buffer still
-    // triggers an animation (for builds without the script). MAX_WAIT_MS
-    // caps the wait so a missing signal never hangs the UI.
+    // polling.
+    //
+    // Bug 2: legacy event-buffer fallback was triggering whenever ANY
+    // resolution event arrived (hasResolutionSignal), even though the script
+    // wasn't ready — and the fallback path recomputes positions WITHOUT the
+    // engine's directional-inertia multiplier, producing visible divergence.
+    // We now gate strictly on `scriptReadyForTurn`. If the script hasn't
+    // arrived after MAX_WAIT_MS we make ONE direct DB fetch of
+    // `match_turns.resolution_script` (snapshot fresh from Postgres, in case
+    // Realtime is lagging). Only if that ALSO fails do we fall back to the
+    // legacy script-less path (kept for matches resolved before the script
+    // refactor shipped). MAX_WAIT_MS bumped to 5000 because a delayed-but-
+    // accurate animation is preferable to a fast-but-divergent one.
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     const pollStartTime = Date.now();
-    const MAX_WAIT_MS = 2500;
-    const MIN_WAIT_MS = 250;
+    const MAX_WAIT_MS = 5000;
+    let scriptFetchAttempted = false;
 
     const scriptReadyForTurn = () =>
       resolutionScriptRef.current != null
       && resolutionScriptTurnIdRef.current === activeTurn.id;
-
-    const hasResolutionSignal = () => {
-      if (scriptReadyForTurn()) return true;
-      const resEvents = resolutionEventsRef.current;
-      if (resEvents.length > 0) return true;
-      return false;
-    };
 
     const tryStart = () => {
       if (animatedResolutionIdRef.current === activeTurn.id) {
@@ -3154,10 +3312,45 @@ export default function MatchRoomPage() {
       }
       const elapsed = Date.now() - pollStartTime;
       const scriptReady = scriptReadyForTurn();
-      // Script is authoritative — start immediately. Otherwise fall back to
-      // the event-buffer gate with a MIN_WAIT_MS debounce.
-      const ready = scriptReady || (hasResolutionSignal() && elapsed >= MIN_WAIT_MS);
-      const timedOut = elapsed >= MAX_WAIT_MS;
+      // After MAX_WAIT_MS without a Realtime-delivered script, do one direct
+      // DB fetch as a safety net before declaring timeout. Realtime can lag;
+      // a fresh SELECT bypasses the WAL stream entirely.
+      if (!scriptReady && elapsed >= MAX_WAIT_MS && !scriptFetchAttempted) {
+        scriptFetchAttempted = true;
+        supabase
+          .from('match_turns')
+          .select('resolution_script')
+          .eq('id', activeTurn.id)
+          .maybeSingle()
+          .then(({ data }) => {
+            const fetched = (data as any)?.resolution_script;
+            if (fetched && resolutionScriptTurnIdRef.current !== activeTurn.id) {
+              resolutionScriptRef.current = fetched as ResolutionScript;
+              resolutionScriptTurnIdRef.current = activeTurn.id;
+              // Seed event buffer to mirror the Realtime path so the rest
+              // of the animator sees the same data shape.
+              const nowIso = new Date().toISOString();
+              const seeded: EventLog[] = ((fetched as any).events || []).map((ev: any, idx: number) => ({
+                id: `script-fetch-${activeTurn.id}-${idx}`,
+                event_type: ev.event_type,
+                title: ev.title ?? '',
+                body: ev.body ?? '',
+                payload: (ev.payload ?? null) as Record<string, any> | null,
+                created_at: nowIso,
+              }));
+              for (const ev of seeded) {
+                if (!resolutionEventsRef.current.some(e => e.id === ev.id)) {
+                  resolutionEventsRef.current = [...resolutionEventsRef.current, ev];
+                }
+              }
+            }
+          });
+        return; // wait for the fetch to land before starting; next poll will re-check
+      }
+      // Strict script gate. If we're past MAX_WAIT_MS AND the fetch returned
+      // nothing, fall through to legacy path (script == null branches below).
+      const timedOut = elapsed >= MAX_WAIT_MS && scriptFetchAttempted;
+      const ready = scriptReady;
       if (!ready && !timedOut) return;
 
       if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
@@ -5591,9 +5784,15 @@ export default function MatchRoomPage() {
                   const cyP = (mouseFieldPct.y - projY) * FIELD_Y_SCALE;
                   const distCursorToPath = Math.sqrt(cxP * cxP + cyP * cyP);
 
-                  // Player → claim target (Y-scaled, same as engine).
-                  const pxToT = (mouseFieldPct.x - drawingFrom.field_x!);
-                  const pyToT = (mouseFieldPct.y - drawingFrom.field_y!) * FIELD_Y_SCALE;
+                  // Player → CLAIM POINT (the projection on the ball segment, NOT the cursor).
+                  // Bug 5: the engine measures `dist = action.target_x - participant.startX`
+                  // and `action.target_x = projX` (the projection clamped onto the segment),
+                  // so the client must mirror that geometry. Measuring player-to-cursor here
+                  // produced "purple shows when engine rejects": cursor far from ball but on
+                  // the projected segment → reach via cursor distance passed, but engine's
+                  // projX was beyond player's stride → rejected.
+                  const pxToT = (projX - drawingFrom.field_x!);
+                  const pyToT = (projY - drawingFrom.field_y!) * FIELD_Y_SCALE;
                   const distPlayerToTarget = Math.sqrt(pxToT * pxToT + pyToT * pyToT);
 
                   const withinCircle = distCursorToPath <= circleRadiusField + INTERCEPT_RADIUS + 1;

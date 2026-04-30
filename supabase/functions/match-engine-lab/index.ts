@@ -9709,7 +9709,9 @@ Deno.serve(async (req) => {
       }
       const power = Math.max(0, Math.min(100, Math.round(powerRaw)));
 
-      // Find this player's most recent move action in this match.
+      // Find this player's most recent inertia-eligible action in this match.
+      // Accept move/receive/block — all three feed into next-turn directional
+      // inertia (the engine reads `inertia_power` from the same payload on each).
       // Accept both 'pending' and 'used' — the engine may have resolved the
       // turn between the initial submit and the slider confirmation, flipping
       // the status. The inertia_power is only read on the NEXT turn, so
@@ -9719,13 +9721,13 @@ Deno.serve(async (req) => {
         .select('id, payload, controlled_by_user_id')
         .eq('match_id', match_id)
         .eq('participant_id', participant_id)
-        .eq('action_type', 'move')
+        .in('action_type', ['move', 'receive', 'block'])
         .in('status', ['pending', 'used'])
         .order('created_at', { ascending: false })
         .limit(1);
 
       if (!recentMoves || recentMoves.length === 0) {
-        return new Response(JSON.stringify({ error: 'No move found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: 'No inertia-eligible action found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       // Authorization: the acting user must be the one who submitted the move.
