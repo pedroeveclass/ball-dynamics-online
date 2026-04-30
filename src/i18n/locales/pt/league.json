@@ -1,11 +1,45 @@
 {
   "title_fallback": "Liga",
   "season": "Temporada {{n}}",
+  "names": {
+    "Liga Brasileira": "Liga Brasileira",
+    "Liga Espanhola": "Liga Espanhola",
+    "Liga Inglesa": "Liga Inglesa",
+    "Liga Italiana": "Liga Italiana",
+    "Liga Alemã": "Liga Alemã",
+    "Liga Francesa": "Liga Francesa",
+    "Liga Portuguesa": "Liga Portuguesa",
+    "Liga Argentina": "Liga Argentina",
+    "Liga Americana": "Liga Americana",
+    "Liga Mexicana": "Liga Mexicana",
+    "Liga Holandesa": "Liga Holandesa"
+  },
   "tabs": {
     "standings": "Classificação",
     "rounds": "Rodadas",
     "stats": "Estatísticas",
-    "available": "Times"
+    "available": "Times",
+    "join": "Times"
+  },
+  "join": {
+    "intro": "Clubes com técnico bot aceitam contrato automaticamente. Clubes com técnico humano precisam te enviar uma proposta.",
+    "bot_team": "Técnico bot",
+    "human_team": "Técnico humano",
+    "sign_button": "Assinar contrato",
+    "view_button": "Ver clube",
+    "empty": "Nenhum clube disponível.",
+    "dialog_title": "Assinar com {{club}}?",
+    "dialog_intro": "O técnico é bot, então o contrato é aceito na hora com os valores padrão abaixo.",
+    "salary_label": "Salário semanal",
+    "clause_label": "Multa rescisória",
+    "length_label": "Duração",
+    "length_months": "{{n}} meses",
+    "cancel": "Cancelar",
+    "confirm": "Assinar",
+    "toast_signed": "Você assinou com {{club}}!",
+    "toast_human_team": "Esse time tem um técnico humano. Aguarde uma proposta.",
+    "toast_already_in_club": "Você já está em um clube.",
+    "toast_error": "Erro ao assinar contrato."
   },
   "standings": {
     "col": {

@@ -6,6 +6,7 @@ import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
+import { AppLayout } from '@/components/AppLayout';
 import { PositionBadge } from '@/components/PositionBadge';
 import { ClubCrest } from '@/components/ClubCrest';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -32,9 +33,11 @@ import {
 
 const SQUAD_ROLE_VALUES = ['starter', 'rotation', 'backup', 'youth'] as const;
 
-// Adaptive layout: ManagerLayout if logged-in manager, otherwise simple public layout
+// Adaptive layout: ManagerLayout for managers, AppLayout for players, simple public layout otherwise.
+// Picks based on profile.role_selected so the correct sidebar appears regardless of which
+// profile the user happens to also have.
 function ClubLayout({ children }: { children: ReactNode }) {
-  const { managerProfile, loading } = useAuth();
+  const { managerProfile, playerProfile, profile, loading } = useAuth();
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -42,7 +45,11 @@ function ClubLayout({ children }: { children: ReactNode }) {
       </div>
     );
   }
+  const role = (profile as any)?.role_selected;
+  if (role === 'manager' && managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
+  if (role === 'player' && playerProfile) return <AppLayout>{children}</AppLayout>;
   if (managerProfile) return <ManagerLayout>{children}</ManagerLayout>;
+  if (playerProfile) return <AppLayout>{children}</AppLayout>;
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-card">
@@ -370,6 +377,7 @@ export default function PublicClubPage() {
       if (playerData?.user_id) {
         await supabase.from('notifications').insert({
           user_id: playerData.user_id,
+          player_profile_id: selectedPlayer.id,
           title: t('toast.offer_notification_title'),
           body: t('toast.offer_notification_body', { club: myClub.name, salary: formatBRL(salary) }),
           type: 'contract',

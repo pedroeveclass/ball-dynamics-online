@@ -14,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { ATTR_LABELS } from '@/lib/attributes';
+import { ATTR_LABELS, archetypeLabel, heightLabel } from '@/lib/attributes';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -491,12 +491,12 @@ export default function PlayerProfilePage() {
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <PositionBadge position={p.primary_position} />
                 {p.secondary_position && <PositionBadge position={p.secondary_position} />}
-                <Badge variant="outline" className="text-xs">{p.archetype}</Badge>
+                <Badge variant="outline" className="text-xs">{archetypeLabel(p.archetype)}</Badge>
               </div>
               <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
                 <span>{t('card.age', { count: p.age })}</span>
                 <span className="flex items-center gap-1"><Footprints className="h-3.5 w-3.5" />{footLabel}</span>
-                <span className="flex items-center gap-1"><Ruler className="h-3.5 w-3.5" />{t('card.height_cm', { value: p.height })}</span>
+                <span className="flex items-center gap-1"><Ruler className="h-3.5 w-3.5" />{heightLabel(p.height)}</span>
               </div>
             </div>
 

@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
           : 'Sem energia suficiente hoje — plano do dia ficou pendente.';
         await supabase.from('notifications').insert({
           user_id: profile.user_id,
+          player_profile_id: profile.id,
           title: executed > 0 ? '🏋️ Treino automático concluído' : '🏋️ Treino automático travou',
           body: executed > 0
             ? `${executed} sessão(ões): ${summary}`

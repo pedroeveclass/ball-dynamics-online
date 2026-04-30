@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
             if (player.user_id) {
               await supabase.from('notifications').insert({
                 user_id: player.user_id,
+                player_profile_id: contract.player_profile_id,
                 title: '💰 Salário recebido!',
                 body: `Você recebeu ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(contract.weekly_salary)} de salário semanal.`,
                 type: 'finance',

@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2, UserCircle2,
+  Home, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2, UserCircle2,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation, Link } from 'react-router-dom';
@@ -21,7 +21,7 @@ export function AppSidebar() {
   const { t } = useTranslation(['nav', 'common']);
 
   const playerNav = [
-    { title: t('nav:player.dashboard'), url: '/player', icon: LayoutDashboard },
+    { title: t('nav:player.dashboard'), url: '/player', icon: Home },
     { title: t('nav:player.profile'), url: '/player/profile', icon: User },
     { title: t('nav:player.attributes'), url: '/player/attributes', icon: TrendingUp },
     { title: t('nav:player.training_plan'), url: '/player/training-plan', icon: CalendarClock },

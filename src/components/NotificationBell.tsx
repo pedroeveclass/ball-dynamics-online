@@ -17,10 +17,11 @@ interface Notification {
   link?: string | null;
   i18n_key?: string | null;
   i18n_params?: Record<string, unknown> | null;
+  player_profile_id?: string | null;
 }
 
 export function NotificationBell() {
-  const { user } = useAuth();
+  const { user, playerProfile } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation('notifications');
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -28,11 +29,16 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Active player. When set, the bell only surfaces notifications either
+  // tagged with this player_profile_id or with no player tag (general).
+  const activePlayerId = playerProfile?.id ?? null;
+
   useEffect(() => {
     if (!user) return;
     fetchNotifications();
 
-    // Subscribe to new notifications
+    // Subscribe to new notifications. Filter param only supports a single
+    // equality, so we filter by user and discard mismatches client-side.
     const channel = supabase.channel(`notif-${user.id}`)
       .on('postgres_changes', {
         event: 'INSERT',
@@ -40,13 +46,16 @@ export function NotificationBell() {
         table: 'notifications',
         filter: `user_id=eq.${user.id}`,
       }, (payload: any) => {
-        setNotifications(prev => [payload.new as Notification, ...prev.slice(0, 9)]);
+        const n = payload.new as Notification;
+        const tag = n.player_profile_id ?? null;
+        if (tag != null && activePlayerId != null && tag !== activePlayerId) return;
+        setNotifications(prev => [n, ...prev.slice(0, 9)]);
         setUnreadCount(prev => prev + 1);
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user?.id]);
+  }, [user?.id, activePlayerId]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -59,11 +68,21 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  // SQL fragment that keeps notifications addressed to the active player OR
+  // tagged as general (player_profile_id IS NULL). Reused by listing, count,
+  // and bulk mark-as-read so they stay consistent.
+  function applyPlayerScope<Q extends { or: (s: string) => Q }>(q: Q): Q {
+    if (!activePlayerId) return q;
+    return q.or(`player_profile_id.is.null,player_profile_id.eq.${activePlayerId}`);
+  }
+
   async function fetchNotifications() {
     if (!user) return;
+    const baseList = supabase.from('notifications').select('*').eq('user_id', user.id);
+    const baseUnread = supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('read', false);
     const [{ data: notifs }, { count }] = await Promise.all([
-      supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(10),
-      supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('read', false),
+      applyPlayerScope(baseList).order('created_at', { ascending: false }).limit(10),
+      applyPlayerScope(baseUnread),
     ]);
     setNotifications((notifs || []) as Notification[]);
     setUnreadCount(count || 0);
@@ -78,7 +97,8 @@ export function NotificationBell() {
   async function markAllAsRead(e: React.MouseEvent) {
     e.stopPropagation();
     if (!user || unreadCount === 0) return;
-    await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false);
+    const base = supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false);
+    await applyPlayerScope(base);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadCount(0);
   }

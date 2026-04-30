@@ -151,6 +151,7 @@ export function PlayerActivityDrawer({ open, onOpenChange, detail, periodDays }:
         open={notifyOpen}
         onOpenChange={setNotifyOpen}
         playerUserId={player.user_id}
+        playerProfileId={(player as any).id ?? null}
         playerName={player.full_name}
         daysInactive={daysSinceLastTraining}
       />

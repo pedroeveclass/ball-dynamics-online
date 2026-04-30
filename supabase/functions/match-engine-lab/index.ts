@@ -8961,10 +8961,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           .eq('controlled_by_type', 'human');
         const humanProfileIds = (humanParts || []).map(p => p.player_profile_id).filter(Boolean);
         if (humanProfileIds.length > 0) {
-          const { data: humanPlayers } = await supabase.from('player_profiles').select('user_id').in('id', humanProfileIds);
+          const { data: humanPlayers } = await supabase.from('player_profiles').select('id, user_id').in('id', humanProfileIds);
           const matchLink = `/match/${match_id}/replay`;
           const playerNotifs = (humanPlayers || []).filter(p => p.user_id).map(p => ({
-            user_id: p.user_id, type: 'match', title: '🏁 Partida encerrada!', body: resultText, link: matchLink,
+            user_id: p.user_id, player_profile_id: p.id, type: 'match', title: '🏁 Partida encerrada!', body: resultText, link: matchLink,
           }));
           if (playerNotifs.length > 0) await supabase.from('notifications').insert(playerNotifs);
         }

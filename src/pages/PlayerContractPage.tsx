@@ -111,18 +111,50 @@ export default function PlayerContractPage() {
     setSubmittingMutual(true);
 
     try {
-      // Insert mutual agreement request
-      const { error } = await supabase.from('contract_mutual_agreements').insert({
-        contract_id: contract.id,
-        requested_by: 'player',
-        requested_by_id: playerProfile.id,
-        status: 'pending',
-      });
+      // Bot-managed clubs auto-accept the request: skip the pending-state dance
+      // and tear down the contract immediately via accept_mutual_exit, so the
+      // free-agent transition happens in one click.
+      const { data: club } = await supabase
+        .from('clubs')
+        .select('manager_profile_id, is_bot_managed')
+        .eq('id', playerProfile.club_id)
+        .maybeSingle();
+      const isBotClub = !!club && (club.is_bot_managed === true || !club.manager_profile_id);
+
+      // Insert mutual agreement request and capture its id (needed for the
+      // bot auto-accept path; for human clubs the id is unused on the client).
+      const { data: agreement, error } = await supabase
+        .from('contract_mutual_agreements')
+        .insert({
+          contract_id: contract.id,
+          requested_by: 'player',
+          requested_by_id: playerProfile.id,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
       if (error) throw error;
 
-      // Notify the manager
-      const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', playerProfile.club_id).maybeSingle();
-      const { data: manager } = club ? await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle() : { data: null };
+      if (isBotClub && agreement?.id) {
+        const { error: rpcError } = await (supabase as any).rpc('accept_mutual_exit', {
+          p_agreement_id: agreement.id,
+          p_contract_id: contract.id,
+          p_player_id: playerProfile.id,
+        });
+        if (rpcError) throw rpcError;
+
+        toast.success(t('toast.request_auto_accepted', { defaultValue: 'Rescisão amigável aceita pelo clube bot.' }));
+        setPendingMutual(false);
+        setContract(null);
+        setMutualDialogOpen(false);
+        await refreshPlayerProfile();
+        return;
+      }
+
+      // Human-managed club: keep the existing notification flow.
+      const { data: manager } = club?.manager_profile_id
+        ? await supabase.from('manager_profiles').select('user_id').eq('id', club.manager_profile_id).maybeSingle()
+        : { data: null };
       if (manager?.user_id) {
         await supabase.from('notifications').insert({
           user_id: manager.user_id,

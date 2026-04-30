@@ -9,6 +9,9 @@ import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Aw
 import { ClubCrest } from '@/components/ClubCrest';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { formatBRTDateTime, formatBRTTimeOnly, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
+import { formatLeagueName } from '@/lib/leagueName';
+import { formatBRL } from '@/lib/formatting';
+import { Bot, User as UserIcon } from 'lucide-react';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -89,13 +92,32 @@ interface AvailableClub {
   stadiums: { id: string; name: string }[];
 }
 
+interface JoinableClub {
+  id: string;
+  name: string;
+  short_name: string;
+  primary_color: string;
+  secondary_color: string;
+  crest_url: string | null;
+  city: string | null;
+  is_bot_managed: boolean;
+  manager_profile_id: string | null;
+}
+
+// Free-agent default contract when a player auto-signs with a bot-managed
+// team. Matches the placeholder values used in the manager-side offer dialog
+// so a manual offer would land in the same neighborhood.
+const FREE_AGENT_DEFAULT_SALARY = 500;
+const FREE_AGENT_DEFAULT_CLAUSE = 5000;
+const FREE_AGENT_DEFAULT_MONTHS = 12;
+
 const PRESET_COLORS = [
   '#1a5276', '#c0392b', '#27ae60', '#f39c12', '#8e44ad',
   '#2c3e50', '#e74c3c', '#3498db', '#1abc9c', '#d35400',
 ];
 
 export default function LeaguePage() {
-  const { user, managerProfile, playerProfile, club, refreshManagerProfile } = useAuth();
+  const { user, managerProfile, playerProfile, club, refreshManagerProfile, refreshPlayerProfile } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('league');
   const [loading, setLoading] = useState(true);
@@ -134,11 +156,19 @@ export default function LeaguePage() {
   const SCORERS_PREVIEW_COUNT = 5;
 
   const isManagerWithoutClub = !!managerProfile && !club;
+  // Free-agent player: shown the league teams list with "join bot team" CTAs.
+  const isPlayerFreeAgent = !!playerProfile && !playerProfile.club_id;
+
+  // Player join flow state
+  const [joinableClubs, setJoinableClubs] = useState<JoinableClub[]>([]);
+  const [joinTarget, setJoinTarget] = useState<JoinableClub | null>(null);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
     fetchLeagueData();
     if (isManagerWithoutClub) fetchAvailableClubs();
-  }, [managerProfile, club]);
+    if (isPlayerFreeAgent) fetchJoinableClubs();
+  }, [managerProfile, club, playerProfile?.id, playerProfile?.club_id]);
 
   // Look up the viewer's next league match so we can highlight it
   // inside the rounds list and optionally auto-select that round.
@@ -259,6 +289,55 @@ export default function LeaguePage() {
       .eq('is_bot_managed', true)
       .not('league_id', 'is', null);
     setAvailableClubs((data as any) || []);
+  }
+
+  // Player flow: list every league club so a free agent can pick one. Bot
+  // teams sign on the spot; human-managed teams just deep-link to the public
+  // page so the manager can send an offer.
+  async function fetchJoinableClubs() {
+    const { data } = await supabase
+      .from('clubs')
+      .select('id, name, short_name, primary_color, secondary_color, crest_url, city, is_bot_managed, manager_profile_id')
+      .not('league_id', 'is', null)
+      .order('name');
+    setJoinableClubs((data as any) || []);
+  }
+
+  async function handleJoinBotTeam() {
+    if (!joinTarget || !playerProfile || !user) return;
+    if (!joinTarget.is_bot_managed) {
+      toast.error(t('join.toast_human_team'));
+      return;
+    }
+    if (playerProfile.club_id) {
+      toast.error(t('join.toast_already_in_club'));
+      return;
+    }
+    setJoining(true);
+    try {
+      // transfer_player handles: terminate any active contract (none for a
+      // free agent), create the new contract, assign jersey, set club_id,
+      // update wage bill — all atomically.
+      const { error } = await supabase.rpc('transfer_player' as any, {
+        p_player_id: playerProfile.id,
+        p_new_club_id: joinTarget.id,
+        p_old_contract_id: '00000000-0000-0000-0000-000000000000',
+        p_new_salary: FREE_AGENT_DEFAULT_SALARY,
+        p_new_release_clause: FREE_AGENT_DEFAULT_CLAUSE,
+        p_contract_months: FREE_AGENT_DEFAULT_MONTHS,
+      });
+      if (error) throw error;
+
+      toast.success(t('join.toast_signed', { club: joinTarget.name }));
+      setJoinTarget(null);
+      await refreshPlayerProfile();
+      navigate('/player/club');
+    } catch (err: any) {
+      console.error('[JOIN BOT TEAM] error:', err);
+      toast.error(err?.message || t('join.toast_error'));
+    } finally {
+      setJoining(false);
+    }
   }
 
   async function fetchStatistics() {
@@ -551,12 +630,12 @@ export default function LeaguePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-tactical" />
-            <h1 className="font-display text-2xl font-bold">{leagueName || t('title_fallback')}</h1>
+            <h1 className="font-display text-2xl font-bold">{leagueName ? formatLeagueName(leagueName) : t('title_fallback')}</h1>
           </div>
           <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
         </div>
         <Tabs defaultValue="standings" className="space-y-4">
-          <TabsList className={`grid w-full ${isManagerWithoutClub ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
+          <TabsList className={`grid w-full ${(isManagerWithoutClub || isPlayerFreeAgent) ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
             <TabsTrigger value="standings">{t('tabs.standings')}</TabsTrigger>
             <TabsTrigger value="rounds">{t('tabs.rounds')}</TabsTrigger>
             <TabsTrigger value="stats" onClick={() => fetchStatistics()}>{t('tabs.stats')}</TabsTrigger>
@@ -566,6 +645,16 @@ export default function LeaguePage() {
                 {availableClubs.length > 0 && (
                   <span className="ml-1.5 bg-pitch text-white text-[10px] rounded-full px-1.5 py-0.5">
                     {availableClubs.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            )}
+            {isPlayerFreeAgent && !isManagerWithoutClub && (
+              <TabsTrigger value="join" className="relative">
+                {t('tabs.join', { defaultValue: 'Times' })}
+                {joinableClubs.length > 0 && (
+                  <span className="ml-1.5 bg-pitch text-white text-[10px] rounded-full px-1.5 py-0.5">
+                    {joinableClubs.length}
                   </span>
                 )}
               </TabsTrigger>
@@ -1064,6 +1153,74 @@ export default function LeaguePage() {
             )}
           </TabsContent>
 
+          {/* Free-agent player: browse league teams. Bot teams auto-sign with
+              the default contract; human-managed teams open the public page so
+              the manager can decide. */}
+          {isPlayerFreeAgent && (
+            <TabsContent value="join" className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                {t('join.intro', {
+                  defaultValue: 'Clubes com técnico bot aceitam contrato automaticamente. Clubes com técnico humano precisam te enviar uma proposta.',
+                })}
+              </p>
+              {joinableClubs.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {joinableClubs.map((jc) => (
+                    <div key={jc.id} className="stat-card flex flex-col items-center text-center gap-3 p-4">
+                      <ClubCrest
+                        crestUrl={jc.crest_url}
+                        primaryColor={jc.primary_color}
+                        secondaryColor={jc.secondary_color}
+                        shortName={jc.short_name}
+                        className="h-14 w-14 rounded-lg text-lg"
+                      />
+                      <div>
+                        <h3 className="font-display font-bold">{jc.name}</h3>
+                        {jc.city && <p className="text-xs text-muted-foreground">{jc.city}</p>}
+                        <div className="flex items-center justify-center gap-1 mt-1 text-[11px]">
+                          {jc.is_bot_managed ? (
+                            <>
+                              <Bot className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-muted-foreground">{t('join.bot_team', { defaultValue: 'Técnico bot' })}</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserIcon className="h-3 w-3 text-pitch" />
+                              <span className="text-pitch">{t('join.human_team', { defaultValue: 'Técnico humano' })}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {jc.is_bot_managed ? (
+                        <Button
+                          onClick={() => setJoinTarget(jc)}
+                          className="w-full bg-tactical hover:bg-tactical/90 text-white"
+                          size="sm"
+                        >
+                          {t('join.sign_button', { defaultValue: 'Assinar contrato' })}
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => navigate(`/club/${jc.id}`)}
+                          variant="outline"
+                          className="w-full"
+                          size="sm"
+                        >
+                          {t('join.view_button', { defaultValue: 'Ver clube' })}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground">{t('join.empty', { defaultValue: 'Nenhum clube disponível.' })}</p>
+                </div>
+              )}
+            </TabsContent>
+          )}
+
           {/* Times Disponíveis tab */}
           {isManagerWithoutClub && (
             <TabsContent value="available" className="space-y-4">
@@ -1175,6 +1332,62 @@ export default function LeaguePage() {
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               {t('customize.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Free-agent → bot team confirm dialog */}
+      <Dialog open={!!joinTarget} onOpenChange={(open) => { if (!open && !joining) setJoinTarget(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              {t('join.dialog_title', { defaultValue: 'Assinar com {{club}}?', club: joinTarget?.name || '' })}
+            </DialogTitle>
+          </DialogHeader>
+          {joinTarget && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-center">
+                <ClubCrest
+                  crestUrl={joinTarget.crest_url}
+                  primaryColor={joinTarget.primary_color}
+                  secondaryColor={joinTarget.secondary_color}
+                  shortName={joinTarget.short_name}
+                  className="h-16 w-16 rounded-lg text-xl"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                {t('join.dialog_intro', {
+                  defaultValue: 'O técnico é bot, então o contrato é aceito na hora com os valores padrão abaixo.',
+                })}
+              </p>
+              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t('join.salary_label', { defaultValue: 'Salário semanal' })}</span>
+                  <span className="font-display font-bold">{formatBRL(FREE_AGENT_DEFAULT_SALARY)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t('join.clause_label', { defaultValue: 'Multa rescisória' })}</span>
+                  <span className="font-display font-bold">{formatBRL(FREE_AGENT_DEFAULT_CLAUSE)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t('join.length_label', { defaultValue: 'Duração' })}</span>
+                  <span className="font-display font-bold">{t('join.length_months', { defaultValue: '{{n}} meses', n: FREE_AGENT_DEFAULT_MONTHS })}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJoinTarget(null)} disabled={joining}>
+              {t('join.cancel', { defaultValue: 'Cancelar' })}
+            </Button>
+            <Button
+              onClick={handleJoinBotTeam}
+              disabled={joining}
+              className="bg-pitch hover:bg-pitch/90 text-white"
+            >
+              {joining ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {t('join.confirm', { defaultValue: 'Assinar' })}
             </Button>
           </DialogFooter>
         </DialogContent>

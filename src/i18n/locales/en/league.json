@@ -1,11 +1,45 @@
 {
   "title_fallback": "League",
   "season": "Season {{n}}",
+  "names": {
+    "Liga Brasileira": "Brazilian League",
+    "Liga Espanhola": "Spanish League",
+    "Liga Inglesa": "English League",
+    "Liga Italiana": "Italian League",
+    "Liga Alemã": "German League",
+    "Liga Francesa": "French League",
+    "Liga Portuguesa": "Portuguese League",
+    "Liga Argentina": "Argentine League",
+    "Liga Americana": "American League",
+    "Liga Mexicana": "Mexican League",
+    "Liga Holandesa": "Dutch League"
+  },
   "tabs": {
     "standings": "Standings",
     "rounds": "Rounds",
     "stats": "Statistics",
-    "available": "Teams"
+    "available": "Teams",
+    "join": "Teams"
+  },
+  "join": {
+    "intro": "Bot-managed clubs sign you on the spot. Human-managed clubs need to send you an offer.",
+    "bot_team": "Bot manager",
+    "human_team": "Human manager",
+    "sign_button": "Sign contract",
+    "view_button": "View club",
+    "empty": "No clubs available.",
+    "dialog_title": "Sign with {{club}}?",
+    "dialog_intro": "The manager is a bot, so the contract is accepted immediately with the default values below.",
+    "salary_label": "Weekly salary",
+    "clause_label": "Release clause",
+    "length_label": "Length",
+    "length_months": "{{n}} months",
+    "cancel": "Cancel",
+    "confirm": "Sign",
+    "toast_signed": "You signed with {{club}}!",
+    "toast_human_team": "This team has a human manager. Wait for an offer.",
+    "toast_already_in_club": "You are already in a club.",
+    "toast_error": "Error signing contract."
   },
   "standings": {
     "col": {

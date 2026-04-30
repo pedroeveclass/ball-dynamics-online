@@ -204,6 +204,7 @@ export default function ManagerSquadPage() {
       if (agreementTarget.user_id) {
         await supabase.from('notifications').insert({
           user_id: agreementTarget.user_id,
+          player_profile_id: agreementTarget.id,
           title: t('squad:notifications.agreement_proposed_title'),
           body: t('squad:notifications.agreement_proposed_body'),
           type: 'contract',
@@ -312,6 +313,7 @@ export default function ManagerSquadPage() {
       if (player.user_id) {
         await supabase.from('notifications').insert({
           user_id: player.user_id,
+          player_profile_id: player.id,
           title: t('squad:notifications.exit_rejected_title'),
           body: t('squad:notifications.exit_rejected_body', { club: club.name }),
           type: 'contract',

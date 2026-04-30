@@ -11,11 +11,12 @@ interface NotifyPlayerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   playerUserId: string | null;
+  playerProfileId?: string | null;
   playerName: string;
   daysInactive?: number | null;
 }
 
-export function NotifyPlayerDialog({ open, onOpenChange, playerUserId, playerName, daysInactive }: NotifyPlayerDialogProps) {
+export function NotifyPlayerDialog({ open, onOpenChange, playerUserId, playerProfileId, playerName, daysInactive }: NotifyPlayerDialogProps) {
   const { t } = useTranslation('notify_player_dialog');
   const [title, setTitle] = useState(() => t('default_title'));
   const [body, setBody] = useState('');
@@ -43,10 +44,11 @@ export function NotifyPlayerDialog({ open, onOpenChange, playerUserId, playerNam
     setSending(true);
     const { error } = await supabase.from('notifications').insert({
       user_id: playerUserId,
+      player_profile_id: playerProfileId ?? null,
       type: 'system',
       title: title.trim() || t('default_title'),
       body: trimmed,
-    });
+    } as any);
     setSending(false);
     if (error) {
       toast.error(t('toast.send_error'));

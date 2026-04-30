@@ -107,7 +107,15 @@ interface LineupSlotInfo {
   slot_position: string;
   role_type: string;
   sort_order: number;
-  player: { id: string; full_name: string; overall: number; primary_position: string } | null;
+  player: {
+    id: string;
+    full_name: string;
+    overall: number;
+    primary_position: string;
+    jersey_number: number | null;
+    appearance: any;
+    height: string | null;
+  } | null;
 }
 
 interface LineupInfo {
@@ -364,7 +372,7 @@ export default function PlayerClubPage() {
           const slotPlayerIds = slots.map((s) => s.player_profile_id);
           const { data: slotPlayers } = await supabase
             .from('player_profiles')
-            .select('id, full_name, overall, primary_position')
+            .select('id, full_name, overall, primary_position, jersey_number, appearance, height')
             .in('id', slotPlayerIds);
 
           const playerMap = new Map((slotPlayers || []).map((p) => [p.id, p]));
@@ -779,6 +787,57 @@ export default function PlayerClubPage() {
               )}
             </div>
 
+            {/* Starting XI avatars (mirror PublicClubPage) */}
+            {(() => {
+              const starters = lineup.slots
+                .filter((s) => s.role_type === 'starter' && s.player)
+                .sort((a, b) => a.sort_order - b.sort_order);
+              if (starters.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {t('lineup.starting_xi', { defaultValue: 'Starting XI' })}
+                  </h4>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-3">
+                    {starters.map((s) => (
+                      <Link
+                        key={s.player!.id}
+                        to={`/player/${s.player!.id}`}
+                        className="group flex flex-col items-center text-center gap-1.5 rounded-lg p-2 hover:bg-muted/40 transition-colors"
+                      >
+                        <div className="w-14 h-28 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-md overflow-hidden">
+                          <PlayerAvatar
+                            appearance={s.player!.appearance}
+                            variant="full-front"
+                            height={s.player!.height || undefined}
+                            clubPrimaryColor={clubInfo?.primary_color}
+                            clubSecondaryColor={clubInfo?.secondary_color}
+                            clubCrestUrl={clubInfo?.crest_url || undefined}
+                            playerName={s.player!.full_name}
+                            jerseyNumber={s.player!.jersey_number ?? undefined}
+                            className="w-full h-full"
+                            fallbackSeed={s.player!.id}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1 min-w-0 w-full">
+                          {s.player!.jersey_number != null && (
+                            <span className="font-display font-extrabold text-[11px] text-tactical shrink-0">#{s.player!.jersey_number}</span>
+                          )}
+                          <span className={`text-[11px] font-semibold truncate transition-colors ${s.player!.id === playerProfile.id ? 'text-tactical' : 'group-hover:text-tactical'}`}>
+                            {s.player!.full_name.split(' ').slice(-1)[0] || s.player!.full_name}
+                          </span>
+                        </div>
+                        <PositionBadge
+                          position={s.slot_position.replace(/[0-9]/g, '')}
+                          className="text-[9px] px-1 py-0"
+                        />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             <LineupFieldView
               formation={lineup.formation}
               slots={lineup.slots}
@@ -801,7 +860,9 @@ export default function PlayerClubPage() {
                     .sort((a, b) => a.sort_order - b.sort_order)
                     .map((slot, idx) => (
                       <tr key={idx} className="border-b border-border/20">
-                        <td className="py-1.5 font-display font-bold text-muted-foreground">{idx + 1}</td>
+                        <td className="py-1.5 font-display font-bold text-tactical">
+                          {slot.player?.jersey_number != null ? `#${slot.player.jersey_number}` : '\u2014'}
+                        </td>
                         <td className="py-1.5">
                           <PositionBadge position={slot.slot_position} />
                         </td>

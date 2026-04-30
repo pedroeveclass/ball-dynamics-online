@@ -25,27 +25,33 @@ interface Notification {
 }
 
 export default function NotificationsPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, playerProfile } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('notifications');
   const { current: lang } = useAppLanguage();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const Layout = profile?.role_selected === 'manager' ? ManagerLayout : AppLayout;
+  const activePlayerId = playerProfile?.id ?? null;
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data } = await supabase
+      let q: any = supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', user.id);
+      if (activePlayerId) {
+        // Show notifications addressed to the active character + general ones.
+        q = q.or(`player_profile_id.is.null,player_profile_id.eq.${activePlayerId}`);
+      }
+      const { data } = await q
         .order('created_at', { ascending: false })
         .limit(100);
       setNotifications(data || []);
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, activePlayerId]);
 
   const markAsRead = async (id: string) => {
     await supabase.from('notifications').update({ read: true }).eq('id', id);

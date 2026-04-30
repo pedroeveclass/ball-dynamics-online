@@ -113,6 +113,7 @@ export default function ManagerMarketPage() {
       if (playerData) {
         await supabase.from('notifications').insert({
           user_id: playerData.user_id,
+          player_profile_id: selected.id,
           title: t('notification.title'),
           body: t('notification.body', { club: club.name, salary }),
           type: 'contract',

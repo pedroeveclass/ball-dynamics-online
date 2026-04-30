@@ -469,6 +469,7 @@ export default function ManagerReportsPage() {
         open={!!notifyTarget}
         onOpenChange={o => { if (!o) setNotifyTarget(null); }}
         playerUserId={notifyTarget?.user_id ?? null}
+        playerProfileId={notifyTarget?.id ?? null}
         playerName={notifyTarget?.full_name ?? ''}
         daysInactive={notifyTarget ? daysSince(notifyTarget.last_trained_at) : null}
       />

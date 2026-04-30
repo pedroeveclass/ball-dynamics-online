@@ -203,6 +203,8 @@ export default function MatchReplayPage() {
   const [legacySnapshots, setLegacySnapshots] = useState<LegacySnapshot[]>([]);
   const [usingLegacy, setUsingLegacy] = useState(false);
   const [slotPositions, setSlotPositions] = useState<Record<string, string>>({});
+  // participant.id → real jersey number from player_profiles (null when bot has no profile).
+  const [participantJersey, setParticipantJersey] = useState<Record<string, number | null>>({});
 
   // Playback state
   const [currentSceneIdx, setCurrentSceneIdx] = useState(0);
@@ -287,9 +289,9 @@ export default function MatchReplayPage() {
       const playerIds = [...new Set(parts.filter(p => p.player_profile_id).map(p => p.player_profile_id!))];
       const slotIds = [...new Set(parts.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id!))];
 
-      const [, slotsRes] = await Promise.all([
+      const [playersRes, slotsRes] = await Promise.all([
         playerIds.length > 0
-          ? supabase.from('player_profiles').select('id, full_name, primary_position').in('id', playerIds)
+          ? supabase.from('player_profiles').select('id, full_name, primary_position, jersey_number').in('id', playerIds)
           : Promise.resolve({ data: [] as any[] }),
         slotIds.length > 0
           ? supabase.from('lineup_slots').select('id, slot_position, sort_order').in('id', slotIds)
@@ -299,6 +301,17 @@ export default function MatchReplayPage() {
       const posMap: Record<string, string> = {};
       for (const sl of (slotsRes.data || [])) posMap[sl.id] = sl.slot_position;
       setSlotPositions(posMap);
+
+      // Map participant.id → real jersey_number from player_profiles. Null when
+      // the seat is bot-only without a profile, in which case we fall back to
+      // the per-team index ordering (1..11) used historically.
+      const profileJersey = new Map<string, number | null>();
+      for (const pl of (playersRes.data || [])) profileJersey.set(pl.id as string, pl.jersey_number as number | null);
+      const partJersey: Record<string, number | null> = {};
+      for (const p of parts) {
+        partJersey[p.id] = p.player_profile_id ? (profileJersey.get(p.player_profile_id) ?? null) : null;
+      }
+      setParticipantJersey(partJersey);
 
       // ── Try to build motion-script scenes ──
       const actionsByTurn = new Map<string, ActionRow[]>();
@@ -787,10 +800,19 @@ export default function MatchReplayPage() {
 
   const jerseyMap = useMemo(() => {
     const m = new Map<string, number>();
-    homeParts.forEach((p, i) => m.set(p.id, i + 1));
-    awayParts.forEach((p, i) => m.set(p.id, i + 1));
+    // Prefer the player's real jersey_number from player_profiles; only fall
+    // back to the per-team index when no profile is attached (legacy bot-only
+    // seats from before jersey assignment was added).
+    homeParts.forEach((p, i) => {
+      const real = participantJersey[p.id];
+      m.set(p.id, typeof real === 'number' ? real : i + 1);
+    });
+    awayParts.forEach((p, i) => {
+      const real = participantJersey[p.id];
+      m.set(p.id, typeof real === 'number' ? real : i + 1);
+    });
     return m;
-  }, [homeParts, awayParts]);
+  }, [homeParts, awayParts, participantJersey]);
 
   const getFieldPos = useCallback((partId: string): string => {
     const part = participants.find(p => p.id === partId);

@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
           // Energy just hit 100%
           await supabase.from('notifications').insert({
             user_id: p.user_id,
+            player_profile_id: p.id,
             title: '⚡ Energia 100%!',
             body: 'Sua energia está cheia! Aproveite para treinar antes que fique parado.',
             type: 'energy',
@@ -110,6 +111,7 @@ Deno.serve(async (req) => {
           const pctRecovered = Math.round((regenAmount / p.energy_max) * 100);
           await supabase.from('notifications').insert({
             user_id: p.user_id,
+            player_profile_id: p.id,
             title: '⚡ Energia recuperada!',
             body: `+${pctRecovered}% de energia. Atual: ${newEnergy}/${p.energy_max}`,
             type: 'energy',
