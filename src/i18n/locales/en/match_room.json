@@ -102,7 +102,9 @@
   },
   "tooltips": {
     "help_button": "How to play",
-    "help_aria": "Help"
+    "help_aria": "Help",
+    "leave_aria": "Leave match",
+    "menu_aria": "Open/close menu"
   },
   "ui": {
     "quality_good": "Good",
@@ -115,5 +117,13 @@
     "motion_resolving": "⚡ MOTION — Resolving play...",
     "finished_with_score": "⏱ FINISHED — {{home}} × {{away}}",
     "cancel_drawing": "✕ Cancel"
+  },
+  "bench": {
+    "title": "Bench",
+    "toggle_aria": "Show/hide bench"
+  },
+  "presence": {
+    "online": "Online in match",
+    "idle": "No action for 3+ turns"
   }
 }

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight, Check, CheckCheck } from 'lucide-react';
+import { Bot, User, ChevronDown, ChevronRight, ArrowLeftRight, Check, CheckCheck, Menu } from 'lucide-react';
 import { positionToPT } from '@/lib/positions';
 import { CountryFlag } from '@/components/CountryFlag';
 import { renderMatchEventTitle, renderMatchEventBody } from '@/lib/matchEventLabel';
@@ -71,6 +71,31 @@ function eventMinute(event: EventLog, match: MatchData | null): number | null {
   const halfMinutes = Math.min(45, Math.floor((elapsed / HALF_DURATION_MS_CLIENT) * 45));
   const half = match.current_half || 1;
   return half === 1 ? halfMinutes : 45 + halfMinutes;
+}
+
+// Format a chat author label using the speaker's active player when available:
+//   "#9 Carlitos Teves"
+// If the resulting label exceeds maxLen chars, abbreviate the surname:
+//   "#9 Carlitos T."
+// When no active player is found (e.g. the speaker is a manager or spectator),
+// fall back to the profile username.
+function formatChatAuthor(playerName: string | null | undefined, jersey: number | null | undefined, fallbackUsername: string | null, maxLen = 18): string {
+  if (!playerName || !playerName.trim()) {
+    return fallbackUsername || 'Anônimo';
+  }
+  const prefix = jersey != null ? `#${jersey} ` : '';
+  const full = `${prefix}${playerName}`;
+  if (full.length <= maxLen) return full;
+  // Abbreviate surname: keep first name(s), shorten last name to "X."
+  const parts = playerName.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    const head = parts.slice(0, -1).join(' ');
+    const abbreviated = `${prefix}${head} ${last.charAt(0).toUpperCase()}.`;
+    return abbreviated;
+  }
+  // Single-word name that's still too long — hard truncate.
+  return full.slice(0, Math.max(0, maxLen - 1)) + '…';
 }
 
 // ─── TurnWheel (horizontal segmented bar) ─────────────────────
@@ -205,18 +230,64 @@ function AccordionSection({ title, badge, color, open, onToggle, children, class
 }
 
 // ─── TeamList ─────────────────────────────────────────────────
-function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submittedIds, isHalftime, canMarkReady, onToggleReady }: {
+// ─── PresenceDot ──────────────────────────────────────────────
+// Visual indicator for human presence:
+//   - green: user is in the match-presence Realtime channel (i.e. on /match/:id)
+//   - yellow: user has not submitted any action for ≥3 turns
+//   - none (transparent): bot, or none of the above
+function PresenceDot({ tone, title }: { tone: 'green' | 'yellow' | 'none'; title?: string }) {
+  if (tone === 'none') {
+    return <span className="inline-block w-2 h-2 shrink-0" aria-hidden />;
+  }
+  const cls = tone === 'green'
+    ? 'bg-pitch shadow-[0_0_4px_hsl(var(--pitch-green))]'
+    : 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.5)]';
+  return (
+    <span
+      title={title}
+      className={`inline-block w-2 h-2 rounded-full shrink-0 ${cls}`}
+      aria-label={title}
+    />
+  );
+}
+
+function presenceTone(
+  p: Participant,
+  presentUserIds: Set<string>,
+  lastActionTurnByParticipant: Map<string, number>,
+  currentTurnNumber: number | null,
+): 'green' | 'yellow' | 'none' {
+  if (p.is_bot) return 'none';
+  // Green: actually in the match page right now.
+  if (p.connected_user_id && presentUserIds.has(p.connected_user_id)) return 'green';
+  // Yellow: hasn't submitted a player-controlled action for ≥3 turns.
+  if (currentTurnNumber == null) return 'none';
+  const lastTurn = lastActionTurnByParticipant.get(p.id);
+  if (lastTurn == null) {
+    // Never seen an action from them this match — only flag yellow once we're
+    // past turn 3 so freshly-started matches don't paint everyone yellow.
+    return currentTurnNumber >= 3 ? 'yellow' : 'none';
+  }
+  if (currentTurnNumber - lastTurn >= 3) return 'yellow';
+  return 'none';
+}
+
+function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submittedIds, isHalftime, canMarkReady, onToggleReady, presentUserIds, lastActionTurnByParticipant, currentTurnNumber }: {
   players: Participant[]; ballHolderId: string | null; myId: string | null;
   selectedId: string | null; onSelect: (id: string) => void; submittedIds: Set<string>;
   isHalftime?: boolean;
   canMarkReady?: (p: Participant) => boolean;
   onToggleReady?: (participantId: string, nextReady: boolean) => void;
+  presentUserIds: Set<string>;
+  lastActionTurnByParticipant: Map<string, number>;
+  currentTurnNumber: number | null;
 }) {
   return (
     <div className="space-y-0.5">
       {players.map(p => {
         const canReady = !!(isHalftime && canMarkReady?.(p) && onToggleReady);
         const isReady = !!p.is_ready;
+        const tone = presenceTone(p, presentUserIds, lastActionTurnByParticipant, currentTurnNumber);
         return (
           <div key={p.id} className="flex items-center gap-1">
             <button
@@ -228,6 +299,7 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
               {p.is_bot
                 ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
                 : <User className="h-3 w-3 text-pitch shrink-0" />}
+              <PresenceDot tone={tone} title={tone === 'green' ? i18n.t('match_room:presence.online') : tone === 'yellow' ? i18n.t('match_room:presence.idle') : undefined} />
               <span className="font-display w-5 shrink-0 text-white/60">{p.jersey_number || '?'}</span>
               <span className="font-display w-7 text-white/50 shrink-0">{positionToPT(p.field_pos)}</span>
               {p.country_code && <CountryFlag code={p.country_code} size="xs" />}
@@ -267,29 +339,50 @@ function TeamList({ players, ballHolderId, myId, selectedId, onSelect, submitted
 }
 
 // ─── BenchList ──────────────────────────────────────────────
-function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubstitutions, substitutedOutIds }: {
+function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubstitutions, substitutedOutIds, presentUserIds, lastActionTurnByParticipant, currentTurnNumber }: {
   players: Participant[]; isManagerTeam: boolean;
   starters: Participant[]; onSubstitute?: (outId: string, inId: string) => void;
   pendingSubstitutions?: Array<{ outId: string; inId: string }>;
   substitutedOutIds?: Set<string>;
+  presentUserIds: Set<string>;
+  lastActionTurnByParticipant: Map<string, number>;
+  currentTurnNumber: number | null;
 }) {
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
+  // Default collapsed — opens on click. Local state, does not persist.
+  const [open, setOpen] = useState(false);
 
   if (players.length === 0) return null;
 
   return (
     <div className="mt-1.5 pt-1.5 border-t border-[hsl(220,10%,22%)]">
-      <span className="text-[11px] font-display font-bold text-white/60 uppercase tracking-wider">Banco</span>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-1 text-left hover:opacity-80 transition-opacity"
+        aria-expanded={open}
+        aria-label={i18n.t('match_room:bench.toggle_aria')}
+      >
+        {open
+          ? <ChevronDown className="h-3 w-3 text-white/50 shrink-0" />
+          : <ChevronRight className="h-3 w-3 text-white/50 shrink-0" />}
+        <span className="text-[11px] font-display font-bold text-white/60 uppercase tracking-wider">
+          {i18n.t('match_room:bench.title')} ({players.length})
+        </span>
+      </button>
+      {open && (
       <div className="space-y-0.5 mt-0.5">
         {players.map(p => {
           const isPendingIn = pendingSubstitutions?.some(s => s.inId === p.id);
           const wasSubbedOut = substitutedOutIds?.has(p.id);
+          const tone = presenceTone(p, presentUserIds, lastActionTurnByParticipant, currentTurnNumber);
           return (
             <div key={p.id} className="relative">
               <div className={`w-full flex items-center gap-1.5 text-xs px-2 py-1 rounded ${wasSubbedOut ? 'text-white/25 line-through' : isPendingIn ? 'text-amber-400' : 'text-white/70'}`}>
                 {p.is_bot
                   ? <Bot className="h-3 w-3 text-amber-400 shrink-0" />
                   : <User className="h-3 w-3 text-pitch shrink-0" />}
+                <PresenceDot tone={tone} title={tone === 'green' ? i18n.t('match_room:presence.online') : tone === 'yellow' ? i18n.t('match_room:presence.idle') : undefined} />
                 <span className="font-display w-7 text-white/50 shrink-0">{positionToPT((p.field_pos || p.slot_position || '').replace(/^BENCH_?/i, '')) || 'RES'}</span>
                 {p.country_code && <CountryFlag code={p.country_code} size="xs" />}
                 <span className="truncate flex-1">{p.player_name?.split(' ')[0] || 'Bot'}</span>
@@ -333,6 +426,7 @@ function BenchList({ players, isManagerTeam, starters, onSubstitute, pendingSubs
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -375,6 +469,8 @@ export interface MatchSidebarProps {
   onToggleReady?: (participantId: string, nextReady: boolean) => void;
   onMarkTeamReady?: (clubId: string) => void;
   canMarkReady?: (p: Participant) => boolean;
+  presentUserIds: Set<string>;
+  lastActionTurnByParticipant: Map<string, number>;
 }
 
 export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebarProps) {
@@ -390,6 +486,7 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
     events, eventsEndRef,
     match, matchId, userId, username,
     onToggleReady, onMarkTeamReady, canMarkReady,
+    presentUserIds, lastActionTurnByParticipant,
   } = props;
 
   // ── Chat state ──
@@ -428,15 +525,37 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
 
   const [collapsed, setCollapsed] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
 
+  // Map auth user_id -> { player_name, jersey_number } for chat author labels.
+  // We scan starters + bench for both clubs since a player can chat from the
+  // bench. Managers won't have a participant row → falls through to username.
+  const userIdToPlayer = useMemo(() => {
+    const map = new Map<string, { name: string | null; jersey: number | null }>();
+    const all: Participant[] = [...homePlayers, ...awayPlayers, ...homeBench, ...awayBench];
+    for (const p of all) {
+      const uid = (p as any).connected_user_id as string | null | undefined;
+      if (!uid) continue;
+      // Prefer the first match (starter row) but always overwrite if we found
+      // a non-empty name later — bench rows have the same data, so order doesn't matter.
+      if (!map.has(uid) && p.player_name) {
+        map.set(uid, { name: p.player_name ?? null, jersey: p.jersey_number ?? null });
+      }
+    }
+    return map;
+  }, [homePlayers, awayPlayers, homeBench, awayBench]);
+
   return (
     <>
-      {/* Floating toggle (always visible) — slides the sidebar in/out. */}
+      {/* Floating toggle (always visible) — slides the sidebar in/out.
+          Always renders the hamburger icon (3 horizontal bars): more visually
+          familiar than the previous text glyph and works as both open/close
+          affordance. */}
       <button
         onClick={() => setCollapsed(c => !c)}
-        className="fixed right-2 top-2 z-50 bg-[hsl(220,20%,12%)]/90 border border-[hsl(220,10%,30%)] rounded-md px-2 py-1.5 text-[11px] font-display font-bold text-[hsl(45,30%,80%)] shadow-lg hover:bg-[hsl(220,20%,18%)] md:right-3"
-        aria-label={collapsed ? 'Abrir menu' : 'Recolher menu'}
+        className="fixed right-2 top-2 z-50 bg-[hsl(220,20%,12%)]/90 border border-[hsl(220,10%,30%)] rounded-md w-7 h-7 flex items-center justify-center text-[hsl(45,30%,80%)] shadow-lg hover:bg-[hsl(220,20%,18%)] md:right-3"
+        aria-label={i18n.t('match_room:tooltips.menu_aria')}
+        title={i18n.t('match_room:tooltips.menu_aria')}
       >
-        {collapsed ? '☰' : '✕'}
+        <Menu className="h-4 w-4" />
       </button>
     <div className={`${collapsed ? 'w-0 overflow-hidden border-l-0' : 'w-72'} shrink-0 bg-[hsl(220,15%,13%)] border-l border-[hsl(220,10%,22%)] flex flex-col overflow-y-auto transition-[width] duration-200`}>
       {/* Turn Wheel */}
@@ -479,6 +598,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           isHalftime={isHalftime}
           canMarkReady={canMarkReady}
           onToggleReady={onToggleReady}
+          presentUserIds={presentUserIds}
+          lastActionTurnByParticipant={lastActionTurnByParticipant}
+          currentTurnNumber={currentTurnNumber}
         />
         <BenchList
           players={homeBench}
@@ -487,6 +609,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           onSubstitute={onSubstitute}
           pendingSubstitutions={pendingSubstitutions}
           substitutedOutIds={substitutedOutIds}
+          presentUserIds={presentUserIds}
+          lastActionTurnByParticipant={lastActionTurnByParticipant}
+          currentTurnNumber={currentTurnNumber}
         />
       </AccordionSection>
 
@@ -515,6 +640,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           isHalftime={isHalftime}
           canMarkReady={canMarkReady}
           onToggleReady={onToggleReady}
+          presentUserIds={presentUserIds}
+          lastActionTurnByParticipant={lastActionTurnByParticipant}
+          currentTurnNumber={currentTurnNumber}
         />
         <BenchList
           players={awayBench}
@@ -523,6 +651,9 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           onSubstitute={onSubstitute}
           pendingSubstitutions={pendingSubstitutions}
           substitutedOutIds={substitutedOutIds}
+          presentUserIds={presentUserIds}
+          lastActionTurnByParticipant={lastActionTurnByParticipant}
+          currentTurnNumber={currentTurnNumber}
         />
       </AccordionSection>
 
@@ -659,12 +790,16 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
           {chatMessages.length === 0 && (
             <p className="text-xs text-white/30 text-center py-2">Sem mensagens</p>
           )}
-          {chatMessages.map(m => (
-            <div key={m.id} className="text-xs leading-snug py-0.5">
-              <span className={`font-bold ${m.user_id === userId ? 'text-pitch' : 'text-white/80'}`}>{m.username}: </span>
-              <span className="text-white/70">{m.message}</span>
-            </div>
-          ))}
+          {chatMessages.map(m => {
+            const playerInfo = userIdToPlayer.get(m.user_id);
+            const authorLabel = formatChatAuthor(playerInfo?.name, playerInfo?.jersey, m.username);
+            return (
+              <div key={m.id} className="text-xs leading-snug py-0.5">
+                <span className={`font-bold ${m.user_id === userId ? 'text-pitch' : 'text-white/80'}`}>{authorLabel}: </span>
+                <span className="text-white/70">{m.message}</span>
+              </div>
+            );
+          })}
           <div ref={chatEndRef} />
         </div>
         {userId && (

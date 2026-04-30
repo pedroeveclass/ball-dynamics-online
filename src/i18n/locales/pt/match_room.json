@@ -102,7 +102,9 @@
   },
   "tooltips": {
     "help_button": "Como jogar",
-    "help_aria": "Ajuda"
+    "help_aria": "Ajuda",
+    "leave_aria": "Sair do jogo",
+    "menu_aria": "Abrir/fechar menu"
   },
   "ui": {
     "quality_good": "Boa",
@@ -115,5 +117,13 @@
     "motion_resolving": "⚡ MOTION — Resolvendo jogada...",
     "finished_with_score": "⏱ ENCERRADA — {{home}} × {{away}}",
     "cancel_drawing": "✕ Cancelar"
+  },
+  "bench": {
+    "title": "Banco de Reservas",
+    "toggle_aria": "Mostrar/ocultar banco de reservas"
+  },
+  "presence": {
+    "online": "Online na partida",
+    "idle": "Sem ação há 3+ turnos"
   }
 }

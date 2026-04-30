@@ -17,6 +17,7 @@ import { HelpModal } from '@/components/HelpModal';
 import { MatchActionMenu } from './match/MatchActionMenu';
 import { PitchSVG, DEFAULT_STADIUM_STYLE } from '@/components/PitchSVG';
 import type { StadiumStyle } from '@/components/PitchSVG';
+import { LogOut } from 'lucide-react';
 
 // Y-scale correction: equalizes physical distance across field axes
 const FIELD_Y_MOVE_SCALE = INNER_H / INNER_W; // ≈ 0.628
@@ -320,6 +321,16 @@ export default function MatchRoomPage() {
 
   // Persisted actions for current turn (loaded from DB)
   const [turnActions, setTurnActions] = useState<MatchAction[]>([]);
+
+  // ── Sidebar presence dot inputs ──
+  // `presentUserIds` is the Set of auth user_ids currently subscribed to the
+  // match-presence Realtime channel (i.e. on /match/:id right now).
+  const [presentUserIds, setPresentUserIds] = useState<Set<string>>(new Set());
+  // `lastActionTurnByParticipant` records the most recent turn_number a human
+  // (controlled_by_type='player') submitted any action for. Used by the sidebar
+  // to flag idle players (no action ≥3 turns) with a yellow dot.
+  const [lastActionTurnByParticipant, setLastActionTurnByParticipant] = useState<Map<string, number>>(new Map());
+  const lastActionTurnByParticipantRef = useRef<Map<string, number>>(new Map());
 
   // Animation state for phase 4
   const [animating, setAnimating] = useState(false);
@@ -678,6 +689,21 @@ export default function MatchRoomPage() {
       scheduleTurnActionsReconcile();
       return;
     }
+
+    // Track human activity for the sidebar's idle (yellow) presence dot.
+    // We record per-participant the most recent turn_number a controlled_by_type='player'
+    // action arrived for, regardless of whether it's the active turn (so we
+    // also remember activity from prior turns).
+    if (actionRow.controlled_by_type === 'player' && actionRow.participant_id && turnMeta.turn_number != null) {
+      const prev = lastActionTurnByParticipantRef.current.get(actionRow.participant_id) ?? -1;
+      if (turnMeta.turn_number > prev) {
+        const next = new Map(lastActionTurnByParticipantRef.current);
+        next.set(actionRow.participant_id, turnMeta.turn_number);
+        lastActionTurnByParticipantRef.current = next;
+        setLastActionTurnByParticipant(next);
+      }
+    }
+
     if (turnMeta.turn_number !== currentTurnNumberRef.current) return;
 
     // Skip bot actions arriving via realtime during an active phase.
@@ -2144,7 +2170,71 @@ export default function MatchRoomPage() {
     };
   }, [applyIncomingTurnAction, applyParticipantRows, appendEventLog, loadLiveSnapshot, matchId, scheduleParticipantLayoutRebuild, scheduleTurnActionsReconcile, setTurnActionsState]);
 
-  useEffect(() => { eventsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [events]);
+  // ── Match Flow auto-scroll (sticky bottom) ──
+  // Only scroll the events feed to the bottom when the user is already *near*
+  // the bottom (within 50px). If they've scrolled up to read older events or
+  // inspect a lineup row, leave their scroll position alone — the new event
+  // still appears in the DOM, the user just won't be yanked back.
+  useEffect(() => {
+    const endEl = eventsEndRef.current;
+    if (!endEl) return;
+    // The events feed lives inside an `overflow-y-auto` ancestor. Walk up to
+    // find that scrollable container so we can decide whether to follow.
+    let scroller: HTMLElement | null = endEl.parentElement;
+    while (scroller) {
+      const overflowY = window.getComputedStyle(scroller).overflowY;
+      if (overflowY === 'auto' || overflowY === 'scroll') break;
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) return;
+    const distanceFromBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+    const STICK_THRESHOLD_PX = 50;
+    if (distanceFromBottom <= STICK_THRESHOLD_PX) {
+      endEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [events]);
+
+  // ── Match presence channel ──
+  // Tracks which authenticated users are *on this page right now*. The sidebar
+  // uses this to paint a green dot next to each player whose user_id is in the
+  // channel's presence state. Skipped for spectators/no-user.
+  useEffect(() => {
+    if (!matchId || !user?.id) return;
+    const channel = supabase.channel(`match-presence-${matchId}`, {
+      config: { presence: { key: user.id } },
+    });
+    const refresh = () => {
+      const state = channel.presenceState() as Record<string, Array<{ user_id?: string }>>;
+      const ids = new Set<string>();
+      for (const key of Object.keys(state)) {
+        // The presence key is the auth user_id (set above), so we trust it.
+        ids.add(key);
+        // Belt-and-suspenders: also harvest user_id from each tracked metadata row.
+        const metas = state[key] || [];
+        for (const meta of metas) {
+          if (meta?.user_id) ids.add(meta.user_id);
+        }
+      }
+      setPresentUserIds(ids);
+    };
+    channel
+      .on('presence', { event: 'sync' }, refresh)
+      .on('presence', { event: 'join' }, refresh)
+      .on('presence', { event: 'leave' }, refresh)
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            user_id: user.id,
+            player_profile_id: playerProfile?.id ?? null,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+    return () => {
+      void channel.untrack().catch(() => {});
+      supabase.removeChannel(channel);
+    };
+  }, [matchId, user?.id, playerProfile?.id]);
 
   // Client fallback processor — ONLY fires if the cron appears stuck.
   // The cron runs every 1s. If 3s pass after phase expiry with no turn change, we nudge.
@@ -4738,7 +4828,7 @@ export default function MatchRoomPage() {
         currentTurnNumber={match.current_turn_number} activeTurnPhase={activeTurn?.phase ?? null}
         halfStartedAt={match.half_started_at ?? null} currentHalf={match.current_half ?? 1}
         myRole={myRole} isBenchPlayer={myRole === 'spectator' && myParticipant?.role_type === 'bench'} isManager={isManager}
-        onFinishMatch={finishMatch} onExit={exitToDashboard}
+        onFinishMatch={finishMatch}
         homeUniformNum={match.home_uniform ?? 1} awayUniformNum={match.away_uniform ?? 2}
         homeActiveUniform={homeActiveUniform} awayActiveUniform={awayActiveUniform}
         onToggleUniform={handleToggleUniform}
@@ -5929,6 +6019,18 @@ export default function MatchRoomPage() {
               );
             })()}
 
+            {/* Top-right floating trio: [Sair] [?] [hamburger]
+                Sair is leftmost so it doesn't get hidden behind the other two. */}
+            <button
+              onClick={exitToDashboard}
+              className="fixed top-2 right-24 z-50 bg-[hsl(220,20%,12%)]/90 border border-[hsl(220,10%,30%)] rounded-md h-7 px-2 flex items-center gap-1 text-[11px] font-display font-bold text-[hsl(45,30%,80%)] shadow-lg hover:bg-[hsl(220,20%,18%)] md:right-28"
+              aria-label={i18n.t('match_room:tooltips.leave_aria')}
+              title={i18n.t('match_room:tooltips.leave_aria')}
+            >
+              <LogOut className="h-3 w-3" />
+              <span className="hidden sm:inline">{i18n.t('match_room:buttons.leave')}</span>
+            </button>
+
             {/* Help button — floating "?" at top-right of the field */}
             <button
               onClick={() => setHelpOpen(true)}
@@ -6088,6 +6190,8 @@ export default function MatchRoomPage() {
             if (p.connected_user_id === user.id) return true;
             return isManager && p.club_id === myClubId;
           }}
+          presentUserIds={presentUserIds}
+          lastActionTurnByParticipant={lastActionTurnByParticipant}
         />
       </div>
       <HelpModal open={helpOpen} onOpenChange={setHelpOpen} />
