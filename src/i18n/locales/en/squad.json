@@ -61,7 +61,8 @@
     "jersey_invalid": "Invalid number — must be between 0 and 99.",
     "jersey_save_error": "Couldn't save the jersey number.",
     "jersey_removed": "Number cleared.",
-    "jersey_saved": "Number {{n}} saved."
+    "jersey_saved": "Number {{n}} saved.",
+    "jersey_taken": "Number {{n}} is already worn by {{name}}."
   },
   "notifications": {
     "agreement_proposed_title": "🤝 Mutual Agreement Proposal",

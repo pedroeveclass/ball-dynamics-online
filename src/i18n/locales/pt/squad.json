@@ -61,7 +61,8 @@
     "jersey_invalid": "Número inválido — precisa estar entre 0 e 99.",
     "jersey_save_error": "Não foi possível salvar o número da camisa.",
     "jersey_removed": "Número removido.",
-    "jersey_saved": "Número {{n}} salvo."
+    "jersey_saved": "Número {{n}} salvo.",
+    "jersey_taken": "Camisa {{n}} já está com {{name}}."
   },
   "notifications": {
     "agreement_proposed_title": "🤝 Proposta de Comum Acordo",

@@ -272,6 +272,15 @@ export default function ManagerSquadPage() {
     }
     const previous = players.find(p => p.id === playerId)?.jersey_number ?? null;
     if (previous === nextNumber) return;
+    // Client-side guard: if another player at the same club already wears this
+    // number, refuse early with a friendly toast (DB has a UNIQUE index too).
+    if (nextNumber != null) {
+      const conflict = players.find(p => p.id !== playerId && p.jersey_number === nextNumber);
+      if (conflict) {
+        toast.error(t('squad:toast.jersey_taken', { n: nextNumber, name: conflict.full_name, defaultValue: `Camisa ${nextNumber} ja esta com ${conflict.full_name}` }));
+        return;
+      }
+    }
     setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, jersey_number: nextNumber } : p));
     setSavingJerseyIds(prev => new Set(prev).add(playerId));
     const { error } = await supabase.rpc('set_player_jersey_number', {
