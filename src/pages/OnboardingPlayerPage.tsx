@@ -5,11 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, archetypeDescription, heightLabel as heightLabelI18n, heightDescription } from '@/lib/attributes';
+import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, archetypeDescription, heightLabel as heightLabelI18n, heightDescription, getArchetypeAttributeImpact, getHeightAttributeImpact } from '@/lib/attributes';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
 import { AttributeBar } from '@/components/AttributeBar';
 import { AttributeInfo } from '@/components/AttributeInfo';
+import { AttributeImpactChips } from '@/components/AttributeImpactChips';
 import { PositionFieldSelector } from '@/components/PositionFieldSelector';
 import { CountrySelect } from '@/components/CountrySelect';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -252,22 +253,26 @@ export default function OnboardingPlayerPage() {
               <Label>{t('onboarding:player.height.label')}</Label>
               <p className="text-xs text-muted-foreground">{t('onboarding:player.height.hint')}</p>
               <div className="space-y-2">
-                {HEIGHT_OPTIONS.map(h => (
-                  <button
-                    key={h.value}
-                    onClick={() => { setHeight(h.value); setExtraPoints({}); }}
-                    className={`w-full px-4 py-4 rounded-md border text-left transition-colors ${
-                      height === h.value
-                        ? 'border-tactical bg-tactical/10'
-                        : 'border-border hover:border-tactical/40'
-                    }`}
-                  >
-                    <span className={`font-display text-lg font-bold ${height === h.value ? 'text-tactical' : 'text-foreground'}`}>
-                      {heightLabelI18n(h.value, h.label)}
-                    </span>
-                    <p className="text-xs text-muted-foreground mt-1">{heightDescription(h.value, h.description)}</p>
-                  </button>
-                ))}
+                {HEIGHT_OPTIONS.map(h => {
+                  const impact = getHeightAttributeImpact(h.value);
+                  return (
+                    <button
+                      key={h.value}
+                      onClick={() => { setHeight(h.value); setExtraPoints({}); }}
+                      className={`w-full px-4 py-4 rounded-md border text-left transition-colors ${
+                        height === h.value
+                          ? 'border-tactical bg-tactical/10'
+                          : 'border-border hover:border-tactical/40'
+                      }`}
+                    >
+                      <span className={`font-display text-lg font-bold ${height === h.value ? 'text-tactical' : 'text-foreground'}`}>
+                        {heightLabelI18n(h.value, h.label)}
+                      </span>
+                      <p className="text-xs text-muted-foreground mt-1">{heightDescription(h.value, h.description)}</p>
+                      <AttributeImpactChips impact={impact} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -278,22 +283,26 @@ export default function OnboardingPlayerPage() {
               <Label>{t('onboarding:player.body.label')}</Label>
               {isGK && <p className="text-xs text-muted-foreground">{t('onboarding:player.body.gk_hint')}</p>}
               <div className="space-y-2">
-                {availableBodyTypes.map(bt => (
-                  <button
-                    key={bt.value}
-                    onClick={() => { setBodyType(bt.value); setExtraPoints({}); }}
-                    className={`w-full px-4 py-4 rounded-md border text-left transition-colors ${
-                      bodyType === bt.value
-                        ? 'border-tactical bg-tactical/10'
-                        : 'border-border hover:border-tactical/40'
-                    }`}
-                  >
-                    <span className={`font-display text-lg font-bold ${bodyType === bt.value ? 'text-tactical' : 'text-foreground'}`}>
-                      {archetypeLabel(bt.value)}
-                    </span>
-                    <p className="text-xs text-muted-foreground mt-1">{archetypeDescription(bt.value, bt.description)}</p>
-                  </button>
-                ))}
+                {availableBodyTypes.map(bt => {
+                  const impact = getArchetypeAttributeImpact(bt.value);
+                  return (
+                    <button
+                      key={bt.value}
+                      onClick={() => { setBodyType(bt.value); setExtraPoints({}); }}
+                      className={`w-full px-4 py-4 rounded-md border text-left transition-colors ${
+                        bodyType === bt.value
+                          ? 'border-tactical bg-tactical/10'
+                          : 'border-border hover:border-tactical/40'
+                      }`}
+                    >
+                      <span className={`font-display text-lg font-bold ${bodyType === bt.value ? 'text-tactical' : 'text-foreground'}`}>
+                        {archetypeLabel(bt.value)}
+                      </span>
+                      <p className="text-xs text-muted-foreground mt-1">{archetypeDescription(bt.value, bt.description)}</p>
+                      <AttributeImpactChips impact={impact} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

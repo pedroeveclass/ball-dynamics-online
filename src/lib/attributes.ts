@@ -840,3 +840,89 @@ export function getTrainingFitMultiplier(
 ): number {
   return getTrainingFit(archetype, height, position, attrKey).multiplier;
 }
+
+// ══════════════════════════════════════════════════════════════
+// Onboarding-time impact preview
+//
+// Used by the archetype + height pickers in the onboarding flow to
+// show, BEFORE the player commits, which attributes get a bonus
+// and which get penalised. We intentionally read directly from the
+// `bodyTypeBoosts` / `heightBoosts` and `ARCHETYPE_CAPS` /
+// `HEIGHT_CAPS` tables defined in this file so the chips stay in
+// sync with both the onboarding RNG and the training-fit / cap
+// resolution.
+// ══════════════════════════════════════════════════════════════
+
+export interface AttributeImpact {
+  /** Attribute keys with a positive impact (boosted starting value or training-fit ≥ +1). */
+  boosts: string[];
+  /** Attribute keys with a negative impact (lower base, hard/soft cap, or training-fit ≤ -1). */
+  penalties: string[];
+}
+
+/**
+ * Returns the attributes that the chosen archetype boosts/penalises.
+ * - "Boost" = bodyTypeBoosts entry ≥ 3 (the same threshold getTrainingFit uses
+ *   to grant +1/+2 archetype-fit).
+ * - "Penalty" = an entry in ARCHETYPE_CAPS / GK_ARCHETYPE_CAPS (hard or soft),
+ *   OR — for GKs only — an outfield attr that's GK-blanket capped without the
+ *   archetype lifting it. We intentionally exclude bodyTypeBoosts < 0 because
+ *   the table never uses negative archetype boosts; caps are the negative signal.
+ */
+export function getArchetypeAttributeImpact(archetype: string | null | undefined): AttributeImpact {
+  if (!archetype) return { boosts: [], penalties: [] };
+  const isGK = archetype.startsWith('Goleiro');
+
+  const boosts = new Set<string>();
+  const penalties = new Set<string>();
+
+  const boostMap = bodyTypeBoosts[archetype] || {};
+  for (const [k, v] of Object.entries(boostMap)) {
+    if (typeof v === 'number' && v >= 3) boosts.add(k);
+  }
+
+  const capMap: Partial<Record<string, CapTier>> | undefined = isGK
+    ? GK_ARCHETYPE_CAPS[archetype]
+    : ARCHETYPE_CAPS[archetype];
+
+  if (capMap) {
+    for (const [k, tier] of Object.entries(capMap)) {
+      if (tier === 'hard' || tier === 'soft') {
+        // Skip if this attr is also a boost — the explicit boost is the
+        // dominant signal (All Around's blanket "soft" caps shouldn't show
+        // as penalties because the archetype also gives +3 to those attrs).
+        if (boosts.has(k)) continue;
+        penalties.add(k);
+      }
+    }
+  }
+
+  return { boosts: Array.from(boosts), penalties: Array.from(penalties) };
+}
+
+/**
+ * Returns the attributes that the chosen height boosts/penalises.
+ * - "Boost" = heightBoosts entry > 0 (same threshold the SQL height bias uses).
+ * - "Penalty" = heightBoosts < 0 OR HEIGHT_CAPS entry (hard or soft).
+ */
+export function getHeightAttributeImpact(height: string | null | undefined): AttributeImpact {
+  if (!height) return { boosts: [], penalties: [] };
+
+  const boosts = new Set<string>();
+  const penalties = new Set<string>();
+
+  const boostMap = heightBoosts[height] || {};
+  for (const [k, v] of Object.entries(boostMap)) {
+    if (typeof v === 'number' && v > 0) boosts.add(k);
+    else if (typeof v === 'number' && v < 0) penalties.add(k);
+  }
+
+  const capMap = HEIGHT_CAPS[height];
+  if (capMap) {
+    for (const [k, tier] of Object.entries(capMap)) {
+      if (tier === 'hard' || tier === 'soft') penalties.add(k);
+    }
+  }
+
+  return { boosts: Array.from(boosts), penalties: Array.from(penalties) };
+}

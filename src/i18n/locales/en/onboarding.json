@@ -41,6 +41,10 @@
       "remaining": "{{count}} pts remaining",
       "hint": "Click + to add points or − to remove."
     },
+    "impact": {
+      "boosts_label": "Boosts",
+      "penalties_label": "Caps"
+    },
     "review": {
       "title": "Confirm Creation",
       "name": "Name",
