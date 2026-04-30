@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
-import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft, Clock } from 'lucide-react';
+import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { formatBRTDateTime, formatBRTTimeOnly, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
@@ -124,11 +124,14 @@ export default function LeaguePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Statistics state
-  const [topScorers, setTopScorers] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; goals: number; appearance?: any }[]>([]);
-  const [topAssisters, setTopAssisters] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; assists: number; appearance?: any }[]>([]);
+  const [topScorers, setTopScorers] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; goals: number; minutes_played: number; appearance?: any }[]>([]);
+  const [topAssisters, setTopAssisters] = useState<{ participant_id: string; player_name: string; club_name: string; club_short_name: string; club_primary_color: string; club_secondary_color: string; assists: number; minutes_played: number; appearance?: any }[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [seasonId, setSeasonId] = useState<string | null>(null);
+  const [scorersExpanded, setScorersExpanded] = useState(false);
+  const [assistsExpanded, setAssistsExpanded] = useState(false);
+  const SCORERS_PREVIEW_COUNT = 5;
 
   const isManagerWithoutClub = !!managerProfile && !club;
 
@@ -277,12 +280,40 @@ export default function LeaguePage() {
 
       const matchIds = leagueMatches.map((lm: any) => lm.match_id).filter(Boolean);
 
-      // Fetch all goal events for these matches
-      const { data: goalEvents } = await supabase
-        .from('match_event_logs')
-        .select('payload, match_id')
-        .eq('event_type', 'goal')
-        .in('match_id', matchIds);
+      // Fetch all goal events + per-match turn counts + all participants (for minutes tally)
+      const [goalEventsRes, matchTurnsRes, allParticipantsRes] = await Promise.all([
+        supabase
+          .from('match_event_logs')
+          .select('payload, match_id')
+          .eq('event_type', 'goal')
+          .in('match_id', matchIds),
+        supabase
+          .from('matches')
+          .select('id, current_turn_number')
+          .in('id', matchIds),
+        supabase
+          .from('match_participants')
+          .select('match_id, player_profile_id')
+          .in('match_id', matchIds)
+          .not('player_profile_id', 'is', null),
+      ]);
+
+      const goalEvents = goalEventsRes.data;
+
+      // Tally minutes_played per player_profile_id.
+      // 1 turn ≈ 1 minute of in-game time; use match.current_turn_number as the
+      // total turns played per match. No mid-match substitutions exist today,
+      // so every participant accrues the full match's turns.
+      const matchTurns: Record<string, number> = {};
+      for (const m of (matchTurnsRes.data || [])) {
+        matchTurns[m.id] = Number(m.current_turn_number || 0);
+      }
+      const minutesByProfile: Record<string, number> = {};
+      for (const p of (allParticipantsRes.data || [])) {
+        if (!p.player_profile_id) continue;
+        const t = matchTurns[p.match_id] || 0;
+        minutesByProfile[p.player_profile_id] = (minutesByProfile[p.player_profile_id] || 0) + t;
+      }
 
       if (!goalEvents || goalEvents.length === 0) {
         setStatsLoaded(true);
@@ -401,16 +432,33 @@ export default function LeaguePage() {
         }
       }
 
-      // Build sorted lists — top 5
+      // Build sorted lists. Tiebreakers: minutes_played ASC (less = better),
+      // then alphabetical name ASC. Full lists; UI slices for the preview.
       const scorers = Object.entries(scorerMap)
-        .map(([profileId, goals]) => ({ participant_id: profileId, goals, ...profileLookup[profileId] }))
-        .sort((a, b) => b.goals - a.goals)
-        .slice(0, 5);
+        .map(([profileId, goals]) => ({
+          participant_id: profileId,
+          goals,
+          minutes_played: minutesByProfile[profileId] || 0,
+          ...profileLookup[profileId],
+        }))
+        .sort((a, b) => {
+          if (b.goals !== a.goals) return b.goals - a.goals;
+          if (a.minutes_played !== b.minutes_played) return a.minutes_played - b.minutes_played;
+          return (a.player_name || '').localeCompare(b.player_name || '');
+        });
 
       const assisters = Object.entries(assisterMap)
-        .map(([profileId, assists]) => ({ participant_id: profileId, assists, ...profileLookup[profileId] }))
-        .sort((a, b) => b.assists - a.assists)
-        .slice(0, 5);
+        .map(([profileId, assists]) => ({
+          participant_id: profileId,
+          assists,
+          minutes_played: minutesByProfile[profileId] || 0,
+          ...profileLookup[profileId],
+        }))
+        .sort((a, b) => {
+          if (b.assists !== a.assists) return b.assists - a.assists;
+          if (a.minutes_played !== b.minutes_played) return a.minutes_played - b.minutes_played;
+          return (a.player_name || '').localeCompare(b.player_name || '');
+        });
 
       setTopScorers(scorers);
       setTopAssisters(assisters);
@@ -875,7 +923,7 @@ export default function LeaguePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {topScorers.map((s, i) => (
+                        {(scorersExpanded ? topScorers : topScorers.slice(0, SCORERS_PREVIEW_COUNT)).map((s, i) => (
                           <tr key={s.participant_id}>
                             <td className="font-display font-bold text-center">{i + 1}</td>
                             <td>
@@ -900,6 +948,28 @@ export default function LeaguePage() {
                         ))}
                       </tbody>
                     </table>
+                    {topScorers.length > SCORERS_PREVIEW_COUNT && (
+                      <div className="flex justify-center mt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setScorersExpanded(v => !v)}
+                          className="text-xs text-muted-foreground hover:text-foreground gap-1"
+                        >
+                          {scorersExpanded ? (
+                            <>
+                              <ChevronUp className="h-3.5 w-3.5" />
+                              {t('stats.see_less')}
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="h-3.5 w-3.5" />
+                              {t('stats.see_all')}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -910,42 +980,66 @@ export default function LeaguePage() {
                     <h3 className="font-display font-bold text-sm">{t('stats.top_assists')}</h3>
                   </div>
                   {topAssisters.length > 0 ? (
-                    <table className="data-table w-full">
-                      <thead>
-                        <tr>
-                          <th className="w-8">{t('standings.col.rank')}</th>
-                          <th className="w-10"></th>
-                          <th>{t('stats.col_player')}</th>
-                          <th className="w-10"></th>
-                          <th className="text-center w-16">{t('stats.col_assists')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {topAssisters.map((a, i) => (
-                          <tr key={a.participant_id}>
-                            <td className="font-display font-bold text-center">{i + 1}</td>
-                            <td>
-                              <PlayerAvatar
-                                appearance={(a as any).appearance}
-                                variant="face"
-                                clubPrimaryColor={a.club_primary_color}
-                                clubSecondaryColor={a.club_secondary_color}
-                                playerName={a.player_name}
-                                className="h-7 w-7"
-                                fallbackSeed={a.participant_id}
-                              />
-                            </td>
-                            <td>
-                              <span className="font-medium text-sm">{a.player_name}</span>
-                            </td>
-                            <td>
-                              <ClubCrest crestUrl={(a as any).club_crest_url} primaryColor={a.club_primary_color} secondaryColor={a.club_secondary_color} shortName={a.club_short_name} className="h-5 w-5 rounded text-[8px] shrink-0" />
-                            </td>
-                            <td className="text-center font-display text-lg font-bold">{a.assists}</td>
+                    <>
+                      <table className="data-table w-full">
+                        <thead>
+                          <tr>
+                            <th className="w-8">{t('standings.col.rank')}</th>
+                            <th className="w-10"></th>
+                            <th>{t('stats.col_player')}</th>
+                            <th className="w-10"></th>
+                            <th className="text-center w-16">{t('stats.col_assists')}</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {(assistsExpanded ? topAssisters : topAssisters.slice(0, SCORERS_PREVIEW_COUNT)).map((a, i) => (
+                            <tr key={a.participant_id}>
+                              <td className="font-display font-bold text-center">{i + 1}</td>
+                              <td>
+                                <PlayerAvatar
+                                  appearance={(a as any).appearance}
+                                  variant="face"
+                                  clubPrimaryColor={a.club_primary_color}
+                                  clubSecondaryColor={a.club_secondary_color}
+                                  playerName={a.player_name}
+                                  className="h-7 w-7"
+                                  fallbackSeed={a.participant_id}
+                                />
+                              </td>
+                              <td>
+                                <span className="font-medium text-sm">{a.player_name}</span>
+                              </td>
+                              <td>
+                                <ClubCrest crestUrl={(a as any).club_crest_url} primaryColor={a.club_primary_color} secondaryColor={a.club_secondary_color} shortName={a.club_short_name} className="h-5 w-5 rounded text-[8px] shrink-0" />
+                              </td>
+                              <td className="text-center font-display text-lg font-bold">{a.assists}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {topAssisters.length > SCORERS_PREVIEW_COUNT && (
+                        <div className="flex justify-center mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setAssistsExpanded(v => !v)}
+                            className="text-xs text-muted-foreground hover:text-foreground gap-1"
+                          >
+                            {assistsExpanded ? (
+                              <>
+                                <ChevronUp className="h-3.5 w-3.5" />
+                                {t('stats.see_less')}
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="h-3.5 w-3.5" />
+                                {t('stats.see_all')}
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <p className="text-center text-muted-foreground py-4 text-sm">
                       {t('stats.no_assists_yet')}

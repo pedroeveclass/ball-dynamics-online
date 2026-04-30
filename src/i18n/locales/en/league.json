@@ -64,7 +64,9 @@
     "col_goals": "Goals",
     "col_assists": "Assists",
     "no_assists_yet": "No assists recorded yet.",
-    "player_fallback": "Player"
+    "player_fallback": "Player",
+    "see_all": "See all",
+    "see_less": "See less"
   },
   "available": {
     "assume_team": "Take Team",

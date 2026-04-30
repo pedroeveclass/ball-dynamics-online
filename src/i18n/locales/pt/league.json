@@ -64,7 +64,9 @@
     "col_goals": "Gols",
     "col_assists": "Assist.",
     "no_assists_yet": "Nenhuma assistência registrada ainda.",
-    "player_fallback": "Jogador"
+    "player_fallback": "Jogador",
+    "see_all": "Ver todos",
+    "see_less": "Ver menos"
   },
   "available": {
     "assume_team": "Assumir Time",
