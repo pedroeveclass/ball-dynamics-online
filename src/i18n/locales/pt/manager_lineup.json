@@ -39,6 +39,13 @@
     "confirmed_aria": "Confirmou",
     "not_confirmed_aria": "Não marcou"
   },
+  "role_swap": {
+    "trigger_tooltip": "Trocar papel deste slot",
+    "menu_title": "Trocar papel",
+    "reset": "Voltar para {{role}}",
+    "toast_changed": "Papel alterado. A mudança não reflete no posicionamento do jogador no campo, apenas em penalidades por posição. Para ajustar o posicionamento, use o Jogo Situacional.",
+    "banner": "Algumas posições foram trocadas pelo técnico. A troca não afeta o posicionamento dos jogadores em campo nem o jogo situacional — só zera/altera a penalidade por posição. Para reposicionar de fato, edite no Jogo Situacional."
+  },
   "tactical_roles": {
     "title": "Funções Táticas",
     "captain": "Capitão",

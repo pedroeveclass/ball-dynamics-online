@@ -955,6 +955,7 @@ export type Database = {
           id: string
           lineup_id: string
           player_profile_id: string
+          role_override: string | null
           role_type: string
           slot_position: string
           sort_order: number
@@ -965,6 +966,7 @@ export type Database = {
           id?: string
           lineup_id: string
           player_profile_id: string
+          role_override?: string | null
           role_type?: string
           slot_position: string
           sort_order?: number
@@ -975,6 +977,7 @@ export type Database = {
           id?: string
           lineup_id?: string
           player_profile_id?: string
+          role_override?: string | null
           role_type?: string
           slot_position?: string
           sort_order?: number

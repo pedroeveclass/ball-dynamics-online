@@ -65,8 +65,19 @@ function positionalMultiplier(fielded: string | null | undefined, primary: strin
 }
 function participantPositionalMultiplier(participant: any): number {
   if (!participant) return 1;
+  // role_override (set by manager via lineup editor) replaces slot_position
+  // ONLY for the penalty calc. Spawn xy and situational quadrants still
+  // use slot_position. Manager intent: "this MC plays as a VOL" → if the
+  // player's primary is VOL the penalty is zeroed even though the slot
+  // template (and movement) still calls them MC.
+  const fielded =
+    participant._role_override ||
+    participant.role_override ||
+    participant._slot_position ||
+    participant.slot_position ||
+    participant.field_pos;
   return positionalMultiplier(
-    participant._slot_position || participant.slot_position || participant.field_pos,
+    fielded,
     participant._primary_position || participant.primary_position,
     participant._secondary_position || participant.secondary_position,
   );
@@ -656,9 +667,12 @@ function getGoalkeeperIdsByClub(
 async function enrichParticipantsWithSlotPosition(supabase: any, participants: any[], formationByClub?: Record<string, string>): Promise<any[]> {
   const slotIds = participants.filter(p => p.lineup_slot_id).map(p => p.lineup_slot_id);
   const { data: slots } = slotIds.length > 0
-    ? await supabase.from('lineup_slots').select('id, slot_position').in('id', slotIds)
+    ? await supabase.from('lineup_slots').select('id, slot_position, role_override').in('id', slotIds)
     : { data: [] };
   const slotMap = new Map<string, string>((slots || []).map((s: any) => [s.id, s.slot_position]));
+  const slotOverrideMap = new Map<string, string | null>(
+    (slots || []).map((s: any) => [s.id, s.role_override ?? null])
+  );
 
   // Also load player profiles for primary_position fallback + name + secondary_position (for positional penalty)
   const profileIds = participants.filter(p => p.player_profile_id).map(p => p.player_profile_id);
@@ -714,6 +728,11 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
     if (p.player_profile_id) {
       p._primary_position = profilePosMap.get(p.player_profile_id) || null;
       p._secondary_position = profileSecondaryPosMap.get(p.player_profile_id) || null;
+    }
+    // Attach role_override (penalty calc only — spawn xy / situational
+    // quadrants still follow _slot_position).
+    if (p.lineup_slot_id && slotOverrideMap.has(p.lineup_slot_id)) {
+      p._role_override = slotOverrideMap.get(p.lineup_slot_id) || null;
     }
     return p;
   });

@@ -10,10 +10,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
 import { PlayerHoverStats } from '@/components/PlayerHoverStats';
-import { Save, UserPlus, X, Users, Target, User, Bot, Check, CalendarClock } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Save, UserPlus, X, Users, Target, User, Bot, Check, CalendarClock, Info, RotateCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { sortPlayersByPosition, positionalPenaltyPercent, formatPlayerPositions } from '@/lib/positions';
+import { sortPlayersByPosition, positionalPenaltyPercent, formatPlayerPositions, positionLabel } from '@/lib/positions';
+import { applyRoleNudge, canonicalRole, getSwappableRoles } from '@/lib/formations';
 import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 import type { Tables } from '@/integrations/supabase/types';
 
@@ -38,6 +47,10 @@ interface SlotAssignment {
   slot_position: string;
   player_profile_id: string;
   role_type: 'starter' | 'bench';
+  // Optional role override within the same tactical group (e.g. CM1 → CDM).
+  // Only affects the positional-penalty multiplier; spawn xy and situational
+  // tactics still follow `slot_position`.
+  role_override?: string | null;
 }
 
 export const FORMATIONS: Record<string, SlotDef[]> = {
@@ -343,6 +356,7 @@ export default function ManagerLineupPage() {
           slot_position: s.slot_position,
           player_profile_id: s.player_profile_id,
           role_type: 'starter' as const,
+          role_override: (s as any).role_override ?? null,
         }));
         const bench = slotsData.filter(s => s.role_type === 'bench').map(s => s.player_profile_id);
         setAssignments(starters);
@@ -497,8 +511,16 @@ export default function ManagerLineupPage() {
       // Keep dialog open for multi-select — don't close
     } else {
       setAssignments(prev => {
+        // Preserve any role_override the manager already set on this slot,
+        // even after swapping the assigned player in/out.
+        const prior = prev.find(a => a.slot_position === pickSlot);
         const filtered = prev.filter(a => a.slot_position !== pickSlot);
-        return [...filtered, { slot_position: pickSlot, player_profile_id: playerId, role_type: 'starter' }];
+        return [...filtered, {
+          slot_position: pickSlot,
+          player_profile_id: playerId,
+          role_type: 'starter',
+          role_override: prior?.role_override ?? null,
+        }];
       });
       setPickSlot(null);
     }
@@ -506,6 +528,26 @@ export default function ManagerLineupPage() {
 
   const removeFromSlot = (slotPos: string) => {
     setAssignments(prev => prev.filter(a => a.slot_position !== slotPos));
+  };
+
+  /**
+   * Swap a slot's tactical role within its group (e.g. CM1 → CDM).
+   * Visual-only on this page; engine uses the override only for positional
+   * penalty. Pass `null` to clear the override and revert to the slot default.
+   */
+  const swapSlotRole = (slotPos: string, newRole: string | null) => {
+    setAssignments(prev => {
+      const exists = prev.find(a => a.slot_position === slotPos);
+      if (exists) {
+        return prev.map(a =>
+          a.slot_position === slotPos ? { ...a, role_override: newRole } : a
+        );
+      }
+      // Empty slot: nothing to override — but stash the intent in case the
+      // manager assigns a player right after. We don't insert a fake row;
+      // empty-slot overrides aren't persisted.
+      return prev;
+    });
   };
 
   const removeFromBench = (playerId: string) => {
@@ -532,11 +574,14 @@ export default function ManagerLineupPage() {
     const newAssignments: SlotAssignment[] = [];
     const usedPlayerIds = new Set<string>();
 
-    // First pass: match by exact slot position name
+    // First pass: match by exact slot position name. Drop role_override on
+    // formation change — the slot's tactical context is now different so
+    // any prior override is no longer meaningful. Manager re-applies if
+    // they still want it.
     for (const slot of newSlots) {
       const match = oldAssignments.find(a => a.slot_position === slot.position && !usedPlayerIds.has(a.player_profile_id));
       if (match) {
-        newAssignments.push({ ...match, slot_position: slot.position });
+        newAssignments.push({ ...match, slot_position: slot.position, role_override: null });
         usedPlayerIds.add(match.player_profile_id);
       }
     }
@@ -547,7 +592,7 @@ export default function ManagerLineupPage() {
       const slotRole = getPositionRole(slot.position);
       const match = oldAssignments.find(a => !usedPlayerIds.has(a.player_profile_id) && getPositionRole(a.slot_position) === slotRole);
       if (match) {
-        newAssignments.push({ slot_position: slot.position, player_profile_id: match.player_profile_id, role_type: 'starter' });
+        newAssignments.push({ slot_position: slot.position, player_profile_id: match.player_profile_id, role_type: 'starter', role_override: null });
         usedPlayerIds.add(match.player_profile_id);
       }
     }
@@ -557,7 +602,7 @@ export default function ManagerLineupPage() {
     for (const player of remainingPlayers) {
       const emptySlot = newSlots.find(s => !newAssignments.find(a => a.slot_position === s.position));
       if (emptySlot) {
-        newAssignments.push({ slot_position: emptySlot.position, player_profile_id: player.player_profile_id, role_type: 'starter' });
+        newAssignments.push({ slot_position: emptySlot.position, player_profile_id: player.player_profile_id, role_type: 'starter', role_override: null });
       }
     }
 
@@ -579,12 +624,14 @@ export default function ManagerLineupPage() {
           slot_position: a.slot_position,
           role_type: 'starter' as const,
           sort_order: i,
+          role_override: a.role_override ?? null,
         })),
         ...benchPlayers.map((id, i) => ({
           player_profile_id: id,
           slot_position: `BENCH_${i + 1}`,
           role_type: 'bench' as const,
           sort_order: i,
+          role_override: null,
         })),
       ];
 
@@ -690,6 +737,13 @@ export default function ManagerLineupPage() {
           </div>
         )}
 
+        {assignments.some(a => a.role_override) && (
+          <div className="bg-tactical/10 border border-tactical/30 rounded-lg p-3 text-xs text-foreground/80 flex gap-2">
+            <Info className="h-4 w-4 text-tactical shrink-0 mt-0.5" />
+            <span>{t('role_swap.banner')}</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Field */}
           <div className="lg:col-span-2">
@@ -705,39 +759,54 @@ export default function ManagerLineupPage() {
               {slots.map(slot => {
                 const assigned = assignments.find(a => a.slot_position === slot.position);
                 const player = assigned ? getPlayer(assigned.player_profile_id) : null;
+                const baselineRole = canonicalRole(slot.position);
+                const effectiveRole = assigned?.role_override
+                  ? canonicalRole(assigned.role_override)
+                  : baselineRole;
+                const hasOverride = !!assigned?.role_override;
                 const penalty = player
-                  ? positionalPenaltyPercent(slot.position, player.primary_position, player.secondary_position)
+                  ? positionalPenaltyPercent(effectiveRole, player.primary_position, player.secondary_position)
                   : 0;
                 const effectiveOvr = player ? Math.round(player.overall * (1 - penalty / 100)) : 0;
+                const swapOptions = getSwappableRoles(slot.position);
+                const { x: nudgedX, y: nudgedY } = applyRoleNudge(
+                  slot.x,
+                  slot.y,
+                  baselineRole,
+                  assigned?.role_override ?? null,
+                );
+                const effectiveLabel = positionLabel(effectiveRole);
 
                 const slotNode = (
                   <div
                     key={slot.position}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 cursor-pointer group"
-                    style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
-                    onClick={() => {
-                      if (assigned) {
-                        removeFromSlot(slot.position);
-                      } else {
-                        setPickSlot(slot.position);
-                        setPickType('starter');
-                      }
-                    }}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 group"
+                    style={{ left: `${nudgedX}%`, top: `${nudgedY}%`, transition: 'left 200ms ease, top 200ms ease' }}
                     title={player && penalty > 0
                       ? t('field.out_of_position', {
                           name: player.full_name,
                           positions: `${player.primary_position}${player.secondary_position ? '/' + player.secondary_position : ''}`,
-                          slot: slot.position,
+                          slot: effectiveRole,
                           penalty,
                           ovr: effectiveOvr,
                         })
                       : undefined}
                   >
-                    <div className={`relative w-10 h-10 rounded-full flex items-center justify-center text-xs font-display font-bold transition-colors ${
-                      player
-                        ? (penalty > 0 ? 'bg-destructive/80 text-destructive-foreground' : 'bg-tactical text-tactical-foreground')
-                        : 'bg-muted/60 text-muted-foreground border-2 border-dashed border-muted-foreground/40 group-hover:border-tactical'
-                    }`}>
+                    <div
+                      className={`relative w-10 h-10 rounded-full flex items-center justify-center text-xs font-display font-bold transition-colors cursor-pointer ${
+                        player
+                          ? (penalty > 0 ? 'bg-destructive/80 text-destructive-foreground' : 'bg-tactical text-tactical-foreground')
+                          : 'bg-muted/60 text-muted-foreground border-2 border-dashed border-muted-foreground/40 group-hover:border-tactical'
+                      }`}
+                      onClick={() => {
+                        if (assigned) {
+                          removeFromSlot(slot.position);
+                        } else {
+                          setPickSlot(slot.position);
+                          setPickType('starter');
+                        }
+                      }}
+                    >
                       {player ? effectiveOvr : <UserPlus className="h-4 w-4" />}
                       {player && penalty > 0 && (
                         <span className="absolute -top-1 -right-1 text-[8px] font-display font-bold bg-background text-destructive border border-destructive rounded-full px-1 leading-tight">
@@ -753,8 +822,55 @@ export default function ManagerLineupPage() {
                         </>
                       ) : slot.label}
                     </span>
-                    {player && (
-                      <span className="text-[9px] text-muted-foreground">{slot.label}</span>
+                    {player && swapOptions.length > 0 ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={e => e.stopPropagation()}
+                            className={`text-[9px] font-display font-semibold rounded px-1 leading-tight cursor-pointer hover:underline ${
+                              hasOverride ? 'text-tactical' : 'text-muted-foreground'
+                            }`}
+                            title={t('role_swap.trigger_tooltip')}
+                          >
+                            {effectiveLabel}{hasOverride ? '•' : ''}
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="center" className="text-xs">
+                          <DropdownMenuLabel className="text-[10px]">
+                            {t('role_swap.menu_title')}
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {swapOptions.map(role => (
+                            <DropdownMenuItem
+                              key={role}
+                              onClick={() => {
+                                swapSlotRole(slot.position, role);
+                                toast.info(t('role_swap.toast_changed'), { duration: 6000 });
+                              }}
+                            >
+                              {positionLabel(role)}
+                              <span className="ml-2 text-[10px] text-muted-foreground">{role}</span>
+                            </DropdownMenuItem>
+                          ))}
+                          {hasOverride && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => swapSlotRole(slot.position, null)}
+                                className="text-muted-foreground"
+                              >
+                                <RotateCcw className="h-3 w-3 mr-1.5" />
+                                {t('role_swap.reset', { role: positionLabel(baselineRole) })}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      player && (
+                        <span className="text-[9px] text-muted-foreground">{slot.label}</span>
+                      )
                     )}
                   </div>
                 );

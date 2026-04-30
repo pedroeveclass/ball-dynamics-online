@@ -69,6 +69,113 @@ export const FORMATION_POSITIONS: Record<string, FormationSlot[]> = {
   ],
 };
 
+// ─── Role-swap groups + visual nudges (lineup editor only) ──────────
+//
+// The manager can swap a slot's tactical role within the same group
+// (e.g., MC → VOL, ATA → PD). The swap is purely visual on the lineup
+// page plus a tiny coordinate "pulinho" so the slot drifts toward the
+// new role's tendency. The engine reads the override only for
+// positional-penalty calc; spawn xy and situational quadrants still
+// follow `slot_position`. To re-shape the actual on-field movement,
+// the manager must edit situational tactics.
+
+export type SwapGroup = 'GK' | 'DEF' | 'MID' | 'ATK';
+
+/** Roles selectable inside each group. Keep group-internal (no cross-group). */
+export const SWAP_GROUPS: Record<SwapGroup, string[]> = {
+  GK: ['GK'],
+  DEF: ['CB', 'LB', 'RB', 'LWB', 'RWB'],
+  MID: ['CM', 'CDM', 'CAM', 'LM', 'RM'],
+  ATK: ['ST', 'CF', 'LW', 'RW'],
+};
+
+const ROLE_TO_GROUP: Record<string, SwapGroup> = {
+  GK: 'GK',
+  CB: 'DEF', LB: 'DEF', RB: 'DEF', LWB: 'DEF', RWB: 'DEF',
+  CM: 'MID', CDM: 'MID', DM: 'MID', CAM: 'MID', LM: 'MID', RM: 'MID',
+  ST: 'ATK', CF: 'ATK', LW: 'ATK', RW: 'ATK',
+};
+
+/** Strip slot suffix digits and return canonical position code. CB1 → CB, CM2 → CM. */
+export function canonicalRole(slotOrRole: string | null | undefined): string {
+  if (!slotOrRole) return '';
+  return slotOrRole.replace(/[0-9]/g, '').toUpperCase();
+}
+
+export function getSwapGroup(slotOrRole: string | null | undefined): SwapGroup | null {
+  return ROLE_TO_GROUP[canonicalRole(slotOrRole)] ?? null;
+}
+
+/**
+ * Roles available to swap to from `slot_position`. Excludes the slot's own
+ * default role (no point picking it again — that's the "reset" path, handled
+ * separately by clearing the override).
+ */
+export function getSwappableRoles(slotPosition: string): string[] {
+  const group = getSwapGroup(slotPosition);
+  if (!group || group === 'GK') return [];
+  const own = canonicalRole(slotPosition);
+  return SWAP_GROUPS[group].filter(r => r !== own);
+}
+
+/**
+ * Tendency vector per role within the editor portrait coord system
+ * (y=0 → opponent goal, y=100 → own goal). Numbers are small so the
+ * "pulinho" stays subtle.
+ */
+const ROLE_NUDGE: Record<string, { dx: number; dy: number }> = {
+  GK:  { dx: 0,  dy: 0 },
+  // DEF
+  CB:  { dx: 0,  dy: 0 },
+  LB:  { dx: -3, dy: -1 },
+  RB:  { dx: 3,  dy: -1 },
+  LWB: { dx: -4, dy: -3 },
+  RWB: { dx: 4,  dy: -3 },
+  // MID
+  CM:  { dx: 0,  dy: 0 },
+  CDM: { dx: 0,  dy: 4 },
+  DM:  { dx: 0,  dy: 4 },
+  CAM: { dx: 0,  dy: -4 },
+  LM:  { dx: -3, dy: 0 },
+  RM:  { dx: 3,  dy: 0 },
+  // ATK
+  ST:  { dx: 0,  dy: 0 },
+  CF:  { dx: 0,  dy: 3 },
+  LW:  { dx: -4, dy: -1 },
+  RW:  { dx: 4,  dy: -1 },
+};
+
+function nudgeFor(role: string | null | undefined): { dx: number; dy: number } {
+  return ROLE_NUDGE[canonicalRole(role)] ?? { dx: 0, dy: 0 };
+}
+
+/**
+ * Slot's effective (x,y) on the lineup field given an optional role override.
+ * Returns `baseline + nudge(override) − nudge(baselineRole)`. Mirrored on
+ * X for slots whose baseline sits on the right half so a "−dx" nudge always
+ * means "move toward the player's tactical sideline" (works for symmetric
+ * pairs like LM/RM regardless of formation).
+ */
+export function applyRoleNudge(
+  baselineX: number,
+  baselineY: number,
+  baselineRole: string,
+  override: string | null | undefined,
+): { x: number; y: number } {
+  if (!override) return { x: baselineX, y: baselineY };
+  const eff = nudgeFor(override);
+  const base = nudgeFor(baselineRole);
+  let dx = eff.dx - base.dx;
+  let dy = eff.dy - base.dy;
+  // Mirror dx for right-side slots so the nudge keeps its semantic
+  // "toward own flank" / "toward center" meaning.
+  if (baselineX > 50) dx = -dx;
+  return {
+    x: Math.max(2, Math.min(98, baselineX + dx)),
+    y: Math.max(2, Math.min(98, baselineY + dy)),
+  };
+}
+
 /** Return formation slots mirrored for away side; optionally clamp to own half. */
 export function getFormationPositions(
   formation: string,

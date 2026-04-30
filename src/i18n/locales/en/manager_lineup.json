@@ -39,6 +39,13 @@
     "confirmed_aria": "Confirmed",
     "not_confirmed_aria": "Not marked"
   },
+  "role_swap": {
+    "trigger_tooltip": "Change this slot's role",
+    "menu_title": "Change role",
+    "reset": "Revert to {{role}}",
+    "toast_changed": "Role changed. This does not affect on-field positioning — only the positional-penalty multiplier. To actually move the player on the pitch, use Situational Tactics.",
+    "banner": "Some slots have been re-roled. This does not change on-field positioning or situational tactics — it only adjusts the positional-penalty multiplier. To actually reposition players, edit Situational Tactics."
+  },
   "tactical_roles": {
     "title": "Tactical Roles",
     "captain": "Captain",
