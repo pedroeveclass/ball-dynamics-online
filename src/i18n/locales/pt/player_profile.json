@@ -83,15 +83,6 @@
     "toast_success": "Posição secundária alterada para {{pos}}!",
     "toast_error": "Erro ao alterar posição secundária."
   },
-  "slot_choice": {
-    "title": "Criar Novo Slot",
-    "description": "O que você quer criar neste novo slot?",
-    "player_title": "Criar Jogador",
-    "player_desc": "Um novo atleta com onboarding de posição, atributos e visual. Custo: {{cost}}.",
-    "manager_title": "Criar Manager",
-    "manager_desc": "Um novo treinador para assumir um clube disponível.",
-    "cancel": "Cancelar"
-  },
   "new_player": {
     "title": "Novo Jogador",
     "hint": "Crie um novo jogador e alterne entre eles a qualquer momento. Seu jogador atual será mantido.",

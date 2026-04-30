@@ -5,12 +5,14 @@ import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight, BarChart3, Clock } from 'lucide-react';
+import { Users, DollarSign, Trophy, Building2, Star, TrendingUp, Wrench, Shield, Swords, Brain, CircleDot, AlertTriangle, ArrowLeftRight, BarChart3, Clock, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatBRL } from '@/lib/formatting';
 import { formatDate } from '@/lib/formatDate';
 import { ClubCrest } from '@/components/ClubCrest';
 import { CountryFlag } from '@/components/CountryFlag';
+import { Button } from '@/components/ui/button';
+import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
 
 const COACH_TYPE_ICON: Record<string, typeof Shield> = {
   defensive: Shield,
@@ -21,6 +23,7 @@ const COACH_TYPE_ICON: Record<string, typeof Shield> = {
 
 export default function ManagerDashboard() {
   const { t } = useTranslation(['dashboard', 'onboarding']);
+  const { t: tCommon } = useTranslation('common');
   const { current: lang } = useAppLanguage();
   const { managerProfile, club } = useAuth();
   const [finance, setFinance] = useState<any>(null);
@@ -28,6 +31,7 @@ export default function ManagerDashboard() {
   const [playerCount, setPlayerCount] = useState(0);
   const [bankruptcyStatus, setBankruptcyStatus] = useState<any>(null);
   const [inactivePlayerCount, setInactivePlayerCount] = useState(0);
+  const [slotChoiceOpen, setSlotChoiceOpen] = useState(false);
 
   useEffect(() => {
     if (!club) return;
@@ -71,14 +75,21 @@ export default function ManagerDashboard() {
           <p className="text-muted-foreground max-w-md">
             {t('dashboard:manager.no_team.hint')}
           </p>
-          <Link
-            to="/league"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-pitch text-white font-display font-semibold hover:bg-pitch/90 transition-colors"
-          >
-            <Trophy className="h-4 w-4" />
-            {t('dashboard:manager.no_team.go_to_league')}
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              to="/league"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-pitch text-white font-display font-semibold hover:bg-pitch/90 transition-colors"
+            >
+              <Trophy className="h-4 w-4" />
+              {t('dashboard:manager.no_team.go_to_league')}
+            </Link>
+            <Button variant="outline" onClick={() => setSlotChoiceOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {tCommon('slot_choice.cta_button')}
+            </Button>
+          </div>
         </div>
+        <SlotChoiceDialog open={slotChoiceOpen} onClose={() => setSlotChoiceOpen(false)} />
       </ManagerLayout>
     );
   }
@@ -148,9 +159,15 @@ export default function ManagerDashboard() {
               })()}
             </div>
           </div>
-          <div className="text-right">
-            <span className="text-xs text-muted-foreground">{t('dashboard:manager.header.status')}</span>
-            <p className="font-display font-bold text-pitch capitalize">{club.status}</p>
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-right">
+              <span className="text-xs text-muted-foreground">{t('dashboard:manager.header.status')}</span>
+              <p className="font-display font-bold text-pitch capitalize">{club.status}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setSlotChoiceOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {tCommon('slot_choice.cta_button')}
+            </Button>
           </div>
         </div>
 
@@ -275,6 +292,8 @@ export default function ManagerDashboard() {
           </div>
         </Link>
       </div>
+
+      <SlotChoiceDialog open={slotChoiceOpen} onClose={() => setSlotChoiceOpen(false)} />
     </ManagerLayout>
   );
 }

@@ -21,12 +21,13 @@ import {
 import {
   User, Shield, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Loader2, AlertTriangle, TrendingUp, Calendar,
-  Repeat, Plus, UserCircle, Copy, Trash2, Award, Briefcase,
+  Repeat, Plus, UserCircle, Copy, Trash2, Award,
 } from 'lucide-react';
 import { positionLabel } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
 import { formatDate } from '@/lib/formatDate';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
+import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
 
 // ── Attribute category definitions (same keys as PublicClubPage) ──
 
@@ -771,55 +772,11 @@ export default function PlayerProfilePage() {
       </div>
 
       {/* ── Slot Type Choice Dialog (Player vs Manager) ── */}
-      <Dialog open={slotChoiceOpen} onOpenChange={setSlotChoiceOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display flex items-center gap-2">
-              <Plus className="h-5 w-5 text-tactical" /> {t('slot_choice.title')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('slot_choice.description')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-2">
-            <button
-              onClick={() => {
-                setSlotChoiceOpen(false);
-                setNewPlayerOpen(true);
-              }}
-              className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card hover:bg-muted hover:border-tactical transition-all p-4 text-center"
-            >
-              <div className="h-12 w-12 rounded-full bg-tactical/10 flex items-center justify-center">
-                <UserCircle className="h-7 w-7 text-tactical" />
-              </div>
-              <p className="text-sm font-display font-bold">{t('slot_choice.player_title')}</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                {t('slot_choice.player_desc', { cost: formatBRL(NEW_PLAYER_COST) })}
-              </p>
-            </button>
-            <button
-              onClick={() => {
-                setSlotChoiceOpen(false);
-                navigate('/onboarding/manager');
-              }}
-              className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card hover:bg-muted hover:border-tactical transition-all p-4 text-center"
-            >
-              <div className="h-12 w-12 rounded-full bg-tactical/10 flex items-center justify-center">
-                <Briefcase className="h-7 w-7 text-tactical" />
-              </div>
-              <p className="text-sm font-display font-bold">{t('slot_choice.manager_title')}</p>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                {t('slot_choice.manager_desc')}
-              </p>
-            </button>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setSlotChoiceOpen(false)}>
-              {t('slot_choice.cancel')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SlotChoiceDialog
+        open={slotChoiceOpen}
+        onClose={() => setSlotChoiceOpen(false)}
+        onChoosePlayer={() => setNewPlayerOpen(true)}
+      />
 
       {/* ── New Player Confirmation Dialog ── */}
       <Dialog open={newPlayerOpen} onOpenChange={setNewPlayerOpen}>

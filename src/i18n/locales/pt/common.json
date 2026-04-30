@@ -79,5 +79,15 @@
     },
     "default_confirm": "Salvar Avatar",
     "saving": "Salvando..."
+  },
+  "slot_choice": {
+    "cta_button": "Comprar novo slot",
+    "title": "Criar Novo Slot",
+    "description": "O que você quer criar neste novo slot?",
+    "player_title": "Criar Jogador",
+    "player_desc": "Um novo atleta com onboarding de posição, atributos e visual.",
+    "manager_title": "Criar Manager",
+    "manager_desc": "Um novo treinador para assumir um clube disponível.",
+    "cancel": "Cancelar"
   }
 }
