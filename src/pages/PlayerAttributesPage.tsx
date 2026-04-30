@@ -5,7 +5,7 @@ import { AttributeBar } from '@/components/AttributeBar';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
-import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, COACH_TYPE_LABELS, COACH_BONUS_ATTRS, COACH_BONUS_RATE, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR, tierLabel, archetypeLabel, attrCategoryLabel } from '@/lib/attributes';
+import { FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, getTrainingGrowthRate, getAttributeTier, getTrainingTierMultiplier, getCoachBonus, getTrainingCenterBonus, coachTypeLabel, COACH_BONUS_ATTRS, COACH_BONUS_RATE, getAttrCapWithReason, getTrainingFit, TRAINING_PACE_FACTOR, tierLabel, archetypeLabel, attrCategoryLabel } from '@/lib/attributes';
 import { fetchAttributeBonuses, type AttributeBonuses } from '@/lib/attributeBonuses';
 import { formatDate } from '@/lib/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -332,7 +332,7 @@ export default function PlayerAttributesPage() {
                     <p className="text-xs text-warning">{t('popover.age_reduced', { pct: Math.round(growthRate * 100) })}</p>
                   )}
                   {hasClub && attrCoachBonus > 0 && (
-                    <p className="text-xs text-blue-400">{t('popover.coach_bonus_value', { type: COACH_TYPE_LABELS[coachType] || coachType, pct: Math.round(attrCoachBonus * 100) })}</p>
+                    <p className="text-xs text-blue-400">{t('popover.coach_bonus_value', { type: coachTypeLabel(coachType), pct: Math.round(attrCoachBonus * 100) })}</p>
                   )}
                   {hasClub && attrTcBonus > 0 && (
                     <p className="text-xs text-amber-400">{t('popover.tc_bonus_value', { level: trainingCenterLevel, pct: Math.round(attrTcBonus * 100) })}</p>
@@ -420,7 +420,7 @@ export default function PlayerAttributesPage() {
                     {coachType === 'offensive' && <Swords className="h-4 w-4 text-red-400" />}
                     {coachType === 'technical' && <Wrench className="h-4 w-4 text-cyan-400" />}
                     {(coachType === 'all_around' || coachType === 'complete') && <Star className="h-4 w-4 text-yellow-400" />}
-                    <span className="text-muted-foreground">{t('bonus_card.coach_bonus', { type: COACH_TYPE_LABELS[coachType] || 'Completo' })}</span>
+                    <span className="text-muted-foreground">{t('bonus_card.coach_bonus', { type: coachTypeLabel(coachType) })}</span>
                     <span className="font-display font-bold text-blue-400">+{Math.round((COACH_BONUS_RATE[coachType] || 0.10) * 100)}%</span>
                   </div>
                   {coachType !== 'all_around' && coachType !== 'complete' && COACH_BONUS_ATTRS[coachType] && (

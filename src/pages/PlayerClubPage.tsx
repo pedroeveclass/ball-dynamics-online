@@ -17,7 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
-import { ATTR_LABELS, ATTRIBUTE_CATEGORIES, COACH_TYPE_LABELS, COACH_BONUS_RATE, TRAINING_CENTER_BONUS } from '@/lib/attributes';
+import { ATTR_LABELS, ATTRIBUTE_CATEGORIES, COACH_BONUS_RATE, TRAINING_CENTER_BONUS, coachTypeLabel } from '@/lib/attributes';
 import { positionLabel, sortPlayersByPosition } from '@/lib/positions';
 import {
   Shield, Users, FileText, Trophy, Calendar, Dumbbell, Store,
@@ -564,11 +564,7 @@ export default function PlayerClubPage() {
   const coachBonusLabel = (() => {
     const ct = coachType || 'all_around';
     const rate = COACH_BONUS_RATE[ct] || 0.10;
-    // Use the localized coach-type label (manager_club.coach_types.<key>)
-    // instead of the hardcoded PT label from lib/attributes so the EN tab
-    // shows "All-around" instead of "Completo".
-    const localized = t(`manager_club:coach_types.${ct}`, { defaultValue: '' });
-    const label = localized || COACH_TYPE_LABELS[ct] || 'Completo';
+    const label = coachTypeLabel(ct);
     return t('coach.label', { type: label, pct: Math.round(rate * 100) });
   })();
 
