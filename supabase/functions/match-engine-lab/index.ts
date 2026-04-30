@@ -763,8 +763,18 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
 // Build a cross-tick skeleton with only IMMUTABLE-during-match fields.
 // Used to skip the lineup_slots + player_profiles SELECTs in
 // enrichParticipantsWithSlotPosition on subsequent ticks.
+//
+// NOTE: every field the engine reads from a participant must be either
+// here OR in the volatile fetch in `hydrateParticipantsFromSkeleton`. The
+// previous version of this function silently dropped `connected_user_id`,
+// which made `findHumanProgressionTargets` (line ~1848) see ZERO humans on
+// the team — bots stopped passing to humans entirely. Bumping `_v` here
+// invalidates skeletons cached by older builds; hydrate skips them.
+const PARTICIPANT_SKELETON_VERSION = 2;
+
 function buildParticipantSkeleton(enriched: any[]): any[] {
   return enriched.map((p) => ({
+    _v: PARTICIPANT_SKELETON_VERSION,
     id: p.id,
     club_id: p.club_id,
     player_profile_id: p.player_profile_id,
@@ -772,6 +782,8 @@ function buildParticipantSkeleton(enriched: any[]): any[] {
     jersey_number: p.jersey_number ?? null,
     is_bot: p.is_bot ?? false,
     player_name: p.player_name ?? null,
+    connected_user_id: p.connected_user_id ?? null,
+    pickup_slot_id: p.pickup_slot_id ?? null,
     _slot_position: p._slot_position ?? null,
     _editor_slot_position: p._editor_slot_position ?? null,
     _player_name: p._player_name ?? null,
@@ -781,16 +793,28 @@ function buildParticipantSkeleton(enriched: any[]): any[] {
   }));
 }
 
-// Merge cross-tick skeleton with this tick's volatile fetch (pos_x/pos_y,
-// is_sent_off, role_type, match_energy). Returns null if any volatile row
-// references an unknown participant — caller must fall through to slow path
-// (e.g., a new bot was inserted mid-match).
+// Volatile field set re-fetched on every tick. Must include EVERY column on
+// match_participants that mutates during a match — pos_x/y, is_sent_off,
+// role_type (substitution swap), match_energy, is_ready (halftime gate),
+// yellow_cards (foul accumulation).
+const PARTICIPANT_VOLATILE_SELECT =
+  'id, pos_x, pos_y, is_sent_off, match_energy, role_type, is_ready, yellow_cards';
+
+// Merge cross-tick skeleton with this tick's volatile fetch. Returns null if
+// any volatile row references an unknown participant OR if the skeleton was
+// built by an older engine version — caller must fall through to the slow
+// path so the skeleton is rebuilt with the current shape.
 function hydrateParticipantsFromSkeleton(
   skeleton: any[],
   freshVolatile: Array<{ id: string; pos_x: number | null; pos_y: number | null;
                          is_sent_off: boolean | null; role_type: string;
-                         match_energy: number | null }>,
+                         match_energy: number | null;
+                         is_ready: boolean | null; yellow_cards: number | null }>,
 ): any[] | null {
+  // Version gate: drop pre-V2 skeletons so we don't merge stale shapes.
+  if (skeleton.length > 0 && (skeleton[0] as any)._v !== PARTICIPANT_SKELETON_VERSION) {
+    return null;
+  }
   const skMap = new Map(skeleton.map((p: any) => [p.id, p]));
   const merged: any[] = [];
   for (const fresh of freshVolatile) {
@@ -803,6 +827,8 @@ function hydrateParticipantsFromSkeleton(
       is_sent_off: fresh.is_sent_off,
       match_energy: fresh.match_energy,
       role_type: fresh.role_type,
+      is_ready: fresh.is_ready,
+      yellow_cards: fresh.yellow_cards,
     });
   }
   return merged;
@@ -5827,7 +5853,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const fastSourcePos = tickCache.enrichedParticipants ?? tickCache.enrichedSkeleton ?? null;
     const [participantsResult, actionsResult] = await Promise.all([
       fastSourcePos
-        ? supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off, match_energy, role_type').eq('match_id', match_id).eq('role_type', 'player')
+        ? supabase.from('match_participants').select(PARTICIPANT_VOLATILE_SELECT).eq('match_id', match_id).eq('role_type', 'player')
         : supabase.from('match_participants').select('*').eq('match_id', match_id),
       supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending').order('created_at', { ascending: false }),
     ]);
@@ -6243,7 +6269,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   const fastSource = tickCache.enrichedParticipants ?? tickCache.enrichedSkeleton ?? null;
   if (fastSource) {
     const [{ data: freshParts }, turnRowsRes] = await Promise.all([
-      supabase.from('match_participants').select('id, pos_x, pos_y, is_sent_off, match_energy, role_type').eq('match_id', match_id).eq('role_type', 'player') as Promise<{ data: any[] | null }>,
+      supabase.from('match_participants').select(PARTICIPANT_VOLATILE_SELECT).eq('match_id', match_id).eq('role_type', 'player') as Promise<{ data: any[] | null }>,
       isResolution
         ? supabase.from('match_turns').select('id, phase').eq('match_id', match_id).eq('turn_number', activeTurn.turn_number)
         : Promise.resolve({ data: null }),
