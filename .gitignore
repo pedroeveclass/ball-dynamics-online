@@ -26,3 +26,10 @@ dist-ssr
 supabase/.temp/*
 .vercel
 .claude/worktrees/
+
+# Playwright MCP test artifacts (browser snapshots, console logs, screenshots
+# captured during Claude Code debugging sessions). Not part of the app.
+.playwright-mcp/
+login-*.png
+match-*.png
+pitu-*.png
