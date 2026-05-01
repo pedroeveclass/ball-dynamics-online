@@ -11,6 +11,10 @@
     "title": "New forum reply",
     "body": "{{actor}} replied to \"{{topic}}\""
   },
+  "preset_shared": {
+    "title": "New tactical preset received",
+    "body": "{{actor}} shared \"{{preset_name}}\" ({{base_formation}}) with your club."
+  },
   "agreement_proposed": {
     "title": "🤝 Mutual Agreement Proposal",
     "body": "Your club proposed a mutual agreement termination."

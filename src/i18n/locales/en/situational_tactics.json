@@ -97,6 +97,57 @@
   },
   "customized_status": "{{count}}/35 quadrant(s) customized in this phase",
   "explanation": "<0>Dynamic (default):</0> the whole team follows the ball — vertically more, laterally less. When you drag a player, the quadrant becomes <1>customized</1> (yellow dot in the corner) and locks into that shape.",
+  "preset": {
+    "default": "Default",
+    "my_presets": "My presets",
+    "editing_banner": "Editing preset \"{{name}}\" (base {{base}}). Save updates this preset.",
+    "actions": {
+      "save_as_new": "Save as new preset...",
+      "duplicate": "Duplicate preset",
+      "rename": "Rename",
+      "share": "Share with another club",
+      "delete": "Delete preset"
+    },
+    "dialog": {
+      "create_title": "Save as new preset",
+      "create_description": "Creates a preset from the current setup ({{count}}/{{limit}} used). Base: {{formation}}.",
+      "create_submit": "Create preset",
+      "rename_title": "Rename preset",
+      "rename_submit": "Save",
+      "duplicate_title": "Duplicate preset",
+      "duplicate_description": "Clones \"{{name}}\" with a new name. Later edits stay isolated.",
+      "duplicate_submit": "Duplicate",
+      "delete_title": "Delete preset",
+      "delete_description": "Delete \"{{name}}\"? Lineups using this preset fall back to the base formation default.",
+      "delete_submit": "Delete",
+      "share_title": "Share preset",
+      "share_description": "Sends a copy of \"{{name}}\" to another club. The other club gets notified.",
+      "share_search_placeholder": "Search club...",
+      "share_no_clubs": "No clubs found.",
+      "share_submit": "Share",
+      "name_label": "Preset name",
+      "name_placeholder": "e.g. Narrow, vs Top sides...",
+      "cancel": "Cancel",
+      "saving": "Saving..."
+    },
+    "toast": {
+      "created": "Preset \"{{name}}\" created",
+      "duplicated": "Preset duplicated as \"{{name}}\"",
+      "renamed": "Preset renamed to \"{{name}}\"",
+      "deleted": "Preset \"{{name}}\" deleted",
+      "shared": "Preset shared with {{target}}"
+    },
+    "error": {
+      "limit_reached": "Preset limit (10) reached. Delete one to create another.",
+      "target_limit_reached": "Target club already has 10 presets. They need to delete one first.",
+      "name_taken": "A preset with that name already exists.",
+      "invalid_name": "Invalid name (1-40 characters).",
+      "forbidden": "Not allowed.",
+      "not_found": "Preset not found.",
+      "same_club": "Can't share a preset with your own club.",
+      "generic": "Preset operation failed."
+    }
+  },
   "duplicate_dialog": {
     "title": "Duplicate adjustments",
     "description": "Copies only the <0>customized</0> quadrants from <1>{{formation}}</1> to the chosen formation, slot by slot (non-customized ones keep the dynamic default in the new formation). Saves straight to the database.",

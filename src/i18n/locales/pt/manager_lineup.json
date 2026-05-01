@@ -3,6 +3,10 @@
   "loading": "Carregando escalação...",
   "subtitle": "{{starters}}/{{maxStarters}} titulares • {{bench}}/{{maxBench}} banco",
   "tactics_button": "Táticas — Jogo Situacional",
+  "formation_select": {
+    "base_label": "Formações padrão",
+    "presets_label": "Meus presets"
+  },
   "save_button": "Salvar",
   "saving": "Salvando...",
   "empty_squad": {

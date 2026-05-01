@@ -5753,11 +5753,11 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         supabase.from('club_settings').select('default_formation, play_style').eq('club_id', m.away_club_id).maybeSingle(),
         // Read formation from lineup (where the user actually sets it)
         m.home_lineup_id
-          ? supabase.from('lineups').select(`${roleFields}, formation`).eq('id', m.home_lineup_id).maybeSingle()
-          : supabase.from('lineups').select(`${roleFields}, formation`).eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle(),
+          ? supabase.from('lineups').select(`${roleFields}, formation, tactic_preset_id`).eq('id', m.home_lineup_id).maybeSingle()
+          : supabase.from('lineups').select(`${roleFields}, formation, tactic_preset_id`).eq('club_id', m.home_club_id).eq('is_active', true).maybeSingle(),
         m.away_lineup_id
-          ? supabase.from('lineups').select(`${roleFields}, formation`).eq('id', m.away_lineup_id).maybeSingle()
-          : supabase.from('lineups').select(`${roleFields}, formation`).eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle(),
+          ? supabase.from('lineups').select(`${roleFields}, formation, tactic_preset_id`).eq('id', m.away_lineup_id).maybeSingle()
+          : supabase.from('lineups').select(`${roleFields}, formation, tactic_preset_id`).eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle(),
         supabase.rpc('get_coach_bonuses', { p_club_id: m.home_club_id }).then((r: any) => r).catch(() => ({ data: [] })),
         supabase.rpc('get_coach_bonuses', { p_club_id: m.away_club_id }).then((r: any) => r).catch(() => ({ data: [] })),
       ]);
@@ -5766,52 +5766,118 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
       const homeForm = homeLineupFormRes.data?.formation || homeSettingsRes.data?.default_formation || '4-4-2';
       const awayForm = awayLineupFormRes.data?.formation || awaySettingsRes.data?.default_formation || '4-4-2';
 
+      // Tactic presets: when a side's lineup pins a preset, the preset bundle
+      // (positions+knobs+set_pieces) overrides the per-club default rows.
+      const homePresetId = (homeLineupFormRes.data as any)?.tactic_preset_id ?? null;
+      const awayPresetId = (awayLineupFormRes.data as any)?.tactic_preset_id ?? null;
+      const presetIds: string[] = [];
+      if (homePresetId) presetIds.push(homePresetId);
+      if (awayPresetId) presetIds.push(awayPresetId);
+      const presetBySide: { home?: any; away?: any } = {};
+      if (presetIds.length > 0) {
+        try {
+          const { data: presetRows } = await supabase
+            .from('tactic_presets')
+            .select('id, positions, knobs, set_pieces')
+            .in('id', presetIds);
+          for (const row of (presetRows || []) as any[]) {
+            if (row.id === homePresetId) presetBySide.home = row;
+            if (row.id === awayPresetId) presetBySide.away = row;
+          }
+        } catch (e) {
+          console.error(`[ENGINE] Failed to load tactic_presets (will fall back to per-club rows):`, e);
+        }
+      }
+
       // Situational tactics for both clubs (both phases), snapshot at match start.
       const situationalTactics: SituCache = { home: {}, away: {} };
-      try {
-        const { data: situRows } = await supabase
-          .from('situational_tactics')
-          .select('club_id, formation, phase, positions, attack_type, positioning, inclination')
-          .in('club_id', [m.home_club_id, m.away_club_id]);
-        for (const row of (situRows || []) as any[]) {
-          const side = row.club_id === m.home_club_id ? 'home' : 'away';
-          const expectedFormation = side === 'home' ? homeForm : awayForm;
-          if (row.formation !== expectedFormation) continue;
-          if (row.phase !== 'with_ball' && row.phase !== 'without_ball') continue;
-          situationalTactics[side]![row.phase as 'with_ball' | 'without_ball'] = row.positions || {};
-          // Same knob set lives on both phase rows — last one wins, which is fine since we write them identically.
-          if (row.attack_type || row.positioning || row.inclination) {
-            situationalTactics[side]!.knobs = {
-              attack_type: (row.attack_type as SituAttackType) || 'balanced',
-              positioning: (row.positioning as SituPositioning) || 'normal',
-              inclination: (row.inclination as SituInclination) || 'normal',
-            };
-          }
+      const sidesNeedingDefault: ('home' | 'away')[] = [];
+      for (const side of (['home', 'away'] as const)) {
+        const preset = presetBySide[side];
+        if (preset) {
+          const positions = (preset.positions || {}) as { with_ball?: any; without_ball?: any };
+          situationalTactics[side]!.with_ball = positions.with_ball || {};
+          situationalTactics[side]!.without_ball = positions.without_ball || {};
+          const k = (preset.knobs || {}) as any;
+          situationalTactics[side]!.knobs = {
+            attack_type: (k.attack_type as SituAttackType) || 'balanced',
+            positioning: (k.positioning as SituPositioning) || 'normal',
+            inclination: (k.inclination as SituInclination) || 'normal',
+          };
+        } else {
+          sidesNeedingDefault.push(side);
         }
-      } catch (e) {
-        console.error(`[ENGINE] Failed to load situational_tactics (will fall back to dynamic default):`, e);
+      }
+      if (sidesNeedingDefault.length > 0) {
+        try {
+          const clubIds = sidesNeedingDefault.map(s => s === 'home' ? m.home_club_id : m.away_club_id);
+          const { data: situRows } = await supabase
+            .from('situational_tactics')
+            .select('club_id, formation, phase, positions, attack_type, positioning, inclination')
+            .in('club_id', clubIds);
+          for (const row of (situRows || []) as any[]) {
+            const side = row.club_id === m.home_club_id ? 'home' : 'away';
+            if (!sidesNeedingDefault.includes(side as any)) continue;
+            const expectedFormation = side === 'home' ? homeForm : awayForm;
+            if (row.formation !== expectedFormation) continue;
+            if (row.phase !== 'with_ball' && row.phase !== 'without_ball') continue;
+            situationalTactics[side]![row.phase as 'with_ball' | 'without_ball'] = row.positions || {};
+            if (row.attack_type || row.positioning || row.inclination) {
+              situationalTactics[side]!.knobs = {
+                attack_type: (row.attack_type as SituAttackType) || 'balanced',
+                positioning: (row.positioning as SituPositioning) || 'normal',
+                inclination: (row.inclination as SituInclination) || 'normal',
+              };
+            }
+          }
+        } catch (e) {
+          console.error(`[ENGINE] Failed to load situational_tactics (will fall back to dynamic default):`, e);
+        }
       }
 
       // Set-piece (Bola Parada) tactics for both clubs, snapshot at match start.
       const setPieceTactics: SetPieceCache = { home: {}, away: {} };
-      try {
-        const { data: spRows } = await supabase
-          .from('set_piece_tactics')
-          .select('club_id, formation, set_piece_type, phase, positions')
-          .in('club_id', [m.home_club_id, m.away_club_id]);
-        for (const row of (spRows || []) as any[]) {
-          const side = row.club_id === m.home_club_id ? 'home' : 'away';
-          const expectedFormation = side === 'home' ? homeForm : awayForm;
-          if (row.formation !== expectedFormation) continue;
-          const t = row.set_piece_type as SetPieceTypeKey;
-          const p = row.phase as SetPiecePhaseKey;
-          if (!['corner', 'throw_in', 'free_kick', 'goal_kick'].includes(t)) continue;
-          if (p !== 'with_ball' && p !== 'without_ball') continue;
-          if (!setPieceTactics[side]![t]) setPieceTactics[side]![t] = {};
-          setPieceTactics[side]![t]![p] = row.positions || {};
+      const setPieceSidesNeedingDefault: ('home' | 'away')[] = [];
+      for (const side of (['home', 'away'] as const)) {
+        const preset = presetBySide[side];
+        if (preset) {
+          const sp = (preset.set_pieces || {}) as Partial<Record<SetPieceTypeKey, Partial<Record<SetPiecePhaseKey, any>>>>;
+          for (const t of ['corner', 'throw_in', 'free_kick', 'goal_kick'] as SetPieceTypeKey[]) {
+            const layouts = sp[t];
+            if (!layouts) continue;
+            for (const p of ['with_ball', 'without_ball'] as SetPiecePhaseKey[]) {
+              const layout = layouts[p];
+              if (!layout) continue;
+              if (!setPieceTactics[side]![t]) setPieceTactics[side]![t] = {};
+              setPieceTactics[side]![t]![p] = layout;
+            }
+          }
+        } else {
+          setPieceSidesNeedingDefault.push(side);
         }
-      } catch (e) {
-        console.error(`[ENGINE] Failed to load set_piece_tactics (will fall back to situational default):`, e);
+      }
+      if (setPieceSidesNeedingDefault.length > 0) {
+        try {
+          const clubIds = setPieceSidesNeedingDefault.map(s => s === 'home' ? m.home_club_id : m.away_club_id);
+          const { data: spRows } = await supabase
+            .from('set_piece_tactics')
+            .select('club_id, formation, set_piece_type, phase, positions')
+            .in('club_id', clubIds);
+          for (const row of (spRows || []) as any[]) {
+            const side = row.club_id === m.home_club_id ? 'home' : 'away';
+            if (!setPieceSidesNeedingDefault.includes(side as any)) continue;
+            const expectedFormation = side === 'home' ? homeForm : awayForm;
+            if (row.formation !== expectedFormation) continue;
+            const t = row.set_piece_type as SetPieceTypeKey;
+            const p = row.phase as SetPiecePhaseKey;
+            if (!['corner', 'throw_in', 'free_kick', 'goal_kick'].includes(t)) continue;
+            if (p !== 'with_ball' && p !== 'without_ball') continue;
+            if (!setPieceTactics[side]![t]) setPieceTactics[side]![t] = {};
+            setPieceTactics[side]![t]![p] = row.positions || {};
+          }
+        } catch (e) {
+          console.error(`[ENGINE] Failed to load set_piece_tactics (will fall back to situational default):`, e);
+        }
       }
 
       const engineCache = {

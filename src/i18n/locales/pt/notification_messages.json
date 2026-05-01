@@ -11,6 +11,10 @@
     "title": "Nova resposta no fórum",
     "body": "{{actor}} comentou em \"{{topic}}\""
   },
+  "preset_shared": {
+    "title": "Novo preset tático recebido",
+    "body": "{{actor}} compartilhou \"{{preset_name}}\" ({{base_formation}}) com seu clube."
+  },
   "agreement_proposed": {
     "title": "🤝 Proposta de Comum Acordo",
     "body": "Seu clube propôs rescisão por comum acordo."

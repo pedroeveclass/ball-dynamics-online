@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PositionBadge } from '@/components/PositionBadge';
 import { PlayerHoverStats } from '@/components/PlayerHoverStats';
@@ -219,6 +219,13 @@ export default function ManagerLineupPage() {
   const [assignments, setAssignments] = useState<SlotAssignment[]>([]);
   const [benchPlayers, setBenchPlayers] = useState<string[]>([]);
   const [lineupId, setLineupId] = useState<string | null>(null);
+  // Tactic preset: when set, the lineup is pinned to that preset and the engine
+  // loads positions/knobs/set-pieces/role_overrides from the preset row.
+  const [tacticPresetId, setTacticPresetId] = useState<string | null>(null);
+  const [presets, setPresets] = useState<Array<{
+    id: string; name: string; base_formation: string;
+    role_overrides: Record<string, string>;
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pickSlot, setPickSlot] = useState<string | null>(null);
@@ -336,6 +343,7 @@ export default function ManagerLineupPage() {
     if (lineup) {
       setLineupId(lineup.id);
       setFormation(lineup.formation);
+      setTacticPresetId((lineup as any).tactic_preset_id ?? null);
 
       // Load tactical roles
       setCaptainId(lineup.captain_player_id || null);
@@ -411,6 +419,14 @@ export default function ManagerLineupPage() {
       });
       setUniformEdits(edits);
     }
+
+    // Load tactic presets the manager can apply to this lineup.
+    const { data: presetsData } = await supabase
+      .from('tactic_presets' as any)
+      .select('id, name, base_formation, role_overrides')
+      .eq('club_id', club.id)
+      .order('created_at', { ascending: true });
+    setPresets(((presetsData as any) || []) as any);
 
     setLoading(false);
   };
@@ -568,7 +584,36 @@ export default function ManagerLineupPage() {
     return slotPos;
   };
 
+  // Apply a tactic preset: sync formation to its base, set the preset id, and
+  // overlay the preset's role_overrides on top of slot assignments. Manager can
+  // still tweak overrides afterwards on the lineup before saving.
+  const handlePresetApply = (presetId: string | null) => {
+    if (!presetId) {
+      setTacticPresetId(null);
+      return;
+    }
+    const preset = presets.find(p => p.id === presetId);
+    if (!preset) return;
+    setTacticPresetId(presetId);
+    // If the preset's base differs from the current formation, transition first.
+    if (preset.base_formation !== formation) {
+      handleFormationChange(preset.base_formation);
+    }
+    // Apply role_overrides (clear any previous, then layer the preset's).
+    const overrides = preset.role_overrides || {};
+    setAssignments(prev => prev.map(a => ({
+      ...a,
+      role_override: overrides[a.slot_position] || null,
+    })));
+  };
+
   const handleFormationChange = (newFormation: string) => {
+    // Manual formation change drops the active preset (presets are pinned to a
+    // base formation). The preset application path uses this same helper.
+    if (tacticPresetId) {
+      const preset = presets.find(p => p.id === tacticPresetId);
+      if (!preset || preset.base_formation !== newFormation) setTacticPresetId(null);
+    }
     const newSlots = FORMATIONS[newFormation] || FORMATIONS['4-4-2'];
     const oldAssignments = [...assignments];
     const newAssignments: SlotAssignment[] = [];
@@ -637,7 +682,7 @@ export default function ManagerLineupPage() {
 
       const { data: newLineup, error: lineupError } = await supabase
         .from('lineups')
-        .insert({ club_id: club.id, formation, is_active: true, updated_at: now })
+        .insert({ club_id: club.id, formation, is_active: true, updated_at: now, tactic_preset_id: tacticPresetId })
         .select()
         .single();
 
@@ -712,10 +757,31 @@ export default function ManagerLineupPage() {
             <p className="text-sm text-muted-foreground">{t('subtitle', { starters: assignments.length, maxStarters: slots.length, bench: benchPlayers.length, maxBench: MAX_BENCH })}</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <Select value={formation} onValueChange={handleFormationChange}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <Select
+              value={tacticPresetId ? `preset:${tacticPresetId}` : `base:${formation}`}
+              onValueChange={(v) => {
+                if (v.startsWith('preset:')) {
+                  handlePresetApply(v.slice('preset:'.length));
+                } else if (v.startsWith('base:')) {
+                  handlePresetApply(null);
+                  handleFormationChange(v.slice('base:'.length));
+                }
+              }}
+            >
+              <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                <SelectGroup>
+                  <SelectLabel>{t('formation_select.base_label')}</SelectLabel>
+                  {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={`base:${f}`}>{f}</SelectItem>)}
+                </SelectGroup>
+                {presets.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>{t('formation_select.presets_label')}</SelectLabel>
+                    {presets.map(p => (
+                      <SelectItem key={p.id} value={`preset:${p.id}`}>{p.base_formation} — {p.name}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
             <Button asChild variant="outline" className="gap-1.5">

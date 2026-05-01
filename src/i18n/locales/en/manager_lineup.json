@@ -3,6 +3,10 @@
   "loading": "Loading lineup...",
   "subtitle": "{{starters}}/{{maxStarters}} starters • {{bench}}/{{maxBench}} bench",
   "tactics_button": "Tactics — Situational Play",
+  "formation_select": {
+    "base_label": "Default formations",
+    "presets_label": "My presets"
+  },
   "save_button": "Save",
   "saving": "Saving...",
   "empty_squad": {

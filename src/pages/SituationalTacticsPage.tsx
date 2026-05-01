@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, useAnimationControls } from 'framer-motion';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
@@ -7,13 +7,17 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal, MoreHorizontal, Plus, Pencil, Trash2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Trans, useTranslation } from 'react-i18next';
 import { FORMATIONS } from './ManagerLineupPage';
@@ -413,6 +417,24 @@ function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
   );
 }
 
+// ── Tactic presets ────────────────────────────────────────────
+// A preset bundles situational positions + knobs + set-pieces + role overrides
+// under a custom name on top of a base formation. When `selectedPresetId` is
+// null the page edits the club's "Padrão" (legacy situational_tactics +
+// set_piece_tactics rows). Otherwise everything reads/writes from the preset.
+const PRESET_LIMIT = 10;
+
+interface TacticPreset {
+  id: string;
+  club_id: string;
+  name: string;
+  base_formation: string;
+  positions: { with_ball: Record<string, QuadrantPositions>; without_ball: Record<string, QuadrantPositions> };
+  knobs: TacticKnobs;
+  set_pieces: Partial<Record<SetPieceType, Partial<Record<SetPiecePhase, SetPieceLayout>>>>;
+  role_overrides: Record<string, string>;
+}
+
 // ── Page ──────────────────────────────────────────────────────
 export default function SituationalTacticsPage() {
   const { t } = useTranslation('situational_tactics');
@@ -420,6 +442,7 @@ export default function SituationalTacticsPage() {
   const Layout = profile?.role_selected === 'manager' ? ManagerLayout : AppLayout;
   const club = ownClub || assistantClub;
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [formation, setFormation] = useState('4-4-2');
   const [phase, setPhase] = useState<Phase>('with_ball');
@@ -454,6 +477,26 @@ export default function SituationalTacticsPage() {
   const [setPieceLoading, setSetPieceLoading] = useState(true);
   const [setPieceSaving, setSetPieceSaving] = useState(false);
 
+  // ── Tactic presets (named variations) ──
+  const [presets, setPresets] = useState<TacticPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [createPresetOpen, setCreatePresetOpen] = useState(false);
+  const [createPresetName, setCreatePresetName] = useState('');
+  const [renamePresetOpen, setRenamePresetOpen] = useState(false);
+  const [renamePresetValue, setRenamePresetValue] = useState('');
+  const [deletePresetOpen, setDeletePresetOpen] = useState(false);
+  const [duplicatePresetOpen, setDuplicatePresetOpen] = useState(false);
+  const [duplicatePresetName, setDuplicatePresetName] = useState('');
+  const [sharePresetOpen, setSharePresetOpen] = useState(false);
+  const [shareTargetClubId, setShareTargetClubId] = useState<string>('');
+  const [shareCandidates, setShareCandidates] = useState<Array<{ id: string; name: string }>>([]);
+  const [shareSearch, setShareSearch] = useState('');
+  const [presetActionBusy, setPresetActionBusy] = useState(false);
+  const selectedPreset = useMemo(
+    () => presets.find(p => p.id === selectedPresetId) || null,
+    [presets, selectedPresetId],
+  );
+
   const fieldRef = useRef<HTMLDivElement>(null);
   const setPieceFieldRef = useRef<HTMLDivElement>(null);
   const slots = FORMATIONS[formation] || FORMATIONS['4-4-2'];
@@ -466,26 +509,106 @@ export default function SituationalTacticsPage() {
     (async () => {
       const { data } = await supabase
         .from('lineups')
-        .select('formation')
+        .select('formation, tactic_preset_id')
         .eq('club_id', club.id)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (cancelled) return;
-      if (data?.formation && FORMATIONS[data.formation]) {
+      // If a preset is open via ?preset=ID we let that take over below.
+      if (searchParams.get('preset')) return;
+      if ((data as any)?.tactic_preset_id) {
+        setSelectedPresetId((data as any).tactic_preset_id);
+      } else if (data?.formation && FORMATIONS[data.formation]) {
         setFormation(data.formation);
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [club?.id]);
 
-  // ── Load / init from DB when club or formation changes ────
+  // Load all presets for the club so the selector can list them.
+  useEffect(() => {
+    if (!club) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('tactic_presets' as any)
+        .select('*')
+        .eq('club_id', club.id)
+        .order('created_at', { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.error('[presets] load error', error);
+        setPresets([]);
+        return;
+      }
+      setPresets(((data as any) || []) as TacticPreset[]);
+    })();
+    return () => { cancelled = true; };
+  }, [club?.id]);
+
+  // Honor ?preset=ID deeplink (notification → "Compartilhei um preset com você").
+  useEffect(() => {
+    const id = searchParams.get('preset');
+    if (!id) return;
+    if (presets.find(p => p.id === id)) {
+      setSelectedPresetId(id);
+      // Clear the param so navigation in-page doesn't keep re-opening it.
+      const next = new URLSearchParams(searchParams);
+      next.delete('preset');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, presets, setSearchParams]);
+
+  // When a preset is selected, sync the formation dropdown to the preset's base.
+  useEffect(() => {
+    if (!selectedPreset) return;
+    if (FORMATIONS[selectedPreset.base_formation] && selectedPreset.base_formation !== formation) {
+      setFormation(selectedPreset.base_formation);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPresetId]);
+
+  // ── Load / init from DB when club, formation, or selected preset changes ──
   useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!club) return;
       setLoading(true);
+
+      // When a preset is selected, the situational layout comes from the preset
+      // bundle (positions JSONB) rather than from the per-club default rows.
+      if (selectedPreset) {
+        const fresh: PhaseMap = buildEmptyBothPhases();
+        const validSlots = new Set(slots.map(s => s.position));
+        for (const phaseKey of PHASES) {
+          const stored = (selectedPreset.positions?.[phaseKey] || {}) as Record<string, QuadrantPositions>;
+          for (const [q, slotMap] of Object.entries(stored)) {
+            const qi = Number(q);
+            if (!Number.isFinite(qi) || qi < 0 || qi >= COLS * ROWS) continue;
+            const relevant = Object.keys(slotMap).some(k => validSlots.has(k));
+            if (!relevant) continue;
+            const base = computeDynamicPositions(qi, formation);
+            const merged: QuadrantPositions = { ...base };
+            for (const s of slots) {
+              if (slotMap[s.position]) merged[s.position] = slotMap[s.position];
+            }
+            fresh[phaseKey][qi] = merged;
+          }
+        }
+        setPhaseMap(fresh);
+        setKnobs({
+          attack_type: (selectedPreset.knobs?.attack_type as AttackType) || 'balanced',
+          positioning: (selectedPreset.knobs?.positioning as Positioning) || 'normal',
+          inclination: (selectedPreset.knobs?.inclination as Inclination) || 'normal',
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Default ("Padrão"): read from the per-club situational_tactics rows.
       const { data, error } = await supabase
         .from('situational_tactics' as any)
         .select('phase, positions, attack_type, positioning, inclination')
@@ -500,9 +623,7 @@ export default function SituationalTacticsPage() {
         setLoading(false);
         return;
       }
-      // DB now stores ONLY customized quadrants. Missing keys = use dynamic default.
       const fresh: PhaseMap = buildEmptyBothPhases();
-      // Pull knobs from whichever phase row has them (we save same values on both).
       const knobRow = (data || [])[0] as any;
       if (knobRow) {
         setKnobs({
@@ -520,10 +641,8 @@ export default function SituationalTacticsPage() {
         for (const [q, slotMap] of Object.entries(stored)) {
           const qi = Number(q);
           if (!Number.isFinite(qi) || qi < 0 || qi >= COLS * ROWS) continue;
-          // Ignore quadrants whose stored slots don't match current formation at all (stale data).
           const relevant = Object.keys(slotMap).some(k => validSlots.has(k));
           if (!relevant) continue;
-          // Start from dynamic, overlay stored slots. Missing slots (e.g., formation change) fall back to dynamic.
           const base = computeDynamicPositions(qi, formation);
           const merged: QuadrantPositions = { ...base };
           for (const s of slots) {
@@ -538,14 +657,35 @@ export default function SituationalTacticsPage() {
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [club?.id, formation]);
+  }, [club?.id, formation, selectedPresetId]);
 
-  // ── Set-piece (Bola Parada): load from DB ──────────────────
+  // ── Set-piece (Bola Parada): load from DB or preset ────────
   useEffect(() => {
     let cancelled = false;
     async function loadSetPiece() {
       if (!club) return;
       setSetPieceLoading(true);
+
+      if (selectedPreset) {
+        const fresh = buildEmptySetPieceMap();
+        const validSlots = new Set(slots.map(s => s.position));
+        const sp = (selectedPreset.set_pieces || {}) as Partial<Record<SetPieceType, Partial<Record<SetPiecePhase, SetPieceLayout>>>>;
+        for (const spt of SET_PIECE_TYPES) {
+          for (const ph of PHASES) {
+            const stored = sp[spt]?.[ph];
+            if (!stored) continue;
+            const merged: SetPieceLayout = defaultSetPiecePositions(formation, spt, ph);
+            for (const k of Object.keys(stored)) {
+              if (validSlots.has(k)) merged[k] = stored[k];
+            }
+            fresh[spt][ph] = merged;
+          }
+        }
+        setSetPieceMap(fresh);
+        setSetPieceLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('set_piece_tactics' as any)
         .select('set_piece_type, phase, positions')
@@ -566,7 +706,6 @@ export default function SituationalTacticsPage() {
         const p = row.phase as SetPiecePhase;
         if (!SET_PIECE_TYPES.includes(t)) continue;
         const stored = (row.positions || {}) as SetPieceLayout;
-        // Keep only slots that exist in the current formation; fall back to default for the rest.
         const merged: SetPieceLayout = defaultSetPiecePositions(formation, t, p);
         for (const k of Object.keys(stored)) {
           if (validSlots.has(k)) merged[k] = stored[k];
@@ -579,7 +718,7 @@ export default function SituationalTacticsPage() {
     loadSetPiece();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [club?.id, formation]);
+  }, [club?.id, formation, selectedPresetId]);
 
   // ── Mutators ───────────────────────────────────────────────
   const isQuadrantCustomized = phaseMap[phase][ballQuadrant] != null;
@@ -660,9 +799,57 @@ export default function SituationalTacticsPage() {
     return out;
   };
 
+  const serializeAllPhases = (): { with_ball: Record<string, QuadrantPositions>; without_ball: Record<string, QuadrantPositions> } => ({
+    with_ball: serializePhase('with_ball'),
+    without_ball: serializePhase('without_ball'),
+  });
+
+  const serializeSetPieces = (): Partial<Record<SetPieceType, Partial<Record<SetPiecePhase, SetPieceLayout>>>> => {
+    const out: Partial<Record<SetPieceType, Partial<Record<SetPiecePhase, SetPieceLayout>>>> = {};
+    for (const spt of SET_PIECE_TYPES) {
+      for (const ph of PHASES) {
+        const layout = setPieceMap[spt][ph];
+        if (!layout) continue;
+        if (!out[spt]) out[spt] = {};
+        out[spt]![ph] = layout;
+      }
+    }
+    return out;
+  };
+
   const handleSave = async () => {
     if (!club) return;
     setSaving(true);
+
+    // When a preset is selected, "Salvar" updates the preset's positions+knobs
+    // (set_pieces and role_overrides are preserved untouched here — set_pieces
+    // are saved by the dedicated set-piece save button; role_overrides are
+    // managed via the lineup screen).
+    if (selectedPreset) {
+      const { error } = await (supabase as any).rpc('update_tactic_preset', {
+        p_preset_id: selectedPreset.id,
+        p_name: null,
+        p_positions: serializeAllPhases(),
+        p_knobs: knobs,
+        p_set_pieces: null,
+        p_role_overrides: null,
+      });
+      setSaving(false);
+      if (error) {
+        console.error(error);
+        toast.error(t('toast.save_error'));
+        return;
+      }
+      // Refresh local preset cache so subsequent reloads reflect saved state.
+      setPresets(prev => prev.map(p => p.id === selectedPreset.id ? {
+        ...p,
+        positions: serializeAllPhases(),
+        knobs,
+      } : p));
+      toast.success(t('toast.saved'));
+      return;
+    }
+
     const rows = PHASES.map(p => ({
       club_id: club.id,
       formation,
@@ -712,8 +899,28 @@ export default function SituationalTacticsPage() {
   const handleSaveSetPiece = async () => {
     if (!club) return;
     setSetPieceSaving(true);
-    // Persist every customized (type, phase) — null entries are skipped (DB
-    // returns no row → engine falls back to current behavior).
+
+    if (selectedPreset) {
+      const sp = serializeSetPieces();
+      const { error } = await (supabase as any).rpc('update_tactic_preset', {
+        p_preset_id: selectedPreset.id,
+        p_name: null,
+        p_positions: null,
+        p_knobs: null,
+        p_set_pieces: sp,
+        p_role_overrides: null,
+      });
+      setSetPieceSaving(false);
+      if (error) {
+        console.error(error);
+        toast.error(t('toast.save_set_piece_error'));
+        return;
+      }
+      setPresets(prev => prev.map(p => p.id === selectedPreset.id ? { ...p, set_pieces: sp } : p));
+      toast.success(t('toast.saved_set_piece'));
+      return;
+    }
+
     const rows: any[] = [];
     for (const t of SET_PIECE_TYPES) {
       for (const p of PHASES) {
@@ -804,6 +1011,207 @@ export default function SituationalTacticsPage() {
     setDupOpen(false);
   };
 
+  // ── Preset handlers ────────────────────────────────────────
+  const presetErrorMessage = (err: any): string => {
+    const msg = String(err?.message || '');
+    if (msg.includes('limit_reached')) return t('preset.error.limit_reached');
+    if (msg.includes('target_limit_reached')) return t('preset.error.target_limit_reached');
+    if (msg.includes('name_taken')) return t('preset.error.name_taken');
+    if (msg.includes('invalid_name')) return t('preset.error.invalid_name');
+    if (msg.includes('forbidden')) return t('preset.error.forbidden');
+    if (msg.includes('not_found')) return t('preset.error.not_found');
+    if (msg.includes('same_club')) return t('preset.error.same_club');
+    return t('preset.error.generic');
+  };
+
+  // Snapshot the active lineup's role_overrides if it matches the formation
+  // we're about to capture into a new preset. Captures DM→AM-style choices.
+  const snapshotActiveLineupRoleOverrides = async (baseFormation: string): Promise<Record<string, string>> => {
+    if (!club) return {};
+    const { data: lineup } = await supabase
+      .from('lineups')
+      .select('id, formation')
+      .eq('club_id', club.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!lineup || lineup.formation !== baseFormation) return {};
+    const { data: slotRows } = await supabase
+      .from('lineup_slots')
+      .select('slot_position, role_override')
+      .eq('lineup_id', lineup.id);
+    const map: Record<string, string> = {};
+    for (const r of (slotRows || []) as any[]) {
+      if (r.role_override) map[r.slot_position] = r.role_override as string;
+    }
+    return map;
+  };
+
+  const handleCreatePreset = async () => {
+    if (!club) return;
+    const name = createPresetName.trim();
+    if (!name) { toast.error(t('preset.error.invalid_name')); return; }
+    setPresetActionBusy(true);
+    try {
+      const role_overrides = await snapshotActiveLineupRoleOverrides(formation);
+      const { data, error } = await (supabase as any).rpc('create_tactic_preset', {
+        p_club_id: club.id,
+        p_name: name,
+        p_base_formation: formation,
+        p_positions: serializeAllPhases(),
+        p_knobs: knobs,
+        p_set_pieces: serializeSetPieces(),
+        p_role_overrides: role_overrides,
+      });
+      if (error) throw error;
+      const newId = data as string;
+      // Refetch to get the canonical row.
+      const { data: row } = await supabase
+        .from('tactic_presets' as any)
+        .select('*')
+        .eq('id', newId)
+        .maybeSingle();
+      if (row) setPresets(prev => [...prev, row as any]);
+      setSelectedPresetId(newId);
+      setCreatePresetOpen(false);
+      setCreatePresetName('');
+      toast.success(t('preset.toast.created', { name }));
+    } catch (err: any) {
+      toast.error(presetErrorMessage(err));
+    } finally {
+      setPresetActionBusy(false);
+    }
+  };
+
+  const handleDuplicatePreset = async () => {
+    if (!selectedPreset) return;
+    const name = duplicatePresetName.trim();
+    if (!name) { toast.error(t('preset.error.invalid_name')); return; }
+    setPresetActionBusy(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('duplicate_tactic_preset', {
+        p_preset_id: selectedPreset.id,
+        p_new_name: name,
+      });
+      if (error) throw error;
+      const newId = data as string;
+      const { data: row } = await supabase
+        .from('tactic_presets' as any)
+        .select('*')
+        .eq('id', newId)
+        .maybeSingle();
+      if (row) setPresets(prev => [...prev, row as any]);
+      setSelectedPresetId(newId);
+      setDuplicatePresetOpen(false);
+      setDuplicatePresetName('');
+      toast.success(t('preset.toast.duplicated', { name }));
+    } catch (err: any) {
+      toast.error(presetErrorMessage(err));
+    } finally {
+      setPresetActionBusy(false);
+    }
+  };
+
+  const handleRenamePreset = async () => {
+    if (!selectedPreset) return;
+    const name = renamePresetValue.trim();
+    if (!name || name === selectedPreset.name) { setRenamePresetOpen(false); return; }
+    setPresetActionBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc('update_tactic_preset', {
+        p_preset_id: selectedPreset.id,
+        p_name: name,
+        p_positions: null,
+        p_knobs: null,
+        p_set_pieces: null,
+        p_role_overrides: null,
+      });
+      if (error) throw error;
+      setPresets(prev => prev.map(p => p.id === selectedPreset.id ? { ...p, name } : p));
+      setRenamePresetOpen(false);
+      toast.success(t('preset.toast.renamed', { name }));
+    } catch (err: any) {
+      toast.error(presetErrorMessage(err));
+    } finally {
+      setPresetActionBusy(false);
+    }
+  };
+
+  const handleDeletePreset = async () => {
+    if (!selectedPreset) return;
+    setPresetActionBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc('delete_tactic_preset', {
+        p_preset_id: selectedPreset.id,
+      });
+      if (error) throw error;
+      const removedName = selectedPreset.name;
+      setPresets(prev => prev.filter(p => p.id !== selectedPreset.id));
+      setSelectedPresetId(null);
+      setDeletePresetOpen(false);
+      toast.success(t('preset.toast.deleted', { name: removedName }));
+    } catch (err: any) {
+      toast.error(presetErrorMessage(err));
+    } finally {
+      setPresetActionBusy(false);
+    }
+  };
+
+  // Open share dialog → fetch the candidate clubs the user can share with.
+  // We pull every club except the source — RLS lets all authenticated users
+  // read the public clubs table.
+  const openShareDialog = async () => {
+    if (!selectedPreset || !club) return;
+    setShareTargetClubId('');
+    setShareSearch('');
+    setSharePresetOpen(true);
+    const { data } = await supabase
+      .from('clubs')
+      .select('id, name')
+      .neq('id', club.id)
+      .order('name', { ascending: true })
+      .limit(500);
+    setShareCandidates(((data as any) || []) as Array<{ id: string; name: string }>);
+  };
+
+  const handleSharePreset = async () => {
+    if (!selectedPreset || !shareTargetClubId) return;
+    setPresetActionBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc('share_tactic_preset', {
+        p_preset_id: selectedPreset.id,
+        p_target_club_id: shareTargetClubId,
+      });
+      if (error) throw error;
+      const targetName = shareCandidates.find(c => c.id === shareTargetClubId)?.name || '';
+      setSharePresetOpen(false);
+      toast.success(t('preset.toast.shared', { target: targetName }));
+    } catch (err: any) {
+      toast.error(presetErrorMessage(err));
+    } finally {
+      setPresetActionBusy(false);
+    }
+  };
+
+  // Changing the formation dropdown drops the selected preset (presets are
+  // pinned to a base formation; switching means leaving that preset).
+  const handleFormationChange = (newFormation: string) => {
+    if (selectedPresetId) setSelectedPresetId(null);
+    setFormation(newFormation);
+  };
+
+  const handlePresetSelectChange = (value: string) => {
+    if (value === '__default__') setSelectedPresetId(null);
+    else setSelectedPresetId(value);
+  };
+
+  const filteredShareCandidates = useMemo(() => {
+    const q = shareSearch.trim().toLowerCase();
+    if (!q) return shareCandidates.slice(0, 50);
+    return shareCandidates.filter(c => c.name.toLowerCase().includes(q)).slice(0, 50);
+  }, [shareSearch, shareCandidates]);
+
   // ── Render ─────────────────────────────────────────────────
   const quadrantLabel = useMemo(() => {
     const col = ballQuadrant % COLS;
@@ -846,13 +1254,84 @@ export default function SituationalTacticsPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Select value={formation} onValueChange={setFormation}>
-              <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={formation} onValueChange={handleFormationChange} disabled={!!selectedPresetId}>
+              <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.keys(FORMATIONS).map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
               </SelectContent>
             </Select>
+            <Select value={selectedPresetId ?? '__default__'} onValueChange={handlePresetSelectChange}>
+              <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__default__">{t('preset.default')}</SelectItem>
+                {presets.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>{t('preset.my_presets')}</SelectLabel>
+                    {presets.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.base_formation} — {p.name}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (presets.length >= PRESET_LIMIT) {
+                      toast.error(t('preset.error.limit_reached'));
+                      return;
+                    }
+                    setCreatePresetName('');
+                    setCreatePresetOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> {t('preset.actions.save_as_new')}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={!selectedPreset}
+                  onClick={() => {
+                    if (!selectedPreset) return;
+                    if (presets.length >= PRESET_LIMIT) {
+                      toast.error(t('preset.error.limit_reached'));
+                      return;
+                    }
+                    setDuplicatePresetName(`${selectedPreset.name} (cópia)`);
+                    setDuplicatePresetOpen(true);
+                  }}
+                >
+                  <Copy className="h-4 w-4 mr-2" /> {t('preset.actions.duplicate')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!selectedPreset}
+                  onClick={() => {
+                    if (!selectedPreset) return;
+                    setRenamePresetValue(selectedPreset.name);
+                    setRenamePresetOpen(true);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-2" /> {t('preset.actions.rename')}
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!selectedPreset} onClick={openShareDialog}>
+                  <Share2 className="h-4 w-4 mr-2" /> {t('preset.actions.share')}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={!selectedPreset}
+                  onClick={() => setDeletePresetOpen(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> {t('preset.actions.delete')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {mode === 'general' ? (
               <Button onClick={handleSave} disabled={saving || loading} className="gap-1.5">
                 <Save className="h-4 w-4" />
@@ -866,6 +1345,12 @@ export default function SituationalTacticsPage() {
             )}
           </div>
         </div>
+
+        {selectedPreset && (
+          <div className="bg-tactical/10 border border-tactical/30 rounded-md px-3 py-2 text-xs text-foreground/80">
+            {t('preset.editing_banner', { name: selectedPreset.name, base: selectedPreset.base_formation })}
+          </div>
+        )}
 
         {/* Top-level mode toggle: Geral (35-quadrant) vs Bola Parada */}
         <Tabs value={mode} onValueChange={(v) => setMode(v as 'general' | 'set_piece')}>
@@ -1322,6 +1807,134 @@ export default function SituationalTacticsPage() {
         </div>
         </>)}
       </div>
+
+      {/* Create preset dialog */}
+      <Dialog open={createPresetOpen} onOpenChange={setCreatePresetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('preset.dialog.create_title')}</DialogTitle>
+            <DialogDescription>{t('preset.dialog.create_description', { count: presets.length, limit: PRESET_LIMIT, formation })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">{t('preset.dialog.name_label')}</label>
+            <Input
+              value={createPresetName}
+              onChange={e => setCreatePresetName(e.target.value)}
+              placeholder={t('preset.dialog.name_placeholder')}
+              maxLength={40}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreatePresetOpen(false)} disabled={presetActionBusy}>{t('preset.dialog.cancel')}</Button>
+            <Button onClick={handleCreatePreset} disabled={presetActionBusy || !createPresetName.trim()}>
+              {presetActionBusy ? t('preset.dialog.saving') : t('preset.dialog.create_submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename preset dialog */}
+      <Dialog open={renamePresetOpen} onOpenChange={setRenamePresetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('preset.dialog.rename_title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">{t('preset.dialog.name_label')}</label>
+            <Input
+              value={renamePresetValue}
+              onChange={e => setRenamePresetValue(e.target.value)}
+              maxLength={40}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenamePresetOpen(false)} disabled={presetActionBusy}>{t('preset.dialog.cancel')}</Button>
+            <Button onClick={handleRenamePreset} disabled={presetActionBusy || !renamePresetValue.trim()}>
+              {presetActionBusy ? t('preset.dialog.saving') : t('preset.dialog.rename_submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate preset dialog */}
+      <Dialog open={duplicatePresetOpen} onOpenChange={setDuplicatePresetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('preset.dialog.duplicate_title')}</DialogTitle>
+            <DialogDescription>{t('preset.dialog.duplicate_description', { name: selectedPreset?.name || '' })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">{t('preset.dialog.name_label')}</label>
+            <Input
+              value={duplicatePresetName}
+              onChange={e => setDuplicatePresetName(e.target.value)}
+              maxLength={40}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicatePresetOpen(false)} disabled={presetActionBusy}>{t('preset.dialog.cancel')}</Button>
+            <Button onClick={handleDuplicatePreset} disabled={presetActionBusy || !duplicatePresetName.trim()}>
+              {presetActionBusy ? t('preset.dialog.saving') : t('preset.dialog.duplicate_submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete preset dialog */}
+      <Dialog open={deletePresetOpen} onOpenChange={setDeletePresetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('preset.dialog.delete_title')}</DialogTitle>
+            <DialogDescription>{t('preset.dialog.delete_description', { name: selectedPreset?.name || '' })}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletePresetOpen(false)} disabled={presetActionBusy}>{t('preset.dialog.cancel')}</Button>
+            <Button variant="destructive" onClick={handleDeletePreset} disabled={presetActionBusy}>
+              {presetActionBusy ? t('preset.dialog.saving') : t('preset.dialog.delete_submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share preset dialog */}
+      <Dialog open={sharePresetOpen} onOpenChange={setSharePresetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('preset.dialog.share_title')}</DialogTitle>
+            <DialogDescription>{t('preset.dialog.share_description', { name: selectedPreset?.name || '' })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder={t('preset.dialog.share_search_placeholder')}
+              value={shareSearch}
+              onChange={e => setShareSearch(e.target.value)}
+            />
+            <div className="max-h-[260px] overflow-y-auto border rounded-md divide-y">
+              {filteredShareCandidates.length === 0 ? (
+                <div className="p-3 text-xs text-muted-foreground">{t('preset.dialog.share_no_clubs')}</div>
+              ) : filteredShareCandidates.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setShareTargetClubId(c.id)}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/40 ${shareTargetClubId === c.id ? 'bg-tactical/15' : ''}`}
+                  type="button"
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSharePresetOpen(false)} disabled={presetActionBusy}>{t('preset.dialog.cancel')}</Button>
+            <Button onClick={handleSharePreset} disabled={presetActionBusy || !shareTargetClubId}>
+              {presetActionBusy ? t('preset.dialog.saving') : t('preset.dialog.share_submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Duplicate dialog */}
       <Dialog open={dupOpen} onOpenChange={setDupOpen}>

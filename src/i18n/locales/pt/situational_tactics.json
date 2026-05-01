@@ -97,6 +97,57 @@
   },
   "customized_status": "{{count}}/35 quadrante(s) personalizado(s) nesta fase",
   "explanation": "<0>Dinâmico (padrão):</0> o time inteiro acompanha a bola — verticalmente mais, lateralmente menos. Quando você arrasta um jogador, o quadrante vira <1>personalizado</1> (pontinho amarelo no canto) e trava naquela configuração.",
+  "preset": {
+    "default": "Padrão",
+    "my_presets": "Meus presets",
+    "editing_banner": "Editando preset \"{{name}}\" (base {{base}}). Salvar atualiza esse preset.",
+    "actions": {
+      "save_as_new": "Salvar como novo preset...",
+      "duplicate": "Duplicar preset",
+      "rename": "Renomear",
+      "share": "Compartilhar com outro clube",
+      "delete": "Excluir preset"
+    },
+    "dialog": {
+      "create_title": "Salvar como novo preset",
+      "create_description": "Cria um preset com a configuração atual ({{count}}/{{limit}} usados). Base: {{formation}}.",
+      "create_submit": "Criar preset",
+      "rename_title": "Renomear preset",
+      "rename_submit": "Salvar",
+      "duplicate_title": "Duplicar preset",
+      "duplicate_description": "Clona \"{{name}}\" com um novo nome. As edições posteriores ficam isoladas.",
+      "duplicate_submit": "Duplicar",
+      "delete_title": "Excluir preset",
+      "delete_description": "Excluir \"{{name}}\"? As escalações que usam esse preset voltam para a configuração padrão da formação base.",
+      "delete_submit": "Excluir",
+      "share_title": "Compartilhar preset",
+      "share_description": "Envia uma cópia de \"{{name}}\" para outro clube. O outro clube recebe uma notificação.",
+      "share_search_placeholder": "Buscar clube...",
+      "share_no_clubs": "Nenhum clube encontrado.",
+      "share_submit": "Compartilhar",
+      "name_label": "Nome do preset",
+      "name_placeholder": "Ex.: Centralizado, vs Top times...",
+      "cancel": "Cancelar",
+      "saving": "Salvando..."
+    },
+    "toast": {
+      "created": "Preset \"{{name}}\" criado",
+      "duplicated": "Preset duplicado como \"{{name}}\"",
+      "renamed": "Preset renomeado para \"{{name}}\"",
+      "deleted": "Preset \"{{name}}\" excluído",
+      "shared": "Preset compartilhado com {{target}}"
+    },
+    "error": {
+      "limit_reached": "Limite de 10 presets atingido. Exclua um para criar outro.",
+      "target_limit_reached": "O clube destino já tem 10 presets. Eles precisam excluir um antes.",
+      "name_taken": "Já existe um preset com esse nome.",
+      "invalid_name": "Nome inválido (1 a 40 caracteres).",
+      "forbidden": "Sem permissão.",
+      "not_found": "Preset não encontrado.",
+      "same_club": "Não dá pra compartilhar com o próprio clube.",
+      "generic": "Erro na operação do preset."
+    }
+  },
   "duplicate_dialog": {
     "title": "Duplicar ajustes",
     "description": "Copia só os quadrantes <0>personalizados</0> de <1>{{formation}}</1> para a formação escolhida, slot por slot (os não-personalizados continuam usando o dinâmico na nova formação). Salva direto no banco.",
