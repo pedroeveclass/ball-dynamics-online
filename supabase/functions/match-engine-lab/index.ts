@@ -3530,15 +3530,16 @@ function computeInterceptSuccess(
         const receiverIsHome = interceptContext?.participantClubId === interceptContext?.homeClubId;
         const isInAttackHalf = receiverIsHome ? receiverX > 50 : receiverX < 50;
         const posAttr = isInAttackHalf ? 'posicionamento_ofensivo' : 'posicionamento_defensivo';
+        // Receptor: v/100 direto (sem piso de 10) — atributo 60 vale 0.60, não 0.56
         defenderSkill = (
-          normalizeAttr(defenderAttrs.controle_bola ?? 40) * 0.25 +
-          normalizeAttr(defenderAttrs.visao_jogo ?? 40) * 0.20 +
-          normalizeAttr(defenderAttrs.equilibrio ?? 40) * 0.15 +
-          normalizeAttr(defenderAttrs[posAttr] ?? 40) * 0.15 +
-          normalizeAttr(defenderAttrs.trabalho_equipe ?? 40) * 0.10 +
-          normalizeAttr(defenderAttrs.um_toque ?? 40) * 0.10 +
-          normalizeAttr(defenderAttrs.tomada_decisao ?? 40) * 0.05
-        );
+          (defenderAttrs.controle_bola ?? 40) * 0.25 +
+          (defenderAttrs.visao_jogo ?? 40) * 0.20 +
+          (defenderAttrs.equilibrio ?? 40) * 0.15 +
+          (defenderAttrs[posAttr] ?? 40) * 0.15 +
+          (defenderAttrs.trabalho_equipe ?? 40) * 0.10 +
+          (defenderAttrs.um_toque ?? 40) * 0.10 +
+          (defenderAttrs.tomada_decisao ?? 40) * 0.05
+        ) / 100;
       }
       break;
     case 'block_shot':
@@ -3660,7 +3661,8 @@ function computeInterceptSuccess(
       : 0.50 - moveRatio * 0.225;
     successChance = baseChance + skillDelta * 0.80 + (Math.random() - 0.5) * 0.20;
   } else {
-    successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 - attackerSkill * 0.3);
+    // Passador bom AJUDA o domínio (independente de amigo/adversário): fator ≥ 1.0
+    successChance = context.baseChance * (0.5 + defenderSkill * 0.5) * (1 + attackerSkill * 0.10);
   }
 
   if (ballHeightZone === 'yellow') {
