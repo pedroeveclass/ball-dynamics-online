@@ -1758,6 +1758,102 @@ function resolveSituationalTarget(
   return editorPosToEngine(editorPos.x, editorPos.y, isHome, currentHalf);
 }
 
+// ─── GK best-angle positioning ───────────────────────────────
+// Place the GK on the bisector of the line `threat → own-goal-center`, advancing
+// off the line proportional to `ballThreat` (how close the threat is to the goal).
+// Shadows the threat and closes the shooting angle, vs. the legacy linear pull
+// which left lateral gaps when the ball came from off-axis.
+//
+// `threatPos` is whatever the GK should react to:
+//   - reactive turn (no ball action)         → the ball itself
+//   - pass in motion                         → the most likely opponent domination point
+function computeGkBestAnglePosition(
+  threatPos: { x: number; y: number },
+  ownGoalX: number,
+): { x: number; y: number } {
+  const goalCenterY = 50;
+  const dx = threatPos.x - ownGoalX;
+  const dy = threatPos.y - goalCenterY;
+  const dist = Math.hypot(dx, dy) || 1;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  // Threat: 0 when ≥50u from goal, ramps to 1 when on top of it.
+  const ballThreat = Math.max(0, Math.min(1, 1 - dist / 50));
+  // Advance up to ~8u (small-area edge). 2u baseline so GK isn't pinned to the line.
+  const advance = 2 + ballThreat * 6;
+  const tx = ownGoalX + ux * advance;
+  // Y dampened so the GK doesn't expose lateral gap inside the goal mouth.
+  let ty = goalCenterY + uy * advance * 0.6;
+  ty = Math.max(GOAL_Y_MIN + 2, Math.min(GOAL_Y_MAX - 2, ty));
+  return { x: tx, y: ty };
+}
+
+// ─── GK reference point (trajectory-aware) ────────────────────
+// For shots: returns the FURTHEST point on the shot trajectory the GK can reach
+//   this turn — coming off the line abafars the chute and closes the angle better
+//   than staying glued to the goal line.
+// For passes: returns the most likely opponent DOMINATION point along the pass
+//   trajectory. An attacker can dominate at the penalty spot even if the pass
+//   endpoint is far away, so the GK reacts to the domination, not the endpoint.
+//   Falls back to the pass endpoint if no opponent intercepts in time.
+function findGkReferencePoint(
+  isShot: boolean,
+  ballPos: { x: number; y: number },
+  passDest: { x: number; y: number },
+  gkPos: { x: number; y: number },
+  gkMaxRange: number,
+  ownGoalX: number,
+  bhBallSpeedFactor: number,
+  opponents: any[],
+): { x: number; y: number } {
+  const dx = passDest.x - ballPos.x;
+  const dy = passDest.y - ballPos.y;
+
+  if (isShot) {
+    // GK uses full range on shots (project_ball_speed_and_gk_move). Walk
+    // trajectory from endpoint backward — the FURTHEST reachable point is the
+    // best abafar position.
+    for (let t = 1.0; t >= 0; t -= 0.05) {
+      const px = ballPos.x + dx * t;
+      const py = ballPos.y + dy * t;
+      const d = Math.sqrt((px - gkPos.x) ** 2 + (py - gkPos.y) ** 2);
+      if (d <= gkMaxRange) return { x: px, y: py };
+    }
+    return passDest; // unreachable — endpoint, caller will still try toward it
+  }
+
+  // Pass: find opponent attacker who can reach the trajectory in time AND poses
+  // the biggest threat (closer to goal + closer to goal mouth in Y).
+  const tlen2 = dx * dx + dy * dy;
+  if (tlen2 < 1e-6) return passDest;
+  const OPP_BASE_RANGE = 8; // mid-skill attacker reach in one turn
+  const oppReach = OPP_BASE_RANGE * bhBallSpeedFactor;
+  const goalCenterY = 50;
+  let bestPoint: { x: number; y: number } | null = null;
+  let bestThreat = -1;
+  for (const opp of opponents) {
+    const ox = Number(opp.pos_x ?? 50);
+    const oy = Number(opp.pos_y ?? 50);
+    const t = Math.max(0, Math.min(1, ((ox - ballPos.x) * dx + (oy - ballPos.y) * dy) / tlen2));
+    const px = ballPos.x + dx * t;
+    const py = ballPos.y + dy * t;
+    const distOppToTraj = Math.sqrt((px - ox) ** 2 + (py - oy) ** 2);
+    // Timing-aware: opponent reach is proportional to how far along the
+    // trajectory the touch point sits (mirror of trajTimingRange used by CBs).
+    if (distOppToTraj > oppReach * t + 0.5) continue;
+    const distToGoal = Math.abs(px - ownGoalX);
+    const yDistFromCenter = Math.abs(py - goalCenterY);
+    const proxToGoal = Math.max(0, 1 - distToGoal / 50);
+    const proxToCenter = Math.max(0, 1 - yDistFromCenter / 30);
+    const threat = proxToGoal * proxToCenter;
+    if (threat > bestThreat) {
+      bestThreat = threat;
+      bestPoint = { x: px, y: py };
+    }
+  }
+  return bestPoint || passDest;
+}
+
 function computeTacticalTarget(
   bot: any,
   role: TacticalRole,
@@ -1826,14 +1922,13 @@ function computeTacticalTarget(
   let targetX = zone.idealX;
   let targetY = zone.idealY;
 
-  // GK: special reactive positioning
+  // GK: best-angle reactive positioning — bisector of ball→goal-center, advance
+  // proportional to threat. Replaces legacy 12% X / 30% Y linear pull.
   if (role === 'goalkeeper') {
     const goalX = isHome ? 5 : 95;
-    const goalY = 50;
-    targetX = goalX + (ballPos.x - goalX) * 0.12;
-    targetY = goalY + (ballPos.y - goalY) * 0.3;
-    targetX = Math.max(zone.minX, Math.min(zone.maxX, targetX));
-    targetY = Math.max(zone.minY, Math.min(zone.maxY, targetY));
+    const ba = computeGkBestAnglePosition(ballPos, goalX);
+    targetX = Math.max(zone.minX, Math.min(zone.maxX, ba.x));
+    targetY = Math.max(zone.minY, Math.min(zone.maxY, ba.y));
   } else {
     // Ball attraction: pull toward ball — stronger when attacking, gentler when defending
     const attractX = attractOverride ? attractOverride.x : ballPos.x;
@@ -2664,19 +2759,25 @@ async function generateBotActions(
       if (ballHolderId) {
         const bhDist = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
 
-        // ── GK: actively try to save shots + position for passes ──
+        // ── GK: actively try to save shots + close best angle for passes ──
         if (isGK) {
           const ownGoalX = isHome ? 0 : 100;
           const isBhShooting = bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType));
           const isBhPassing = bhActionType && (bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_low' || bhActionType === 'header_high');
 
           if (isBhShooting && passDestination) {
-            // SHOT: GK ALWAYS tries to save — position on the shot trajectory near goal line
-            const shotTargetY = passDestination.y;
-            const interceptX = isHome ? Math.max(2, Math.min(posX, 8)) : Math.min(98, Math.max(posX, 92));
-            const interceptY = Math.max(25, Math.min(75, shotTargetY));
+            // SHOT: GK ALWAYS commits to the save. Aim at the FURTHEST reachable
+            // point on the trajectory — coming off the line abafars the chute.
+            const refPoint = findGkReferencePoint(
+              true, ballPos, passDestination, { x: posX, y: posY },
+              maxMoveRange, ownGoalX, bhBallSpeedFactor, opponents,
+            );
+            const interceptX = refPoint.x;
+            const interceptY = Math.max(GOAL_Y_MIN, Math.min(GOAL_Y_MAX, refPoint.y));
             const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
-            const gkActionType = Math.random() < 0.7 ? 'block' : 'receive';
+            // Heuristic: agarrar (receive) when reaching with comfort, espalmar
+            // (block) at the limit. Replaces 70/30 random.
+            const gkActionType = distToIntercept <= maxMoveRange * 0.6 ? 'receive' : 'block';
             if (distToIntercept <= maxMoveRange) {
               actions.push({
                 match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2694,35 +2795,45 @@ async function generateBotActions(
                 target_x: targetX, target_y: targetY, status: 'pending',
               });
             }
-          } else {
-            // Non-shot: position between ball and goal
-            const ballToGoalDist = Math.abs(ballPos.x - ownGoalX);
-            if (ballToGoalDist < 50) {
-              const interceptX = isHome ? Math.max(2, Math.min(18, ballPos.x * 0.3)) : Math.max(82, Math.min(98, 100 - (100 - ballPos.x) * 0.3));
-              const interceptY = Math.max(25, Math.min(75, ballPos.y));
-              const distToIntercept = Math.sqrt((posX - interceptX) ** 2 + (posY - interceptY) ** 2);
-              if (distToIntercept <= maxMoveRange && !isBhPassing) {
-                actions.push({
-                  match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                  controlled_by_type: 'bot', action_type: 'receive',
-                  target_x: interceptX, target_y: interceptY, status: 'pending',
-                });
-              } else {
-                const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
-                actions.push({
-                  match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                  controlled_by_type: 'bot', action_type: 'move',
-                  target_x: target.x, target_y: target.y, status: 'pending',
-                });
-              }
-            } else {
-              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
-              actions.push({
-                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-                controlled_by_type: 'bot', action_type: 'move',
-                target_x: target.x, target_y: target.y, status: 'pending',
-              });
+          } else if (isBhPassing && passDestination) {
+            // PASS in motion: anticipate the most likely opponent DOMINATION point
+            // along the trajectory (an attacker can dominate at the penalty spot
+            // mid-flight even if the pass endpoint is far away). Then close the
+            // best angle from THAT point.
+            const refPoint = findGkReferencePoint(
+              false, ballPos, passDestination, { x: posX, y: posY },
+              maxMoveRange, ownGoalX, bhBallSpeedFactor, opponents,
+            );
+            const ba = computeGkBestAnglePosition(refPoint, ownGoalX);
+            const dx = ba.x - posX;
+            const dy = ba.y - posY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            let targetX = ba.x;
+            let targetY = ba.y;
+            if (dist > maxMoveRange) {
+              const scale = maxMoveRange / dist;
+              targetX = posX + dx * scale;
+              targetY = posY + dy * scale;
             }
+            actions.push({
+              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+              controlled_by_type: 'bot', action_type: 'move',
+              target_x: targetX, target_y: targetY, status: 'pending',
+            });
+          } else {
+            // Dribble or no ball action: tactical best-angle target. If BH is
+            // dribbling close to goal and the GK can reach the bisector, rush
+            // out to grab the ball (receive).
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
+            const ballToGoalDist = Math.abs(ballPos.x - ownGoalX);
+            const distToTarget = Math.sqrt((target.x - posX) ** 2 + (target.y - posY) ** 2);
+            const isBhDribbling = !isBhPassing && !isBhShooting;
+            const action_type = (isBhDribbling && ballToGoalDist < 50 && distToTarget <= maxMoveRange) ? 'receive' : 'move';
+            actions.push({
+              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+              controlled_by_type: 'bot', action_type,
+              target_x: target.x, target_y: target.y, status: 'pending',
+            });
           }
         } else if (role === 'centerBack' || role === 'fullBack') {
           // ── Defenders: use trajectory-aware interception ──
@@ -8601,6 +8712,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         for (const p of (participants || [])) {
           if (p.role_type !== 'player' || p.is_sent_off) continue;
           if (p.id === takerId) continue; // taker stays at set-piece spot
+          // GK never follows situational/Bola Parada layouts — its positioning is
+          // governed entirely by the best-angle + reference-point logic in
+          // computeTacticalTarget / defending_response (computeGkBestAnglePosition).
+          const pSlotPos = (p._editor_slot_position || p._slot_position || p.slot_position || '').toUpperCase();
+          if (isGKPosition(pSlotPos)) continue;
           const isHomeRaw = p.club_id === match.home_club_id;
           const isHome = isSecondHalfSnap ? !isHomeRaw : isHomeRaw; // geometry-flipped (kept for downstream use, e.g. logs/exclusion)
           void isHome;
