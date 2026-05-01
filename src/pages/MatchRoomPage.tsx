@@ -3156,7 +3156,13 @@ export default function MatchRoomPage() {
       } else if (moveFrom && moveFrom.field_x != null && moveFrom.field_y != null) {
         const dx = pctX - moveFrom.field_x;
         const dy = pctY - moveFrom.field_y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        // Y_SCALE-corrected distance so the visual reach circle matches the
+        // engine's range check on a rectangular pitch. Without it, dx and dy
+        // were treated equally in field-units even though 1 field-unit in X
+        // is INNER_W/INNER_H (~1.6×) wider on screen than 1 field-unit in Y
+        // → the "reach circle" looked like a horizontal ellipse and the
+        // player could move further toward goal than to the sidelines.
+        const dist = getFieldMoveDist(dx, dy);
         const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
         let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
         // Apply ballSpeedFactor when there's an active ball trajectory (match ball preview limit)
@@ -3205,13 +3211,28 @@ export default function MatchRoomPage() {
         const ady = my - moveFrom.field_y;
         const alen = Math.sqrt(adx * adx + ady * ady);
         if (alen > 0.3) {
+          // Clamp the inertia slider's max length so the 100% endpoint stays
+          // inside the playable field. Without this, when the player's move
+          // endpoint sits near a sideline (e.g. corner) the arrow extended
+          // off-field and the user couldn't drag the cursor far enough to
+          // confirm 100% — the slider was visually cropped.
+          const dirNX = adx / alen;
+          const dirNY = ady / alen;
+          const FIELD_MIN = 1;
+          const FIELD_MAX = 99;
+          let maxAllowed = alen;
+          if (dirNX > 1e-6) maxAllowed = Math.min(maxAllowed, (FIELD_MAX - mx) / dirNX);
+          else if (dirNX < -1e-6) maxAllowed = Math.min(maxAllowed, (FIELD_MIN - mx) / dirNX);
+          if (dirNY > 1e-6) maxAllowed = Math.min(maxAllowed, (FIELD_MAX - my) / dirNY);
+          else if (dirNY < -1e-6) maxAllowed = Math.min(maxAllowed, (FIELD_MIN - my) / dirNY);
+          const clampedMaxLen = Math.max(0.5, Math.min(alen, maxAllowed));
           setInertiaArrow({
             participantId: drawnParticipantId,
             startX: mx,
             startY: my,
-            dirX: adx / alen,
-            dirY: ady / alen,
-            maxLen: alen,
+            dirX: dirNX,
+            dirY: dirNY,
+            maxLen: clampedMaxLen,
           });
         } else {
           // Zero-length move (click on current position) — submit immediately.
@@ -4515,7 +4536,10 @@ export default function MatchRoomPage() {
         if (fromP && fromP.field_x != null && fromP.field_y != null) {
           const dx = finalX - fromP.field_x;
           const dy = finalY - fromP.field_y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
+          // Mirror the Y_SCALE distance metric used in the click-clamp site so
+          // the cursor preview circle matches the actual reachable area on a
+          // rectangular pitch.
+          const dist = getFieldMoveDist(dx, dy);
           const direction = dist > 0.1 ? { x: dx, y: dy } : undefined;
           let maxRange = computeMaxMoveRange(drawingAction.fromParticipantId, direction);
           if ((isOpenPlayPhase(activeTurn?.phase)) && ballTrajectoryAction?.action_type) {
@@ -5806,38 +5830,43 @@ export default function MatchRoomPage() {
                   const trajLen2 = trajDx * trajDx + trajDy * trajDy;
 
                   if (trajLen2 > 0) {
-                    const tCursor = clamp(((mouseFieldPct.x - bfx) * trajDx + (mouseFieldPct.y - bfy) * trajDy) / trajLen2, 0, 1);
-                    const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
-
-                    // Red zone check: ball is too high to intercept
+                    // Ring color is now CURSOR-INDEPENDENT (Pedro 2026-05-01):
+                    // sample the trajectory at fixed t intervals and ask
+                    // "can the player reach this point in time?". If ANY
+                    // sample says yes → purple. The cursor only matters for
+                    // selecting WHICH point to receive at (handled by the
+                    // click handler), not for whether the player has the
+                    // option at all.
                     const actionType = effectiveBallTrajectoryAction.action_type;
-                    const isRedZone = (actionType === 'pass_high' && tCursor > 0.2 && tCursor < 0.8) ||
-                                      (actionType === 'pass_launch' && tCursor > 0.35 && tCursor < 0.65);
-
-                    // Intercept check uses BASE range (no inertia direction) to match the
-                    // engine's findInterceptorCandidates which doesn't apply inertia either.
                     const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
                     const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK' || drawingFrom.pickup_slot_id === 'GK';
                     const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
                     const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
+                    const playerPos = { x: drawingFrom.field_x!, y: drawingFrom.field_y! };
+                    const ballStart = { x: bfx, y: bfy };
+                    const ballEnd = { x: btx, y: bty };
 
-                    // Tolerance 0.5 + proximity 1.0 mirror the engine's TIMING_TOLERANCE
-                    // and INTERCEPT_THRESHOLD — purple shows iff the server would accept.
-                    const reachesTrajPoint = canReachTrajectoryPoint(
-                      { x: drawingFrom.field_x!, y: drawingFrom.field_y! },
-                      { x: bfx, y: bfy },
-                      { x: btx, y: bty },
-                      tCursor,
-                      baseRange,
-                      effectiveActionType,
-                      0.5,
-                    );
-                    const cursorNearTraj = distToTraj <= 1.0;
-                    canReachBall = !isRedZone && reachesTrajPoint && cursorNearTraj;
+                    const isRedZoneAt = (t: number): boolean => {
+                      if (actionType === 'pass_high') return t > 0.2 && t < 0.8;
+                      if (actionType === 'pass_launch') return t > 0.35 && t < 0.65;
+                      return false;
+                    };
+
+                    let foundReachable = false;
+                    // Sample 21 points (t = 0, 0.05, 0.10, …, 1.0). Granular
+                    // enough to catch the boundary of the player's reach but
+                    // cheap enough to run every render frame.
+                    for (let i = 0; i <= 20; i++) {
+                      const t = i / 20;
+                      if (isRedZoneAt(t)) continue;
+                      if (canReachTrajectoryPoint(playerPos, ballStart, ballEnd, t, baseRange, effectiveActionType, 0.5)) {
+                        foundReachable = true;
+                        break;
+                      }
+                    }
+                    canReachBall = foundReachable;
                     if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
-                      const dxDbg = mouseFieldPct.x - drawingFrom.field_x!;
-                      const dyDbg = mouseFieldPct.y - drawingFrom.field_y!;
-                      console.log('[REACH][render]', { tCursor: tCursor.toFixed(2), d: Math.hypot(dxDbg, dyDbg).toFixed(1), baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), distToTraj: distToTraj.toFixed(2), reaches: reachesTrajPoint, near: cursorNearTraj, purple: canReachBall });
+                      console.log('[REACH][render]', { baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), purple: canReachBall, cursorIndependent: true });
                     }
                   } else {
                     // Stationary ball holder — if within reach, can tackle
@@ -5854,80 +5883,56 @@ export default function MatchRoomPage() {
                 }
 
                 // Loose-ball scenario: the ball rolls from looseBallPos along
-                // ballInertiaDir. Purple iff (a) the cursor sits on/near the
-                // rolling path, (b) the player can PHYSICALLY reach the claim
-                // point, and (c) the player arrives at the claim point before
-                // the ball rolls past it — without (c) a far-away player could
-                // claim near the start of the arrow, but by the time they get
-                // there the ball has already left.
+                // ballInertiaDir. Ring color is now CURSOR-INDEPENDENT (Pedro
+                // 2026-05-01): sample the inertia segment at fixed t intervals
+                // and check if the player can reach that point in time. Cursor
+                // only matters for selecting WHICH point to claim at (handled
+                // by the click handler below).
                 if (isMove && isLooseBall && looseBallPos &&
                     drawingFrom.field_x != null && drawingFrom.field_y != null) {
                   const FIELD_Y_SCALE = INNER_H / INNER_W;
                   const looseBallRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-                  const circleRadiusField = 9 / INNER_W * 100;
 
-                  // Cursor → nearest point on the ball's rolling segment, and
-                  // the time-fraction the ball reaches that projected point.
                   const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
                   const endX = ballInertiaDir ? looseBallPos.x + ballInertiaDir.dx * INERTIA_DISPLAY : looseBallPos.x;
                   const endY = ballInertiaDir ? looseBallPos.y + ballInertiaDir.dy * INERTIA_DISPLAY : looseBallPos.y;
                   const segDx = endX - looseBallPos.x;
                   const segDy = endY - looseBallPos.y;
                   const segLenSq = segDx * segDx + segDy * segDy;
-                  let tBallAtTarget = 0;
-                  let projX = looseBallPos.x;
-                  let projY = looseBallPos.y;
-                  if (segLenSq > 1e-6) {
-                    tBallAtTarget = ((mouseFieldPct.x - looseBallPos.x) * segDx + (mouseFieldPct.y - looseBallPos.y) * segDy) / segLenSq;
-                    tBallAtTarget = Math.max(0, Math.min(1, tBallAtTarget));
-                    projX = looseBallPos.x + segDx * tBallAtTarget;
-                    projY = looseBallPos.y + segDy * tBallAtTarget;
-                  }
-                  const cxP = (mouseFieldPct.x - projX);
-                  const cyP = (mouseFieldPct.y - projY) * FIELD_Y_SCALE;
-                  const distCursorToPath = Math.sqrt(cxP * cxP + cyP * cyP);
+                  const px = drawingFrom.field_x!;
+                  const py = drawingFrom.field_y!;
 
-                  // Player → CLAIM POINT (the projection on the ball segment, NOT the cursor).
-                  // Bug 5: the engine measures `dist = action.target_x - participant.startX`
-                  // and `action.target_x = projX` (the projection clamped onto the segment),
-                  // so the client must mirror that geometry. Measuring player-to-cursor here
-                  // produced "purple shows when engine rejects": cursor far from ball but on
-                  // the projected segment → reach via cursor distance passed, but engine's
-                  // projX was beyond player's stride → rejected.
-                  const pxToT = (projX - drawingFrom.field_x!);
-                  const pyToT = (projY - drawingFrom.field_y!) * FIELD_Y_SCALE;
-                  const distPlayerToTarget = Math.sqrt(pxToT * pxToT + pyToT * pyToT);
-
-                  const withinCircle = distCursorToPath <= circleRadiusField + INTERCEPT_RADIUS + 1;
-                  const withinReach = distPlayerToTarget <= looseBallRange + 0.5;
-                  // Temporal: player must arrive before (or as) ball passes.
-                  // 0.15 slack mirrors findLooseBallClaimer in the engine.
-                  const tPlayer = looseBallRange > 0 ? distPlayerToTarget / looseBallRange : 1;
-                  const inTime = tPlayer <= tBallAtTarget + 0.15;
-
-                  if (withinCircle && withinReach && inTime) {
-                    canReachBall = true;
-                  }
-
-                  // Path B fallback — mirrors handleFieldClick's "cursor on the
-                  // ball directly" branch. When the cursor sits on the ball
-                  // start (not on the rolling segment) and the player is within
-                  // base range of the ball itself, the click accepts dominate.
-                  // The render must do the same or we get green-circle-but-menu-
-                  // opens (the temporal branch can fail when the cursor is
-                  // exactly at t≈0 and the player is closer to the ball than to
-                  // the projection point).
-                  if (!canReachBall) {
-                    const dxBall = drawingFrom.field_x! - looseBallPos.x;
-                    const dyBall = (drawingFrom.field_y! - looseBallPos.y) * FIELD_Y_SCALE;
+                  // Stationary ball: skip temporal check, just proximity.
+                  // Mirrors the server invariant from project_loose_ball_invariants
+                  // rule 8 (lenSq ≤ 1e-6 → tBallAtTarget = null).
+                  if (segLenSq <= 1e-6) {
+                    const dxBall = px - looseBallPos.x;
+                    const dyBall = (py - looseBallPos.y) * FIELD_Y_SCALE;
                     const distPlayerToBall = Math.sqrt(dxBall * dxBall + dyBall * dyBall);
-                    const cxBall = mouseFieldPct.x - looseBallPos.x;
-                    const cyBall = (mouseFieldPct.y - looseBallPos.y) * FIELD_Y_SCALE;
-                    const distCursorToBall = Math.sqrt(cxBall * cxBall + cyBall * cyBall);
-                    if (distPlayerToBall <= looseBallRange + 0.5
-                        && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
+                    if (distPlayerToBall <= looseBallRange + 0.5) {
                       canReachBall = true;
                     }
+                  } else {
+                    // Sample 21 points along the inertia segment (t = 0, 0.05, …, 1.0).
+                    // Player reaches sample at time tPlayer = dist / range; ball
+                    // reaches it at t. Need tPlayer ≤ t + 0.15 (matches server's
+                    // findLooseBallClaimer slack).
+                    let foundReachable = false;
+                    for (let i = 0; i <= 20; i++) {
+                      const t = i / 20;
+                      const sampleX = looseBallPos.x + segDx * t;
+                      const sampleY = looseBallPos.y + segDy * t;
+                      const dxs = (sampleX - px);
+                      const dys = (sampleY - py) * FIELD_Y_SCALE;
+                      const distPlayerToSample = Math.sqrt(dxs * dxs + dys * dys);
+                      if (distPlayerToSample > looseBallRange + 0.5) continue;
+                      const tPlayer = looseBallRange > 0 ? distPlayerToSample / looseBallRange : 1;
+                      if (tPlayer <= t + 0.15) {
+                        foundReachable = true;
+                        break;
+                      }
+                    }
+                    if (foundReachable) canReachBall = true;
                   }
                 }
 
@@ -6398,13 +6403,43 @@ export default function MatchRoomPage() {
 
             {/* Clock moved to scoreboard — removed from field */}
 
-            {(animating || isPhaseProcessing) && (
+            {(animating || isPhaseProcessing) && !isHalftimeNow && (
               <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[hsl(220,20%,10%)]/90 border border-tactical/40 rounded px-4 py-1.5 z-40">
                 <span className="text-[11px] font-display font-bold text-tactical animate-pulse">
                   {isPhaseProcessing ? `⏸ ${processingLabel}` : i18n.t('match_room:ui.motion_resolving')}
                 </span>
               </div>
             )}
+
+            {/* Halftime banner — large central overlay so it's unmistakable
+                that the match is paused (Pedro 2026-05-01: prior small "
+                Aguardando..." chip looked identical to a normal phase wait). */}
+            {isHalftimeNow && match?.half_started_at && (() => {
+              const remainingMs = Math.max(0, new Date(match.half_started_at).getTime() - Date.now());
+              const totalSeconds = Math.ceil(remainingMs / 1000);
+              const minutes = Math.floor(totalSeconds / 60);
+              const seconds = totalSeconds % 60;
+              const mmss = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+              return (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+                  <div className="bg-[hsl(220,20%,8%)]/95 border-2 border-tactical/60 rounded-2xl px-12 py-8 shadow-2xl text-center backdrop-blur-sm">
+                    <div className="text-tactical text-2xl mb-2">⏸</div>
+                    <div className="font-display font-bold text-3xl text-white mb-1 tracking-wider">
+                      INTERVALO
+                    </div>
+                    <div className="font-display text-base text-white/70 mb-4">
+                      {`${match.home_score} – ${match.away_score}`}
+                    </div>
+                    <div className="font-mono text-xl text-tactical tabular-nums">
+                      {mmss}
+                    </div>
+                    <div className="text-[10px] text-white/50 mt-1 uppercase tracking-widest">
+                      Segundo tempo
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
 
             {/* Status overlay for non-live */}

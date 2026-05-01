@@ -28,8 +28,34 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
 
   if (actions.length === 0) return null;
 
-  const left = menuPos.left - containerRect.left + 16;
-  const top = menuPos.top - containerRect.top - 10;
+  // Edge-aware positioning (Pedro 2026-05-01): default places the menu to the
+  // RIGHT of the player and vertically centered. When the player is near the
+  // right sideline, the menu spilled off-screen and the user couldn't read /
+  // click the lower options. We measure the menu's footprint vs the field
+  // container and flip horizontally / clamp vertically so the menu always fits.
+  const MENU_WIDTH = 140; // matches min-w-[140px]
+  const MENU_ROW_HEIGHT = 22; // px per option (approximate; py-1 + line-height)
+  const menuHeightApprox = Math.max(48, actions.length * MENU_ROW_HEIGHT + 12);
+
+  const playerLeft = menuPos.left - containerRect.left;
+  const playerTop = menuPos.top - containerRect.top;
+
+  // Default: 16px to the RIGHT of the player anchor.
+  let left = playerLeft + 16;
+  // If that would overflow on the right, place to the LEFT of the player anchor.
+  if (left + MENU_WIDTH > containerRect.width - 8) {
+    left = playerLeft - MENU_WIDTH - 16;
+  }
+  // Last-resort clamp so the menu never starts off-screen on the left.
+  if (left < 8) left = 8;
+
+  // Vertical anchor: -10 (slightly above the player center) then translateY(-50%)
+  // means the menu's vertical center sits ~10px above the anchor. Clamp the
+  // RESULT (post-translate) to keep the whole menu inside the container.
+  let top = playerTop - 10;
+  const halfH = menuHeightApprox / 2;
+  if (top - halfH < 8) top = halfH + 8;
+  if (top + halfH > containerRect.height - 8) top = containerRect.height - halfH - 8;
 
   const menuPlayer = participants.find(p => p.id === showActionMenu);
   const isGK = menuPlayer?.field_pos === 'GK' || menuPlayer?.slot_position === 'GK' || menuPlayer?.pickup_slot_id === 'GK';

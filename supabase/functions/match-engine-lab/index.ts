@@ -3605,10 +3605,17 @@ function getInterceptContext(bhActionType: string, interceptorClubId: string, bh
     }
     return { type: 'block_shot', baseChance: 0.25 };
   }
-  // Pass types (foot and header) — high base chance, ground passes almost always dominated
+  // baseChance per pass type — tuned 2026-05-01 (commit ca9aaa4 + this) so the
+  // final receive chance after yellow-zone penalty (~0.90 multiplier for
+  // average aerial skill) hits Pedro's targets:
+  //   pass_high min (passer=40, receiver=40, yellow zone) ≈ 62%
+  //   pass_high max (passer=90, receiver=40, yellow zone) ≈ 65%
+  // pass_low stays 1.20 (rasteiro is the easiest); pass_launch sits at 1.00 so
+  // a long ball is slightly easier than a high pass (more airtime to adjust)
+  // but still harder than a ground pass.
   if (bhActionType === 'pass_low' || bhActionType === 'header_low') return { type: 'receive_pass', baseChance: 1.20 };
-  if (bhActionType === 'pass_high' || bhActionType === 'header_high') return { type: 'receive_pass', baseChance: 0.85 };
-  if (bhActionType === 'pass_launch') return { type: 'receive_pass', baseChance: 0.95 };
+  if (bhActionType === 'pass_high' || bhActionType === 'header_high') return { type: 'receive_pass', baseChance: 0.95 };
+  if (bhActionType === 'pass_launch') return { type: 'receive_pass', baseChance: 1.00 };
 
   return { type: 'receive_pass', baseChance: 1.0 };
 }
@@ -8604,14 +8611,41 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               }
             }
           }
+
+          // Inertia goal scorer fallback: when the goal happens with no ball
+          // holder this turn (the ball rolled into the net via inertia after a
+          // failed pass), credit the originator of the play — the player who
+          // last attempted a pass / shot / header. Without this the goal got
+          // logged with scorer_name: null and scorer_participant_id: null.
+          let resolvedScorerId: string | null = ballHolder?.id ?? null;
+          let resolvedScorerName: string | null = ballHolder?._player_name ?? null;
+          if (!resolvedScorerId && !isBallGoalOwnGoal) {
+            const { data: lastBallAction } = await supabase
+              .from('match_event_logs')
+              .select('payload')
+              .eq('match_id', match_id)
+              .in('event_type', ['bh_pass', 'bh_shot'])
+              .order('created_at', { ascending: false })
+              .limit(1);
+            const lastPayload = lastBallAction && lastBallAction[0]?.payload as any;
+            const lastShooterId = lastPayload?.ball_holder_participant_id ?? null;
+            if (lastShooterId) {
+              const lastShooter = (participants || []).find((p: any) => p.id === lastShooterId);
+              if (lastShooter && lastShooter.club_id === possClubId) {
+                resolvedScorerId = lastShooterId;
+                resolvedScorerName = lastPayload?.ball_holder_name ?? lastShooter._player_name ?? null;
+              }
+            }
+          }
+
           eventsToLog.push({
             match_id, event_type: 'goal',
             title: isBallGoalOwnGoal ? `⚽ GOL CONTRA! ${homeScore} – ${awayScore}` : `⚽ GOL! ${homeScore} – ${awayScore}`,
             body: `Turno ${match.current_turn_number}${isBallGoalOwnGoal ? ' - Gol contra!' : ' - Bola no fundo da rede!'}`,
             payload: {
-              scorer_participant_id: ballHolder?.id || null,
+              scorer_participant_id: resolvedScorerId,
               scorer_club_id: isBallGoalOwnGoal ? (possClubId === match.home_club_id ? match.away_club_id : match.home_club_id) : possClubId,
-              scorer_name: ballHolder?._player_name || null,
+              scorer_name: resolvedScorerName,
               assister_participant_id: ballGoalAssisterId,
               assister_name: ballGoalAssisterName,
               goal_type: isBallGoalOwnGoal ? 'own_goal' : ballGoalType,
