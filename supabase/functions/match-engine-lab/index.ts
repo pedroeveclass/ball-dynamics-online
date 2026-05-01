@@ -641,6 +641,7 @@ function isExplicitGoalkeeper(
 ): boolean {
   if (participant.lineup_slot_id && slotMap.get(participant.lineup_slot_id) === 'GK') return true;
   if (participant.player_profile_id && profilePosMap.get(participant.player_profile_id) === 'GK') return true;
+  if (participant.pickup_slot_id === 'GK') return true;
   return false;
 }
 
@@ -696,6 +697,12 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
   const result = participants.map(p => {
     if (p.lineup_slot_id && slotMap.has(p.lineup_slot_id)) {
       p._slot_position = slotMap.get(p.lineup_slot_id);
+    } else if (p.pickup_slot_id === 'GK') {
+      // Pickup match GK: a player slotted into GK during /varzea overrides their
+      // primary_position (e.g., an ATA playing as keeper). Without this, the
+      // engine falls through to player_profile.primary_position and treats the
+      // GK as a field player — wrong save labels, wrong reach, wrong uniform.
+      p._slot_position = 'GK';
     } else if (p.player_profile_id && profilePosMap.get(p.player_profile_id)) {
       p._slot_position = profilePosMap.get(p.player_profile_id);
     } else if (gkIdByClub.get(p.club_id) === p.id) {
@@ -789,7 +796,7 @@ async function enrichParticipantsWithSlotPosition(supabase: any, participants: a
 // which made `findHumanProgressionTargets` (line ~1848) see ZERO humans on
 // the team — bots stopped passing to humans entirely. Bumping `_v` here
 // invalidates skeletons cached by older builds; hydrate skips them.
-const PARTICIPANT_SKELETON_VERSION = 2;
+const PARTICIPANT_SKELETON_VERSION = 3;
 
 function buildParticipantSkeleton(enriched: any[]): any[] {
   return enriched.map((p) => ({
