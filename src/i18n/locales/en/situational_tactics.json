@@ -48,7 +48,7 @@
       "wide": "Out wide"
     },
     "positioning": {
-      "short": "Short play",
+      "short": "Narrow",
       "normal": "Normal",
       "spread": "Spread"
     },
@@ -63,6 +63,7 @@
   "viz": {
     "opposite_phase": "Opposite phase ({{phase}})",
     "distance": "Distance",
+    "show_numbers": "Show numbering",
     "opponent_label": "Opponent:",
     "no_opponent": "No opponent",
     "mirror_label": "Mirror:",

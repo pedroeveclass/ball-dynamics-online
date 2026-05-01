@@ -433,6 +433,7 @@ export default function SituationalTacticsPage() {
   // Visualization toggles (all local, non-persisted).
   const [showGhost, setShowGhost] = useState(false);
   const [showDistance, setShowDistance] = useState(false);
+  const [showQuadrantNumbers, setShowQuadrantNumbers] = useState(false);
   const [opponentFormation, setOpponentFormation] = useState<string | null>(null);
   // Opponent overrides are per (formation, quadrant) but kept only in memory.
   const [opponentOverrides, setOpponentOverrides] = useState<Record<number, QuadrantPositions>>({});
@@ -990,6 +991,13 @@ export default function SituationalTacticsPage() {
             />
             <span>{t('viz.distance')}</span>
           </label>
+          <label className="flex items-center gap-1.5 px-2 py-1 rounded border">
+            <Checkbox
+              checked={showQuadrantNumbers}
+              onCheckedChange={(v) => setShowQuadrantNumbers(!!v)}
+            />
+            <span>{t('viz.show_numbers')}</span>
+          </label>
 
           <div className="flex items-center gap-1.5 pl-2 border-l ml-1">
             <span className="text-muted-foreground">{t('viz.opponent_label')}</span>
@@ -1128,6 +1136,28 @@ export default function SituationalTacticsPage() {
                 className="absolute left-1/2 -translate-x-1/2 bottom-0 border-2 border-b-0 border-white/60"
                 style={{ width: '38%', height: '14%' }}
               />
+
+              {/* Quadrant numbers (toggle) */}
+              {showQuadrantNumbers && Array.from({ length: COLS * ROWS }, (_, qi) => {
+                const col = qi % COLS;
+                const row = Math.floor(qi / COLS);
+                return (
+                  <div
+                    key={`qnum-${qi}`}
+                    className="absolute pointer-events-none text-white/55 font-mono font-semibold leading-none"
+                    style={{
+                      left: `${col * QUADRANT_W}%`,
+                      top: `${row * QUADRANT_H}%`,
+                      paddingLeft: 3,
+                      paddingTop: 3,
+                      fontSize: 9,
+                      textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                    }}
+                  >
+                    {qi + 1}
+                  </div>
+                );
+              })}
 
               {/* Customized quadrants: yellow dot in the top-right corner of each */}
               {customizedIndices.map(qi => {

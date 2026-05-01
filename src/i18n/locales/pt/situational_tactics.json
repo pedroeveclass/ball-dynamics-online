@@ -63,6 +63,7 @@
   "viz": {
     "opposite_phase": "Fase oposta ({{phase}})",
     "distance": "Distância",
+    "show_numbers": "Mostrar numeração",
     "opponent_label": "Adversário:",
     "no_opponent": "Sem adversário",
     "mirror_label": "Espelhar:",
