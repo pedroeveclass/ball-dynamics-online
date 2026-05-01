@@ -9364,7 +9364,6 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         console.log(`[ENGINE] Post-goal reset: all players moved to formation positions; BH anchored at (50,50)`);
       }
 
-      const nextPhaseStart = new Date().toISOString();
       const isNextLooseBall = nextBallHolderParticipantId === null;
 
       // Penalty now goes through positioning so players can be repositioned correctly
@@ -9373,7 +9372,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const usePositioning = hasDeadBallRestart;
       const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
       const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
-      const nextPhaseEnd = new Date(Date.now() + nextPhaseDuration).toISOString();
+      // started_at + ends_at are RECOMPUTED right before the INSERT below to
+      // eliminate drift from any work between this point and the INSERT.
 
       await supabase.from('matches').update({
         current_turn_number: newTurnNumber,
@@ -9401,6 +9401,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               y: Number(nextBallHolderMoveAct?.target_y ?? nextBallHolderPart.pos_y ?? 50),
             }
           : (ballEndPos || { x: 50, y: 50 }));
+
+      // Pin started_at/ends_at right before the INSERT so the duration the
+      // client sees on the new turn matches PHASE_DURATION_MS exactly,
+      // regardless of how long the work above (matches update, ball position
+      // resolution, post-goal reset) actually took.
+      const insertNow = Date.now();
+      const nextPhaseStart = new Date(insertNow).toISOString();
+      const nextPhaseEnd = new Date(insertNow + nextPhaseDuration).toISOString();
 
       const { data: insertedTurn } = await supabase.from('match_turns').insert({
         match_id, turn_number: newTurnNumber,

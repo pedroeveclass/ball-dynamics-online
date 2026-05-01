@@ -338,6 +338,12 @@ export default function MatchRoomPage() {
   const [animating, setAnimating] = useState(false);
   const [animProgress, setAnimProgress] = useState(0);
   const animProgressRef = useRef(0);
+  // Watchdog: when an animation runs MUCH longer than expected (server stalls,
+  // missed events, broken legacy fallback), force a recovery via loadLiveSnapshot
+  // instead of leaving the user stuck on a frozen match. Set together with
+  // setAnimating(true); watchdog effect below uses these to decide when to fire.
+  const animationStartedAtRef = useRef<number | null>(null);
+  const animationExpectedEndAtRef = useRef<number | null>(null);
   const [resolutionStartPositions, setResolutionStartPositions] = useState<Record<string, { x: number; y: number }>>({});
   // Final positions after animation (locked until next turn)
   const [finalPositions, setFinalPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -1609,6 +1615,8 @@ export default function MatchRoomPage() {
     setPendingInterceptChoice(null);
     // Don't reset animation state when entering resolution - the animation effect handles it
     if (activeTurn?.phase !== 'resolution') {
+      animationStartedAtRef.current = null;
+      animationExpectedEndAtRef.current = null;
       setAnimating(false);
       setAnimProgress(0);
       animProgressRef.current = 0;
@@ -2383,6 +2391,49 @@ export default function MatchRoomPage() {
 
     return () => clearInterval(interval);
   }, [activeTurn?.id, activeTurn?.phase, loadLiveSnapshot, match?.status, matchId, phaseTimeLeft, scheduleTurnActionsReconcile]);
+
+  // ── Animation watchdog ─────────────────────────────────────
+  // The 5 setIntervals above each cover a specific failure mode (cron lag,
+  // missed Realtime events, halftime tick, etc.) — none of them detect when
+  // the resolution animator itself gets stuck (script never arrived + legacy
+  // fallback hung, RAF starved by a long task, animatedResolutionIdRef set
+  // but the animator never reaches setAnimating(false)). When that happens
+  // the user is frozen on a phantom "Aguardando servidor..." until they F5.
+  //
+  // The watchdog ticks every 1s while animating === true. If we're past the
+  // expected animation end time (script.duration_ms + 6s slack), we force a
+  // recovery: force-flush the animation flag, clear the per-turn ref so the
+  // resolution effect can re-attempt on the next render, and pull a fresh
+  // snapshot so the UI catches up to whatever turn the server is on now.
+  useEffect(() => {
+    if (!animating) return;
+    if (match?.status !== 'live') return;
+    const watchdog = setInterval(() => {
+      const expectedEndAt = animationExpectedEndAtRef.current;
+      if (expectedEndAt == null) return;
+      if (Date.now() < expectedEndAt) return;
+      const startedAt = animationStartedAtRef.current ?? expectedEndAt;
+      const elapsedMs = Date.now() - startedAt;
+      console.warn(`[ANIM-WATCHDOG] Animation stuck for ${elapsedMs}ms (expected ~${expectedEndAt - startedAt}ms). Forcing recovery.`);
+      // Cancel any RAF in flight so it doesn't fight the recovery state.
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      // Allow the resolution effect to re-arm on the same turn if Realtime
+      // eventually delivers the script (defensive — usually the snapshot
+      // brings the next turn instead).
+      animatedResolutionIdRef.current = null;
+      animationInterceptorSnapshotRef.current = null;
+      animationStartedAtRef.current = null;
+      animationExpectedEndAtRef.current = null;
+      setAnimating(false);
+      setAnimProgress(1);
+      animProgressRef.current = 1;
+      void loadLiveSnapshot();
+    }, 1000);
+    return () => clearInterval(watchdog);
+  }, [animating, match?.status, loadLiveSnapshot]);
 
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
@@ -3417,6 +3468,13 @@ export default function MatchRoomPage() {
       // Lock the interceptor for the full duration of this resolution so late events
       // cannot change the ball's trajectory mid-flight (prevents visual teleport).
       animationInterceptorSnapshotRef.current = interceptorActionRef.current;
+      // Watchdog: arm before flipping to animating=true so the timer effect
+      // sees a non-null start time. Expected end = script.duration_ms (or a 2s
+      // legacy default) + 6s slack. Real animations finish in ~2s; anything
+      // past 8s is a stuck animator (script never arrived, RAF starved, etc).
+      const scriptDurationMs = (script?.duration_ms ?? 2000);
+      animationStartedAtRef.current = Date.now();
+      animationExpectedEndAtRef.current = Date.now() + scriptDurationMs + 6000;
       setAnimating(true);
       setAnimProgress(0);
       animProgressRef.current = 0;
@@ -3985,6 +4043,9 @@ export default function MatchRoomPage() {
           const ballGElFinal = ballGroupRef.current;
           if (ballGElFinal) ballGElFinal.removeAttribute('transform');
 
+          // Disarm the animation watchdog: clean exit, no recovery needed.
+          animationStartedAtRef.current = null;
+          animationExpectedEndAtRef.current = null;
           setAnimating(false);
 
           // Fetch authoritative positions from DB (prevents client desync)

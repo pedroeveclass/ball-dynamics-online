@@ -4,6 +4,19 @@ import { ACTION_PHASE_ORDER } from './constants';
 import { DEFAULT_FORMATION } from '@/lib/formations';
 import { labelForPickupSlot } from '@/lib/pickupSlots';
 
+// Movement-style actions: a player has at most one effective movement per turn.
+// When the human acts with one of these in ANY phase, bot pre-fills of the same
+// kind in OTHER phases for the same participant become visual noise — the
+// engine will mark them overridden at resolution anyway. Ball-actions
+// (pass/shoot/header/dribble) are NOT in this set: they live at the BH layer
+// and don't conflict with off-ball movement choreography.
+const MOVEMENT_LIKE_ACTIONS = new Set([
+  'move',
+  'receive',
+  'receive_hard',
+  'block',
+]);
+
 export function filterEffectiveTurnActions(
   actions: MatchAction[],
   optimisticHumanActionedIds?: Set<string>,
@@ -16,9 +29,16 @@ export function filterEffectiveTurnActions(
   // bot's pass arrow from ball_holder phase: both rows are legitimate parts of
   // the turn's plan (BH-bot passes in phase 1, then user mini-moves in phase 2).
   const humanActedKey = new Set<string>();
+  // Cross-phase: track participants who already submitted a movement-like
+  // action SOMEWHERE in this turn. Used to hide bot pre-fill move/receive/block
+  // arrows that the engine will discard anyway.
+  const humanMovedThisTurn = new Set<string>();
   for (const action of nonOverriddenActions) {
     if (action.controlled_by_type === 'player' || action.controlled_by_type === 'manager') {
       humanActedKey.add(`${action.participant_id}:${action.turn_phase ?? 'unknown'}`);
+      if (MOVEMENT_LIKE_ACTIONS.has(action.action_type)) {
+        humanMovedThisTurn.add(action.participant_id);
+      }
     }
   }
 
@@ -28,6 +48,17 @@ export function filterEffectiveTurnActions(
     if (action.controlled_by_type !== 'bot') return true;
     const phase = action.turn_phase ?? 'unknown';
     if (humanActedKey.has(`${action.participant_id}:${phase}`)) return false;
+    // Cross-phase movement dedup: if the human already submitted a movement
+    // anywhere this turn, hide the bot's move/receive/block fallback in OTHER
+    // phases — they're stale (overridden by the actual player intent) and
+    // visually accumulate as "two arrows on the same player" the user reports.
+    // Ball-actions (pass/shoot/header) are intentionally NOT in MOVEMENT_LIKE
+    // so the BH's bot pass still renders even if the player has an off-ball
+    // movement in a later phase.
+    if (MOVEMENT_LIKE_ACTIONS.has(action.action_type)
+      && humanMovedThisTurn.has(action.participant_id)) {
+      return false;
+    }
     // Optimistic id-only fallback: if caller passed a participant id without
     // phase info AND we were told the active phase, only suppress bot arrows
     // in that specific phase. Without an optimisticPhase, suppress across all
