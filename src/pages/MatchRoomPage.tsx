@@ -3075,8 +3075,7 @@ export default function MatchRoomPage() {
         // Positioning: unlimited range, clamp to field + kickoff half
         mx = clamp(mx, 1, 99);
         my = clamp(my, 1, 99);
-        const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
-        const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+        const isKickoff = activeTurn?.set_piece_type === 'kickoff';
         if (isKickoff && moveFrom) {
           const isHome = moveFrom.club_id === match?.home_club_id;
           const isSecondHalf = (match?.current_half ?? 1) >= 2;
@@ -4420,8 +4419,7 @@ export default function MatchRoomPage() {
         finalX = clamp(finalX, 1, 99);
         finalY = clamp(finalY, 1, 99);
         // Kickoff half-field constraint
-        const bh = activeTurn?.ball_holder_participant_id ? participants.find(p => p.id === activeTurn.ball_holder_participant_id) : null;
-        const isKickoff = bh && Math.abs((bh.field_x ?? bh.pos_x ?? 50) - 50) < 5 && Math.abs((bh.field_y ?? bh.pos_y ?? 50) - 50) < 5;
+        const isKickoff = activeTurn?.set_piece_type === 'kickoff';
         if (isKickoff) {
           const fromP = participants.find(p => p.id === drawingAction.fromParticipantId);
           if (fromP) {

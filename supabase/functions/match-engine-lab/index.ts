@@ -16,8 +16,8 @@ const LOG_VERBOSE = (() => {
   catch { return false; }
 })();
 
-const PHASE_DURATION_MS = 7000;
-const POSITIONING_PHASE_DURATION_MS = 7000;
+const PHASE_DURATION_MS = 10000;
+const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 2000; // 2s for client animation
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
 const MAX_TURNS = 144;

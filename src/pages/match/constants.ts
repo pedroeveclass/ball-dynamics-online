@@ -74,8 +74,8 @@ export const ACTION_LABELS: Record<string, string> = new Proxy({} as Record<stri
   },
 });
 
-export const PHASE_DURATION = 7;
-export const POSITIONING_PHASE_DURATION = 7;
+export const PHASE_DURATION = 10;
+export const POSITIONING_PHASE_DURATION = 10;
 export const RESOLUTION_PHASE_DURATION = 2; // must match engine RESOLUTION_PHASE_DURATION_MS / 1000
 export const PRE_MATCH_COUNTDOWN_SECONDS = 10;
 export const PRE_MATCH_COUNTDOWN_MS = PRE_MATCH_COUNTDOWN_SECONDS * 1000;
