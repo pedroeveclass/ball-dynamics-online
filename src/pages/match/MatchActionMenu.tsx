@@ -32,7 +32,7 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
   const top = menuPos.top - containerRect.top - 10;
 
   const menuPlayer = participants.find(p => p.id === showActionMenu);
-  const isGK = menuPlayer?.field_pos === 'GK' || menuPlayer?.slot_position === 'GK';
+  const isGK = menuPlayer?.field_pos === 'GK' || menuPlayer?.slot_position === 'GK' || menuPlayer?.pickup_slot_id === 'GK';
   const isBH = activeBallHolderId === showActionMenu;
   const isGKBH = isGK && isBH;
 

@@ -1377,7 +1377,7 @@ export default function MatchRoomPage() {
   const applyBallSpeedFactor = useCallback((baseRange: number, participantId: string, trajectoryActionType: string | null | undefined): number => {
     if (!trajectoryActionType) return baseRange;
     const player = participantsRef.current.find(p => p.id === participantId);
-    const isGK = player?.field_pos === 'GK' || (player as any)?.slot_position === 'GK';
+    const isGK = player?.field_pos === 'GK' || (player as any)?.slot_position === 'GK' || (player as any)?.pickup_slot_id === 'GK';
     if (isGK) return baseRange;
     const factor =
       (trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_power') ? 0.25 :
@@ -2474,7 +2474,7 @@ export default function MatchRoomPage() {
           const actingPart = participantsRef.current.find(pp => pp.id === pid);
           const bhAction = turnActionsRef.current.find(a => a.participant_id === bhId);
           const isOpponent = actingPart && bhPart && actingPart.club_id !== bhPart.club_id;
-          const isGK = actingPart?.field_pos === 'GK' || actingPart?.slot_position === 'GK';
+          const isGK = actingPart?.field_pos === 'GK' || actingPart?.slot_position === 'GK' || actingPart?.pickup_slot_id === 'GK';
           if (bhAction?.action_type === 'move' && isOpponent) toastLabel = i18n.t('match_room:toast.tackle_label');
           else if (isAnyShootAction(bhAction?.action_type ?? '') && isGK) toastLabel = i18n.t('match_room:toast.gk_catch_label');
         }
@@ -2713,7 +2713,7 @@ export default function MatchRoomPage() {
     if (actionType === 'block') {
       // GK block (espalmar): enter drawing mode to choose deflection direction
       const p = participants.find(x => x.id === participantId);
-      const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
+      const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK' || p?.pickup_slot_id === 'GK';
       if (isGK && pendingInterceptChoice && pendingInterceptChoice.participantId === participantId) {
         // GK: enter deflection drawing mode — keep pendingInterceptChoice alive
         setDrawingAction({ type: 'block' as DrawingState['type'], fromParticipantId: participantId });
@@ -2925,7 +2925,7 @@ export default function MatchRoomPage() {
           // findInterceptorCandidates calls computeMaxMoveRange without targetDirection,
           // so applying inertia here would make the client stricter than the server.
           const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK';
+          const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK' || drawingParticipant.pickup_slot_id === 'GK';
           const clickActionType = ballPathAction.action_type;
           const clickIsShot = clickActionType === 'shoot_controlled' || clickActionType === 'shoot_power' || clickActionType === 'header_controlled' || clickActionType === 'header_power';
           // For GK-on-shot: pass action type 'move' (ballSpeedFactor=1) so range isn't shrunk.
@@ -4204,7 +4204,7 @@ export default function MatchRoomPage() {
     const trajType = pic.trajectoryActionType;
     const trajProgress = pic.trajectoryProgress ?? 0.5;
     const p = participants.find(x => x.id === participantId);
-    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
+    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK' || p?.pickup_slot_id === 'GK';
     const isHome = p?.club_id === match.home_club_id;
     const gkX = p?.field_x ?? 50;
     const isSecondHalf = (match?.current_half ?? 1) >= 2;
@@ -4279,7 +4279,7 @@ export default function MatchRoomPage() {
     const interceptZone = hasReceivePrompt ? getInterceptZone(participantId) : 'green';
 
     // GK-specific: check if participant is GK
-    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK';
+    const isGK = p?.field_pos === 'GK' || p?.slot_position === 'GK' || p?.pickup_slot_id === 'GK';
 
     // Tackle (move trajectory) or block-only = no one-touch options
     // GK facing a shot: no one-touch, only agarrar/espalmar
@@ -4991,7 +4991,7 @@ export default function MatchRoomPage() {
     if (distToTraj > 1.0) return;
 
     const baseRange = computeMaxMoveRange(participantId);
-    const isGK = player.field_pos === 'GK' || player.slot_position === 'GK';
+    const isGK = player.field_pos === 'GK' || player.slot_position === 'GK' || player.pickup_slot_id === 'GK';
     // GK skips ballSpeedFactor reduction (see applyBallSpeedFactor): force action type to
     // 'move' so canReachTrajectoryPoint uses a factor of 1.0 for the GK.
     const effectiveActionType = isGK ? 'move' : bta.action_type;
@@ -5462,11 +5462,19 @@ export default function MatchRoomPage() {
                           && (action.payload as any).no_action) {
                           return ACTION_LABELS.no_action;
                         }
+                        const fromIsGK = fromPart.field_pos === 'GK' || fromPart.slot_position === 'GK' || fromPart.pickup_slot_id === 'GK';
                         if (action.action_type === 'receive') {
                           // If BH is doing a move (dribble) and this player is opponent → "DESARME"
                           const bhAction = visibleActions.find(a => a.participant_id === activeTurn?.ball_holder_participant_id && (a.action_type === 'move'));
                           if (bhAction && fromPart.club_id !== ballHolder?.club_id) return i18n.t('match_room:toast.tackle_label');
+                          // GK facing a shot: render as "AGARRAR" instead of "DOMINAR BOLA"
+                          const bhShotAction = visibleActions.find(a => a.participant_id === activeTurn?.ball_holder_participant_id && (a.action_type === 'shoot' || a.action_type === 'shoot_controlled' || a.action_type === 'shoot_power'));
+                          if (fromIsGK && bhShotAction) return i18n.t('match_room:actions_special.gk_catch');
                           return ACTION_LABELS[action.action_type];
+                        }
+                        // GK block facing a shot: render as "ESPALMAR" instead of "BLOQUEAR"
+                        if (action.action_type === 'block' && fromIsGK) {
+                          return i18n.t('match_room:actions_special.gk_block');
                         }
                         return ACTION_LABELS[action.action_type] || action.action_type;
                       })()}
@@ -5746,7 +5754,7 @@ export default function MatchRoomPage() {
                     // Intercept check uses BASE range (no inertia direction) to match the
                     // engine's findInterceptorCandidates which doesn't apply inertia either.
                     const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-                    const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
+                    const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK' || drawingFrom.pickup_slot_id === 'GK';
                     const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
                     const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
 
@@ -5912,7 +5920,7 @@ export default function MatchRoomPage() {
                   // Apply ball speed factor to match engine behavior. GK skips this: their
                   // bonus comes from getGkAreaMultiplier (already applied inside computeMaxMoveRange).
                   const previewActionType = ballTrajectoryAction.action_type;
-                  const previewIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK';
+                  const previewIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK' || drawingFrom.pickup_slot_id === 'GK';
                   if (!previewIsGK) {
                     const previewBallSpeedFactor =
                       (previewActionType === 'shoot_power' || previewActionType === 'header_power') ? 0.25 :
@@ -6037,14 +6045,14 @@ export default function MatchRoomPage() {
                     )}
                     <circle
                       cx={x} cy={y} r={R}
-                      fill={p.field_pos === 'GK' ? (isHome ? homeGKUniform.shirt_color : awayGKUniform.shirt_color) : (isHome ? homeActiveUniform.shirt_color : awayActiveUniform.shirt_color)}
+                      fill={(p.field_pos === 'GK' || p.pickup_slot_id === 'GK') ? (isHome ? homeGKUniform.shirt_color : awayGKUniform.shirt_color) : (isHome ? homeActiveUniform.shirt_color : awayActiveUniform.shirt_color)}
                       stroke={isMe ? '#fff' : 'rgba(0,0,0,0.4)'}
                       strokeWidth={isMe ? 1.5 : 0.8}
                       filter="url(#shadow)"
                     />
                     {/* Pattern overlay on player circle */}
                     {(() => {
-                      const uniform = p.field_pos === 'GK'
+                      const uniform = (p.field_pos === 'GK' || p.pickup_slot_id === 'GK')
                         ? (isHome ? homeGKUniform : awayGKUniform)
                         : (isHome ? homeActiveUniform : awayActiveUniform);
                       if (!uniform.pattern || uniform.pattern === 'solid') return null;
@@ -6080,7 +6088,7 @@ export default function MatchRoomPage() {
                     <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
                       fontSize="7" fontWeight="800"
                       fontFamily="'Barlow Condensed', sans-serif"
-                      fill={p.field_pos === 'GK' ? (isHome ? homeGKUniform.number_color : awayGKUniform.number_color) : (isHome ? homeActiveUniform.number_color : awayActiveUniform.number_color)}
+                      fill={(p.field_pos === 'GK' || p.pickup_slot_id === 'GK') ? (isHome ? homeGKUniform.number_color : awayGKUniform.number_color) : (isHome ? homeActiveUniform.number_color : awayActiveUniform.number_color)}
                     >
                       {p.jersey_number || idx + 1}
                     </text>
