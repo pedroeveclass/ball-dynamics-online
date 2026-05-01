@@ -486,8 +486,9 @@ async function persistMatchPlayerStats(
       const goals = countBy('goal', 'scorer_participant_id', pid);
       const assists = countBy('goal', 'assister_participant_id', pid);
       const shotsMissed = countBy('shot_missed', 'shooter_participant_id', pid);
+      const shotsOnPost = countBy('shot_post', 'shooter_participant_id', pid);
       const shots_on_target = goals; // only goals have a known shooter attribution today
-      const shots = shotsMissed + goals;
+      const shots = shotsMissed + goals + shotsOnPost; // post counts as shot total, not on target
       const passes_completed = countBy('pass_complete', 'passer_participant_id', pid);
       const passes_failed = countBy('pass_failed', 'passer_participant_id', pid);
       const passes_attempted = passes_completed + passes_failed;
@@ -3212,7 +3213,8 @@ interface DeviationResult {
   actualY: number;
   deviationDist: number;
   overGoal: boolean; // for shoot_power/header_power when ball goes over the goal
-  shotOutcome?: 'on_target' | 'wide' | 'over'; // visual-only flag for power shots
+  shotOutcome?: 'on_target' | 'wide' | 'over' | 'post'; // visual-only flag for power shots
+  postSide?: 'top' | 'bottom'; // when shotOutcome === 'post', which crossbar/upright was hit
 }
 
 function computeDeviation(
@@ -3328,7 +3330,8 @@ function computeDeviation(
   let actualX: number;
   let actualY: number;
   let overGoal = false;
-  let shotOutcome: 'on_target' | 'wide' | 'over' | undefined;
+  let shotOutcome: 'on_target' | 'wide' | 'over' | 'post' | undefined;
+  let postSide: 'top' | 'bottom' | undefined;
 
   if (isShot) {
     // ── SHOTS: deviation is LATERAL ONLY (perpendicular to shot direction) ──
@@ -3349,8 +3352,18 @@ function computeDeviation(
       if (landedInGoal) {
         shotOutcome = 'on_target';
       } else {
-        // Ball exited the goal area — 50/50 between "wide" (lateral) and "over" (went over the bar)
-        if (Math.random() < 0.5) {
+        // Post hit: ball within POST_TOLERANCE of goal Y bounds (just outside the
+        // goal mouth on the top or bottom upright). Rebounds back into the field
+        // instead of going out of bounds. Snap actualY to the post line.
+        const POST_TOLERANCE = 0.5;
+        const hitTopPost = actualY > GOAL_Y_MAX && actualY <= GOAL_Y_MAX + POST_TOLERANCE;
+        const hitBottomPost = actualY < GOAL_Y_MIN && actualY >= GOAL_Y_MIN - POST_TOLERANCE;
+        if (hitTopPost || hitBottomPost) {
+          shotOutcome = 'post';
+          postSide = hitTopPost ? 'top' : 'bottom';
+          actualY = hitTopPost ? GOAL_Y_MAX : GOAL_Y_MIN;
+          overGoal = true; // not a goal — caller treats post separately, not as on_target
+        } else if (Math.random() < 0.5) {
           // Wide: keep the deviated actualY (ball sails past the post laterally)
           shotOutcome = 'wide';
           overGoal = true;
@@ -3373,7 +3386,7 @@ function computeDeviation(
 
   if (LOG_VERBOSE) console.log(`[ENGINE] Deviation: intended=(${targetX.toFixed(1)},${targetY.toFixed(1)}) actual=(${actualX.toFixed(1)},${actualY.toFixed(1)}) deviation=${deviationDist.toFixed(2)} skill=${skillFactor.toFixed(2)} distFactor=${distFactor.toFixed(2)} minRandom=${minRandomDeviation.toFixed(2)} overGoal=${overGoal} shotOutcome=${shotOutcome || 'n/a'} lateral=${isShot}`);
 
-  return { actualX, actualY, deviationDist, overGoal, shotOutcome };
+  return { actualX, actualY, deviationDist, overGoal, shotOutcome, postSide };
 }
 
 // ─── Height-based interception zones ─────────────────────────────
@@ -6799,7 +6812,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           bhAction.target_x = deviation.actualX;
           bhAction.target_y = deviation.actualY;
           // Update in-memory payload so later checks (isOverGoal, goal detection) read correct flags
-          bhAction.payload = { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome };
+          bhAction.payload = { original_target_x: origTargetX, original_target_y: origTargetY, deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome, post_side: deviation.postSide };
 
           // Persist deviation to DB so frontend animation matches engine resolution
           await supabase.from('match_actions').update({
@@ -7296,8 +7309,69 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const isOverGoal = ballHolderAction.payload && typeof ballHolderAction.payload === 'object' && (ballHolderAction.payload as any).over_goal;
           const shotTargetY = Number(ballHolderAction.target_y ?? 50);
           const isOnTarget = shotTargetY >= GOAL_Y_MIN && shotTargetY <= GOAL_Y_MAX && !isOverGoal;
+          const shotOutcome = (ballHolderAction.payload && typeof ballHolderAction.payload === 'object') ? (ballHolderAction.payload as any).shot_outcome : null;
+          const isPostHit = shotOutcome === 'post';
 
-          if (isOnTarget) {
+          if (isPostHit) {
+            // Post hit — ball rebounds back into the field. Reflect across the
+            // horizontal crossbar (Y-component flips, X-component preserved),
+            // then push the ball ~4 units along the reflected direction so the
+            // next loose-ball turn picks up from inside the field instead of
+            // straddling the goal line.
+            const postSide = (ballHolderAction.payload as any).post_side as 'top' | 'bottom' | undefined;
+            const postX = Number(ballHolderAction.target_x ?? 50);
+            const postY = postSide === 'top' ? GOAL_Y_MAX : GOAL_Y_MIN;
+            const passerStartX = Number((ballHolder as any)?.pos_x ?? 50);
+            const passerStartY = Number((ballHolder as any)?.pos_y ?? 50);
+            // Incoming velocity (passer → post)
+            const inDx = postX - passerStartX;
+            const inDy = postY - passerStartY;
+            // Reflect across horizontal bar: Y flips, X preserved
+            const reflDx = inDx;
+            const reflDy = -inDy;
+            // Normalize and apply small magnitude
+            const reflMag = Math.sqrt(reflDx * reflDx + reflDy * reflDy) || 1;
+            const REBOUND_DIST = 4;
+            let reboundX = postX + (reflDx / reflMag) * REBOUND_DIST;
+            let reboundY = postY + (reflDy / reflMag) * REBOUND_DIST;
+            // Keep ball inside the field on X (away from goal line)
+            const isLeftGoal = postX < 50;
+            if (isLeftGoal) reboundX = Math.max(reboundX, 3);
+            else reboundX = Math.min(reboundX, 97);
+            // Clamp Y inside field
+            reboundY = Math.max(2, Math.min(98, reboundY));
+
+            nextBallHolderParticipantId = null;
+            ballEndPos = { x: reboundX, y: reboundY };
+            eventsToLog.push({
+              match_id, event_type: 'shot_post',
+              title: '🦴 Chute na trave!',
+              body: `${(ballHolder as any)?._player_name ?? ''} acertou a trave!`,
+              payload: {
+                shooter_participant_id: ballHolder.id,
+                shooter_name: (ballHolder as any)?._player_name ?? null,
+                side: postSide ?? null,
+                post_x: postX,
+                post_y: postY,
+                rebound_x: reboundX,
+                rebound_y: reboundY,
+                // Top-level x/y so resolveLooseBallFromHistory (client) and
+                // resolveLooseBallPos (server) read the rebound point as the
+                // current ball position.
+                x: reboundX,
+                y: reboundY,
+                turn_number: match.current_turn_number,
+                // Mirror block/save event field names so the next loose-ball turn's
+                // deflectOverride code path picks up the rebound direction without
+                // needing a separate branch.
+                deflect_from_x: postX,
+                deflect_from_y: postY,
+                deflect_to_x: reboundX,
+                deflect_to_y: reboundY,
+              },
+            });
+            if (LOG_VERBOSE) console.log(`[ENGINE] Shot hit post (${postSide}) at (${postX.toFixed(1)},${postY.toFixed(1)}) → rebound (${reboundX.toFixed(1)},${reboundY.toFixed(1)})`);
+          } else if (isOnTarget) {
             if (possClubId === match.home_club_id) homeScore++;
             else awayScore++;
 
@@ -7883,7 +7957,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           .from('match_event_logs')
           .select('payload')
           .eq('match_id', match_id)
-          .in('event_type', ['blocked', 'saved', 'block'])
+          .in('event_type', ['blocked', 'saved', 'block', 'shot_post'])
           .order('created_at', { ascending: false })
           .limit(1);
         if (prevDeflectEvent && prevDeflectEvent.length > 0) {
@@ -9509,7 +9583,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         await supabase.from('match_actions').update({
           target_x: deviation.actualX,
           target_y: deviation.actualY,
-          payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome },
+          payload: { original_target_x: Number(bhAction.target_x), original_target_y: Number(bhAction.target_y), deviated: true, over_goal: deviation.overGoal, shot_outcome: deviation.shotOutcome, post_side: deviation.postSide },
         }).eq('id', bhAction.id);
 
         if (LOG_VERBOSE) console.log(`[ENGINE] Early deviation: (${Number(bhAction.target_x).toFixed(1)},${Number(bhAction.target_y).toFixed(1)}) → (${deviation.actualX.toFixed(1)},${deviation.actualY.toFixed(1)}) dev=${deviation.deviationDist.toFixed(2)}`);

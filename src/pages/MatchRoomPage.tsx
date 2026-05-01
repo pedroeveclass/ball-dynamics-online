@@ -132,8 +132,10 @@ function resolveBallOutcome(
         break;
       }
       case 'shot_missed':
-      case 'shot_over': {
-        // Shot went wide / over — no interception, ball travels to target.
+      case 'shot_over':
+      case 'shot_post': {
+        // Shot went wide / over / hit post — no interception, ball travels to
+        // target (or post and rebounds, handled separately by the animator).
         out.interceptor = null;
         out.hasConclusiveEvent = true;
         break;
@@ -156,7 +158,7 @@ const HISTORY_EVENT_SCAN_LIMIT = 50;
 // sub events would return stale or irrelevant coordinates.
 const BALL_POSITION_EVENT_TYPES = new Set<string>([
   'loose_ball', 'loose_ball_phase', 'ball_inertia',
-  'pass_complete', 'shot_missed', 'shot_over',
+  'pass_complete', 'shot_missed', 'shot_over', 'shot_post',
   'goal_kick', 'corner', 'throw_in', 'free_kick', 'foul', 'penalty',
   'intercepted', 'receive_success', 'tackle', 'blocked', 'block',
   'saved', 'gk_save', 'offside', 'dispute',
@@ -563,7 +565,7 @@ export default function MatchRoomPage() {
 
   const appendEventLog = useCallback((event: EventLog) => {
     // Track resolution-relevant events so animation can incorporate actual results
-    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball', 'dispute', 'shot_over', 'shot_missed', 'offside', 'turn_interrupted'];
+    const resolutionEventTypes = ['blocked', 'intercepted', 'saved', 'tackle', 'possession_change', 'goal', 'gk_save', 'gk_save_failed', 'receive_failed', 'block', 'block_failed', 'pass_complete', 'receive_success', 'dribble', 'tackle_failed', 'loose_ball', 'dispute', 'shot_over', 'shot_missed', 'shot_post', 'offside', 'turn_interrupted'];
     if (resolutionEventTypes.includes(event.event_type)) {
       const alreadyInResolution = event.id != null && resolutionEventsRef.current.some(e => e.id === event.id);
       if (!alreadyInResolution) {
@@ -1701,7 +1703,7 @@ export default function MatchRoomPage() {
     // Skip block/save pill if the shot actually missed the frame (event batch contradicts itself).
     const recentTypes = new Set(events.slice(-8).map(e => e.event_type));
     if ((last.event_type === 'blocked' || last.event_type === 'saved') &&
-        (recentTypes.has('shot_missed') || recentTypes.has('shot_over'))) return;
+        (recentTypes.has('shot_missed') || recentTypes.has('shot_over') || recentTypes.has('shot_post'))) return;
     // If a tackle was followed by a dribble in the same batch, the tackle failed.
     if (last.event_type === 'tackle' && recentTypes.has('dribble')) return;
 
