@@ -241,6 +241,49 @@ function resolveRenderedPositions(
   return applyKnobs(computeDynamicPositions(qIdx, formation), knobs, formation);
 }
 
+/** Bilinear interpolation of player positions based on a continuous ball
+ *  position. Used during the ball drag so chips animate live between the
+ *  4 nearest quadrants, instead of jumping at quadrant boundaries. The user
+ *  releases the ball → snap returns to the discrete quadrant layout. */
+function resolveInterpolatedPositions(
+  phaseMap: PhaseMap,
+  phase: Phase,
+  ballPos: Pos,
+  formation: string,
+  knobs: TacticKnobs,
+): QuadrantPositions {
+  const slots = FORMATIONS[formation] || [];
+  // Continuous grid coordinate where (col+0.5, row+0.5) is the quadrant center.
+  // ballX/QW gives a coordinate in [0..COLS]; subtracting 0.5 centers it on
+  // the quadrant centers so floor() + (1 - frac) / frac give the bilinear weights.
+  const gridX = clamp(ballPos.x / QUADRANT_W - 0.5, 0, COLS - 1);
+  const gridY = clamp(ballPos.y / QUADRANT_H - 0.5, 0, ROWS - 1);
+  const col0 = Math.floor(gridX);
+  const row0 = Math.floor(gridY);
+  const col1 = Math.min(col0 + 1, COLS - 1);
+  const row1 = Math.min(row0 + 1, ROWS - 1);
+  const tx = gridX - col0;
+  const ty = gridY - row0;
+
+  const sample = (col: number, row: number) =>
+    resolveRenderedPositions(phaseMap, phase, row * COLS + col, formation, knobs);
+  const tl = sample(col0, row0);
+  const tr = sample(col1, row0);
+  const bl = sample(col0, row1);
+  const br = sample(col1, row1);
+
+  const out: QuadrantPositions = {};
+  for (const s of slots) {
+    const a = tl[s.position]; const b = tr[s.position];
+    const c = bl[s.position]; const d = br[s.position];
+    if (!a || !b || !c || !d) continue;
+    const top = { x: a.x * (1 - tx) + b.x * tx, y: a.y * (1 - tx) + b.y * tx };
+    const bot = { x: c.x * (1 - tx) + d.x * tx, y: c.y * (1 - tx) + d.y * tx };
+    out[s.position] = { x: top.x * (1 - ty) + bot.x * ty, y: top.y * (1 - ty) + bot.y * ty };
+  }
+  return out;
+}
+
 const oppositePhase = (p: Phase): Phase => (p === 'with_ball' ? 'without_ball' : 'with_ball');
 
 // ── Set-piece tactics ─────────────────────────────────────────
@@ -418,9 +461,10 @@ interface BallChipProps {
   pos: Pos;
   fieldRef: React.RefObject<HTMLDivElement>;
   onDragEndSnapped: (newIdx: number) => void;
+  onDragLive?: (livePos: Pos | null) => void;
 }
 
-function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
+function BallChip({ pos, fieldRef, onDragEndSnapped, onDragLive }: BallChipProps) {
   const controls = useAnimationControls();
   return (
     <motion.div
@@ -428,6 +472,18 @@ function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
       dragMomentum={false}
       dragElastic={0}
       animate={controls}
+      onDragStart={() => {
+        onDragLive?.(pos);
+      }}
+      onDrag={(_, info) => {
+        const rect = fieldRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const dxPct = (info.offset.x / rect.width) * 100;
+        const dyPct = (info.offset.y / rect.height) * 100;
+        const newX = clamp(pos.x + dxPct, 0, 100);
+        const newY = clamp(pos.y + dyPct, 0, 100);
+        onDragLive?.({ x: newX, y: newY });
+      }}
       onDragEnd={(_, info) => {
         const rect = fieldRef.current?.getBoundingClientRect();
         if (!rect) return;
@@ -437,6 +493,7 @@ function BallChip({ pos, fieldRef, onDragEndSnapped }: BallChipProps) {
         const newY = clamp(pos.y + dyPct, 0, 100);
         const idx = snapBallToQuadrantIdx(newX, newY);
         controls.set({ x: 0, y: 0 });
+        onDragLive?.(null);
         onDragEndSnapped(idx);
       }}
       className="absolute z-40 cursor-grab active:cursor-grabbing touch-none"
@@ -482,6 +539,10 @@ export default function SituationalTacticsPage() {
   const [formation, setFormation] = useState('4-4-2');
   const [phase, setPhase] = useState<Phase>('with_ball');
   const [ballQuadrant, setBallQuadrant] = useState(17); // middle-ish (row 3, col 2)
+  // While the user drags the ball, this holds the continuous (non-snapped)
+  // ball position so the chips can animate live across quadrant boundaries.
+  // Cleared on drag end (snap takes over).
+  const [dragBallPos, setDragBallPos] = useState<Pos | null>(null);
   const [phaseMap, setPhaseMap] = useState<PhaseMap>(() => buildEmptyBothPhases());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -837,7 +898,12 @@ export default function SituationalTacticsPage() {
   // Positions we render = knob-transformed when the quadrant is dynamic,
   // raw stored layout otherwise. Drag starts from whatever we render so
   // the user snaps off the visible position.
-  const currentQuadrantPositions = resolveRenderedPositions(phaseMap, phase, ballQuadrant, formation, knobs);
+  // During a ball drag, interpolate across the 4 nearest quadrants so chips
+  // glide instead of jumping at boundaries. After release, falls back to the
+  // discrete quadrant layout.
+  const currentQuadrantPositions = dragBallPos
+    ? resolveInterpolatedPositions(phaseMap, phase, dragBallPos, formation, knobs)
+    : resolveRenderedPositions(phaseMap, phase, ballQuadrant, formation, knobs);
 
   const updatePlayerPos = (slotPosition: string, newPos: Pos) => {
     pushHistorySnapshot();
@@ -1938,6 +2004,7 @@ export default function SituationalTacticsPage() {
                 pos={ballPos}
                 fieldRef={fieldRef}
                 onDragEndSnapped={(idx) => setBallQuadrant(idx)}
+                onDragLive={setDragBallPos}
               />
             </div>
           </CardContent>
