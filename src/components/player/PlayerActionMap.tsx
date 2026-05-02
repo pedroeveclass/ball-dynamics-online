@@ -118,6 +118,58 @@ export function PlayerShotMap({ shots, attackingDirection = 'ltr', className }: 
   );
 }
 
+export interface DefensiveDatum {
+  pos: { x: number; y: number };
+  kind: 'tackle' | 'interception';
+}
+
+interface DefensiveMapProps {
+  events: DefensiveDatum[];
+  attackingDirection?: 'ltr' | 'rtl';
+  className?: string;
+}
+
+export function PlayerDefensiveMap({ events, attackingDirection = 'ltr', className }: DefensiveMapProps) {
+  const mirror = attackingDirection === 'rtl';
+  return (
+    <div className={`relative ${className ?? ''}`} style={{ aspectRatio: `${FIELD_W} / ${FIELD_H}` }}>
+      <PitchSVG className="absolute inset-0 w-full h-full" />
+      <svg
+        viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
+        className="absolute inset-0 w-full h-full pointer-events-none"
+      >
+        {events.map((e, idx) => {
+          const a = pctToSvg(e.pos.x, e.pos.y, mirror);
+          const fill = e.kind === 'tackle' ? '#ef4444' : '#3b82f6';
+          return (
+            <g key={idx}>
+              <circle cx={a.sx} cy={a.sy} r={6} fill={fill} fillOpacity={0.85} stroke="#0f172a" strokeWidth={1.5} />
+              {e.kind === 'tackle' && (
+                <path d={`M${a.sx-3},${a.sy} L${a.sx+3},${a.sy} M${a.sx},${a.sy-3} L${a.sx},${a.sy+3}`}
+                  stroke="white" strokeWidth={1.5} />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {events.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-xs text-white/70 bg-black/60 px-2 py-1 rounded">Sem desarmes/interceptações</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DefensiveMapLegend() {
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" />Desarme</div>
+      <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" />Interceptação</div>
+    </div>
+  );
+}
+
 // Legend component for shot outcomes — small inline chips.
 export function ShotMapLegend() {
   const items = [

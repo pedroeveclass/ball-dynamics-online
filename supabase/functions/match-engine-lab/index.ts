@@ -4185,6 +4185,11 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
                   zone: disputeZone,
                   attacker_is_header: !!atkIsHeader,
                   defender_is_header: !!defIsHeader,
+                  // Defender's position is the ground-truth tackle/dispute location.
+                  defender_x: Number((defenderCand.participant as any)?.pos_x ?? 50),
+                  defender_y: Number((defenderCand.participant as any)?.pos_y ?? 50),
+                  attacker_x: Number((attackerCand.participant as any)?.pos_x ?? 50),
+                  attacker_y: Number((attackerCand.participant as any)?.pos_y ?? 50),
                 },
               });
             }
@@ -7798,6 +7803,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               const bhActForCause = ballHolderAction?.action_type;
               const wasPass = bhActForCause && (isPassType(bhActForCause) || isHeaderPassType(bhActForCause));
               resolvedPayload.cause = wasPass ? 'interception' : 'bad_touch';
+              resolvedPayload.recovery_x = Number((newHolder as any)?.pos_x ?? 50);
+              resolvedPayload.recovery_y = Number((newHolder as any)?.pos_y ?? 50);
             } else {
               // pass_complete
               resolvedPayload.passer_participant_id = ballHolder.id;

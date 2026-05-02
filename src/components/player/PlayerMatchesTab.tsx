@@ -4,7 +4,7 @@ import { Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { RatingChip } from './RatingChip';
 import { PitchHeatmap } from './PitchHeatmap';
-import { PlayerPassMap, PlayerShotMap, ShotMapLegend, type PassDatum, type ShotDatum } from './PlayerActionMap';
+import { PlayerPassMap, PlayerShotMap, ShotMapLegend, PlayerDefensiveMap, DefensiveMapLegend, type PassDatum, type ShotDatum, type DefensiveDatum } from './PlayerActionMap';
 
 interface MatchStatRow {
   id: string;
@@ -47,29 +47,6 @@ interface ClubLite {
   crest_url: string | null;
 }
 
-function ImpactBar({ label, value, max = 1 }: { label: string; value: number; max?: number }) {
-  // value normalized -1..+1 (negative means under-perform)
-  const v = Math.max(-1, Math.min(1, value / max));
-  const pct = Math.abs(v) * 50;
-  const color = v >= 0.4 ? 'bg-green-500' : v >= 0.05 ? 'bg-yellow-500' : v <= -0.05 ? 'bg-orange-500' : 'bg-muted';
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-muted-foreground w-20 shrink-0">{label}</span>
-      <div className="flex-1 h-2 bg-muted/40 rounded-full relative overflow-hidden">
-        <div className="absolute top-0 bottom-0 left-1/2 w-px bg-foreground/30" />
-        <div
-          className={`absolute top-0 bottom-0 ${color}`}
-          style={
-            v >= 0
-              ? { left: '50%', width: `${pct}%` }
-              : { right: '50%', width: `${pct}%` }
-          }
-        />
-      </div>
-    </div>
-  );
-}
-
 interface MatchDetailPanelProps {
   row: MatchStatRow;
   opponentClub: ClubLite | null;
@@ -77,11 +54,12 @@ interface MatchDetailPanelProps {
   participantId: string;
 }
 
-type DetailTab = 'overview' | 'passes' | 'shots';
+type MapMode = 'movement' | 'passes' | 'shots' | 'defensive';
 
 function useMatchActionEvents(matchId: string, participantId: string) {
   const [passes, setPasses] = useState<PassDatum[]>([]);
   const [shots, setShots] = useState<ShotDatum[]>([]);
+  const [defensive, setDefensive] = useState<DefensiveDatum[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -92,10 +70,11 @@ function useMatchActionEvents(matchId: string, participantId: string) {
         .from('match_event_logs')
         .select('event_type, payload')
         .eq('match_id', matchId)
-        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post']);
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'dispute', 'possession_change']);
       if (cancelled) return;
       const passesList: PassDatum[] = [];
       const shotsList: ShotDatum[] = [];
+      const defList: DefensiveDatum[] = [];
       for (const ev of (data || [])) {
         const p = (ev.payload || {}) as Record<string, any>;
         if (ev.event_type === 'pass_complete' || ev.event_type === 'pass_failed') {
@@ -106,6 +85,16 @@ function useMatchActionEvents(matchId: string, participantId: string) {
             to: { x: p.to_x, y: p.to_y },
             completed: ev.event_type === 'pass_complete',
           });
+        } else if (ev.event_type === 'dispute') {
+          if (p.defender_participant_id !== participantId) continue;
+          if (p.winner !== 'defender') continue;
+          if (typeof p.defender_x !== 'number') continue;
+          defList.push({ pos: { x: p.defender_x, y: p.defender_y }, kind: 'tackle' });
+        } else if (ev.event_type === 'possession_change') {
+          if (p.cause !== 'interception') continue;
+          if (p.new_ball_holder_participant_id !== participantId) continue;
+          if (typeof p.recovery_x !== 'number') continue;
+          defList.push({ pos: { x: p.recovery_x, y: p.recovery_y }, kind: 'interception' });
         } else {
           // Shot family
           const shooterId = p.shooter_participant_id ?? p.scorer_participant_id;
@@ -120,95 +109,63 @@ function useMatchActionEvents(matchId: string, participantId: string) {
       }
       setPasses(passesList);
       setShots(shotsList);
+      setDefensive(defList);
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [matchId, participantId]);
 
-  return { passes, shots, loading };
+  return { passes, shots, defensive, loading };
 }
 
 function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: MatchDetailPanelProps) {
-  const [tab, setTab] = useState<DetailTab>('overview');
-  const { passes, shots, loading: actionsLoading } = useMatchActionEvents(row.match_id, participantId);
-  // Impact bars derived from per-stat ratios.
-  const passAcc = row.passes_attempted > 0 ? row.passes_completed / row.passes_attempted : null;
-  const shooting = row.goals > 0 ? Math.min(1, row.goals * 0.6) : row.shots_on_target > 0 ? 0.2 : row.shots > 0 ? -0.3 : 0;
-  const passing = passAcc === null ? 0 : (passAcc - 0.7) * 2.5;
-  const dribbling = row.assists * 0.6 - row.fouls_committed * 0.15;
-  const defending = (row.tackles + row.interceptions) * 0.2 + (row.gk_saves * 0.25) + (row.clean_sheet ? 0.4 : 0) - row.yellow_cards * 0.2 - row.red_cards * 0.6;
+  const [mode, setMode] = useState<MapMode>('movement');
+  const [passFilter, setPassFilter] = useState<'all' | 'completed' | 'failed'>('all');
+  const { passes, shots, defensive, loading: actionsLoading } = useMatchActionEvents(row.match_id, participantId);
 
   // attacking direction depends on the half + which side the player's club is on.
   // Heatmap aggregates the whole match, so just mirror by player's home/away affiliation.
   const attackingDirection: 'ltr' | 'rtl' = playerIsHome ? 'ltr' : 'rtl';
-  const [passFilter, setPassFilter] = useState<'all' | 'completed' | 'failed'>('all');
 
-  const tabs: { id: DetailTab; label: string }[] = [
-    { id: 'overview', label: 'Visão geral' },
-    { id: 'passes', label: `Passes (${passes.length})` },
-    { id: 'shots', label: `Finalizações (${shots.length})` },
+  const buttons: { id: MapMode; label: string; count?: number }[] = [
+    { id: 'movement', label: 'Movimentação' },
+    { id: 'passes', label: 'Passes', count: passes.length },
+    { id: 'shots', label: 'Finalizações', count: shots.length },
+    { id: 'defensive', label: 'Desarmes', count: defensive.length },
   ];
 
   return (
-    <div className="bg-muted/20 rounded-lg p-4 space-y-4">
-      <div className="flex gap-1 border-b border-border -mx-4 px-4">
-        {tabs.map(t => (
+    <div className="bg-muted/20 rounded-lg p-4 space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {buttons.map(b => (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 text-xs font-display font-semibold transition-colors border-b-2 -mb-px ${
-              tab === t.id ? 'border-tactical text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+            key={b.id}
+            onClick={() => setMode(b.id)}
+            className={`px-3 py-1.5 text-xs font-display font-semibold rounded-md transition-colors ${
+              mode === b.id ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
             }`}
           >
-            {t.label}
+            {b.label}{b.count !== undefined ? ` (${b.count})` : ''}
           </button>
         ))}
       </div>
 
-      {tab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Mapa de calor</h4>
-            <PitchHeatmap
-              samples={row.position_samples ?? []}
-              attackingDirection={attackingDirection}
-              className="rounded-md overflow-hidden"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {(row.position_samples?.length ?? 0)} amostras · ataque →
-            </p>
-          </div>
-
-          <div>
-            <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Impacto por área</h4>
-            <div className="space-y-2 mb-4">
-              <ImpactBar label="Finalização" value={shooting} />
-              <ImpactBar label="Passe" value={passing} />
-              <ImpactBar label="Drible" value={dribbling} />
-              <ImpactBar label="Defesa" value={defending} />
-            </div>
-
-            <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Estatísticas</h4>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <Stat label="Gols" value={row.goals} />
-              <Stat label="Assistências" value={row.assists} />
-              <Stat label="Finalizações" value={`${row.shots_on_target}/${row.shots}`} />
-              <Stat label="Passes" value={`${row.passes_completed}/${row.passes_attempted}${row.passes_attempted ? ` (${Math.round((row.passes_completed/row.passes_attempted)*100)}%)` : ''}`} />
-              <Stat label="Desarmes" value={row.tackles} />
-              <Stat label="Interceptações" value={row.interceptions} />
-              <Stat label="Faltas" value={row.fouls_committed} />
-              {row.gk_saves > 0 && <Stat label="Defesas (GK)" value={row.gk_saves} />}
-              {row.clean_sheet && <Stat label="Não sofreu gol" value="✓" />}
-              {row.yellow_cards > 0 && <Stat label="Amarelos" value={row.yellow_cards} />}
-              {row.red_cards > 0 && <Stat label="Vermelhos" value={row.red_cards} />}
-            </div>
-          </div>
-        </div>
+      {mode === 'movement' && (
+        <>
+          <PitchHeatmap
+            samples={row.position_samples ?? []}
+            attackingDirection={attackingDirection}
+            className="rounded-md overflow-hidden"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            {(row.position_samples?.length ?? 0)} amostras · ataque →
+          </p>
+        </>
       )}
 
-      {tab === 'passes' && (
-        <div className="space-y-3">
-          <div className="flex gap-2 items-center">
+      {mode === 'passes' && (
+        <>
+          <div className="flex gap-2 items-center flex-wrap">
             {(['all', 'completed', 'failed'] as const).map(f => (
               <button key={f} onClick={() => setPassFilter(f)}
                 className={`text-[11px] font-display px-2.5 py-1 rounded-full transition-colors ${
@@ -218,7 +175,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
               </button>
             ))}
             <span className="text-[10px] text-muted-foreground ml-auto">
-              {passes.filter(p => p.completed).length}/{passes.length} {passes.length ? `(${Math.round((passes.filter(p => p.completed).length / passes.length) * 100)}%)` : ''}
+              {passes.filter(p => p.completed).length}/{passes.length}{passes.length ? ` · ${Math.round((passes.filter(p => p.completed).length / passes.length) * 100)}%` : ''}
             </span>
           </div>
           {actionsLoading ? (
@@ -226,32 +183,32 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           ) : (
             <PlayerPassMap passes={passes} attackingDirection={attackingDirection} filter={passFilter} className="rounded-md overflow-hidden" />
           )}
-          <p className="text-[10px] text-muted-foreground">Verde = certo · Vermelho = errado · Setas apontam para o destino do passe. Ataque →</p>
-        </div>
+          <p className="text-[10px] text-muted-foreground">Verde = certo · Vermelho = errado · Ataque →</p>
+        </>
       )}
 
-      {tab === 'shots' && (
-        <div className="space-y-3">
+      {mode === 'shots' && (
+        <>
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <>
-              <PlayerShotMap shots={shots} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
-              <ShotMapLegend />
-            </>
+            <PlayerShotMap shots={shots} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
           )}
-        </div>
+          <ShotMapLegend />
+        </>
+      )}
+
+      {mode === 'defensive' && (
+        <>
+          {actionsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <PlayerDefensiveMap events={defensive} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+          )}
+          <DefensiveMapLegend />
+        </>
       )}
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-display font-bold text-right tabular-nums">{value}</span>
-    </>
   );
 }
 
@@ -263,23 +220,34 @@ export function PlayerMatchesTab({ playerProfileId }: { playerProfileId: string 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: stats } = await supabase
+      const { data: stats, error: statsErr } = await supabase
         .from('player_match_stats')
         .select(`
-          id, match_id, participant_id, rating, position, goals, assists, shots, shots_on_target,
+          id, match_id, participant_id, club_id, rating, position, goals, assists, shots, shots_on_target,
           passes_completed, passes_attempted, tackles, interceptions, fouls_committed,
-          yellow_cards, red_cards, gk_saves, goals_conceded, clean_sheet, position_samples,
-          player_club:club_id ( id ),
-          match:matches!player_match_stats_match_id_fkey ( id, home_club_id, away_club_id, home_score, away_score, scheduled_at )
+          yellow_cards, red_cards, gk_saves, goals_conceded, clean_sheet, position_samples
         `)
         .eq('player_profile_id', playerProfileId)
         .order('created_at', { ascending: false })
         .limit(50);
       if (cancelled) return;
+      if (statsErr) { console.error('[PlayerMatchesTab] stats error', statsErr); setRows([]); return; }
+
+      const matchIds = (stats || []).map((s: any) => s.match_id).filter(Boolean);
+      let matchesById = new Map<string, MatchStatRow['match']>();
+      if (matchIds.length > 0) {
+        const { data: matches } = await supabase
+          .from('matches')
+          .select('id, home_club_id, away_club_id, home_score, away_score, scheduled_at')
+          .in('id', matchIds);
+        if (cancelled) return;
+        for (const m of (matches || [])) matchesById.set(m.id, m as any);
+      }
+
       const list: MatchStatRow[] = ((stats || []) as any[]).map((s: any) => ({
         ...s,
-        player_club_id: s.club_id || s.player_club?.id,
-        match: Array.isArray(s.match) ? s.match[0] : s.match,
+        player_club_id: s.club_id,
+        match: matchesById.get(s.match_id),
       })).filter(s => s.match);
 
       // Fetch club lookup for all opponents seen.

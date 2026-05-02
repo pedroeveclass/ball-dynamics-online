@@ -47,21 +47,33 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: stats } = await supabase
+      const { data: stats, error: statsErr } = await supabase
         .from('player_match_stats')
         .select(`
           id, match_id, rating, goals, assists, shots, shots_on_target,
           passes_completed, passes_attempted, tackles, interceptions, gk_saves,
-          clean_sheet, position_samples, club_id,
-          match:matches!player_match_stats_match_id_fkey ( id, home_club_id, away_club_id, home_score, away_score, scheduled_at )
+          clean_sheet, position_samples, club_id
         `)
         .eq('player_profile_id', playerProfileId)
         .order('created_at', { ascending: false })
         .limit(50);
       if (cancelled) return;
+      if (statsErr) { console.error('[PlayerSeasonOverview] stats error', statsErr); setRows([]); return; }
+
+      const matchIds = (stats || []).map((s: any) => s.match_id).filter(Boolean);
+      let matchesById = new Map<string, SeasonRow['match']>();
+      if (matchIds.length > 0) {
+        const { data: matches } = await supabase
+          .from('matches')
+          .select('id, home_club_id, away_club_id, home_score, away_score, scheduled_at')
+          .in('id', matchIds);
+        if (cancelled) return;
+        for (const m of (matches || [])) matchesById.set(m.id, m as any);
+      }
+
       const list: SeasonRow[] = ((stats || []) as any[]).map(s => ({
         ...s,
-        match: Array.isArray(s.match) ? s.match[0] : s.match,
+        match: matchesById.get(s.match_id),
       })).filter(s => s.match);
       const clubIds = new Set<string>();
       for (const r of list) {
