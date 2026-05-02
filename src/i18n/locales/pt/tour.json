@@ -1,0 +1,121 @@
+{
+  "common": {
+    "back": "Voltar",
+    "close": "Fechar",
+    "done": "Concluir",
+    "next": "Próximo",
+    "skip": "Pular tutorial"
+  },
+  "dashboard_intro": {
+    "step1": {
+      "title": "Bem-vindo, {{name}}!",
+      "body": "Esse é o seu jogador: nome, país, posição primária e secundária, idade, pé dominante e seu OVR — sua média geral. Tudo isso melhora com treino."
+    },
+    "step2": {
+      "title": "Sua Energia",
+      "body": "A energia é seu recurso mais importante: você usa pra treinar e pra jogar partidas. Ela regenera 30% por dia, então não dá pra gastar tudo de uma vez — cuide dela com carinho."
+    },
+    "step3": {
+      "title": "Seu status agora",
+      "body": "Você começou com R$ 5.000 no bolso e sem clube — é um agente livre. Sem contrato, sem salário ainda. Pra ter renda fixa e jogar partidas oficiais, você precisa entrar num time."
+    },
+    "step4": {
+      "title": "Próximo passo: achar um clube",
+      "body": "Clica aqui em Clube na barra esquerda. Num clube você treina melhor (com a estrutura do time), recebe salário toda semana, joga partidas oficiais e se integra com seus companheiros. Lá dentro tem o botão pra procurar um time que esteja te querendo."
+    }
+  },
+  "league_intro": {
+    "step1": {
+      "title": "Essa é a sua Liga!",
+      "body": "Aqui você acompanha tudo da temporada:\n• Classificação — a tabela do campeonato\n• Rodadas — todos os jogos por rodada\n• Estatísticas — artilheiros, assistências e mais\n• Procurar time — onde estamos agora, pra te encontrar um clube\n\nBora focar em achar um time pra você."
+    },
+    "step2": {
+      "title": "Clubes que podem te receber",
+      "body": "Esses são os clubes com vaga pra você. Cada card é um time. Antes de assinar, vale olhar 2 coisas em cada um — vou te mostrar agora."
+    },
+    "step3": {
+      "title": "Bot ou humano? E quantas pessoas?",
+      "body": "Olha o ícone abaixo do nome:\n🤖 Técnico bot — assina seu contrato na hora, entrada garantida.\n👤 Técnico humano — precisa te enviar uma proposta, pode levar tempo, mas o jogo é mais rico.\n\nA contagem de jogadores humanos te diz quantas pessoas reais estão no time. Mais humanos = mais diversão."
+    },
+    "step4": {
+      "title": "Bora entrar",
+      "body": "Pronto pra começar?\n• Time com técnico bot → clica em Assinar contrato e você já entra.\n• Time com técnico humano → clica em Ver clube pra explorar e marcar presença.\n\nDepois de assinar, volta em Meu Clube na barra esquerda — vou te apresentar o seu novo time! ⚽"
+    }
+  },
+  "club_intro": {
+    "step1": {
+      "title": "Bem-vindo ao {{clubName}}!",
+      "body": "Esse é o seu time. Aqui em cima você vê o escudo, o nome e — abaixo do nome — um badge com o tipo do seu técnico. Cada tipo (defensivo / ofensivo / técnico / completo) dá um bônus diferente nos seus treinos."
+    },
+    "step2": {
+      "title": "Seu técnico",
+      "body": "Esse é o seu técnico. Ele decide a escalação, a formação e a tática. Trate-o bem 😄 — e fique de olho no tipo dele, porque define em quais atributos seu treino vai render mais."
+    },
+    "step3": {
+      "title": "Como o time está indo",
+      "body": "Os números do clube de relance:\n• OVR do time — média dos 11 titulares\n• Posição na liga + pontos\n• Próximo jogo — adversário e horário\n• Formação atual\n• Reputação do clube\n\nAcompanha aqui como o time tá performando."
+    },
+    "step4": {
+      "title": "Sua escalação",
+      "body": "Essa é a escalação atual. Os 11 titulares aparecem com avatar, camisa e posição. Se você é titular, seu nome aparece destacado em azul. Quem escala é o técnico — você só consulta aqui. Banco e formação completa também aparecem abaixo."
+    },
+    "step5": {
+      "title": "Seus companheiros",
+      "body": "Aqui estão todos os seus companheiros. Ícone 👤 = humano, 🤖 = bot. Clica em qualquer jogador pra ver os atributos resumidos dele. Quanto mais humanos no elenco, mais vivo o jogo fica.\n\nBem-vindo ao time! Bora treinar e jogar. ⚽"
+    }
+  },
+  "attrs_intro": {
+    "step1": {
+      "title": "Aqui são seus atributos",
+      "body": "Aqui é onde você vê e treina seus atributos.\n\nNo topo: sua energia (sem ela não treina) e a taxa de crescimento — o quanto você ganha por sessão (cai com a idade). O botão Histórico mostra todos os treinos que você já fez."
+    },
+    "step2": {
+      "title": "Bônus de treino",
+      "body": "Cada treino rende mais quando você tem bônus ativos:\n\n• Técnico do clube (defensivo / ofensivo / técnico / completo) — bônus em atributos específicos\n• Centro de Treinamento do clube — bônus por nível\n• Treinador particular (compra na Loja) — bônus extra\n\nClica pra expandir e ver seus bônus combinados."
+    },
+    "step3": {
+      "title": "Equipamentos dão bônus direto em atributos",
+      "body": "Chuteiras e luvas da Loja somam bônus direto em atributos específicos — por exemplo, uma chuteira de chute soma pontos em Acurácia de Chute.\n\nAqui você vê tudo que está ativo agora."
+    },
+    "step4": {
+      "title": "Borda colorida = combinação com você",
+      "body": "Cada atributo tem uma borda colorida à esquerda indicando o quão bem ele combina com seu arquétipo + altura + posição:\n\n🟩 verde-escuro = +50% (combina perfeitamente)\n🟢 lima = +25% (combina bem)\n🟠 laranja = −50% (combina mal)\n🟥 vermelho = −70% (quase não rende)\n\nFoca nos verdes — é onde seu treino rende muito mais."
+    },
+    "step5": {
+      "title": "Treina aqui ou planeja a semana",
+      "body": "Pra treinar agora: clica em qualquer atributo na lista — abre um menu com o ganho estimado, custo (25% energia) e um botão Treinar.\n\nPra planejar a semana: clica aqui em Plano de Treino na barra esquerda. Você programa 4 sessões por dia e o sistema treina automático. Bora evoluir! 💪"
+    }
+  },
+  "training_plan_intro": {
+    "step1": {
+      "title": "Programa a semana, o sistema treina sozinho",
+      "body": "4 slots por dia, 7 dias por semana. Em cada slot, escolhe um atributo pra treinar.\n\nO sistema executa automático nos horários — você não precisa voltar aqui toda hora.\n\n(Energia, bônus, equipamentos e fit colorido já vimos na página de Atributos & Treino — aqui é só planejamento.)"
+    },
+    "step2": {
+      "title": "Cuidado com dia de jogo",
+      "body": "Dias de jogo aparecem com aviso vermelho no card do dia. Treinar de manhã queima energia que você precisa pro jogo à noite.\n\nRegra de ouro: guarda energia pros dias de jogo."
+    },
+    "step3": {
+      "title": "Salva + dica do Treinador",
+      "body": "Depois de planejar, clica em Salvar — sem isso, nada vale.\n\nDica: na Loja tem o Treinador, que escolhe e treina 1 slot por dia automaticamente, sem você precisar nem planejar a semana. Ideal pra quem não quer micro-gerenciar."
+    }
+  },
+  "profile_intro": {
+    "step1": {
+      "title": "Seu perfil completo",
+      "body": "Esse é o seu perfil completo. Avatar, nome, posições, idade, pé, altura, OVR, clube, reputação e saldo — tudo aqui.\n\nTem um botão pra copiar o link público do seu perfil — compartilha no Fórum pra técnicos te verem e te chamarem pro time deles."
+    },
+    "step2": {
+      "title": "Sua aparência",
+      "body": "Essa é a aparência do seu jogador, definida no início da carreira. Ela aparece em todo lugar: campo de jogo, escalação do clube, fórum, sidebar.\n\nA camisa é puxada automático do clube — não precisa configurar.\n\nQuando você comprar itens na Loja (chuteiras, luvas), eles aparecem aqui no seu visual."
+    },
+    "step3": {
+      "title": "Médias e histórico",
+      "body": "Suas médias por categoria (Físico, Técnico, Mental, Chute, Defesa, Goleiro) — visão rápida de onde você é forte.\n\nLogo abaixo tem o histórico dos últimos treinos com a evolução de cada atributo. Bom pra ver onde está crescendo mais."
+    },
+    "step4": {
+      "title": "Posições e ações avançadas",
+      "body": "Posição primária: 1ª troca grátis, depois custa.\nPosição secundária (logo abaixo): paga, mas zera a penalidade quando o técnico te escala fora da primária.\n\nMais embaixo você também tem opções pra criar um segundo jogador (segunda carreira paralela) e — se for agente livre — resetar o jogador atual e começar do zero."
+    }
+  }
+}

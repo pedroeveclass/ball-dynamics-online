@@ -1,0 +1,121 @@
+{
+  "common": {
+    "back": "Back",
+    "close": "Close",
+    "done": "Done",
+    "next": "Next",
+    "skip": "Skip tutorial"
+  },
+  "dashboard_intro": {
+    "step1": {
+      "title": "Welcome, {{name}}!",
+      "body": "That's your player: name, country, primary and secondary position, age, dominant foot and your OVR — your overall rating. All of it grows with training."
+    },
+    "step2": {
+      "title": "Your Energy",
+      "body": "Energy is your most important resource: you use it to train and to play matches. It regenerates 30% per day, so you can't burn it all at once — take care of it."
+    },
+    "step3": {
+      "title": "Your status now",
+      "body": "You started with R$ 5,000 in the bank and no club — you're a free agent. No contract, no salary yet. To get steady income and play official matches, you need to join a team."
+    },
+    "step4": {
+      "title": "Next step: find a club",
+      "body": "Click here on Club in the left sidebar. At a club you train better (with the team's facilities), get a weekly salary, play official matches and integrate with your teammates. Inside you'll find the button to look for a team that wants you."
+    }
+  },
+  "league_intro": {
+    "step1": {
+      "title": "This is your League!",
+      "body": "Here you follow everything about the season:\n• Standings — the league table\n• Rounds — all matches by round\n• Stats — top scorers, assists and more\n• Find a club — where we are now, to find you a team\n\nLet's focus on finding a team for you."
+    },
+    "step2": {
+      "title": "Clubs that can take you in",
+      "body": "These are the clubs with a spot for you. Each card is a team. Before signing, it's worth looking at 2 things on each one — I'll show you now."
+    },
+    "step3": {
+      "title": "Bot or human? And how many people?",
+      "body": "Look at the icon below the name:\n🤖 Bot manager — signs your contract right away, guaranteed entry.\n👤 Human manager — needs to send you an offer, may take time, but the game is richer.\n\nThe human players count tells you how many real people are on the team. More humans = more fun."
+    },
+    "step4": {
+      "title": "Let's join",
+      "body": "Ready to start?\n• Team with bot manager → click Sign contract and you're in.\n• Team with human manager → click View club to explore and mark presence.\n\nAfter signing, come back to Club in the left sidebar — I'll introduce you to your new team! ⚽"
+    }
+  },
+  "club_intro": {
+    "step1": {
+      "title": "Welcome to {{clubName}}!",
+      "body": "This is your team. Up here you see the crest, the name and — below the name — a badge with your manager's type. Each type (defensive / offensive / technical / complete) gives a different bonus to your training."
+    },
+    "step2": {
+      "title": "Your manager",
+      "body": "This is your manager. They decide the lineup, formation and tactics. Treat them well 😄 — and watch their type, because it defines which attributes your training will boost the most."
+    },
+    "step3": {
+      "title": "How the team is doing",
+      "body": "The club's numbers at a glance:\n• Team OVR — average of the 11 starters\n• League position + points\n• Next match — opponent and time\n• Current formation\n• Club reputation\n\nKeep an eye here on how the team is performing."
+    },
+    "step4": {
+      "title": "Your lineup",
+      "body": "This is the current lineup. The 11 starters appear with avatar, jersey and position. If you're a starter, your name shows highlighted in blue. The manager picks the lineup — you just check here. Bench and full formation also appear below."
+    },
+    "step5": {
+      "title": "Your teammates",
+      "body": "Here are all your teammates. Icon 👤 = human, 🤖 = bot. Click any player to see their summary attributes. The more humans on the squad, the more alive the game feels.\n\nWelcome to the team! Let's train and play. ⚽"
+    }
+  },
+  "attrs_intro": {
+    "step1": {
+      "title": "Here are your attributes",
+      "body": "This is where you see and train your attributes.\n\nAt the top: your energy (no energy = no training) and growth rate — how much you gain per session (drops with age). The History button shows every training you've done."
+    },
+    "step2": {
+      "title": "Training bonuses",
+      "body": "Each training pays more when you have active bonuses:\n\n• Club manager (defensive / offensive / technical / complete) — bonus on specific attributes\n• Training Center at the club — bonus by level\n• Private trainer (buy at the Store) — extra bonus\n\nClick to expand and see your combined bonuses."
+    },
+    "step3": {
+      "title": "Equipment adds bonus straight on attributes",
+      "body": "Boots and gloves from the Store add bonus straight on specific attributes — for example, a shooting boot adds points in Shot Accuracy.\n\nHere you see everything active right now."
+    },
+    "step4": {
+      "title": "Colored border = fit with you",
+      "body": "Each attribute has a colored border on the left showing how well it fits your archetype + height + position:\n\n🟩 dark green = +50% (perfect fit)\n🟢 lime = +25% (good fit)\n🟠 orange = −50% (bad fit)\n🟥 red = −70% (almost no gain)\n\nFocus on the greens — that's where your training pays off the most."
+    },
+    "step5": {
+      "title": "Train here or plan the week",
+      "body": "To train right now: click any attribute on the list — opens a menu with the estimated gain, cost (25% energy) and a Train button.\n\nTo plan the week: click here on Training Plan in the left sidebar. You schedule 4 sessions per day and the system trains automatically. Let's level up! 💪"
+    }
+  },
+  "training_plan_intro": {
+    "step1": {
+      "title": "Plan the week, the system trains by itself",
+      "body": "4 slots per day, 7 days a week. In each slot, pick an attribute to train.\n\nThe system runs automatically at the scheduled times — you don't need to come back here all the time.\n\n(Energy, bonuses, equipment and colored fit we already covered on the Attributes & Training page — here it's just planning.)"
+    },
+    "step2": {
+      "title": "Watch out for match day",
+      "body": "Match days show a red warning on the day card. Training in the morning burns energy you'll need for the match at night.\n\nGolden rule: save energy for match days."
+    },
+    "step3": {
+      "title": "Save + Trainer tip",
+      "body": "After planning, click Save — without it, nothing counts.\n\nTip: at the Store there's the Trainer, who picks and trains 1 slot per day automatically, without you needing to plan the week at all. Ideal for those who don't want to micro-manage."
+    }
+  },
+  "profile_intro": {
+    "step1": {
+      "title": "Your full profile",
+      "body": "This is your full profile. Avatar, name, positions, age, foot, height, OVR, club, reputation and balance — all here.\n\nThere's a button to copy your public profile link — share it on the Forum so managers can see you and invite you to their team."
+    },
+    "step2": {
+      "title": "Your look",
+      "body": "This is your player's look, set at the beginning of your career. It shows up everywhere: match field, club lineup, forum, sidebar.\n\nThe jersey is pulled automatically from the club — no need to configure.\n\nWhen you buy items at the Store (boots, gloves), they show up here on your look."
+    },
+    "step3": {
+      "title": "Averages and history",
+      "body": "Your averages per category (Physical, Technical, Mental, Shooting, Defending, Goalkeeping) — quick view of where you're strong.\n\nRight below is the history of your last trainings with the evolution of each attribute. Good for seeing where you're growing the most."
+    },
+    "step4": {
+      "title": "Positions and advanced actions",
+      "body": "Primary position: 1st change is free, then costs.\nSecondary position (right below): paid, but zeroes the penalty when the manager plays you outside your primary.\n\nFurther down you also have options to create a second player (parallel career) and — if you're a free agent — reset the current player and start over."
+    }
+  }
+}
