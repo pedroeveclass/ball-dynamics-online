@@ -21,6 +21,23 @@
       "empty": "No milestones recorded yet."
     }
   },
+  "weeklyDigest": {
+    "modal": {
+      "title": "Weekly Recap",
+      "mark_read": "Mark as read",
+      "open_inbox": "Open inbox"
+    },
+    "inbox": {
+      "title": "Inbox",
+      "subtitle": "Weekly recaps about your league, club, and career",
+      "empty_title": "No recaps yet",
+      "empty_subtitle": "Weekly recaps are generated every Monday after the round ends.",
+      "item_title": "Round {{round}}",
+      "select_item": "Select a recap from the list.",
+      "read": "Read",
+      "mark_read": "Mark as read"
+    }
+  },
   "originStory": {
     "section": {
       "title": "Origin Story",

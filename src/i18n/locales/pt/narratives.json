@@ -21,6 +21,23 @@
       "empty": "Nenhum marco registrado ainda."
     }
   },
+  "weeklyDigest": {
+    "modal": {
+      "title": "Resumo da Semana",
+      "mark_read": "Marcar como lido",
+      "open_inbox": "Ver caixa de entrada"
+    },
+    "inbox": {
+      "title": "Caixa de Entrada",
+      "subtitle": "Resumos semanais sobre sua liga, clube e carreira",
+      "empty_title": "Nenhum resumo ainda",
+      "empty_subtitle": "Resumos semanais são gerados toda segunda-feira após o fim da rodada.",
+      "item_title": "Rodada {{round}}",
+      "select_item": "Selecione um resumo na lista ao lado.",
+      "read": "Lido",
+      "mark_read": "Marcar como lido"
+    }
+  },
   "originStory": {
     "section": {
       "title": "História de Origem",

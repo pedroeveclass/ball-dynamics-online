@@ -84,11 +84,18 @@ function participantPositionalMultiplier(participant: any): number {
     participant._slot_position ||
     participant.slot_position ||
     participant.field_pos;
-  return positionalMultiplier(
+  let mult = positionalMultiplier(
     fielded,
     participant._primary_position || participant.primary_position,
     participant._secondary_position || participant.secondary_position,
   );
+  // Coach weekly boost — Tactics: lift the out-of-position penalty by 10%.
+  // E.g. 0.85 (15% penalty) becomes 0.865 (13.5% penalty). Stamped on the
+  // participant once per tick by the caller; no club-id lookup here.
+  if (mult < 1 && participant._tactics_boost_active) {
+    mult = mult + 0.10 * (1 - mult);
+  }
+  return mult;
 }
 
 // ─── Energy system constants ───────────────────────────────
@@ -2277,7 +2284,7 @@ function pickBestPassTarget(
 
 // ─── Bot AI: generate smart fallback actions ─────────────────
 // ─── Tick-level cache for data that doesn't change within a tick ──
-interface CoachBonus { skill_type: string; level: number; trained_formation: string | null; bonus_value: number; }
+interface ActiveBoost { boost_type: string; boost_param: string | null; }
 
 interface TickCache {
   clubSettings?: { homeFormation: string; awayFormation: string };
@@ -2292,7 +2299,9 @@ interface TickCache {
   // re-fetched per tick. Invalidated when a fresh participant_id is unknown.
   enrichedSkeleton?: any[];
   lineupRoles?: { home: any | null; away: any | null };
-  coachBonuses?: { home: CoachBonus[]; away: CoachBonus[] };
+  // Manager-picked weekly coach boost per club. Populated from
+  // get_active_coach_boost RPC; null when manager hasn't picked this week.
+  coachBoost?: { home: ActiveBoost | null; away: ActiveBoost | null };
   situationalTactics?: SituCache;
   setPieceTactics?: SetPieceCache;
   // Active turn's set-piece type, propagated into computeTacticalTarget so
@@ -2381,29 +2390,27 @@ async function generateBotActions(
     if (tickCache) tickCache.clubSettings = { homeFormation, awayFormation };
   }
 
-  // ── Load coach training bonuses (cached per tick) ──
-  let coachBonusHome: CoachBonus[] = [];
-  let coachBonusAway: CoachBonus[] = [];
-  if (tickCache?.coachBonuses) {
-    coachBonusHome = tickCache.coachBonuses.home;
-    coachBonusAway = tickCache.coachBonuses.away;
+  // ── Load coach weekly boost (cached per tick) ──
+  let coachBoostHome: ActiveBoost | null = null;
+  let coachBoostAway: ActiveBoost | null = null;
+  if (tickCache?.coachBoost) {
+    coachBoostHome = tickCache.coachBoost.home;
+    coachBoostAway = tickCache.coachBoost.away;
   } else {
     try {
       const [{ data: hb }, { data: ab }] = await Promise.all([
-        supabase.rpc('get_coach_bonuses', { p_club_id: match.home_club_id }),
-        supabase.rpc('get_coach_bonuses', { p_club_id: match.away_club_id }),
+        supabase.rpc('get_active_coach_boost', { p_club_id: match.home_club_id }),
+        supabase.rpc('get_active_coach_boost', { p_club_id: match.away_club_id }),
       ]);
-      coachBonusHome = hb || [];
-      coachBonusAway = ab || [];
-      if (tickCache) tickCache.coachBonuses = { home: coachBonusHome, away: coachBonusAway };
-    } catch { /* coach_training table may not exist yet */ }
+      coachBoostHome = (Array.isArray(hb) && hb.length > 0) ? { boost_type: hb[0].boost_type, boost_param: hb[0].boost_param } : null;
+      coachBoostAway = (Array.isArray(ab) && ab.length > 0) ? { boost_type: ab[0].boost_type, boost_param: ab[0].boost_param } : null;
+      if (tickCache) tickCache.coachBoost = { home: coachBoostHome, away: coachBoostAway };
+    } catch { /* coach_weekly_boost table may not exist yet */ }
   }
 
-  // Helper to get a specific bonus for a club
-  const getCoachBonus = (clubId: string, skillType: string): number => {
-    const bonuses = clubId === match.home_club_id ? coachBonusHome : coachBonusAway;
-    const b = bonuses.find(x => x.skill_type === skillType);
-    return b?.bonus_value ?? 0;
+  // Helper to read the active boost for a club (or null when manager hasn't picked).
+  const getActiveBoost = (clubId: string): ActiveBoost | null => {
+    return clubId === match.home_club_id ? coachBoostHome : coachBoostAway;
   };
 
   // Helper: get ball position (uses loose ball position when available)
@@ -3413,6 +3420,7 @@ function computeDeviation(
   isGK: boolean = false,
   setPieceType?: string | null,
   prevMoveRatio?: number | null,
+  setPieceBoostActive: boolean = false,
 ): DeviationResult {
   const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
 
@@ -3424,7 +3432,11 @@ function computeDeviation(
     actionType === 'shoot_controlled' || actionType === 'shoot_power' ||
     actionType === 'header_controlled' || actionType === 'header_power'
   );
-  const setPieceDeviationScale = (isSetPiece && !isKickoffShot) ? 0.35 : 1.0;
+  // Coach weekly boost — Set Piece: +15% precision (deviation × 0.85) on
+  // dead-ball restarts. Kickoff shots are excluded for the same reason set
+  // pieces don't benefit (long-range shot accuracy stays unchanged).
+  const setPieceBoostMult = (isSetPiece && !isKickoffShot && setPieceBoostActive) ? 0.85 : 1.0;
+  const setPieceDeviationScale = ((isSetPiece && !isKickoffShot) ? 0.35 : 1.0) * setPieceBoostMult;
 
   let difficultyMultiplier: number;
   let skillFactor: number;
@@ -4037,7 +4049,7 @@ function resolveDispute(
   return { winner, chance: attackerChance };
 }
 
-function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getCoachBonusFn?: (clubId: string, skillType: string) => number, setPieceType?: string | null, tackleBlockedIds?: Set<string>, match?: { home_club_id: string; away_club_id: string; current_half?: number }): {
+function resolveAction(action: string, _attacker: any, _defender: any, allActions: any[], participants: any[], possClubId: string, attrByProfile: Record<string, any>, playerProfilesMap?: Record<string, any>, turnNumber?: number, eventsToLog?: any[], getActiveBoostFn?: (clubId: string) => ActiveBoost | null, setPieceType?: string | null, tackleBlockedIds?: Set<string>, match?: { home_club_id: string; away_club_id: string; current_half?: number }): {
   success: boolean; event: string; description: string;
   possession_change: boolean; goal: boolean;
   newBallHolderId?: string; newPossessionClubId?: string;
@@ -4247,14 +4259,13 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
       hardTackle,
     });
 
-    // ── Coach bonuses ──
-    if (getCoachBonusFn) {
-      // High press: +1% steal chance per level (max 5%)
+    // ── Coach weekly boost: high_press → flat +10% steal chance ──
+    if (getActiveBoostFn) {
       const defClubId = candidate.participant.club_id;
-      const highPressBonus = getCoachBonusFn(defClubId, 'high_press') / 100;
-      if (!success && highPressBonus > 0 && Math.random() < highPressBonus) {
+      const boost = getActiveBoostFn(defClubId);
+      if (boost?.boost_type === 'high_press' && !success && Math.random() < 0.10) {
         success = true;
-        chance = Math.min(0.99, chance + highPressBonus);
+        chance = Math.min(0.99, chance + 0.10);
       }
     }
 
@@ -5838,8 +5849,8 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
         m.away_lineup_id
           ? supabase.from('lineups').select(`${roleFields}, formation, tactic_preset_id`).eq('id', m.away_lineup_id).maybeSingle()
           : supabase.from('lineups').select(`${roleFields}, formation, tactic_preset_id`).eq('club_id', m.away_club_id).eq('is_active', true).maybeSingle(),
-        supabase.rpc('get_coach_bonuses', { p_club_id: m.home_club_id }).then((r: any) => r).catch(() => ({ data: [] })),
-        supabase.rpc('get_coach_bonuses', { p_club_id: m.away_club_id }).then((r: any) => r).catch(() => ({ data: [] })),
+        supabase.rpc('get_active_coach_boost', { p_club_id: m.home_club_id }).then((r: any) => r).catch(() => ({ data: [] })),
+        supabase.rpc('get_active_coach_boost', { p_club_id: m.away_club_id }).then((r: any) => r).catch(() => ({ data: [] })),
       ]);
 
       // Formation priority: lineup.formation > club_settings.default_formation > '4-4-2'
@@ -5986,16 +5997,16 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           home: homeLineupFormRes.data || null,
           away: awayLineupFormRes.data || null,
         },
-        coachBonuses: {
-          home: homeCoachRes.data || [],
-          away: awayCoachRes.data || [],
+        coachBoost: {
+          home: (Array.isArray(homeCoachRes.data) && homeCoachRes.data.length > 0) ? { boost_type: homeCoachRes.data[0].boost_type, boost_param: homeCoachRes.data[0].boost_param } : null,
+          away: (Array.isArray(awayCoachRes.data) && awayCoachRes.data.length > 0) ? { boost_type: awayCoachRes.data[0].boost_type, boost_param: awayCoachRes.data[0].boost_param } : null,
         },
         situationalTactics,
         setPieceTactics,
       };
 
       await supabase.from('matches').update({ engine_cache: engineCache }).eq('id', m.id);
-      console.log(`[ENGINE] Pre-loaded engine cache: ${profileIds.length} attrs, 2 settings, 2 coach bonuses, situational+set-piece tactics`);
+      console.log(`[ENGINE] Pre-loaded engine cache: ${profileIds.length} attrs, 2 settings, 2 coach boosts, situational+set-piece tactics`);
     } catch (e) {
       console.error(`[ENGINE] Failed to pre-load engine cache:`, e);
     }
@@ -6152,7 +6163,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     if (ec.attrByProfile) tickCache.attrByProfile = ec.attrByProfile;
     if (ec.clubSettings) tickCache.clubSettings = ec.clubSettings;
     if (ec.lineupRoles) tickCache.lineupRoles = ec.lineupRoles;
-    if (ec.coachBonuses) tickCache.coachBonuses = ec.coachBonuses;
+    if (ec.coachBoost) tickCache.coachBoost = ec.coachBoost;
     if (ec.situationalTactics) tickCache.situationalTactics = ec.situationalTactics;
     if (ec.setPieceTactics) tickCache.setPieceTactics = ec.setPieceTactics;
     if (Array.isArray(ec.enrichedSkeleton)) tickCache.enrichedSkeleton = ec.enrichedSkeleton;
@@ -6725,11 +6736,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
   }
 
-  // Coach bonus helper for resolveAction (reads from tickCache)
-  const getCoachBonus = (clubId: string, skillType: string): number => {
-    const bonuses = clubId === match.home_club_id ? (tickCache.coachBonuses?.home || []) : (tickCache.coachBonuses?.away || []);
-    const b = bonuses.find((x: any) => x.skill_type === skillType);
-    return b?.bonus_value ?? 0;
+  // Active weekly boost per club (cached per tick). Engine reads boost_type +
+  // boost_param to apply tactics/formation/fitness/set_piece/mentality/high_press
+  // effects. Returns null when the manager hasn't picked this week.
+  const getActiveBoost = (clubId: string): ActiveBoost | null => {
+    return clubId === match.home_club_id ? (tickCache.coachBoost?.home ?? null) : (tickCache.coachBoost?.away ?? null);
   };
 
   const ballHolder = activeTurn.ball_holder_participant_id
@@ -7018,6 +7029,73 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
       tickCache.attrByProfile = attrByProfile;
     }
+
+    // ── Coach Weekly Boost: per-tick application of attribute-affecting boosts ──
+    // - tactics       → stamp `_tactics_boost_active` on participants of the club
+    //                    (read by participantPositionalMultiplier).
+    // - formation     → multiply ALL attrs × 1.05 when the club is using its
+    //                    chosen formation (boost_param matches homeFormation
+    //                    /awayFormation).
+    // - mentality     → multiply MENTAL attrs × 1.10 for players of the team
+    //                    that is currently losing.
+    // The other boosts (fitness, set_piece, high_press) are applied at their
+    // specific call sites (energy drain, computeDeviation, intercept).
+    {
+      const homeBoost = getActiveBoost(match.home_club_id);
+      const awayBoost = getActiveBoost(match.away_club_id);
+      const homeForm = tickCache.clubSettings?.homeFormation ?? '4-4-2';
+      const awayForm = tickCache.clubSettings?.awayFormation ?? '4-4-2';
+      const hScore = Number(match.home_score ?? 0);
+      const aScore = Number(match.away_score ?? 0);
+      const homeIsLosing = hScore < aScore;
+      const awayIsLosing = aScore < hScore;
+      const MENTAL_ATTRS = ['visao_jogo','tomada_decisao','antecipacao','trabalho_equipe','coragem','posicionamento_ofensivo','posicionamento_defensivo'];
+
+      // Stamp tactics flag (idempotent — overwrite each tick)
+      for (const p of (participants || [])) {
+        const isHome = p.club_id === match.home_club_id;
+        const boost = isHome ? homeBoost : awayBoost;
+        p._tactics_boost_active = boost?.boost_type === 'tactics';
+      }
+
+      // Build per-tick boosted attrByProfile (formation + mentality). Don't
+      // mutate the cached map — clone scaled rows only when needed.
+      const homeFormationActive = homeBoost?.boost_type === 'formation' && homeBoost.boost_param === homeForm;
+      const awayFormationActive = awayBoost?.boost_type === 'formation' && awayBoost.boost_param === awayForm;
+      const homeMentalityActive = homeBoost?.boost_type === 'mentality' && homeIsLosing;
+      const awayMentalityActive = awayBoost?.boost_type === 'mentality' && awayIsLosing;
+
+      if (homeFormationActive || awayFormationActive || homeMentalityActive || awayMentalityActive) {
+        const profileToClub = new Map<string, string>();
+        for (const p of (participants || [])) {
+          if (p.player_profile_id && p.club_id) profileToClub.set(p.player_profile_id, p.club_id);
+        }
+        const boosted: Record<string, any> = {};
+        for (const pid of Object.keys(attrByProfile)) {
+          const raw = attrByProfile[pid];
+          const cid = profileToClub.get(pid);
+          if (!cid) { boosted[pid] = raw; continue; }
+          const isHome = cid === match.home_club_id;
+          const formationActive = isHome ? homeFormationActive : awayFormationActive;
+          const mentalityActive = isHome ? homeMentalityActive : awayMentalityActive;
+          if (!formationActive && !mentalityActive) { boosted[pid] = raw; continue; }
+          const scaled: Record<string, any> = { ...raw };
+          if (formationActive) {
+            for (const k of Object.keys(scaled)) {
+              if (typeof scaled[k] === 'number') scaled[k] = scaled[k] * 1.05;
+            }
+          }
+          if (mentalityActive) {
+            for (const k of MENTAL_ATTRS) {
+              if (typeof scaled[k] === 'number') scaled[k] = scaled[k] * 1.10;
+            }
+          }
+          boosted[pid] = scaled;
+        }
+        attrByProfile = boosted;
+      }
+    }
+
     const getAttrs = (participant: any) => {
       const raw = participant?.player_profile_id ? attrByProfile[participant.player_profile_id] : null;
       const energyPct = Number(participant?.match_energy ?? 100);
@@ -7076,6 +7154,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             }
           }
 
+          const bhParticipant = (participants || []).find((p: any) => p.id === bhAction.participant_id);
+          const bhBoost = bhParticipant ? getActiveBoost(bhParticipant.club_id) : null;
           const deviation = computeDeviation(
             origTargetX,
             origTargetY,
@@ -7086,6 +7166,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             false,
             activeTurn.set_piece_type,
             prevMoveRatio,
+            bhBoost?.boost_type === 'set_piece',
           );
           bhAction.target_x = deviation.actualX;
           bhAction.target_y = deviation.actualY;
@@ -7489,7 +7570,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
-        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getCoachBonus, activeTurn.set_piece_type, tackleBlockedIds, match);
+        const result = resolveAction(ballHolderAction.action_type, ballHolderAction, null, allActions, participants || [], possClubId || '', attrByProfile, undefined, match.current_turn_number ?? 1, eventsToLog, getActiveBoost, activeTurn.set_piece_type, tackleBlockedIds, match);
         bhResolveResult = result;
 
         // Log GK save attempt if there was one
@@ -9052,7 +9133,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const slotPos = (p._slot_position || p.slot_position || '').replace(/[0-9]/g, '').toUpperCase();
         const isGK = isGKPosition(slotPos);
 
-        const drain = computeEnergyDrain(rawStamina, distMoved, maxRange, actionType, isGK);
+        let drain = computeEnergyDrain(rawStamina, distMoved, maxRange, actionType, isGK);
+        // Coach weekly boost — Fitness: −10% stamina drain for the player's club.
+        const fitnessBoost = getActiveBoost(p.club_id);
+        if (fitnessBoost?.boost_type === 'fitness') drain *= 0.9;
         const currentEnergy = Number(p.match_energy ?? 100);
         const newEnergy = Math.max(0, Math.round((currentEnergy - drain) * 100) / 100);
 
@@ -9969,7 +10053,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
 
-        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs, false, activeTurn.set_piece_type, prevMoveRatio);
+        const bhParticipantEarly = (participants || []).find((p: any) => p.id === bhAction.participant_id);
+        const bhBoostEarly = bhParticipantEarly ? getActiveBoost(bhParticipantEarly.club_id) : null;
+        const deviation = computeDeviation(Number(bhAction.target_x), Number(bhAction.target_y), startX, startY, bhAction.action_type, devAttrs, false, activeTurn.set_piece_type, prevMoveRatio, bhBoostEarly?.boost_type === 'set_piece');
 
         await supabase.from('match_actions').update({
           target_x: deviation.actualX,

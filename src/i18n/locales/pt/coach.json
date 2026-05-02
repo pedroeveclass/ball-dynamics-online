@@ -1,47 +1,66 @@
 {
-  "title": "Treinamento do Técnico",
-  "subtitle": "Treine uma habilidade por semana. O treino libera toda segunda-feira às 00:00.",
-  "trained_this_week": "Treino semanal já realizado. Próximo disponível: segunda-feira {{date}} às 00:00",
-  "skills": {
+  "title": "Boost Semanal do Técnico",
+  "subtitle": "Escolha um boost por semana para o seu time. Reset toda segunda-feira às 00:00 (BRT).",
+  "active_label": "Boost ativo da semana",
+  "no_active": "Nenhum boost escolhido para esta semana.",
+  "locked_until": "Próxima escolha libera segunda-feira {{date}} às 00:00.",
+  "pick_one_warning": "Você pode escolher apenas UM boost por semana. Depois de confirmado, fica trancado até o próximo reset.",
+  "boosts": {
     "tactics": {
       "label": "Tática",
-      "description": "Reduz penalização de jogador fora de posição.",
-      "bonus": "-0.7% penalidade/nível (7% max)"
+      "description": "Reduz em 10% a penalidade de jogadores fora de posição.",
+      "bonus": "-10% penalidade fora-de-posição"
     },
     "formation": {
       "label": "Formação",
-      "description": "Bônus de atributos ao usar a formação treinada.",
-      "bonus": "+0.5% atributos/nível (5% max)"
+      "description": "Bônus de 5% em todos os atributos quando o time usa a formação treinada.",
+      "bonus": "+5% atributos com a formação escolhida",
+      "param_label": "Formação treinada"
     },
     "fitness": {
       "label": "Preparação Física",
-      "description": "Reduz perda de stamina por turno.",
-      "bonus": "-0.5% stamina/nível (5% max)"
+      "description": "Reduz em 10% a perda de energia por turno de todos os jogadores.",
+      "bonus": "-10% gasto de energia por turno"
     },
     "set_piece": {
       "label": "Bola Parada",
-      "description": "Melhora precisão em cobranças (falta, escanteio, pênalti).",
-      "bonus": "-1% desvio/nível (10% max)"
+      "description": "Melhora em 15% a precisão em cobranças (falta, escanteio, pênalti, lateral, tiro de meta).",
+      "bonus": "+15% precisão em bolas paradas"
     },
     "mentality": {
       "label": "Mentalidade",
-      "description": "Bônus em atributos mentais quando perdendo.",
-      "bonus": "+0.5% mentais/nível (5% max)"
+      "description": "Bônus de 10% em todos os atributos mentais quando o time está perdendo.",
+      "bonus": "+10% atributos mentais quando perdendo"
     },
     "high_press": {
       "label": "Pressão Alta",
-      "description": "Aumenta chance de roubar a bola.",
-      "bonus": "+0.5% roubo/nível (5% max)"
+      "description": "Aumenta em 10% a chance de roubar a bola.",
+      "bonus": "+10% chance de roubo de bola"
+    },
+    "training_focus": {
+      "label": "Foco de Treino",
+      "description": "Escolha uma categoria de atributos. Todos os jogadores ganham +10% nos treinos dessa categoria essa semana.",
+      "bonus": "+10% ganho nos treinos da categoria escolhida",
+      "param_label": "Categoria foco"
     }
   },
-  "trained_formation_label": "Formação treinada: {{formation}}",
+  "categories": {
+    "Físico": "Físico",
+    "Técnico": "Técnico",
+    "Mental": "Mental",
+    "Chute": "Chute",
+    "Goleiro": "Goleiro"
+  },
   "buttons": {
-    "max_level": "Nível Máximo",
-    "waiting": "Aguardando",
-    "train_level": "Treinar Nível {{level}}"
+    "confirm": "Confirmar boost",
+    "active": "Boost ativo",
+    "locked": "Trancado até segunda",
+    "select_formation": "Selecione a formação",
+    "select_category": "Selecione a categoria"
   },
   "toast": {
-    "trained_ok": "Treino de {{skill}} realizado!",
-    "error": "Erro ao treinar"
+    "set_ok": "Boost da semana ativado: {{label}}",
+    "param_required": "Selecione um valor antes de confirmar",
+    "error": "Erro ao salvar boost"
   }
 }

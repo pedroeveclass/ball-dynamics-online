@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
 import { NotificationBell } from '@/components/NotificationBell';
 import { HelpModal } from '@/components/HelpModal';
+import { WeeklyDigestModal } from '@/components/digest/WeeklyDigestModal';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { CountryFlag } from '@/components/CountryFlag';
 import { useTranslation } from 'react-i18next';
@@ -68,6 +69,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
       </div>
       <HelpModal open={helpOpen} onOpenChange={setHelpOpen} />
+      <WeeklyDigestModal />
     </SidebarProvider>
   );
 }

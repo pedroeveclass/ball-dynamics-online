@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import {
   ATTR_LABELS,
+  ATTRIBUTE_CATEGORIES,
   FIELD_ATTRS,
   GK_ATTRS,
   getAttrCap,
@@ -71,6 +72,10 @@ export default function PlayerTrainingPlanPage() {
   const [trainerBonus, setTrainerBonus] = useState<number>(0); // % added to growth
   const [physioBonus, setPhysioBonus] = useState<number>(0); // % added to regen
   const [hasClub, setHasClub] = useState(true);
+  // Coach weekly boost — only the `training_focus` type is relevant to this
+  // page (the in-match boosts don't affect training). Stored as the picked
+  // category name (Físico/Técnico/Mental/Chute/Goleiro) or null.
+  const [focusCategory, setFocusCategory] = useState<string | null>(null);
 
   // Match days for this week — set of isoDayOfWeek values (0..6).
   const [matchDayDows, setMatchDayDows] = useState<Set<number>>(new Set());
@@ -129,6 +134,7 @@ export default function PlayerTrainingPlanPage() {
       setHasClub(false);
       setCoachType('all_around');
       setTrainingCenterLevel(0);
+      setFocusCategory(null);
     } else {
       setHasClub(true);
       const { data: club } = await supabase.from('clubs').select('manager_profile_id').eq('id', playerProfile.club_id).maybeSingle();
@@ -140,6 +146,11 @@ export default function PlayerTrainingPlanPage() {
         .from('club_facilities').select('level')
         .eq('club_id', playerProfile.club_id).eq('facility_type', 'training_center').maybeSingle();
       setTrainingCenterLevel(tc?.level || 0);
+
+      // Weekly coach boost — only `training_focus` rows give a training bonus.
+      const { data: boost } = await (supabase as any).rpc('get_active_coach_boost', { p_club_id: playerProfile.club_id });
+      const row = Array.isArray(boost) && boost.length > 0 ? boost[0] : null;
+      setFocusCategory(row?.boost_type === 'training_focus' ? (row.boost_param ?? null) : null);
     }
 
     // Private trainer + physio — same shape in store_purchases/store_items.
@@ -266,7 +277,9 @@ export default function PlayerTrainingPlanPage() {
     const coachBonus = hasClub ? getCoachBonus(coachType, attrKey) : 0;
     const tcBonus = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
     const trainerBonusPct = trainerBonus / 100;
-    const bonus = 1 + coachBonus + tcBonus + trainerBonusPct;
+    // Weekly coach Foco de Treino: +10% when this attr's category is the chosen focus.
+    const focusBonus = (focusCategory && (ATTRIBUTE_CATEGORIES[focusCategory] || []).includes(attrKey)) ? 0.10 : 0;
+    const bonus = 1 + coachBonus + tcBonus + trainerBonusPct + focusBonus;
     const fitMult = getTrainingFit(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, attrKey).multiplier;
     const min = growthRate * tierMult * bonus * fitMult * TRAINING_PACE_FACTOR;
     const max = (growthRate + 0.99) * tierMult * bonus * fitMult * TRAINING_PACE_FACTOR;

@@ -42,6 +42,8 @@ export default function PlayerAttributesPage() {
   const [showBonusInfo, setShowBonusInfo] = useState(false);
   const [hasClub, setHasClub] = useState<boolean>(true);
   const [trainerBonus, setTrainerBonus] = useState<{ level: number; value: number } | null>(null);
+  // Coach weekly boost — only `training_focus` is relevant for the training preview.
+  const [focusCategory, setFocusCategory] = useState<string | null>(null);
   const [itemBonuses, setItemBonuses] = useState<AttributeBonuses>({ byAttr: {}, items: [] });
   // Today's match (if any) — used to warn the player before they burn energy on
   // a training session that'd leave them short for kickoff.
@@ -70,9 +72,15 @@ export default function PlayerAttributesPage() {
       setHasClub(false);
       setCoachType('all_around');
       setTrainingCenterLevel(0);
+      setFocusCategory(null);
       return;
     }
     setHasClub(true);
+
+    // Weekly coach boost — only `training_focus` rows give a training bonus.
+    const { data: boost } = await (supabase as any).rpc('get_active_coach_boost', { p_club_id: playerProfile.club_id });
+    const boostRow = Array.isArray(boost) && boost.length > 0 ? boost[0] : null;
+    setFocusCategory(boostRow?.boost_type === 'training_focus' ? (boostRow.boost_param ?? null) : null);
 
     // Get club's manager coach type
     const { data: club } = await supabase.from('clubs').select('id, manager_profile_id').eq('id', playerProfile.club_id).maybeSingle();
@@ -238,7 +246,9 @@ export default function PlayerAttributesPage() {
           const attrCoachBonus = hasClub ? getCoachBonus(coachType, key) : 0;
           const attrTcBonus = hasClub ? getTrainingCenterBonus(trainingCenterLevel) : 0;
           const attrTrainerBonus = trainerBonus ? trainerBonus.value / 100 : 0;
-          const bonusFactor = 1 + attrCoachBonus + attrTcBonus + attrTrainerBonus;
+          // Weekly Foco de Treino: +10% on attrs whose category matches.
+          const attrFocusBonus = (focusCategory && (ATTRIBUTE_CATEGORIES[focusCategory] || []).includes(key)) ? 0.10 : 0;
+          const bonusFactor = 1 + attrCoachBonus + attrTcBonus + attrTrainerBonus + attrFocusBonus;
           const fitInfo = getTrainingFit(playerProfile.archetype, playerProfile.height, playerProfile.primary_position, key);
           const effectiveGrowthMin = (growthRate * tierMult * bonusFactor * fitInfo.multiplier * TRAINING_PACE_FACTOR).toFixed(2);
           const effectiveGrowthMax = ((growthRate + 0.99) * tierMult * bonusFactor * fitInfo.multiplier * TRAINING_PACE_FACTOR).toFixed(2);

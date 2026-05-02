@@ -1,47 +1,66 @@
 {
-  "title": "Coach Training",
-  "subtitle": "Train one skill per week. Training unlocks every Monday at 00:00.",
-  "trained_this_week": "Weekly training already done. Next available: Monday {{date}} at 00:00",
-  "skills": {
+  "title": "Weekly Coach Boost",
+  "subtitle": "Pick one boost per week for your team. Resets every Monday at 00:00 (BRT).",
+  "active_label": "Active boost this week",
+  "no_active": "No boost picked for this week.",
+  "locked_until": "Next pick unlocks Monday {{date}} at 00:00.",
+  "pick_one_warning": "You can pick only ONE boost per week. Once confirmed, it's locked until the next reset.",
+  "boosts": {
     "tactics": {
       "label": "Tactics",
-      "description": "Reduces out-of-position penalty.",
-      "bonus": "-0.7% penalty/level (7% max)"
+      "description": "Reduces the out-of-position penalty by 10%.",
+      "bonus": "-10% out-of-position penalty"
     },
     "formation": {
       "label": "Formation",
-      "description": "Attribute bonus when using the trained formation.",
-      "bonus": "+0.5% attributes/level (5% max)"
+      "description": "+5% to all attributes when the team uses the trained formation.",
+      "bonus": "+5% attributes with the chosen formation",
+      "param_label": "Trained formation"
     },
     "fitness": {
       "label": "Fitness",
-      "description": "Reduces stamina loss per turn.",
-      "bonus": "-0.5% stamina/level (5% max)"
+      "description": "Reduces every player's energy drain per turn by 10%.",
+      "bonus": "-10% energy drain per turn"
     },
     "set_piece": {
       "label": "Set Pieces",
-      "description": "Improves accuracy on free kicks, corners and penalties.",
-      "bonus": "-1% deviation/level (10% max)"
+      "description": "Improves precision on dead-ball restarts (free kicks, corners, penalties, throw-ins, goal kicks) by 15%.",
+      "bonus": "+15% precision on set pieces"
     },
     "mentality": {
       "label": "Mentality",
-      "description": "Mental attribute bonus when losing.",
-      "bonus": "+0.5% mental/level (5% max)"
+      "description": "+10% to all mental attributes while the team is losing.",
+      "bonus": "+10% mental attributes while losing"
     },
     "high_press": {
       "label": "High Press",
-      "description": "Increases ball-recovery chance.",
-      "bonus": "+0.5% steal/level (5% max)"
+      "description": "+10% chance of stealing the ball.",
+      "bonus": "+10% steal chance"
+    },
+    "training_focus": {
+      "label": "Training Focus",
+      "description": "Pick an attribute category. Every player gets +10% gain on training that category this week.",
+      "bonus": "+10% gain on training the chosen category",
+      "param_label": "Focus category"
     }
   },
-  "trained_formation_label": "Trained formation: {{formation}}",
+  "categories": {
+    "Físico": "Physical",
+    "Técnico": "Technical",
+    "Mental": "Mental",
+    "Chute": "Shooting",
+    "Goleiro": "Goalkeeper"
+  },
   "buttons": {
-    "max_level": "Max Level",
-    "waiting": "Locked",
-    "train_level": "Train Level {{level}}"
+    "confirm": "Confirm boost",
+    "active": "Active boost",
+    "locked": "Locked until Monday",
+    "select_formation": "Select a formation",
+    "select_category": "Select a category"
   },
   "toast": {
-    "trained_ok": "{{skill}} training done!",
-    "error": "Error training"
+    "set_ok": "Weekly boost activated: {{label}}",
+    "param_required": "Select a value before confirming",
+    "error": "Error saving boost"
   }
 }
