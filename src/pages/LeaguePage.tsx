@@ -375,6 +375,19 @@ export default function LeaguePage() {
       });
       if (error) throw error;
 
+      // Append the closing paragraph to the player's origin story.
+      // No-op (idempotent) on subsequent signings — only the first
+      // first contract triggers the new "now at {club}" sentence.
+      try {
+        const { buildOriginStoryClosingBilingual } = await import('@/lib/narratives/originStory');
+        const { closing_pt, closing_en } = buildOriginStoryClosingBilingual(joinTarget.name);
+        await (supabase as any).rpc('append_origin_closing', {
+          p_player_id: playerProfile.id,
+          p_closing_pt: closing_pt,
+          p_closing_en: closing_en,
+        });
+      } catch (e) { console.warn('[origin closing] append failed:', e); }
+
       // Best-fit slot in the starting XI + first-human-as-assistant promotion.
       // Failures here are non-fatal — the contract is already signed; the
       // user can re-arrange later.

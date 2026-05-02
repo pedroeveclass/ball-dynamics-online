@@ -138,6 +138,22 @@ export default function PlayerOffersPage() {
         throw transferError;
       }
 
+      // Append the closing paragraph to the player's origin story.
+      // No-op (idempotent) if it was already appended on a previous
+      // first signing — only the very first contract triggers the new
+      // "now at {club}, the journey begins" sentence.
+      if (actionOffer.club_name) {
+        try {
+          const { buildOriginStoryClosingBilingual } = await import('@/lib/narratives/originStory');
+          const { closing_pt, closing_en } = buildOriginStoryClosingBilingual(actionOffer.club_name);
+          await (supabase as any).rpc('append_origin_closing', {
+            p_player_id: playerProfile.id,
+            p_closing_pt: closing_pt,
+            p_closing_en: closing_en,
+          });
+        } catch (e) { console.warn('[origin closing] append failed:', e); }
+      }
+
       // Wage bill + release clause already handled inside the RPC
 
       // Notify both clubs about the transfer finances

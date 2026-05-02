@@ -3583,6 +3583,14 @@ export type Database = {
       }
       leave_pickup_game: { Args: { p_pickup_id: string }; Returns: undefined }
       mark_digest_read: { Args: { p_digest_id: number }; Returns: undefined }
+      append_origin_closing: {
+        Args: {
+          p_player_id: string
+          p_closing_pt: string
+          p_closing_en: string
+        }
+        Returns: undefined
+      }
       merge_match_action_payload: {
         Args: { p_action_id: string; p_patch: Json }
         Returns: undefined

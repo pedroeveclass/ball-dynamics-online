@@ -47,12 +47,14 @@ function getNarrativeData(lang: string) {
 }
 
 // ── Main assembly ──
-// Builds a 7-sentence paragraph by picking one variation from each of the
-// six dimension buckets, plus a closing variation that depends on whether
-// the player has a club (with_club vs free_agent).
+// Builds a 6-sentence paragraph by picking one variation from each of
+// the six dimension buckets. The closing paragraph (about joining the
+// first professional club) is intentionally omitted at creation —
+// new players start as free agents and the closing is appended via
+// append_origin_closing RPC the moment they sign their first contract.
 export function assembleOriginStoryInLang(ctx: OriginAssemblyContext, lang: 'pt' | 'en'): string {
   const data = getNarrativeData(lang).originStory;
-  const { name, clubName, answers } = ctx;
+  const { name, answers } = ctx;
 
   const scene = pick(data.scenes[answers.scene] as string[]).replace(/\{name\}/g, name);
   const mentor = pick(data.mentors[answers.mentor] as string[]);
@@ -61,14 +63,7 @@ export function assembleOriginStoryInLang(ctx: OriginAssemblyContext, lang: 'pt'
   const trait = pick(data.traits[answers.trait] as string[]);
   const dream = pick(data.dreams[answers.dream] as string[]);
 
-  let closing: string;
-  if (clubName) {
-    closing = pick(data.closings as string[]).replace(/\{club\}/g, clubName);
-  } else {
-    closing = pick((data as any).closings_free_agent as string[]);
-  }
-
-  return [scene, mentor, spark, obstacle, trait, dream, closing].join(' ');
+  return [scene, mentor, spark, obstacle, trait, dream].join(' ');
 }
 
 // Convenience: build PT and EN bodies in one call. Both are stored on the
@@ -78,6 +73,21 @@ export function assembleOriginStoryBilingual(ctx: OriginAssemblyContext): { body
   return {
     body_pt: assembleOriginStoryInLang(ctx, 'pt'),
     body_en: assembleOriginStoryInLang(ctx, 'en'),
+  };
+}
+
+// Builds just the closing sentence — the "now at {club}, the journey
+// begins" paragraph. Called on first contract signing and appended to
+// the canonical origin story via append_origin_closing RPC.
+export function buildOriginStoryClosing(clubName: string, lang: 'pt' | 'en'): string {
+  const data = getNarrativeData(lang).originStory;
+  return pick(data.closings as string[]).replace(/\{club\}/g, clubName);
+}
+
+export function buildOriginStoryClosingBilingual(clubName: string): { closing_pt: string; closing_en: string } {
+  return {
+    closing_pt: buildOriginStoryClosing(clubName, 'pt'),
+    closing_en: buildOriginStoryClosing(clubName, 'en'),
   };
 }
 

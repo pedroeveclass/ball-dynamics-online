@@ -358,6 +358,20 @@ export async function detectAndPersistMatchMilestones(
     const clubName = new Map<string, string>();
     for (const c of clubs ?? []) clubName.set(c.id, c.name);
 
+    // Single career-rows query for all players in this match — replaces
+    // the per-player loop query that was exhausting edge worker memory
+    // when iterating ~190 matches × 22 players in the backfill.
+    const { data: allCareerRowsRaw } = await supabase
+      .from('player_match_stats')
+      .select('player_profile_id, match_id, season_id, goals, assists, clean_sheet, gk_penalties_saved, tackles, yellow_cards, red_cards')
+      .in('player_profile_id', playerIds);
+    const careerByPlayer = new Map<string, any[]>();
+    for (const r of allCareerRowsRaw ?? []) {
+      const arr = careerByPlayer.get(r.player_profile_id);
+      if (arr) arr.push(r);
+      else careerByPlayer.set(r.player_profile_id, [r]);
+    }
+
     for (const ms of matchStatsAll) {
       const profile = profileById.get(ms.player_profile_id);
       if (!profile) continue;
@@ -365,13 +379,7 @@ export async function detectAndPersistMatchMilestones(
       const opponentClubId = ms.club_id === match.home_club_id ? match.away_club_id : match.home_club_id;
       const opponentName = clubName.get(opponentClubId) ?? '';
 
-      // Career rows for this player (includes the current match)
-      const { data: careerRows } = await supabase
-        .from('player_match_stats')
-        .select('match_id, season_id, goals, assists, clean_sheet, gk_penalties_saved, tackles, yellow_cards, red_cards')
-        .eq('player_profile_id', ms.player_profile_id);
-
-      const allRows = careerRows ?? [];
+      const allRows = careerByPlayer.get(ms.player_profile_id) ?? [];
       const beforeRows = allRows.filter((r: any) => r.match_id !== matchId);
       const seasonRows = allRows.filter((r: any) => r.season_id === (ms as any).season_id);
       const seasonBeforeRows = seasonRows.filter((r: any) => r.match_id !== matchId);
