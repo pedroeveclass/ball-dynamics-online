@@ -20,7 +20,9 @@
   "visual": {
     "title": "Visual do Jogador",
     "front": "Frente",
-    "back": "Costas"
+    "back": "Costas",
+    "uniform_1": "Uniforme 1",
+    "uniform_2": "Uniforme 2"
   },
   "attributes": {
     "title": "Atributos",

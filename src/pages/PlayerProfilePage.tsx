@@ -136,15 +136,17 @@ export default function PlayerProfilePage() {
 
   const [clubName, setClubName] = useState<string | null>(null);
   const [clubColors, setClubColors] = useState<{ primary: string; secondary: string; crestUrl: string | null } | null>(null);
-  // Active player's kit: uniform 3 if GK, uniform 1 otherwise. Null when the
-  // player is a free agent or kits aren't seeded yet.
-  const [activeKit, setActiveKit] = useState<{
+  // All kits the club has seeded, keyed by uniform_number (1=home, 2=away,
+  // 3=GK). The visual picks one based on `kitVariant` + GK flag below.
+  const [clubKits, setClubKits] = useState<Record<number, {
     shirt_color: string;
     number_color: string;
     pattern: string;
     stripe_color: string;
-  } | null>(null);
+  }>>({});
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
+  // 1 = home, 2 = away. GK still wears uniform 3 regardless (no away GK kit).
+  const [kitVariant, setKitVariant] = useState<1 | 2>(1);
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
   const [trainingHistory, setTrainingHistory] = useState<TrainingRecord[]>([]);
@@ -181,7 +183,7 @@ export default function PlayerProfilePage() {
 
   // ── Fetch club info ──
   useEffect(() => {
-    if (!p?.club_id) { setClubName(null); setClubColors(null); setActiveKit(null); return; }
+    if (!p?.club_id) { setClubName(null); setClubColors(null); setClubKits({}); return; }
     (async () => {
       const [{ data: club }, { data: kits }] = await Promise.all([
         supabase
@@ -198,16 +200,15 @@ export default function PlayerProfilePage() {
         setClubName(club.name);
         setClubColors({ primary: club.primary_color, secondary: club.secondary_color, crestUrl: (club as any).crest_url ?? null });
       }
-      // Pick uniform 3 (goalkeeper) if the player is a GK, else uniform 1
-      // (home). Falls back to whichever exists, or null when the club has no
-      // kit rows yet.
-      const isGK = (p.primary_position || '').toUpperCase() === 'GK';
-      const home = (kits || []).find((k: any) => k.uniform_number === 1) || null;
-      const gk = (kits || []).find((k: any) => k.uniform_number === 3) || null;
-      const chosen = isGK ? (gk || home) : home;
-      setActiveKit(chosen as any);
+      // Index every kit by uniform_number so the toggle below can pick one
+      // without re-querying. Uniform 1 = home, 2 = away, 3 = GK home.
+      const byNumber: Record<number, any> = {};
+      for (const k of (kits || []) as any[]) {
+        if (k && typeof k.uniform_number === 'number') byNumber[k.uniform_number] = k;
+      }
+      setClubKits(byNumber);
     })();
-  }, [p?.club_id, p?.primary_position]);
+  }, [p?.club_id]);
 
   // ── Fetch attributes ──
   useEffect(() => {
@@ -432,6 +433,16 @@ export default function PlayerProfilePage() {
   const isRetired = (p as any).retirement_status === 'retired';
   const canRetire = !isRetired && p.age >= 38 && p.user_id != null;
 
+  // GKs always wear uniform 3 (no away GK kit). Outfield players toggle
+  // between uniform 1 (home) and uniform 2 (away). Falls back to home if the
+  // chosen variant isn't seeded for the club.
+  const isGK = (p.primary_position || '').toUpperCase() === 'GK';
+  const activeKit = isGK
+    ? (clubKits[3] || clubKits[1] || null)
+    : (clubKits[kitVariant] || clubKits[1] || null);
+  const hasAwayKit = !isGK && !!clubKits[2];
+  const isBackView = bodyVariant === 'full-back';
+
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
@@ -582,8 +593,27 @@ export default function PlayerProfilePage() {
                 ))}
               </div>
             </div>
+            {/* Kit toggle (home / away). Hidden for GKs since there's no away
+                GK kit in the data model — they always wear uniform 3. */}
+            {hasAwayKit && (
+              <div className="flex justify-end mb-2">
+                <div className="flex gap-1">
+                  {([1, 2] as const).map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setKitVariant(n)}
+                      className={`px-3 py-1 rounded text-xs font-display font-semibold transition-colors ${
+                        kitVariant === n ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                      }`}
+                    >
+                      {n === 1 ? t('visual.uniform_1') : t('visual.uniform_2')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex justify-center py-2">
-              <div className="h-80 w-40">
+              <div className={isBackView ? 'h-52 w-40' : 'h-80 w-40'}>
                 <PlayerAvatar
                   appearance={(p as any).appearance}
                   variant={bodyVariant}
@@ -596,7 +626,8 @@ export default function PlayerProfilePage() {
                   uniformPattern={activeKit?.pattern}
                   uniformStripeColor={activeKit?.stripe_color}
                   uniformNumberColor={activeKit?.number_color}
-                  isGoalkeeper={(p.primary_position || '').toUpperCase() === 'GK'}
+                  isGoalkeeper={isGK}
+                  backShirtOnly={isBackView}
                   className="w-full h-full"
                   fallbackSeed={p.id}
                 />

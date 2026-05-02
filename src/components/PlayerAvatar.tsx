@@ -29,6 +29,10 @@ interface PlayerAvatarProps {
   // a goalkeeper. Caller is expected to also feed in the GK kit colors via
   // uniformPattern/uniformStripeColor (uniform_number = 3 in club_uniforms).
   isGoalkeeper?: boolean;
+  // When true together with variant='full-back', renders just the jersey
+  // (torso + name + number + crest), dropping head/arms/legs/shorts/feet so
+  // the kit reads as a hanging shirt. Ignored for any other variant.
+  backShirtOnly?: boolean;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -110,6 +114,7 @@ export function PlayerAvatar({
   uniformStripeColor,
   uniformNumberColor,
   isGoalkeeper = false,
+  backShirtOnly = false,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
@@ -142,6 +147,7 @@ export function PlayerAvatar({
 
   const scale = heightScale(height);
   const isBack = variant === 'full-back';
+  const shirtOnly = isBack && backShirtOnly;
 
   // Back view crops out head + neck. Viewbox starts at y=114 so the shirt
   // fills the container, AND a clipPath at y>=114 is applied AFTER the
@@ -161,15 +167,21 @@ export function PlayerAvatar({
   // pixel scale in the same container — i.e. tall players still look
   // visibly taller, they just no longer get their head sliced off.
   const FRONT_HEAD_PAD = 60;
-  const viewBox = isBack
-    ? '0 114 200 286'
-    : `0 ${-FRONT_HEAD_PAD} 200 ${400 + FRONT_HEAD_PAD}`;
+  // Shirt-only back view tightens the viewBox to just the torso (with a hair
+  // of breathing room above for the collar shadow and below for the bottom
+  // hem). Full back stays the original 0:114:200:286 frame so non-shirt-only
+  // callers keep their layout unchanged.
+  const viewBox = shirtOnly
+    ? '48 108 104 134'
+    : isBack
+      ? '0 114 200 286'
+      : `0 ${-FRONT_HEAD_PAD} 200 ${400 + FRONT_HEAD_PAD}`;
   const backCropId = `avBackCrop_${clipId}`;
 
   return (
     <div className={`relative ${className ?? ''}`}>
       <svg viewBox={viewBox} xmlns="http://www.w3.org/2000/svg" className="w-full h-full" preserveAspectRatio="xMidYMax meet">
-        {isBack && (
+        {isBack && !shirtOnly && (
           <defs>
             <clipPath id={backCropId}>
               {/* In user-space (post-transform) coords: keep only y >= 114. */}
@@ -177,8 +189,8 @@ export function PlayerAvatar({
             </clipPath>
           </defs>
         )}
-        <g clipPath={isBack ? `url(#${backCropId})` : undefined}>
-          <g transform={`translate(100 400) scale(${scale}) translate(-100 -400)`}>
+        <g clipPath={isBack && !shirtOnly ? `url(#${backCropId})` : undefined}>
+          <g transform={shirtOnly ? undefined : `translate(100 400) scale(${scale}) translate(-100 -400)`}>
             {isBack ? (
               <BackBody
                 appearance={effective}
@@ -193,6 +205,7 @@ export function PlayerAvatar({
                 outfit={outfit}
                 isGoalkeeper={isGK}
                 clipId={clipId}
+                shirtOnly={shirtOnly}
               />
             ) : (
               <FrontBody
@@ -656,6 +669,7 @@ function BackBody({
   outfit,
   isGoalkeeper,
   clipId,
+  shirtOnly,
 }: {
   appearance: PlayerAppearance;
   primary: string;
@@ -669,6 +683,7 @@ function BackBody({
   outfit: AvatarOutfit;
   isGoalkeeper: boolean;
   clipId: string;
+  shirtOnly: boolean;
 }) {
   const skin = `#${appearance.skinTone}`;
   const hair = `#${appearance.hairColor}`;
@@ -688,65 +703,72 @@ function BackBody({
 
   return (
     <>
-      {/* ── Feet ── */}
-      {isCoach ? (
+      {/* In shirt-only mode we skip everything except the torso, the back
+          collar shadow, and the name/number/crest tags so the result reads as
+          a clean hanging jersey. */}
+      {!shirtOnly && (
         <>
-          <DressShoe mirror />
-          <DressShoe />
-        </>
-      ) : (
-        <>
-          <Cleat primary={primary} secondary={secondary} mirror />
-          <Cleat primary={primary} secondary={secondary} />
-        </>
-      )}
+          {/* ── Feet ── */}
+          {isCoach ? (
+            <>
+              <DressShoe mirror />
+              <DressShoe />
+            </>
+          ) : (
+            <>
+              <Cleat primary={primary} secondary={secondary} mirror />
+              <Cleat primary={primary} secondary={secondary} />
+            </>
+          )}
 
-      {/* ── Socks — player only ── */}
-      {!isCoach && (
-        <>
-          <rect x="73" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
-          <rect x="109" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
-        </>
-      )}
+          {/* ── Socks — player only ── */}
+          {!isCoach && (
+            <>
+              <rect x="73" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+              <rect x="109" y="360" width="18" height="16" fill={secondary} stroke={primary} strokeWidth="1.5" />
+            </>
+          )}
 
-      {/* ── Legs / trousers ── */}
-      {isCoach ? (
-        <>
-          <path d="M 70 235 L 95 235 L 93 384 L 72 384 Z" fill={COACH_PANTS} />
-          <path d="M 105 235 L 130 235 L 128 384 L 107 384 Z" fill={COACH_PANTS} />
-          <line x1="100" y1="235" x2="100" y2="380" stroke="#000" strokeWidth="1" opacity="0.55" />
-        </>
-      ) : (
-        <>
-          <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
-          <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
-        </>
-      )}
+          {/* ── Legs / trousers ── */}
+          {isCoach ? (
+            <>
+              <path d="M 70 235 L 95 235 L 93 384 L 72 384 Z" fill={COACH_PANTS} />
+              <path d="M 105 235 L 130 235 L 128 384 L 107 384 Z" fill={COACH_PANTS} />
+              <line x1="100" y1="235" x2="100" y2="380" stroke="#000" strokeWidth="1" opacity="0.55" />
+            </>
+          ) : (
+            <>
+              <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
+              <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
+            </>
+          )}
 
-      {/* ── Shorts — player only ── */}
-      {!isCoach && (
-        <>
-          <path d="M 65 235 L 133 235 Q 137 235 137 240 L 135 290 L 100 287 L 65 290 L 63 240 Q 63 235 67 235 Z"
-                fill={secondary} stroke={primary} strokeWidth="1.5" />
-          <line x1="100" y1="235" x2="100" y2="288" stroke={primary} strokeWidth="1.5" opacity="0.55" />
-        </>
-      )}
+          {/* ── Shorts — player only ── */}
+          {!isCoach && (
+            <>
+              <path d="M 65 235 L 133 235 Q 137 235 137 240 L 135 290 L 100 287 L 65 290 L 63 240 Q 63 235 67 235 Z"
+                    fill={secondary} stroke={primary} strokeWidth="1.5" />
+              <line x1="100" y1="235" x2="100" y2="288" stroke={primary} strokeWidth="1.5" opacity="0.55" />
+            </>
+          )}
 
-      {/* ── Arms ── */}
-      {isCoach ? (
-        <>
-          <CoachArm skin={skin} />
-          <CoachArm skin={skin} mirror />
-        </>
-      ) : isGoalkeeper ? (
-        <>
-          <GoalkeeperArm primary={primary} secondary={stripe} />
-          <GoalkeeperArm primary={primary} secondary={stripe} mirror />
-        </>
-      ) : (
-        <>
-          <Arm primary={primary} secondary={secondary} skin={skin} />
-          <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+          {/* ── Arms ── */}
+          {isCoach ? (
+            <>
+              <CoachArm skin={skin} />
+              <CoachArm skin={skin} mirror />
+            </>
+          ) : isGoalkeeper ? (
+            <>
+              <GoalkeeperArm primary={primary} secondary={stripe} />
+              <GoalkeeperArm primary={primary} secondary={stripe} mirror />
+            </>
+          ) : (
+            <>
+              <Arm primary={primary} secondary={secondary} skin={skin} />
+              <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+            </>
+          )}
         </>
       )}
 
@@ -794,47 +816,51 @@ function BackBody({
         <image href={crestUrl} x="128" y="132" width="14" height="14" preserveAspectRatio="xMidYMid meet" />
       )}
 
-      {/* ── Neck (wider, more athletic) ── */}
-      <rect x="87" y="88" width="25" height="28" fill={skin} />
-      {/* Neck shadow on the shirt collar line */}
-      <path d="M 86 114 L 114 114 L 116 119 L 84 119 Z" fill="#000" opacity="0.25" />
-
-      {/* ── Back of head: egg-shaped (rounded crown, tapering toward nape)
-          instead of a perfect circle. Hair covers almost all of it so it
-          doesn't read "bald". ── */}
-      <path
-        d="M 64 48 Q 64 12 100 12 Q 136 12 136 48 Q 136 84 126 90 L 74 90 Q 64 84 64 48 Z"
-        fill={skin}
-      />
-      {!isBald && (
+      {!shirtOnly && (
         <>
-          {/* Hair cap covers nearly the entire back of the head, leaving only
-              a thin strip at the nape and tiny ear edges on the sides. */}
+          {/* ── Neck (wider, more athletic) ── */}
+          <rect x="87" y="88" width="25" height="28" fill={skin} />
+          {/* Neck shadow on the shirt collar line */}
+          <path d="M 86 114 L 114 114 L 116 119 L 84 119 Z" fill="#000" opacity="0.25" />
+
+          {/* ── Back of head: egg-shaped (rounded crown, tapering toward nape)
+              instead of a perfect circle. Hair covers almost all of it so it
+              doesn't read "bald". ── */}
           <path
-            d={isLong
-              ? 'M 60 48 Q 60 10 100 10 Q 140 10 140 48 L 140 140 Q 140 146 132 146 L 68 146 Q 60 146 60 140 Z'
-              : 'M 66 48 Q 66 12 100 12 Q 134 12 134 48 Q 134 84 126 88 L 74 88 Q 66 84 66 48 Z'
-            }
-            fill={hair}
+            d="M 64 48 Q 64 12 100 12 Q 136 12 136 48 Q 136 84 126 90 L 74 90 Q 64 84 64 48 Z"
+            fill={skin}
           />
-          {/* Top highlight */}
-          <path
-            d={isLong
-              ? 'M 74 24 Q 100 12 126 24 L 120 34 Q 100 24 80 34 Z'
-              : 'M 76 22 Q 100 14 124 22 L 118 30 Q 100 22 82 30 Z'
-            }
-            fill="#fff"
-            opacity="0.1"
-          />
-          {/* Nape (hairline strip between hair and neck) — same hair tone, gives edge */}
-          {!isLong && (
-            <path d="M 74 86 Q 100 92 126 86 L 124 90 Q 100 94 76 90 Z" fill={hair} opacity="0.8" />
+          {!isBald && (
+            <>
+              {/* Hair cap covers nearly the entire back of the head, leaving only
+                  a thin strip at the nape and tiny ear edges on the sides. */}
+              <path
+                d={isLong
+                  ? 'M 60 48 Q 60 10 100 10 Q 140 10 140 48 L 140 140 Q 140 146 132 146 L 68 146 Q 60 146 60 140 Z'
+                  : 'M 66 48 Q 66 12 100 12 Q 134 12 134 48 Q 134 84 126 88 L 74 88 Q 66 84 66 48 Z'
+                }
+                fill={hair}
+              />
+              {/* Top highlight */}
+              <path
+                d={isLong
+                  ? 'M 74 24 Q 100 12 126 24 L 120 34 Q 100 24 80 34 Z'
+                  : 'M 76 22 Q 100 14 124 22 L 118 30 Q 100 22 82 30 Z'
+                }
+                fill="#fff"
+                opacity="0.1"
+              />
+              {/* Nape (hairline strip between hair and neck) — same hair tone, gives edge */}
+              {!isLong && (
+                <path d="M 74 86 Q 100 92 126 86 L 124 90 Q 100 94 76 90 Z" fill={hair} opacity="0.8" />
+              )}
+            </>
           )}
+          {/* Ears peeking past the hair on the sides */}
+          <ellipse cx="65" cy="56" rx="3" ry="6" fill={skin} />
+          <ellipse cx="135" cy="56" rx="3" ry="6" fill={skin} />
         </>
       )}
-      {/* Ears peeking past the hair on the sides */}
-      <ellipse cx="65" cy="56" rx="3" ry="6" fill={skin} />
-      <ellipse cx="135" cy="56" rx="3" ry="6" fill={skin} />
 
       {/* Floating name label intentionally removed: back view is cropped to
           shirt-and-below (viewBox starts at y=114), so a label at y=9 would be

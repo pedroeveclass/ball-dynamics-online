@@ -27,7 +27,9 @@
   "visual": {
     "title": "Visual",
     "front": "Frente",
-    "back": "Costas"
+    "back": "Costas",
+    "uniform_1": "Uniforme 1",
+    "uniform_2": "Uniforme 2"
   },
   "attrs_overview": {
     "title": "Visão Geral de Atributos",

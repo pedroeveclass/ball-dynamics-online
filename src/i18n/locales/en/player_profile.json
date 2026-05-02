@@ -27,7 +27,9 @@
   "visual": {
     "title": "Appearance",
     "front": "Front",
-    "back": "Back"
+    "back": "Back",
+    "uniform_1": "Kit 1",
+    "uniform_2": "Kit 2"
   },
   "attrs_overview": {
     "title": "Attributes Overview",
