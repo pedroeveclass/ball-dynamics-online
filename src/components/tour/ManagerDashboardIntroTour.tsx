@@ -1,4 +1,4 @@
-import { Joyride, CallBackProps, EVENTS, Step } from 'react-joyride';
+import { Joyride, EventData, EVENTS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
 import { TOUR_STYLES } from './joyrideStyles';
@@ -23,14 +23,14 @@ export function ManagerDashboardIntroTour({ enabled }: Props) {
     { target: '[data-tour="manager-reports"]', content: renderStep('manager_dashboard_intro.step4.title', 'manager_dashboard_intro.step4.body'), placement: 'top', skipBeacon: true },
   ];
 
-  const handleCallback = (data: CallBackProps) => {
+  const handleCallback = (data: EventData) => {
     if (data.type === EVENTS.TOUR_END) markSeen();
   };
 
   if (!enabled || !shouldRun) return null;
   return (
     <Joyride steps={steps} run={shouldRun} continuous showSkipButton showProgress disableOverlayClose
-      callback={handleCallback}
+      onEvent={handleCallback}
       locale={{ back: t('common.back'), close: t('common.close'), last: t('common.done'), next: t('common.next'), skip: t('common.skip') }}
       styles={TOUR_STYLES} />
   );

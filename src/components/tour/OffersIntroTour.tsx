@@ -1,4 +1,4 @@
-import { Joyride, CallBackProps, EVENTS, Step } from 'react-joyride';
+import { Joyride, EventData, EVENTS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
 
@@ -32,7 +32,7 @@ export function OffersIntroTour({ enabled }: OffersIntroTourProps) {
     },
   ];
 
-  const handleCallback = (data: CallBackProps) => {
+  const handleCallback = (data: EventData) => {
     if (data.type === EVENTS.TOUR_END) markSeen();
   };
 
@@ -46,7 +46,7 @@ export function OffersIntroTour({ enabled }: OffersIntroTourProps) {
       showSkipButton
       showProgress
       disableOverlayClose
-      callback={handleCallback}
+      onEvent={handleCallback}
       locale={{
         back: t('common.back'),
         close: t('common.close'),

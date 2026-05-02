@@ -184,7 +184,7 @@ BEGIN
   -- Notificações: todos os usuários autenticados com algum
   -- player_profile (qualquer um pode votar conforme decidido).
   IF p_send_notifications AND v_poll_id IS NOT NULL THEN
-    v_link := '/liga?round=' || p_round_id::text || '#mvp';
+    v_link := '/league?round=' || p_round_id::text || '#mvp';
     INSERT INTO public.notifications (user_id, type, title, body, link, i18n_key, i18n_params)
     SELECT DISTINCT pp.user_id,
            'round_mvp_open',
@@ -324,7 +324,7 @@ BEGIN
              'round_mvp_won',
              'Você foi o MVP da Rodada ' || v_round.round_number || '! 🏆',
              'Os colegas votaram em você como o melhor da Rodada ' || v_round.round_number || '.',
-             '/liga?round=' || v_poll.scope_entity_id::text || '#mvp',
+             '/league?round=' || v_poll.scope_entity_id::text || '#mvp',
              'round_mvp_won',
              jsonb_build_object('round', v_round.round_number, 'votes', v_winner_votes)
       FROM public.player_profiles pp
