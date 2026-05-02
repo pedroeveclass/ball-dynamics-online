@@ -21,6 +21,31 @@
       "empty": "No milestones recorded yet."
     }
   },
+  "seasonRecap": {
+    "tab_label": "Season Recap",
+    "section": {
+      "title": "Season {{n}} Recap",
+      "loading": "Loading season recap...",
+      "missing": "Season recap hasn't been generated yet.",
+      "champion": "Champion",
+      "runner_up": "Runner-up",
+      "third": "3rd Place",
+      "next_season": "Next season",
+      "team_of_season": "Team of the Season",
+      "curiosities": "Curious Stats",
+      "biggest_win": "Biggest win",
+      "highest_scoring": "Highest-scoring match",
+      "best_attack": "Best attack",
+      "best_defense": "Best defense",
+      "total_yellow": "Yellow cards",
+      "total_red": "Red cards",
+      "round_label": "Round {{n}}",
+      "top_moments": "Top 5 Moments",
+      "match_chronicle_open": "Read full chronicle",
+      "final_table": "Final Standings",
+      "view_hall_of_fame": "Open Hall of Fame"
+    }
+  },
   "weeklyDigest": {
     "modal": {
       "title": "Weekly Recap",

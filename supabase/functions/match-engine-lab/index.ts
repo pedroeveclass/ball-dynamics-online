@@ -2,6 +2,7 @@
 import { generateAndPersistMatchRecap } from './match_recap_templates.ts';
 import { generateAndPersistRoundRecap } from './round_recap_templates.ts';
 import { detectAndPersistMatchMilestones, detectAndPersistSeasonMilestones } from './player_milestones_templates.ts';
+import { generateAndPersistSeasonRecap } from './season_recap_templates.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9784,6 +9785,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 } catch (agingEx) {
                   console.error(`[ENGINE] advance_all_player_ages threw for season ${round.season_id}:`, agingEx);
                 }
+
+                // Season recap (canonical narrative) — runs LAST so the
+                // persist_season_auto_awards trigger (fired by the UPDATE
+                // above) has already populated player_awards. Best-effort:
+                // any failure is logged and never blocks aging or future runs.
+                await generateAndPersistSeasonRecap(supabase, round.season_id);
               }
             }
 

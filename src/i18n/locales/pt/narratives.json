@@ -21,6 +21,31 @@
       "empty": "Nenhum marco registrado ainda."
     }
   },
+  "seasonRecap": {
+    "tab_label": "Resumo da Temporada",
+    "section": {
+      "title": "Resumo da Temporada {{n}}",
+      "loading": "Carregando resumo da temporada...",
+      "missing": "O resumo da temporada ainda não foi gerado.",
+      "champion": "Campeão",
+      "runner_up": "Vice",
+      "third": "3º Lugar",
+      "next_season": "Próxima temporada",
+      "team_of_season": "Seleção da Temporada",
+      "curiosities": "Estatísticas Curiosas",
+      "biggest_win": "Maior goleada",
+      "highest_scoring": "Jogo com mais gols",
+      "best_attack": "Melhor ataque",
+      "best_defense": "Melhor defesa",
+      "total_yellow": "Cartões amarelos",
+      "total_red": "Cartões vermelhos",
+      "round_label": "Rodada {{n}}",
+      "top_moments": "Top 5 Momentos",
+      "match_chronicle_open": "Ler crônica completa",
+      "final_table": "Classificação Final",
+      "view_hall_of_fame": "Ver Hall da Fama"
+    }
+  },
   "weeklyDigest": {
     "modal": {
       "title": "Resumo da Semana",

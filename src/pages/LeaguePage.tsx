@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { RoundRecapCard } from '@/components/league/RoundRecapCard';
+import { SeasonRecapView } from '@/components/league/SeasonRecapView';
 import { RoundMvpVoteCard } from '@/components/league/RoundMvpVoteCard';
 import { SeasonAwardsCard } from '@/components/league/SeasonAwardsCard';
 import { ManagerLayout } from '@/components/ManagerLayout';
@@ -126,6 +127,7 @@ export default function LeaguePage() {
   const { user, managerProfile, playerProfile, club, refreshManagerProfile, refreshPlayerProfile } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('league');
+  const { t: tNarratives } = useTranslation('narratives');
   const [loading, setLoading] = useState(true);
   // The viewer's next league fixture — used both for the "Próximo Jogo"
   // highlight on the rounds list and to auto-scroll to that round.
@@ -175,7 +177,9 @@ export default function LeaguePage() {
       ? 'available'
       : searchParams.get('round')
         ? 'rounds'
-        : 'standings';
+        : tabFromQuery === 'recap'
+          ? 'recap'
+          : 'standings';
 
   // Player join flow state
   const [joinableClubs, setJoinableClubs] = useState<JoinableClub[]>([]);
@@ -710,7 +714,19 @@ export default function LeaguePage() {
         <Tabs defaultValue={initialTab} className="space-y-4">
           <LeagueIntroTour enabled={isPlayerFreeAgent && tabFromQuery === 'join' && joinableClubs.length > 0} />
           <ManagerLeagueIntroTour enabled={!!managerProfile} isManagerWithoutClub={isManagerWithoutClub} />
-          <TabsList data-tour="league-tabs" className={`grid w-full ${(isManagerWithoutClub || isPlayerFreeAgent) ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
+          <TabsList data-tour="league-tabs" className={`grid w-full ${
+            (() => {
+              let n = 3;
+              if (isManagerWithoutClub || isPlayerFreeAgent) n += 1;
+              if (seasonStatus === 'finished' && seasonId) n += 1;
+              return `grid-cols-${n}`;
+            })()
+          } max-w-2xl`}>
+            {seasonStatus === 'finished' && seasonId && (
+              <TabsTrigger value="recap" className="bg-tactical/10 data-[state=active]:bg-tactical data-[state=active]:text-tactical-foreground">
+                {tNarratives('seasonRecap.tab_label', { defaultValue: 'Resumo' })}
+              </TabsTrigger>
+            )}
             <TabsTrigger data-tour="league-tab-standings" value="standings">{t('tabs.standings')}</TabsTrigger>
             <TabsTrigger data-tour="league-tab-rounds" value="rounds">{t('tabs.rounds')}</TabsTrigger>
             <TabsTrigger data-tour="league-tab-stats" value="stats" onClick={() => fetchStatistics()}>{t('tabs.stats')}</TabsTrigger>
@@ -735,6 +751,13 @@ export default function LeaguePage() {
               </TabsTrigger>
             )}
           </TabsList>
+
+          {/* Resumo da Temporada tab — only visible when season is finished */}
+          {seasonStatus === 'finished' && seasonId && (
+            <TabsContent value="recap" className="space-y-4">
+              <SeasonRecapView seasonId={seasonId} seasonNumber={seasonNumber} />
+            </TabsContent>
+          )}
 
           {/* Classificação tab */}
           <TabsContent value="standings">
@@ -826,10 +849,7 @@ export default function LeaguePage() {
 
           {/* Rodadas tab */}
           <TabsContent value="rounds" className="space-y-4">
-            {/* Premiações + Season MVP — só aparece quando a temporada já fechou. */}
-            {seasonId && seasonStatus === 'finished' && (
-              <SeasonAwardsCard seasonId={seasonId} seasonNumber={seasonNumber} />
-            )}
+            {/* Premiações + Season MVP migrated to the dedicated "Resumo da Temporada" tab when the season is finished. */}
 
             {/* Próximo Jogo highlight — only shown when the viewer has
                 a club context AND there's a future fixture we could find. */}
