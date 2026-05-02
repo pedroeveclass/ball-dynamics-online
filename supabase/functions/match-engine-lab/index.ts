@@ -458,6 +458,27 @@ async function persistMatchPlayerStats(
       .eq('match_id', matchId);
     const allEvents: any[] = events || [];
 
+    // Position samples for the heatmap — one sample per resolution turn end.
+    // resolution_script.final_positions is keyed by participant_id, so we
+    // aggregate per-participant in a single pass.
+    const { data: turns } = await supabase
+      .from('match_turns')
+      .select('resolution_script')
+      .eq('match_id', matchId)
+      .eq('phase', 'resolution')
+      .order('turn_number', { ascending: true });
+    const samplesByParticipant = new Map<string, Array<{ x: number; y: number }>>();
+    for (const turn of (turns || [])) {
+      const fps = (turn as any)?.resolution_script?.final_positions as Record<string, { x: number; y: number }> | undefined;
+      if (!fps) continue;
+      for (const [pid, pos] of Object.entries(fps)) {
+        if (typeof pos?.x !== 'number' || typeof pos?.y !== 'number') continue;
+        let arr = samplesByParticipant.get(pid);
+        if (!arr) { arr = []; samplesByParticipant.set(pid, arr); }
+        arr.push({ x: pos.x, y: pos.y });
+      }
+    }
+
     // Helper: count events where payload[key] == participantId.
     const countBy = (eventType: string | string[], key: string, participantId: string, extra?: (p: any) => boolean): number => {
       const types = Array.isArray(eventType) ? eventType : [eventType];
@@ -544,6 +565,7 @@ async function persistMatchPlayerStats(
         goals_conceded,
         clean_sheet,
         rating,
+        position_samples: samplesByParticipant.get(pid) ?? [],
       };
     });
 
@@ -7780,8 +7802,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               // pass_complete
               resolvedPayload.passer_participant_id = ballHolder.id;
               resolvedPayload.passer_name = (ballHolder as any)?._player_name ?? null;
+              resolvedPayload.passer_club_id = possClubId;
               resolvedPayload.receiver_participant_id = result.newBallHolderId;
               resolvedPayload.receiver_name = (newHolder as any)?._player_name ?? null;
+              resolvedPayload.from_x = Number((ballHolder as any).pos_x ?? 50);
+              resolvedPayload.from_y = Number((ballHolder as any).pos_y ?? 50);
+              resolvedPayload.to_x = Number((newHolder as any)?.pos_x ?? ballHolderAction?.target_x ?? 50);
+              resolvedPayload.to_y = Number((newHolder as any)?.pos_y ?? ballHolderAction?.target_y ?? 50);
             }
             eventsToLog.push({
               match_id, event_type: resolvedEventType,
@@ -7807,8 +7834,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 payload: {
                   passer_participant_id: ballHolder.id,
                   passer_name: (ballHolder as any)?._player_name ?? null,
+                  passer_club_id: possClubId,
                   intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                   failure_reason: failureReason,
+                  from_x: Number((ballHolder as any).pos_x ?? 50),
+                  from_y: Number((ballHolder as any).pos_y ?? 50),
+                  to_x: Number(ballHolderAction?.target_x ?? 50),
+                  to_y: Number(ballHolderAction?.target_y ?? 50),
                 },
               });
             }
@@ -8038,9 +8070,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: {
                 passer_participant_id: ballHolder.id,
                 passer_name: (ballHolder as any)?._player_name ?? null,
+                passer_club_id: possClubId,
                 intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                 failure_reason: 'receive_failed',
                 message_key: 'match_events:bodies.pass_failed_receive',
+                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_y: Number((ballHolder as any).pos_y ?? 50),
+                to_x: Number(ballHolderAction?.target_x ?? 50),
+                to_y: Number(ballHolderAction?.target_y ?? 50),
               },
             });
           }
@@ -8117,9 +8154,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: {
                 passer_participant_id: ballHolder.id,
                 passer_name: (ballHolder as any)?._player_name ?? null,
+                passer_club_id: possClubId,
                 intended_receiver_participant_id: receiver.id,
                 failure_reason: 'offside',
                 message_key: 'match_events:bodies.pass_failed_offside',
+                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_y: Number((ballHolder as any).pos_y ?? 50),
+                to_x: Number((receiver as any).pos_x ?? 50),
+                to_y: Number((receiver as any).pos_y ?? 50),
               },
             });
 

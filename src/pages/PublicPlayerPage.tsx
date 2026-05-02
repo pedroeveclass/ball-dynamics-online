@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
+import { PlayerMatchesTab } from '@/components/player/PlayerMatchesTab';
 import { CountryFlag } from '@/components/CountryFlag';
 import { getCountry, getCountryName } from '@/lib/countries';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
@@ -335,6 +336,12 @@ export default function PublicPlayerPage() {
 
         {/* Career Statistics (position-specific block) */}
         <CareerStatsBlock playerProfileId={player.id} position={player.primary_position} />
+
+        {/* Recent matches with rating + heatmap drill-down */}
+        <div className="stat-card p-4 space-y-3">
+          <h2 className="font-display text-lg font-bold">Partidas</h2>
+          <PlayerMatchesTab playerProfileId={player.id} />
+        </div>
 
         {/* Attributes */}
         {attrs && (
