@@ -346,7 +346,7 @@ export async function detectAndPersistMatchMilestones(
     const playerIds = matchStatsAll.map((r: any) => r.player_profile_id).filter(Boolean);
     const { data: profiles } = await supabase
       .from('player_profiles')
-      .select('id, full_name, club_id')
+      .select('id, full_name, club_id, primary_position')
       .in('id', playerIds);
     const profileById = new Map<string, any>();
     for (const p of profiles ?? []) profileById.set(p.id, p);
@@ -408,16 +408,29 @@ export async function detectAndPersistMatchMilestones(
         if (crossed(seasonBefore.assists, seasonAfter.assists, t)) triggers.push({ type: `season_${t}_assists` as MilestoneType, vars: baseVars });
       }
 
-      // GK
-      if (crossed(careerBefore.cleanSheets, careerAfter.cleanSheets, 1)) triggers.push({ type: 'first_clean_sheet', vars: baseVars });
-      for (const t of [10, 25, 50, 100] as const) {
-        if (crossed(careerBefore.cleanSheets, careerAfter.cleanSheets, t)) triggers.push({ type: `clean_sheets_${t}` as MilestoneType, vars: baseVars });
-      }
-      if (crossed(careerBefore.penaltiesSaved, careerAfter.penaltiesSaved, 1)) triggers.push({ type: 'first_penalty_save', vars: baseVars });
+      // GK milestones — only for goalkeepers. Clean sheet flag in
+      // player_match_stats is set for every player on a side that didn't
+      // concede (so a midfielder would falsely earn "1º clean sheet"),
+      // so we gate by primary_position.
+      const pos = (profile.primary_position ?? '').toUpperCase();
+      const isGK = pos === 'GK';
+      const isDefenderOrMid = ['CB', 'LB', 'RB', 'CDM', 'DM', 'CM', 'CAM', 'LM', 'RM'].includes(pos);
 
-      // Defense
-      for (const t of [50, 100, 250] as const) {
-        if (crossed(careerBefore.tackles, careerAfter.tackles, t)) triggers.push({ type: `tackles_${t}` as MilestoneType, vars: baseVars });
+      if (isGK) {
+        if (crossed(careerBefore.cleanSheets, careerAfter.cleanSheets, 1)) triggers.push({ type: 'first_clean_sheet', vars: baseVars });
+        for (const t of [10, 25, 50, 100] as const) {
+          if (crossed(careerBefore.cleanSheets, careerAfter.cleanSheets, t)) triggers.push({ type: `clean_sheets_${t}` as MilestoneType, vars: baseVars });
+        }
+        if (crossed(careerBefore.penaltiesSaved, careerAfter.penaltiesSaved, 1)) triggers.push({ type: 'first_penalty_save', vars: baseVars });
+      }
+
+      // Tackle milestones — defenders and midfielders only. Strikers
+      // don't tackle in any meaningful volume; if they hit the threshold
+      // it's incidental and shouldn't be celebrated as a defensive feat.
+      if (isDefenderOrMid || isGK) {
+        for (const t of [50, 100, 250] as const) {
+          if (crossed(careerBefore.tackles, careerAfter.tackles, t)) triggers.push({ type: `tackles_${t}` as MilestoneType, vars: baseVars });
+        }
       }
 
       // Career matches
