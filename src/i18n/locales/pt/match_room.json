@@ -118,6 +118,15 @@
     "finished_with_score": "⏱ ENCERRADA — {{home}} × {{away}}",
     "cancel_drawing": "✕ Cancelar"
   },
+  "stats": {
+    "title": "Visão geral da partida",
+    "possession": "Posse de bola",
+    "shots": "Finalizações",
+    "saves": "Defesas do goleiro",
+    "corners": "Escanteios",
+    "fouls": "Faltas",
+    "passes": "Passes"
+  },
   "bench": {
     "title": "Banco de Reservas",
     "toggle_aria": "Mostrar/ocultar banco de reservas"

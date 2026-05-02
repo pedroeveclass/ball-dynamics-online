@@ -118,6 +118,15 @@
     "finished_with_score": "⏱ FINISHED — {{home}} × {{away}}",
     "cancel_drawing": "✕ Cancel"
   },
+  "stats": {
+    "title": "Match overview",
+    "possession": "Possession",
+    "shots": "Shots",
+    "saves": "Goalkeeper saves",
+    "corners": "Corners",
+    "fouls": "Fouls",
+    "passes": "Passes"
+  },
   "bench": {
     "title": "Bench",
     "toggle_aria": "Show/hide bench"

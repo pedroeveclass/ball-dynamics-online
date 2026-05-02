@@ -13,6 +13,7 @@ import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantL
 import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
+import { MatchEndStats } from './match/MatchEndStats';
 import { HelpModal } from '@/components/HelpModal';
 import { MatchActionMenu } from './match/MatchActionMenu';
 import { PitchSVG, DEFAULT_STADIUM_STYLE } from '@/components/PitchSVG';
@@ -6460,11 +6461,15 @@ export default function MatchRoomPage() {
               </div>
             )}
             {isFinished && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
-                <p className="font-display font-extrabold text-xl text-white">
-                  {i18n.t('match_room:ui.finished_with_score', { home: match.home_score, away: match.away_score })}
-                </p>
-              </div>
+              <MatchEndStats
+                events={events}
+                homeClub={homeClub}
+                awayClub={awayClub}
+                homePlayers={homePlayersMemo}
+                awayPlayers={awayPlayersMemo}
+                homeScore={match.home_score}
+                awayScore={match.away_score}
+              />
             )}
           </div>
 
