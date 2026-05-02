@@ -127,12 +127,19 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
   // Heatmap aggregates the whole match, so just mirror by player's home/away affiliation.
   const attackingDirection: 'ltr' | 'rtl' = playerIsHome ? 'ltr' : 'rtl';
 
+  // Authoritative counts come from player_match_stats (always populated).
+  // The arrays below may be shorter when older events lack coords — that's
+  // why the map can be empty even when the count is positive.
   const buttons: { id: MapMode; label: string; count?: number }[] = [
     { id: 'movement', label: 'Movimentação' },
-    { id: 'passes', label: 'Passes', count: passes.length },
-    { id: 'shots', label: 'Finalizações', count: shots.length },
-    { id: 'defensive', label: 'Desarmes', count: defensive.length },
+    { id: 'passes', label: 'Passes', count: row.passes_attempted },
+    { id: 'shots', label: 'Finalizações', count: row.shots },
+    { id: 'defensive', label: 'Desarmes', count: row.tackles + row.interceptions },
   ];
+  const missingCoords =
+    (mode === 'passes' && row.passes_attempted > 0 && passes.length === 0) ||
+    (mode === 'shots' && row.shots > 0 && shots.length === 0) ||
+    (mode === 'defensive' && (row.tackles + row.interceptions) > 0 && defensive.length === 0);
 
   return (
     <div className="bg-muted/20 rounded-lg p-4 space-y-3">
@@ -175,7 +182,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
               </button>
             ))}
             <span className="text-[10px] text-muted-foreground ml-auto">
-              {passes.filter(p => p.completed).length}/{passes.length}{passes.length ? ` · ${Math.round((passes.filter(p => p.completed).length / passes.length) * 100)}%` : ''}
+              {row.passes_completed}/{row.passes_attempted}{row.passes_attempted ? ` · ${Math.round((row.passes_completed / row.passes_attempted) * 100)}%` : ''}
             </span>
           </div>
           {actionsLoading ? (
@@ -183,7 +190,10 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           ) : (
             <PlayerPassMap passes={passes} attackingDirection={attackingDirection} filter={passFilter} className="rounded-md overflow-hidden" />
           )}
-          <p className="text-[10px] text-muted-foreground">Verde = certo · Vermelho = errado · Ataque →</p>
+          <p className="text-[10px] text-muted-foreground">
+            Verde = certo · Vermelho = errado · Ataque →
+            {missingCoords && ' · Localizações de passe não foram registradas neste jogo (engine antigo).'}
+          </p>
         </>
       )}
 
@@ -195,6 +205,9 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
             <PlayerShotMap shots={shots} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
           )}
           <ShotMapLegend />
+          {missingCoords && (
+            <p className="text-[10px] text-muted-foreground">Localizações de finalização não foram registradas neste jogo (engine antigo).</p>
+          )}
         </>
       )}
 
@@ -206,6 +219,9 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
             <PlayerDefensiveMap events={defensive} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
           )}
           <DefensiveMapLegend />
+          {missingCoords && (
+            <p className="text-[10px] text-muted-foreground">Localizações de desarme/interceptação não foram registradas neste jogo (engine antigo).</p>
+          )}
         </>
       )}
     </div>

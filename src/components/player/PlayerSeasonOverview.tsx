@@ -4,10 +4,16 @@ import { Loader2 } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { RatingChip } from './RatingChip';
 import { PitchHeatmap } from './PitchHeatmap';
+import {
+  PlayerPassMap, PlayerShotMap, ShotMapLegend,
+  PlayerDefensiveMap, DefensiveMapLegend,
+  type PassDatum, type ShotDatum, type DefensiveDatum,
+} from './PlayerActionMap';
 
 interface SeasonRow {
   id: string;
   match_id: string;
+  participant_id: string;
   rating: number | null;
   goals: number;
   assists: number;
@@ -40,9 +46,19 @@ interface ClubLite {
   crest_url: string | null;
 }
 
+type MapMode = 'movement' | 'passes' | 'shots' | 'defensive';
+
 export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: string }) {
   const [rows, setRows] = useState<SeasonRow[] | null>(null);
   const [clubsById, setClubsById] = useState<Map<string, ClubLite>>(new Map());
+  const [mode, setMode] = useState<MapMode>('movement');
+  const [passFilter, setPassFilter] = useState<'all' | 'completed' | 'failed'>('all');
+
+  // Aggregated event-derived data (loaded lazily on first non-movement click).
+  const [aggPasses, setAggPasses] = useState<PassDatum[] | null>(null);
+  const [aggShots, setAggShots] = useState<ShotDatum[] | null>(null);
+  const [aggDefensive, setAggDefensive] = useState<DefensiveDatum[] | null>(null);
+  const [eventsLoading, setEventsLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +66,7 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
       const { data: stats, error: statsErr } = await supabase
         .from('player_match_stats')
         .select(`
-          id, match_id, rating, goals, assists, shots, shots_on_target,
+          id, match_id, participant_id, rating, goals, assists, shots, shots_on_target,
           passes_completed, passes_attempted, tackles, interceptions, gk_saves,
           clean_sheet, position_samples, club_id
         `)
@@ -75,6 +91,7 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
         ...s,
         match: matchesById.get(s.match_id),
       })).filter(s => s.match);
+
       const clubIds = new Set<string>();
       for (const r of list) {
         clubIds.add(r.match.home_club_id);
@@ -95,6 +112,85 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
     return () => { cancelled = true; };
   }, [playerProfileId]);
 
+  // Lazy-load events the first time a non-movement mode is picked.
+  useEffect(() => {
+    if (mode === 'movement' || aggPasses !== null || !rows || rows.length === 0) return;
+    let cancelled = false;
+    setEventsLoading(true);
+    (async () => {
+      const matchIds = rows.map(r => r.match_id);
+      const participantsByMatch = new Map<string, { participantId: string; isHome: boolean }>();
+      for (const r of rows) {
+        participantsByMatch.set(r.match_id, {
+          participantId: r.participant_id,
+          isHome: r.club_id === r.match.home_club_id,
+        });
+      }
+
+      const { data } = await supabase
+        .from('match_event_logs')
+        .select('match_id, event_type, payload')
+        .in('match_id', matchIds)
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'dispute', 'possession_change']);
+      if (cancelled) return;
+
+      const passesList: PassDatum[] = [];
+      const shotsList: ShotDatum[] = [];
+      const defList: DefensiveDatum[] = [];
+
+      const mirrorIfAway = (x: number, isHome: boolean) => isHome ? x : 100 - x;
+
+      for (const ev of (data || [])) {
+        const meta = participantsByMatch.get((ev as any).match_id);
+        if (!meta) continue;
+        const p = (ev.payload || {}) as Record<string, any>;
+        const { participantId, isHome } = meta;
+
+        if (ev.event_type === 'pass_complete' || ev.event_type === 'pass_failed') {
+          if (p.passer_participant_id !== participantId) continue;
+          if (typeof p.from_x !== 'number' || typeof p.to_x !== 'number') continue;
+          passesList.push({
+            from: { x: mirrorIfAway(p.from_x, isHome), y: p.from_y },
+            to: { x: mirrorIfAway(p.to_x, isHome), y: p.to_y },
+            completed: ev.event_type === 'pass_complete',
+          });
+        } else if (ev.event_type === 'dispute') {
+          if (p.defender_participant_id !== participantId) continue;
+          if (p.winner !== 'defender') continue;
+          if (typeof p.defender_x !== 'number') continue;
+          defList.push({
+            pos: { x: mirrorIfAway(p.defender_x, isHome), y: p.defender_y },
+            kind: 'tackle',
+          });
+        } else if (ev.event_type === 'possession_change') {
+          if (p.cause !== 'interception') continue;
+          if (p.new_ball_holder_participant_id !== participantId) continue;
+          if (typeof p.recovery_x !== 'number') continue;
+          defList.push({
+            pos: { x: mirrorIfAway(p.recovery_x, isHome), y: p.recovery_y },
+            kind: 'interception',
+          });
+        } else {
+          // Shot family
+          const shooterId = p.shooter_participant_id ?? p.scorer_participant_id;
+          if (shooterId !== participantId) continue;
+          if (typeof p.from_x !== 'number') continue;
+          let outcome: ShotDatum['outcome'];
+          if (ev.event_type === 'goal') outcome = 'goal';
+          else if (ev.event_type === 'shot_post') outcome = 'post';
+          else outcome = p.outcome === 'over' ? 'over' : 'wide';
+          shotsList.push({ from: { x: mirrorIfAway(p.from_x, isHome), y: p.from_y }, outcome });
+        }
+      }
+
+      setAggPasses(passesList);
+      setAggShots(shotsList);
+      setAggDefensive(defList);
+      setEventsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [mode, rows, aggPasses]);
+
   const aggregate = useMemo(() => {
     if (!rows) return null;
     const samples: Array<{ x: number; y: number }> = [];
@@ -104,7 +200,6 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
     let ratedSum = 0, ratedCount = 0;
     for (const r of rows) {
       if (Array.isArray(r.position_samples)) {
-        // Mirror x for away appearances so the aggregate reads ltr.
         const isHome = r.club_id === r.match.home_club_id;
         for (const s of r.position_samples) {
           samples.push({ x: isHome ? s.x : 100 - s.x, y: s.y });
@@ -145,6 +240,17 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
   }
   if (!aggregate) return null;
 
+  const buttons: { id: MapMode; label: string; count?: number }[] = [
+    { id: 'movement', label: 'Movimentação' },
+    { id: 'passes', label: 'Passes', count: aggregate.passesAttempted },
+    { id: 'shots', label: 'Finalizações', count: aggregate.shots },
+    { id: 'defensive', label: 'Desarmes', count: aggregate.tackles + aggregate.interceptions },
+  ];
+  const missingCoords =
+    (mode === 'passes' && aggregate.passesAttempted > 0 && (aggPasses?.length ?? 0) === 0 && !eventsLoading) ||
+    (mode === 'shots' && aggregate.shots > 0 && (aggShots?.length ?? 0) === 0 && !eventsLoading) ||
+    (mode === 'defensive' && (aggregate.tackles + aggregate.interceptions) > 0 && (aggDefensive?.length ?? 0) === 0 && !eventsLoading);
+
   return (
     <div className="space-y-4">
       {/* Last-N rating strip */}
@@ -184,13 +290,85 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
         </div>
       </div>
 
-      {/* Season heatmap */}
+      {/* Toggle buttons + field map */}
       <div>
-        <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Mapa de calor da temporada</h3>
-        <PitchHeatmap samples={aggregate.samples} attackingDirection="ltr" className="rounded-md overflow-hidden" />
-        <p className="text-[10px] text-muted-foreground mt-1">
-          {aggregate.samples.length} amostras em {aggregate.gp} partidas · ataque →
-        </p>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {buttons.map(b => (
+            <button
+              key={b.id}
+              onClick={() => setMode(b.id)}
+              className={`px-3 py-1.5 text-xs font-display font-semibold rounded-md transition-colors ${
+                mode === b.id ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+              }`}
+            >
+              {b.label}{b.count !== undefined ? ` (${b.count})` : ''}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'movement' && (
+          <>
+            <PitchHeatmap samples={aggregate.samples} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {aggregate.samples.length} amostras em {aggregate.gp} partidas · ataque →
+            </p>
+          </>
+        )}
+
+        {mode === 'passes' && (
+          <>
+            <div className="flex gap-2 items-center flex-wrap mb-2">
+              {(['all', 'completed', 'failed'] as const).map(f => (
+                <button key={f} onClick={() => setPassFilter(f)}
+                  className={`text-[11px] font-display px-2.5 py-1 rounded-full transition-colors ${
+                    passFilter === f ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                  }`}>
+                  {f === 'all' ? 'Todos' : f === 'completed' ? 'Certos' : 'Errados'}
+                </button>
+              ))}
+              <span className="text-[10px] text-muted-foreground ml-auto">
+                {aggregate.passesCompleted}/{aggregate.passesAttempted}{aggregate.passesAttempted ? ` · ${Math.round((aggregate.passesCompleted / aggregate.passesAttempted) * 100)}%` : ''}
+              </span>
+            </div>
+            {eventsLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <PlayerPassMap passes={aggPasses ?? []} attackingDirection="ltr" filter={passFilter} className="rounded-md overflow-hidden" />
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Verde = certo · Vermelho = errado · Ataque →
+              {missingCoords && ' · Localizações ausentes em jogos antigos.'}
+            </p>
+          </>
+        )}
+
+        {mode === 'shots' && (
+          <>
+            {eventsLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <PlayerShotMap shots={aggShots ?? []} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+            )}
+            <ShotMapLegend />
+            {missingCoords && (
+              <p className="text-[10px] text-muted-foreground mt-1">Localizações de finalização ausentes em jogos antigos.</p>
+            )}
+          </>
+        )}
+
+        {mode === 'defensive' && (
+          <>
+            {eventsLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <PlayerDefensiveMap events={aggDefensive ?? []} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+            )}
+            <DefensiveMapLegend />
+            {missingCoords && (
+              <p className="text-[10px] text-muted-foreground mt-1">Localizações de desarme/interceptação ausentes em jogos antigos.</p>
+            )}
+          </>
+        )}
       </div>
 
       {/* Season totals grid */}
