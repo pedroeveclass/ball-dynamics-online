@@ -123,5 +123,38 @@
   "toast": {
     "assumed_ok": "Team taken successfully!",
     "assume_error": "Error taking over team"
+  },
+  "mvpVote": {
+    "title": "Round {{round}} MVP",
+    "open": "Open",
+    "closed": "Closed",
+    "processing": "Tallying…",
+    "winner_label": "Winner",
+    "votes_one": "{{count}} vote",
+    "votes_other": "{{count}} votes",
+    "votes_of": "of {{total}}",
+    "total_votes_one": "{{count}} vote cast",
+    "total_votes_other": "{{count}} votes cast",
+    "help": {
+      "choose": "Pick the best player of the round. You can change your vote until the next round starts.",
+      "voted": "Your vote is in. You can change it until the next round starts.",
+      "expired": "Voting closed. Result in a moment."
+    },
+    "stats": {
+      "goals_one": "{{count}} goal",
+      "goals_other": "{{count}} goals",
+      "assists_one": "{{count}} assist",
+      "assists_other": "{{count}} assists",
+      "saves_one": "{{count}} save",
+      "saves_other": "{{count}} saves",
+      "tackles_one": "{{count}} tackle",
+      "tackles_other": "{{count}} tackles"
+    },
+    "toast": {
+      "voted": "Vote registered!",
+      "changed": "Vote changed!",
+      "login_required": "Log in to vote.",
+      "error": "Could not register your vote."
+    }
   }
 }

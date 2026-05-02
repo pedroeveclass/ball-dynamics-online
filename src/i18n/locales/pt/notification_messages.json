@@ -90,5 +90,13 @@
   "mutual_exit_player_rejected": {
     "title": "❌ Comum acordo recusado",
     "body": "{{player}} recusou a rescisão por comum acordo."
+  },
+  "round_mvp_open": {
+    "title": "🏆 MVP da Rodada {{round}}",
+    "body": "A votação para o melhor jogador da Rodada {{round}} está aberta. Vote!"
+  },
+  "round_mvp_won": {
+    "title": "🏆 Você é o MVP da Rodada {{round}}!",
+    "body": "Os colegas escolheram você como melhor jogador da Rodada {{round}} ({{votes}} votos)."
   }
 }

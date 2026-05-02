@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { RoundRecapCard } from '@/components/league/RoundRecapCard';
+import { RoundMvpVoteCard } from '@/components/league/RoundMvpVoteCard';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
 import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft, Clock, ChevronDown, ChevronUp } from 'lucide-react';
@@ -170,7 +171,9 @@ export default function LeaguePage() {
     ? 'join'
     : tabFromQuery === 'available' && isManagerWithoutClub
       ? 'available'
-      : 'standings';
+      : searchParams.get('round')
+        ? 'rounds'
+        : 'standings';
 
   // Player join flow state
   const [joinableClubs, setJoinableClubs] = useState<JoinableClub[]>([]);
@@ -282,8 +285,14 @@ export default function LeaguePage() {
         }));
         setRounds(roundsWithScores as any);
 
-        // Select the current or most recent round by default
-        const current = roundsWithScores.find((r: any) => r.status === 'in_progress')
+        // Select round: explicit ?round=ID query (e.g. from MVP notification),
+        // falling back to current → upcoming → most recent.
+        const roundFromQuery = searchParams.get('round');
+        const queryMatch = roundFromQuery
+          ? roundsWithScores.find((r: any) => r.id === roundFromQuery)
+          : null;
+        const current = queryMatch
+          || roundsWithScores.find((r: any) => r.status === 'in_progress')
           || roundsWithScores.find((r: any) => r.status === 'scheduled')
           || roundsWithScores[roundsWithScores.length - 1];
         if (current) setSelectedRound(current.id);
@@ -962,7 +971,10 @@ export default function LeaguePage() {
 
                 {/* Round Recap (canonical narrative) — appears below matches when round is finished */}
                 {activeRound.status === 'finished' && (
-                  <RoundRecapCard roundId={activeRound.id} />
+                  <>
+                    <RoundRecapCard roundId={activeRound.id} />
+                    <RoundMvpVoteCard roundId={activeRound.id} roundNumber={activeRound.round_number} />
+                  </>
                 )}
               </div>
             )}

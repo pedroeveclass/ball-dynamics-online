@@ -90,5 +90,13 @@
   "mutual_exit_player_rejected": {
     "title": "❌ Mutual agreement rejected",
     "body": "{{player}} rejected the mutual termination."
+  },
+  "round_mvp_open": {
+    "title": "🏆 Round {{round}} MVP",
+    "body": "Voting for the best player of Round {{round}} is open. Cast your vote!"
+  },
+  "round_mvp_won": {
+    "title": "🏆 You're the Round {{round}} MVP!",
+    "body": "Your peers picked you as the best player of Round {{round}} ({{votes}} votes)."
   }
 }

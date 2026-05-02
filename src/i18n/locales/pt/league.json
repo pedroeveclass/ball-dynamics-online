@@ -123,5 +123,38 @@
   "toast": {
     "assumed_ok": "Time assumido com sucesso!",
     "assume_error": "Erro ao assumir time"
+  },
+  "mvpVote": {
+    "title": "MVP da Rodada {{round}}",
+    "open": "Aberto",
+    "closed": "Encerrado",
+    "processing": "Apurando…",
+    "winner_label": "Vencedor",
+    "votes_one": "{{count}} voto",
+    "votes_other": "{{count}} votos",
+    "votes_of": "de {{total}}",
+    "total_votes_one": "{{count}} voto registrado",
+    "total_votes_other": "{{count}} votos registrados",
+    "help": {
+      "choose": "Escolha o melhor jogador da rodada. Você pode trocar seu voto até a próxima rodada começar.",
+      "voted": "Seu voto foi registrado. Pode trocá-lo até a próxima rodada começar.",
+      "expired": "Votação encerrada. Resultado em instantes."
+    },
+    "stats": {
+      "goals_one": "{{count}} gol",
+      "goals_other": "{{count}} gols",
+      "assists_one": "{{count}} assist.",
+      "assists_other": "{{count}} assist.",
+      "saves_one": "{{count}} defesa",
+      "saves_other": "{{count}} defesas",
+      "tackles_one": "{{count}} desarme",
+      "tackles_other": "{{count}} desarmes"
+    },
+    "toast": {
+      "voted": "Voto registrado!",
+      "changed": "Voto alterado!",
+      "login_required": "Faça login pra votar.",
+      "error": "Não foi possível registrar seu voto."
+    }
   }
 }
