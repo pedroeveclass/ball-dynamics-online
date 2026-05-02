@@ -32,5 +32,87 @@
       "shooting": "Shooting",
       "defending": "Defending"
     }
+  },
+  "stats": {
+    "section_season": "Season",
+    "section_matches": "Matches",
+    "tabs": {
+      "movement": "Heatmap",
+      "passes": "Passes",
+      "shots": "Shots",
+      "defensive": "Tackles",
+      "dribble": "Dribbles",
+      "running": "Running"
+    },
+    "pass_filters": {
+      "all": "All",
+      "completed": "Accurate",
+      "failed": "Inaccurate",
+      "key": "Key",
+      "long": "Long"
+    },
+    "shot_legend": {
+      "goal": "Goal",
+      "post": "Post",
+      "saved": "Saved",
+      "wide": "Off target"
+    },
+    "defensive_legend": {
+      "tackle": "Tackle",
+      "interception": "Interception"
+    },
+    "season": {
+      "recent_matches": "Recent matches",
+      "average": "Avg",
+      "no_matches": "No league matches recorded.",
+      "tile_matches": "Matches",
+      "tile_goals": "Goals",
+      "tile_assists": "Assists",
+      "tile_shots_on_target": "Shots on target",
+      "tile_pass_accuracy": "Pass accuracy",
+      "tile_tackles": "Tackles",
+      "tile_interceptions": "Interceptions",
+      "tile_saves": "Saves",
+      "tile_clean_sheets": "Clean sheets",
+      "tile_xg": "xG",
+      "tile_xa": "xA",
+      "tile_dribbles": "Dribbles",
+      "tile_distance": "Distance (km)"
+    },
+    "match": {
+      "no_matches": "No league matches recorded yet.",
+      "samples_summary": "{{count}} samples · attacking →",
+      "samples_season_summary": "{{count}} samples across {{matches}} matches · attacking →",
+      "synthetic_note_match": "Approximate positions (older match without coordinates).",
+      "synthetic_note_season": "Some positions approximate (older matches).",
+      "pass_legend": "Green = accurate · Red = inaccurate · Attacking →",
+      "running_summary": "{{distance}} km covered"
+    },
+    "empty": {
+      "no_passes": "No passes",
+      "no_shots": "No shots",
+      "no_defensive": "No tackles/interceptions",
+      "no_position_data": "No position data",
+      "no_dribbles": "No dribbles",
+      "no_running": "No running data"
+    },
+    "compare": {
+      "title": "Compare players",
+      "button": "Compare",
+      "search_placeholder": "Search player...",
+      "select_player": "Select a player above to compare.",
+      "row_matches": "Matches",
+      "row_avg_rating": "Avg rating",
+      "row_goals": "Goals",
+      "row_assists": "Assists",
+      "row_shots_on_target": "Shots on target",
+      "row_pass_accuracy": "Pass accuracy %",
+      "row_tackles": "Tackles",
+      "row_interceptions": "Interceptions",
+      "row_gk_saves": "GK saves",
+      "row_clean_sheets": "Clean sheets",
+      "row_xg": "xG",
+      "row_xa": "xA"
+    }
   }
 }

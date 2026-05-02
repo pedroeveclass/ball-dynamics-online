@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Search } from 'lucide-react';
@@ -71,6 +72,7 @@ async function loadAggregates(playerProfileId: string): Promise<AggregatedStats>
 }
 
 export function PlayerCompareDialog({ open, onOpenChange, basePlayerId, basePlayerName }: CompareDialogProps) {
+  const { t } = useTranslation('public_player');
   const [search, setSearch] = useState('');
   const [hits, setHits] = useState<PlayerHit[]>([]);
   const [opponentId, setOpponentId] = useState<string | null>(null);
@@ -119,24 +121,24 @@ export function PlayerCompareDialog({ open, onOpenChange, basePlayerId, basePlay
     if (!baseStats || !oppStats) return [];
     const passPct = (s: AggregatedStats) => s.passesAttempted ? (s.passesCompleted / s.passesAttempted) * 100 : 0;
     return [
-      { label: 'Partidas', a: baseStats.gp, b: oppStats.gp },
-      { label: 'Nota média', a: baseStats.avgRating ?? 0, b: oppStats.avgRating ?? 0, isRating: true },
-      { label: 'Gols', a: baseStats.goals, b: oppStats.goals },
-      { label: 'Assistências', a: baseStats.assists, b: oppStats.assists },
-      { label: 'Chutes ao gol', a: baseStats.shotsOnTarget, b: oppStats.shotsOnTarget },
-      { label: 'Passes (acerto %)', a: Math.round(passPct(baseStats)), b: Math.round(passPct(oppStats)), suffix: '%' },
-      { label: 'Desarmes', a: baseStats.tackles, b: oppStats.tackles },
-      { label: 'Interceptações', a: baseStats.interceptions, b: oppStats.interceptions },
-      { label: 'Defesas (GK)', a: baseStats.gkSaves, b: oppStats.gkSaves },
-      { label: 'Sem sofrer gols', a: baseStats.cleanSheets, b: oppStats.cleanSheets },
+      { label: t('stats.compare.row_matches'), a: baseStats.gp, b: oppStats.gp },
+      { label: t('stats.compare.row_avg_rating'), a: baseStats.avgRating ?? 0, b: oppStats.avgRating ?? 0, isRating: true },
+      { label: t('stats.compare.row_goals'), a: baseStats.goals, b: oppStats.goals },
+      { label: t('stats.compare.row_assists'), a: baseStats.assists, b: oppStats.assists },
+      { label: t('stats.compare.row_shots_on_target'), a: baseStats.shotsOnTarget, b: oppStats.shotsOnTarget },
+      { label: t('stats.compare.row_pass_accuracy'), a: Math.round(passPct(baseStats)), b: Math.round(passPct(oppStats)), suffix: '%' },
+      { label: t('stats.compare.row_tackles'), a: baseStats.tackles, b: oppStats.tackles },
+      { label: t('stats.compare.row_interceptions'), a: baseStats.interceptions, b: oppStats.interceptions },
+      { label: t('stats.compare.row_gk_saves'), a: baseStats.gkSaves, b: oppStats.gkSaves },
+      { label: t('stats.compare.row_clean_sheets'), a: baseStats.cleanSheets, b: oppStats.cleanSheets },
     ];
-  }, [baseStats, oppStats]);
+  }, [baseStats, oppStats, t]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Comparar jogadores</DialogTitle>
+          <DialogTitle>{t('stats.compare.title')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -158,7 +160,7 @@ export function PlayerCompareDialog({ open, onOpenChange, basePlayerId, basePlay
                   <Input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Buscar jogador..."
+                    placeholder={t('stats.compare.search_placeholder')}
                     className="pl-7 h-8 text-sm"
                   />
                   {hits.length > 0 && (
@@ -209,7 +211,7 @@ export function PlayerCompareDialog({ open, onOpenChange, basePlayerId, basePlay
           ) : opponent && (!baseStats || !oppStats) ? (
             <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
           ) : (
-            <p className="text-center text-xs text-muted-foreground py-4">Selecione um jogador acima para comparar.</p>
+            <p className="text-center text-xs text-muted-foreground py-4">{t('stats.compare.select_player')}</p>
           )}
         </div>
       </DialogContent>

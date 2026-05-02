@@ -32,5 +32,87 @@
       "shooting": "Finalização",
       "defending": "Defesa"
     }
+  },
+  "stats": {
+    "section_season": "Temporada",
+    "section_matches": "Partidas",
+    "tabs": {
+      "movement": "Movimentação",
+      "passes": "Passes",
+      "shots": "Finalizações",
+      "defensive": "Desarmes",
+      "dribble": "Dribles",
+      "running": "Corrida"
+    },
+    "pass_filters": {
+      "all": "Todos",
+      "completed": "Certos",
+      "failed": "Errados",
+      "key": "Chave",
+      "long": "Longos"
+    },
+    "shot_legend": {
+      "goal": "Gol",
+      "post": "Trave",
+      "saved": "Defendido",
+      "wide": "Fora"
+    },
+    "defensive_legend": {
+      "tackle": "Desarme",
+      "interception": "Interceptação"
+    },
+    "season": {
+      "recent_matches": "Últimas partidas",
+      "average": "Média",
+      "no_matches": "Sem partidas de liga registradas.",
+      "tile_matches": "Partidas",
+      "tile_goals": "Gols",
+      "tile_assists": "Assistências",
+      "tile_shots_on_target": "Chutes ao gol",
+      "tile_pass_accuracy": "Passes (acerto)",
+      "tile_tackles": "Desarmes",
+      "tile_interceptions": "Interceptações",
+      "tile_saves": "Defesas",
+      "tile_clean_sheets": "Sem sofrer",
+      "tile_xg": "xG",
+      "tile_xa": "xA",
+      "tile_dribbles": "Dribles",
+      "tile_distance": "Distância (km)"
+    },
+    "match": {
+      "no_matches": "Nenhuma partida de liga registrada ainda.",
+      "samples_summary": "{{count}} amostras · ataque →",
+      "samples_season_summary": "{{count}} amostras em {{matches}} partidas · ataque →",
+      "synthetic_note_match": "Posições aproximadas (jogo antigo sem coordenadas).",
+      "synthetic_note_season": "Algumas posições aproximadas (jogos antigos).",
+      "pass_legend": "Verde = certo · Vermelho = errado · Ataque →",
+      "running_summary": "{{distance}} km percorridos"
+    },
+    "empty": {
+      "no_passes": "Sem passes",
+      "no_shots": "Sem finalizações",
+      "no_defensive": "Sem desarmes/interceptações",
+      "no_position_data": "Sem dados de posição",
+      "no_dribbles": "Sem dribles",
+      "no_running": "Sem dados de corrida"
+    },
+    "compare": {
+      "title": "Comparar jogadores",
+      "button": "Comparar",
+      "search_placeholder": "Buscar jogador...",
+      "select_player": "Selecione um jogador acima para comparar.",
+      "row_matches": "Partidas",
+      "row_avg_rating": "Nota média",
+      "row_goals": "Gols",
+      "row_assists": "Assistências",
+      "row_shots_on_target": "Chutes ao gol",
+      "row_pass_accuracy": "Passes (acerto %)",
+      "row_tackles": "Desarmes",
+      "row_interceptions": "Interceptações",
+      "row_gk_saves": "Defesas (GK)",
+      "row_clean_sheets": "Sem sofrer gols",
+      "row_xg": "xG",
+      "row_xa": "xA"
+    }
   }
 }

@@ -242,7 +242,7 @@ export default function PublicPlayerPage() {
                   <Copy className="h-3 w-3 mr-1" /> {t('header.copy_link')}
                 </Button>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCompareOpen(true)}>
-                  ⇅ Comparar
+                  ⇅ {t('stats.compare.button')}
                 </Button>
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -345,13 +345,13 @@ export default function PublicPlayerPage() {
 
         {/* Season overview — last-N rating strip + season heatmap + season totals */}
         <div className="stat-card p-4 space-y-3">
-          <h2 className="font-display text-lg font-bold">Temporada</h2>
+          <h2 className="font-display text-lg font-bold">{t('stats.section_season')}</h2>
           <PlayerSeasonOverview playerProfileId={player.id} />
         </div>
 
         {/* Recent matches with rating + heatmap drill-down + pass/shot maps */}
         <div className="stat-card p-4 space-y-3">
-          <h2 className="font-display text-lg font-bold">Partidas</h2>
+          <h2 className="font-display text-lg font-bold">{t('stats.section_matches')}</h2>
           <PlayerMatchesTab playerProfileId={player.id} />
         </div>
 

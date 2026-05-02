@@ -7563,8 +7563,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: {
                 ball_holder_participant_id: ballHolder.id,
                 ball_holder_name: bhName,
+                ball_holder_club_id: possClubId,
                 action_type: bhAct,
                 turn_number: match.current_turn_number,
+                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_y: Number((ballHolder as any).pos_y ?? 50),
               },
             });
           }
