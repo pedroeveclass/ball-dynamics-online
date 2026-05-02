@@ -10,6 +10,7 @@ import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   User, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
   ShieldAlert, Goal, Loader2, ArrowLeft, UserPlus, Copy,
@@ -139,6 +140,38 @@ export default function PublicPlayerPage() {
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [seasons, setSeasons] = useState<{ id: string; number: number; status: string }[]>([]);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+
+  // Load seasons the player has stats for. Only seasons with at least one
+  // league match for this player appear in the selector.
+  useEffect(() => {
+    if (!playerId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: rows } = await supabase
+        .from('player_match_stats')
+        .select('season_id')
+        .eq('player_profile_id', playerId);
+      if (cancelled) return;
+      const ids = [...new Set(((rows || []) as any[]).map(r => r.season_id).filter(Boolean))];
+      if (ids.length === 0) { setSeasons([]); return; }
+      const { data: ss } = await supabase
+        .from('league_seasons')
+        .select('id, season_number, status')
+        .in('id', ids)
+        .order('season_number', { ascending: false });
+      if (cancelled) return;
+      const list = ((ss || []) as any[]).map(s => ({ id: s.id, number: s.season_number, status: s.status }));
+      setSeasons(list);
+      setSelectedSeasonId(prev => {
+        if (prev && list.some(s => s.id === prev)) return prev;
+        const active = list.find(s => s.status === 'active');
+        return active?.id ?? list[0]?.id ?? null;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [playerId]);
 
   useEffect(() => {
     if (!playerId) return;
@@ -349,14 +382,31 @@ export default function PublicPlayerPage() {
 
         {/* Season overview — last-N rating strip + season heatmap + season totals */}
         <div className="stat-card p-4 space-y-3">
-          <h2 className="font-display text-lg font-bold">{t('stats.section_season')}</h2>
-          <PlayerSeasonOverview playerProfileId={player.id} />
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="font-display text-lg font-bold">{t('stats.section_season')}</h2>
+            {seasons.length > 0 && selectedSeasonId && (
+              <Select value={selectedSeasonId} onValueChange={setSelectedSeasonId}>
+                <SelectTrigger className="h-8 w-auto min-w-[10rem] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {seasons.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {t('stats.season_label', { n: s.number })}
+                      {s.status === 'active' ? t('stats.season_active_suffix') : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <PlayerSeasonOverview playerProfileId={player.id} seasonId={selectedSeasonId} />
         </div>
 
         {/* Recent matches with rating + heatmap drill-down + pass/shot maps */}
         <div className="stat-card p-4 space-y-3">
           <h2 className="font-display text-lg font-bold">{t('stats.section_matches')}</h2>
-          <PlayerMatchesTab playerProfileId={player.id} />
+          <PlayerMatchesTab playerProfileId={player.id} seasonId={selectedSeasonId} />
         </div>
 
         {/* Attributes */}

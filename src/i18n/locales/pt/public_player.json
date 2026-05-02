@@ -36,6 +36,8 @@
   "stats": {
     "section_season": "Temporada",
     "section_matches": "Partidas",
+    "season_label": "Temporada {{n}}",
+    "season_active_suffix": " (atual)",
     "tabs": {
       "movement": "Movimentação",
       "passes": "Passes",

@@ -55,7 +55,7 @@ interface ClubLite {
 type MapMode = 'movement' | 'passes' | 'shots' | 'defensive' | 'dribble' | 'running';
 type PassFilter = 'all' | 'completed' | 'failed' | 'key' | 'long';
 
-export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: string }) {
+export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProfileId: string; seasonId?: string | null }) {
   const { t } = useTranslation('public_player');
   const [rows, setRows] = useState<SeasonRow[] | null>(null);
   const [clubsById, setClubsById] = useState<Map<string, ClubLite>>(new Map());
@@ -73,14 +73,16 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: stats, error: statsErr } = await supabase
+      let q = supabase
         .from('player_match_stats')
         .select(`
           id, match_id, participant_id, rating, goals, assists, shots, shots_on_target,
           passes_completed, passes_attempted, tackles, interceptions, gk_saves,
           clean_sheet, position_samples, club_id
         `)
-        .eq('player_profile_id', playerProfileId)
+        .eq('player_profile_id', playerProfileId);
+      if (seasonId) q = q.eq('season_id', seasonId);
+      const { data: stats, error: statsErr } = await q
         .order('created_at', { ascending: false })
         .limit(50);
       if (cancelled) return;
@@ -120,7 +122,17 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
       setRows(list);
     })();
     return () => { cancelled = true; };
-  }, [playerProfileId]);
+  }, [playerProfileId, seasonId]);
+
+  // Reset aggregated event arrays when the underlying rows change
+  // (e.g. user picked a different season).
+  useEffect(() => {
+    setAggPasses(null);
+    setAggShots(null);
+    setAggDefensive(null);
+    setAggDribbles(null);
+    setAggDribbleCount(0);
+  }, [rows]);
 
   // Load events as soon as rows are ready — needed for both the alternate
   // map modes and for season-tile stats (xG/xA, opp-half passes).

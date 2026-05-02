@@ -299,7 +299,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
   );
 }
 
-export function PlayerMatchesTab({ playerProfileId }: { playerProfileId: string }) {
+export function PlayerMatchesTab({ playerProfileId, seasonId }: { playerProfileId: string; seasonId?: string | null }) {
   const { t } = useTranslation('public_player');
   const [rows, setRows] = useState<MatchStatRow[] | null>(null);
   const [clubsById, setClubsById] = useState<Map<string, ClubLite>>(new Map());
@@ -308,14 +308,16 @@ export function PlayerMatchesTab({ playerProfileId }: { playerProfileId: string 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: stats, error: statsErr } = await supabase
+      let q = supabase
         .from('player_match_stats')
         .select(`
           id, match_id, participant_id, club_id, rating, position, goals, assists, shots, shots_on_target,
           passes_completed, passes_attempted, tackles, interceptions, fouls_committed,
           yellow_cards, red_cards, gk_saves, goals_conceded, clean_sheet, position_samples
         `)
-        .eq('player_profile_id', playerProfileId)
+        .eq('player_profile_id', playerProfileId);
+      if (seasonId) q = q.eq('season_id', seasonId);
+      const { data: stats, error: statsErr } = await q
         .order('created_at', { ascending: false })
         .limit(50);
       if (cancelled) return;
@@ -359,7 +361,7 @@ export function PlayerMatchesTab({ playerProfileId }: { playerProfileId: string 
       setRows(list);
     })();
     return () => { cancelled = true; };
-  }, [playerProfileId]);
+  }, [playerProfileId, seasonId]);
 
   const items = useMemo(() => rows ?? [], [rows]);
 

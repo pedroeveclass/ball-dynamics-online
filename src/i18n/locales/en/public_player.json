@@ -36,6 +36,8 @@
   "stats": {
     "section_season": "Season",
     "section_matches": "Matches",
+    "season_label": "Season {{n}}",
+    "season_active_suffix": " (current)",
     "tabs": {
       "movement": "Heatmap",
       "passes": "Passes",
