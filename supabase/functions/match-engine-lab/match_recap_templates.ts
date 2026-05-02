@@ -35,7 +35,8 @@ type Par3Type =
   | 'relegation'
   | 'midtable'
   | 'new_top_scorer'
-  | 'draw_neutral';
+  | 'draw_neutral'
+  | 'no_standings';
 
 export interface MatchRecapFacts {
   // Basic
@@ -219,6 +220,11 @@ const PAR3_PT: Record<Par3Type, string[]> = {
     "Empate distribui pontos de forma equilibrada: {home} {home_points} pontos ({home_pos}º), {away} {away_points} pontos ({away_pos}º). Resultado que não desequilibra ninguém na tabela, mas que serve pra manter o ritmo dos dois lados. Cada equipe segue trabalhando na sua campanha — buscando subir ou consolidar posição — e o calendário denso pelo próximo mês vai pesar pra definir se esse ponto somado hoje terá peso definitivo na conta final.",
     "Pontuação dividida com o empate: {home} fica com {home_points} pontos ({home_pos}ª colocação) e {away} com {away_points} pontos ({away_pos}ª colocação). Pra os dois lados, o resultado tem leitura mista — pode ser visto como ponto somado em jogo difícil ou como ponto perdido em oportunidade real de vitória. Cada equipe segue sua trajetória nos próximos compromissos, com a mesma necessidade de pontuar pra atingir os objetivos da temporada que projetaram desde o começo.",
   ],
+  no_standings: [
+    "Foi um amistoso disputado com a seriedade de jogo oficial — as duas equipes entraram em campo dispostas a treinar movimentos, ajustar entrosamentos e testar variações táticas. Resultado fica como referência pra próximas partidas, mas o que importou mesmo foi o aproveitamento dos minutos em campo e a evolução individual dos jogadores que ganharam minutos na partida.",
+    "Sem peso de campeonato, mas com peso de aprendizado: o jogo serviu pra comissão técnica avaliar elenco, testar esquemas e dar ritmo a quem precisava entrar em ação. Tipo de partida que não muda tabela mas que constrói repertório pro que vem por aí — e isso, pra qualquer equipe profissional, vale tanto quanto pontuação.",
+    "Partida fora do contexto de competição oficial, mas com utilidade clara pras duas equipes: ritmo de jogo, ajuste de movimentações e oportunidade pra atletas em recuperação ou em busca de minutagem. O resultado entra mais como termômetro do que como estatística que vá pesar lá na frente, e o aprendizado fica pro próximo confronto que valer pontos de verdade.",
+  ],
 };
 
 // ── EN §1 templates ──
@@ -351,6 +357,11 @@ const PAR3_EN: Record<Par3Type, string[]> = {
     "The draw distributes points in balanced fashion: {home} {home_points} points ({home_pos}th), {away} {away_points} points ({away_pos}th). A result that doesn't unbalance anyone on the table, but serves to maintain the rhythm of both sides. Each team continues working on its campaign — seeking to climb or consolidate position — and the dense calendar over the coming month will weigh in defining if this point added today will have definitive weight in the final count.",
     "Points split with the draw: {home} ends with {home_points} points ({home_pos}th place) and {away} with {away_points} points ({away_pos}th place). For both sides, the result has mixed reading — it can be seen as a point added in a difficult match or as a point lost in a real win opportunity. Each team continues its trajectory in the next commitments, with the same need to score points to reach the season objectives projected from the start.",
   ],
+  no_standings: [
+    "It was a friendly played with the seriousness of an official match — both teams entered the pitch ready to drill movements, adjust chemistry, and test tactical variations. The result stays as reference for upcoming matches, but what really mattered was the use of pitch time and the individual evolution of players who got minutes in the match.",
+    "Without championship weight, but with learning weight: the match served the technical staff to evaluate the squad, test schemes, and give rhythm to those who needed to get back in action. The kind of match that doesn't change the table but builds repertoire for what comes ahead — and that, for any professional team, is worth as much as scoring.",
+    "A match outside the context of official competition, but with clear utility for both teams: match rhythm, movement adjustment, and opportunity for players in recovery or seeking playing time. The result counts more as thermometer than as statistic that will weigh later, and the learning stays for the next encounter that's actually worth real points.",
+  ],
 };
 
 // ── Classifier ──
@@ -386,19 +397,21 @@ function pickPar2Type(f: MatchRecapFacts): Par2Type {
 
 // ── §3 selector: depends on whether match has a winner + standings ──
 function pickPar3Type(f: MatchRecapFacts): Par3Type {
-  // Drawn match → neutral or new top scorer
   const isDraw = f.homeGoals === f.awayGoals;
+
+  // Friendlies / non-league matches don't have standings populated.
+  // Skip table talk entirely and use the no_standings paragraph.
+  if (!f.numClubsInLeague || (!isDraw && !f.winnerStandingPos) || (isDraw && !f.homeStandingPos)) {
+    return 'no_standings';
+  }
+
   if (isDraw) {
-    // Even on a draw, mention if a player from the match is the season top scorer
     if (f.seasonTopScorerName && f.seasonTopScorerGoals >= 5) return 'new_top_scorer';
     return 'draw_neutral';
   }
-  // Otherwise focus on the winner's table position
   if (f.isWinnerLeader) return 'leader';
-  // Loser in relegation zone (last 4) → mention it
-  if (f.loserStandingPos && f.numClubsInLeague && f.loserStandingPos > f.numClubsInLeague - 4) return 'relegation';
+  if (f.loserStandingPos && f.loserStandingPos > f.numClubsInLeague - 4) return 'relegation';
   if (f.winnerStandingPos && f.winnerStandingPos <= 4) return 'top4';
-  // New top scorer angle wins over midtable when applicable
   if (f.seasonTopScorerName && f.seasonTopScorerGoals >= 5) return 'new_top_scorer';
   return 'midtable';
 }
