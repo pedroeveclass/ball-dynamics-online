@@ -6,6 +6,13 @@
       "missing": "A crônica deste jogo ainda não foi escrita."
     }
   },
+  "roundRecap": {
+    "section": {
+      "title": "Crônica da Rodada",
+      "loading": "Carregando crônica da rodada...",
+      "missing": "A crônica desta rodada ainda não foi escrita."
+    }
+  },
   "originStory": {
     "section": {
       "title": "História de Origem",

@@ -1,5 +1,6 @@
 ﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { generateAndPersistMatchRecap } from './match_recap_templates.ts';
+import { generateAndPersistRoundRecap } from './round_recap_templates.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8859,6 +8860,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             match_id, event_type: oob.type,
             title: restart.title,
             body: restart.body,
+            payload: {
+              awarded_club_id: restart.clubId,
+              taker_participant_id: restart.playerId,
+            },
           });
         }
       }
@@ -9520,6 +9525,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             const allFinished = (allM || []).every((m: any) => m.status === 'finished');
             if (allFinished) {
               await supabase.from('league_rounds').update({ status: 'finished' }).eq('id', leagueMatch.round_id);
+
+              // Round recap (canonical narrative) — best-effort, never blocks
+              await generateAndPersistRoundRecap(supabase, leagueMatch.round_id);
 
               // Check if ALL rounds in season are finished → mark season finished
               const { data: seasonRounds } = await supabase

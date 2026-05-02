@@ -6,6 +6,13 @@
       "missing": "This match's recap hasn't been written yet."
     }
   },
+  "roundRecap": {
+    "section": {
+      "title": "Round Recap",
+      "loading": "Loading round recap...",
+      "missing": "This round's recap hasn't been written yet."
+    }
+  },
   "originStory": {
     "section": {
       "title": "Origin Story",

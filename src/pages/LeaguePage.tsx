@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { RoundRecapCard } from '@/components/league/RoundRecapCard';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
 import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft, Clock, ChevronDown, ChevronUp } from 'lucide-react';
@@ -956,6 +957,11 @@ export default function LeaguePage() {
                     </p>
                   )}
                 </div>
+
+                {/* Round Recap (canonical narrative) — appears below matches when round is finished */}
+                {activeRound.status === 'finished' && (
+                  <RoundRecapCard roundId={activeRound.id} />
+                )}
               </div>
             )}
 
