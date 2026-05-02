@@ -30,6 +30,7 @@ import { formatDate } from '@/lib/formatDate';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
+import { RetirementBioCard } from '@/components/player/RetirementBioCard';
 import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
 import { ProfileIntroTour } from '@/components/tour/ProfileIntroTour';
@@ -398,6 +399,22 @@ export default function PlayerProfilePage() {
       });
       if (error) throw error;
 
+      // Generate the retirement biography. Lib reads career stats +
+      // awards + milestones, picks one of 8 templates, persists via
+      // save_retirement_bio. Best-effort: failure logs and continues.
+      try {
+        const { buildRetirementBioBilingual } = await import('@/lib/narratives/retirementBio');
+        const built = await buildRetirementBioBilingual(p.id);
+        if (built) {
+          await (supabase as any).rpc('save_retirement_bio', {
+            p_player_id: p.id,
+            p_body_pt: built.body_pt,
+            p_body_en: built.body_en,
+            p_facts_json: built.facts,
+          });
+        }
+      } catch (e) { console.warn('[retirement bio] generation failed:', e); }
+
       toast.success(t('retire.toast_success'));
       setRetireOpen(false);
       await refreshPlayerProfile();
@@ -654,6 +671,9 @@ export default function PlayerProfilePage() {
 
         {/* ── Origin Story (canonical narrative) ── */}
         <OriginStoryCard playerId={p.id} />
+
+        {/* ── Retirement biography (renders only for retired players) ── */}
+        <RetirementBioCard playerId={p.id} />
 
         {/* Trophy Room (player_awards) */}
         <PlayerAwardsBlock playerProfileId={p.id} />

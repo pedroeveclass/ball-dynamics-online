@@ -3583,6 +3583,15 @@ export type Database = {
       }
       leave_pickup_game: { Args: { p_pickup_id: string }; Returns: undefined }
       mark_digest_read: { Args: { p_digest_id: number }; Returns: undefined }
+      save_retirement_bio: {
+        Args: {
+          p_player_id: string
+          p_body_pt: string
+          p_body_en: string
+          p_facts_json?: Json | null
+        }
+        Returns: undefined
+      }
       append_origin_closing: {
         Args: {
           p_player_id: string

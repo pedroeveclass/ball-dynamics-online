@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
+import { RetirementBioCard } from '@/components/player/RetirementBioCard';
 import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { PlayerMatchesTab } from '@/components/player/PlayerMatchesTab';
 import { fetchPlayerCosmetics } from '@/lib/cosmetics';
@@ -418,6 +419,9 @@ export default function PublicPlayerPage() {
 
         {/* Origin Story (canonical narrative) */}
         <OriginStoryCard playerId={player.id} />
+
+        {/* Retirement biography (renders only for retired players) */}
+        <RetirementBioCard playerId={player.id} />
 
         {/* Trophy Room (player_awards) */}
         <PlayerAwardsBlock playerProfileId={player.id} />
