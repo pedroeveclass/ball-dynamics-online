@@ -1,4 +1,4 @@
-import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
+import { Joyride, CallBackProps, EVENTS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalTour } from '@/hooks/useLocalTour';
@@ -66,10 +66,7 @@ export function DashboardIntroTour() {
   ];
 
   const handleCallback = (data: CallBackProps) => {
-    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
-    if (finishedStatuses.includes(data.status)) {
-      markSeen();
-    }
+    if (data.type === EVENTS.TOUR_END) markSeen();
   };
 
   if (!shouldRun || !playerProfile) return null;

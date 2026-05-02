@@ -1,4 +1,4 @@
-import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
+import { Joyride, CallBackProps, EVENTS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
 import { TOUR_STYLES } from './joyrideStyles';
@@ -31,7 +31,7 @@ export function ManagerLeagueIntroTour({ enabled, isManagerWithoutClub }: Props)
   ];
 
   const handleCallback = (data: CallBackProps) => {
-    if (([STATUS.FINISHED, STATUS.SKIPPED] as string[]).includes(data.status)) markSeen();
+    if (data.type === EVENTS.TOUR_END) markSeen();
   };
 
   if (!enabled || !shouldRun) return null;

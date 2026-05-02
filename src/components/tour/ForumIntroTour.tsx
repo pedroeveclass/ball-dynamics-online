@@ -1,4 +1,4 @@
-import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
+import { Joyride, CallBackProps, EVENTS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
 import { useAuth } from '@/hooks/useAuth';
@@ -48,10 +48,7 @@ export function ForumIntroTour({ enabled, hasCategories, hasNewTopicButton }: Fo
   ];
 
   const handleCallback = (data: CallBackProps) => {
-    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
-    if (finishedStatuses.includes(data.status)) {
-      markSeen();
-    }
+    if (data.type === EVENTS.TOUR_END) markSeen();
   };
 
   // Player tour: don't run when a manager profile is active — managers see ForumManagerIntroTour instead.

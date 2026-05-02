@@ -1,4 +1,4 @@
-import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
+import { Joyride, CallBackProps, EVENTS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
 
@@ -33,10 +33,7 @@ export function OffersIntroTour({ enabled }: OffersIntroTourProps) {
   ];
 
   const handleCallback = (data: CallBackProps) => {
-    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
-    if (finishedStatuses.includes(data.status)) {
-      markSeen();
-    }
+    if (data.type === EVENTS.TOUR_END) markSeen();
   };
 
   if (!enabled || !shouldRun) return null;
