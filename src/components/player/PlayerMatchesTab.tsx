@@ -4,7 +4,12 @@ import { Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { RatingChip } from './RatingChip';
 import { PitchHeatmap } from './PitchHeatmap';
-import { PlayerPassMap, PlayerShotMap, ShotMapLegend, PlayerDefensiveMap, DefensiveMapLegend, type PassDatum, type ShotDatum, type DefensiveDatum } from './PlayerActionMap';
+import {
+  PlayerPassMap, PlayerShotMap, ShotMapLegend,
+  PlayerDefensiveMap, DefensiveMapLegend,
+  syntheticPasses, syntheticShots, syntheticDefensive,
+  type PassDatum, type ShotDatum, type DefensiveDatum,
+} from './PlayerActionMap';
 
 interface MatchStatRow {
   id: string;
@@ -128,18 +133,28 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
   const attackingDirection: 'ltr' | 'rtl' = playerIsHome ? 'ltr' : 'rtl';
 
   // Authoritative counts come from player_match_stats (always populated).
-  // The arrays below may be shorter when older events lack coords — that's
-  // why the map can be empty even when the count is positive.
+  // For old matches whose events lack from_x/from_y, synthesize fallback
+  // dots placed in canonical zones so the count is still visible on the map.
   const buttons: { id: MapMode; label: string; count?: number }[] = [
     { id: 'movement', label: 'Movimentação' },
     { id: 'passes', label: 'Passes', count: row.passes_attempted },
     { id: 'shots', label: 'Finalizações', count: row.shots },
     { id: 'defensive', label: 'Desarmes', count: row.tackles + row.interceptions },
   ];
-  const missingCoords =
-    (mode === 'passes' && row.passes_attempted > 0 && passes.length === 0) ||
-    (mode === 'shots' && row.shots > 0 && shots.length === 0) ||
-    (mode === 'defensive' && (row.tackles + row.interceptions) > 0 && defensive.length === 0);
+  const passesToRender = passes.length === 0 && row.passes_attempted > 0
+    ? syntheticPasses(row.passes_completed, row.passes_attempted - row.passes_completed)
+    : passes;
+  const shotsToRender = shots.length === 0 && row.shots > 0
+    ? syntheticShots(row.goals, Math.max(0, row.shots - row.goals))
+    : shots;
+  const defensiveToRender = defensive.length === 0 && (row.tackles + row.interceptions) > 0
+    ? syntheticDefensive(row.tackles, row.interceptions)
+    : defensive;
+  const isSynthetic = {
+    passes: passesToRender !== passes,
+    shots: shotsToRender !== shots,
+    defensive: defensiveToRender !== defensive,
+  };
 
   return (
     <div className="bg-muted/20 rounded-lg p-4 space-y-3">
@@ -188,11 +203,11 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerPassMap passes={passes} attackingDirection={attackingDirection} filter={passFilter} className="rounded-md overflow-hidden" />
+            <PlayerPassMap passes={passesToRender} attackingDirection={attackingDirection} filter={passFilter} className="rounded-md overflow-hidden" />
           )}
           <p className="text-[10px] text-muted-foreground">
             Verde = certo · Vermelho = errado · Ataque →
-            {missingCoords && ' · Localizações de passe não foram registradas neste jogo (engine antigo).'}
+            {isSynthetic.passes && ' · Posições aproximadas (jogo antigo sem coordenadas).'}
           </p>
         </>
       )}
@@ -202,11 +217,11 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerShotMap shots={shots} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+            <PlayerShotMap shots={shotsToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
           )}
           <ShotMapLegend />
-          {missingCoords && (
-            <p className="text-[10px] text-muted-foreground">Localizações de finalização não foram registradas neste jogo (engine antigo).</p>
+          {isSynthetic.shots && (
+            <p className="text-[10px] text-muted-foreground">Posições aproximadas (jogo antigo sem coordenadas).</p>
           )}
         </>
       )}
@@ -216,11 +231,11 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerDefensiveMap events={defensive} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+            <PlayerDefensiveMap events={defensiveToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
           )}
           <DefensiveMapLegend />
-          {missingCoords && (
-            <p className="text-[10px] text-muted-foreground">Localizações de desarme/interceptação não foram registradas neste jogo (engine antigo).</p>
+          {isSynthetic.defensive && (
+            <p className="text-[10px] text-muted-foreground">Posições aproximadas (jogo antigo sem coordenadas).</p>
           )}
         </>
       )}

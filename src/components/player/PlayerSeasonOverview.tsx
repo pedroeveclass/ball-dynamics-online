@@ -7,6 +7,7 @@ import { PitchHeatmap } from './PitchHeatmap';
 import {
   PlayerPassMap, PlayerShotMap, ShotMapLegend,
   PlayerDefensiveMap, DefensiveMapLegend,
+  syntheticPasses, syntheticShots, syntheticDefensive,
   type PassDatum, type ShotDatum, type DefensiveDatum,
 } from './PlayerActionMap';
 
@@ -246,10 +247,44 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
     { id: 'shots', label: 'Finalizações', count: aggregate.shots },
     { id: 'defensive', label: 'Desarmes', count: aggregate.tackles + aggregate.interceptions },
   ];
-  const missingCoords =
-    (mode === 'passes' && aggregate.passesAttempted > 0 && (aggPasses?.length ?? 0) === 0 && !eventsLoading) ||
-    (mode === 'shots' && aggregate.shots > 0 && (aggShots?.length ?? 0) === 0 && !eventsLoading) ||
-    (mode === 'defensive' && (aggregate.tackles + aggregate.interceptions) > 0 && (aggDefensive?.length ?? 0) === 0 && !eventsLoading);
+
+  // For each mode: real coords come from aggPasses/aggShots/aggDefensive
+  // (lazy-loaded), and any gap to the authoritative stats count is filled
+  // with synthetic dots placed in canonical zones with lateral spread.
+  const realPassCount = aggPasses?.length ?? 0;
+  const realShotCount = aggShots?.length ?? 0;
+  const realDefensiveCount = aggDefensive?.length ?? 0;
+
+  const missingPasses = Math.max(0, aggregate.passesAttempted - realPassCount);
+  const missingPassesCompleted = Math.max(0, aggregate.passesCompleted - (aggPasses?.filter(p => p.completed).length ?? 0));
+  const missingPassesFailed = Math.max(0, missingPasses - missingPassesCompleted);
+
+  const missingShots = Math.max(0, aggregate.shots - realShotCount);
+  const missingGoals = Math.max(0, aggregate.goals - (aggShots?.filter(s => s.outcome === 'goal').length ?? 0));
+  const missingShotOthers = Math.max(0, missingShots - missingGoals);
+
+  const missingDefensive = Math.max(0, (aggregate.tackles + aggregate.interceptions) - realDefensiveCount);
+  const missingTackles = Math.max(0, aggregate.tackles - (aggDefensive?.filter(d => d.kind === 'tackle').length ?? 0));
+  const missingInterceptions = Math.max(0, missingDefensive - missingTackles);
+
+  const passesToRender: PassDatum[] = [
+    ...(aggPasses ?? []),
+    ...(missingPasses > 0 ? syntheticPasses(missingPassesCompleted, missingPassesFailed) : []),
+  ];
+  const shotsToRender: ShotDatum[] = [
+    ...(aggShots ?? []),
+    ...(missingShots > 0 ? syntheticShots(missingGoals, missingShotOthers) : []),
+  ];
+  const defensiveToRender: DefensiveDatum[] = [
+    ...(aggDefensive ?? []),
+    ...(missingDefensive > 0 ? syntheticDefensive(missingTackles, missingInterceptions) : []),
+  ];
+
+  const hasSynthetic = {
+    passes: missingPasses > 0,
+    shots: missingShots > 0,
+    defensive: missingDefensive > 0,
+  };
 
   return (
     <div className="space-y-4">
@@ -333,11 +368,11 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerPassMap passes={aggPasses ?? []} attackingDirection="ltr" filter={passFilter} className="rounded-md overflow-hidden" />
+              <PlayerPassMap passes={passesToRender} attackingDirection="ltr" filter={passFilter} className="rounded-md overflow-hidden" />
             )}
             <p className="text-[10px] text-muted-foreground mt-1">
               Verde = certo · Vermelho = errado · Ataque →
-              {missingCoords && ' · Localizações ausentes em jogos antigos.'}
+              {hasSynthetic.passes && ' · Algumas posições aproximadas (jogos antigos).'}
             </p>
           </>
         )}
@@ -347,11 +382,11 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerShotMap shots={aggShots ?? []} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+              <PlayerShotMap shots={shotsToRender} attackingDirection="ltr" className="rounded-md overflow-hidden" />
             )}
             <ShotMapLegend />
-            {missingCoords && (
-              <p className="text-[10px] text-muted-foreground mt-1">Localizações de finalização ausentes em jogos antigos.</p>
+            {hasSynthetic.shots && (
+              <p className="text-[10px] text-muted-foreground mt-1">Algumas posições aproximadas (jogos antigos).</p>
             )}
           </>
         )}
@@ -361,11 +396,11 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerDefensiveMap events={aggDefensive ?? []} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+              <PlayerDefensiveMap events={defensiveToRender} attackingDirection="ltr" className="rounded-md overflow-hidden" />
             )}
             <DefensiveMapLegend />
-            {missingCoords && (
-              <p className="text-[10px] text-muted-foreground mt-1">Localizações de desarme/interceptação ausentes em jogos antigos.</p>
+            {hasSynthetic.defensive && (
+              <p className="text-[10px] text-muted-foreground mt-1">Algumas posições aproximadas (jogos antigos).</p>
             )}
           </>
         )}

@@ -32,6 +32,58 @@ function pctToSvg(x: number, y: number, mirror: boolean): { sx: number; sy: numb
   };
 }
 
+// ── Synthetic fallback positions ────────────────────────────────────────
+// When old matches have stats counts but no per-event coordinates, we still
+// want to surface counts on the field. Each synthetic dot is placed in a
+// canonical zone for its kind, with lateral Y spread so multiples don't
+// stack on top of each other.
+function spreadY(idx: number, count: number, min = 22, max = 78): number {
+  if (count <= 1) return (min + max) / 2;
+  return min + (idx / (count - 1)) * (max - min);
+}
+
+export function syntheticShots(goals: number, others: number): ShotDatum[] {
+  const list: ShotDatum[] = [];
+  for (let i = 0; i < goals; i++) {
+    list.push({ from: { x: 96, y: spreadY(i, goals, 44, 56) }, outcome: 'goal' });
+  }
+  // Alternate misses between top-post and bottom-post zones for visual variety.
+  const halfTop = Math.ceil(others / 2);
+  const halfBot = others - halfTop;
+  for (let i = 0; i < halfTop; i++) {
+    list.push({ from: { x: 90, y: spreadY(i, halfTop, 30, 40) }, outcome: 'wide' });
+  }
+  for (let i = 0; i < halfBot; i++) {
+    list.push({ from: { x: 90, y: spreadY(i, halfBot, 60, 70) }, outcome: 'wide' });
+  }
+  return list;
+}
+
+export function syntheticPasses(completed: number, failed: number): PassDatum[] {
+  const list: PassDatum[] = [];
+  // Zero-length arrows → renderer detects and draws a single dot.
+  for (let i = 0; i < completed; i++) {
+    const y = spreadY(i, completed, 28, 72);
+    list.push({ from: { x: 48, y }, to: { x: 48, y }, completed: true });
+  }
+  for (let i = 0; i < failed; i++) {
+    const y = spreadY(i, failed, 28, 72);
+    list.push({ from: { x: 52, y }, to: { x: 52, y }, completed: false });
+  }
+  return list;
+}
+
+export function syntheticDefensive(tackles: number, interceptions: number): DefensiveDatum[] {
+  const list: DefensiveDatum[] = [];
+  for (let i = 0; i < tackles; i++) {
+    list.push({ pos: { x: 16, y: spreadY(i, tackles, 28, 72) }, kind: 'tackle' });
+  }
+  for (let i = 0; i < interceptions; i++) {
+    list.push({ pos: { x: 20, y: spreadY(i, interceptions, 28, 72) }, kind: 'interception' });
+  }
+  return list;
+}
+
 export function PlayerPassMap({ passes, attackingDirection = 'ltr', filter = 'all', className }: PassMapProps) {
   const mirror = attackingDirection === 'rtl';
   const filtered = filter === 'all'
@@ -58,6 +110,17 @@ export function PlayerPassMap({ passes, attackingDirection = 'ltr', filter = 'al
           const b = pctToSvg(p.to.x, p.to.y, mirror);
           const stroke = p.completed ? '#22c55e' : '#ef4444';
           const marker = p.completed ? 'url(#passArrowOk)' : 'url(#passArrowBad)';
+          // Zero-length passes are synthetic fallbacks for old matches
+          // without coords — render as a single dot so multiples don't
+          // collapse into invisible arrowheads on top of each other.
+          const isDot = Math.abs(p.from.x - p.to.x) < 0.5 && Math.abs(p.from.y - p.to.y) < 0.5;
+          if (isDot) {
+            return (
+              <circle key={idx} cx={a.sx} cy={a.sy} r={6}
+                fill={stroke} fillOpacity={0.85}
+                stroke="#0f172a" strokeWidth={1.5} />
+            );
+          }
           return (
             <line
               key={idx}
