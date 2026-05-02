@@ -16,7 +16,7 @@ type AwardRow = {
 
 type Player = {
   id: string;
-  nickname: string | null;
+  full_name: string | null;
   appearance: any;
 };
 
@@ -38,7 +38,7 @@ export function ClubAwardsHistory({ clubId }: Props) {
       setLoading(true);
       const { data: squadRows } = await supabase
         .from('player_profiles')
-        .select('id, nickname, appearance')
+        .select('id, full_name, appearance')
         .eq('club_id', clubId);
 
       if (cancelled) return;
@@ -99,7 +99,7 @@ export function ClubAwardsHistory({ clubId }: Props) {
                 <PlayerAvatar
                   appearance={player?.appearance ?? null}
                   variant="face"
-                  playerName={player?.nickname ?? ''}
+                  playerName={player?.full_name ?? ''}
                   fallbackSeed={pid}
                   className="h-full w-full"
                 />
@@ -108,7 +108,7 @@ export function ClubAwardsHistory({ clubId }: Props) {
                 to={`/player/${pid}`}
                 className="text-xs font-display font-bold hover:text-tactical truncate"
               >
-                {player?.nickname ?? '—'}
+                {player?.full_name ?? '—'}
               </Link>
               <div className="flex flex-wrap gap-1 ml-auto">
                 {list.slice(0, 8).map((a) => {

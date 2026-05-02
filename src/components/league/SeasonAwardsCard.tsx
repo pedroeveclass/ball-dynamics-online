@@ -25,7 +25,7 @@ type AwardRow = {
 
 type PlayerInfo = {
   id: string;
-  nickname: string | null;
+  full_name: string | null;
   appearance: any;
   club_id: string | null;
 };
@@ -72,7 +72,7 @@ export function SeasonAwardsCard({ seasonId, seasonNumber }: Props) {
 
       const { data: pRows } = await supabase
         .from('player_profiles')
-        .select('id, nickname, appearance, club_id')
+        .select('id, full_name, appearance, club_id')
         .in('id', playerIds);
 
       const playerMap: Record<string, PlayerInfo> = {};
@@ -143,7 +143,7 @@ export function SeasonAwardsCard({ seasonId, seasonNumber }: Props) {
                         clubPrimaryColor={club?.primary_color}
                         clubSecondaryColor={club?.secondary_color}
                         clubCrestUrl={club?.crest_url}
-                        playerName={player?.nickname ?? ''}
+                        playerName={player?.full_name ?? ''}
                         fallbackSeed={award.player_profile_id}
                         className="h-full w-full"
                       />
@@ -153,7 +153,7 @@ export function SeasonAwardsCard({ seasonId, seasonNumber }: Props) {
                         to={`/player/${award.player_profile_id}`}
                         className="block text-xs font-display font-bold truncate hover:text-tactical"
                       >
-                        {player?.nickname ?? '—'}
+                        {player?.full_name ?? '—'}
                       </Link>
                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                         {club && (

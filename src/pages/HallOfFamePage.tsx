@@ -24,7 +24,7 @@ type AwardRow = {
 
 type PlayerInfo = {
   id: string;
-  nickname: string | null;
+  full_name: string | null;
   appearance: any;
   club_id: string | null;
 };
@@ -91,7 +91,7 @@ export default function HallOfFamePage() {
 
       const { data: pRows } = await supabase
         .from('player_profiles')
-        .select('id, nickname, appearance, club_id')
+        .select('id, full_name, appearance, club_id')
         .in('id', playerIds);
 
       const playerMap: Record<string, PlayerInfo> = {};
@@ -177,7 +177,7 @@ export default function HallOfFamePage() {
                           clubPrimaryColor={club?.primary_color}
                           clubSecondaryColor={club?.secondary_color}
                           clubCrestUrl={club?.crest_url}
-                          playerName={player?.nickname ?? ''}
+                          playerName={player?.full_name ?? ''}
                           fallbackSeed={entry.pid}
                           className="h-full w-full"
                         />
@@ -187,7 +187,7 @@ export default function HallOfFamePage() {
                           to={`/player/${entry.pid}`}
                           className="font-display font-bold text-sm hover:text-tactical block truncate"
                         >
-                          {player?.nickname ?? '—'}
+                          {player?.full_name ?? '—'}
                         </Link>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           {club && (

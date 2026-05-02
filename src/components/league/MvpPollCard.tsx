@@ -35,9 +35,10 @@ type Poll = {
 
 type PlayerInfo = {
   id: string;
-  nickname: string | null;
+  full_name: string | null;
   appearance: any;
   jersey_number: number | null;
+  primary_position: string | null;
 };
 
 type ClubInfo = {
@@ -95,7 +96,7 @@ export function MvpPollCard({ scope, entityId, voteRpc, anchorId, title }: Props
 
       const [{ data: playerRows }, { data: clubRows }, { data: tallyRows }, myVoteRes] = await Promise.all([
         candidateIds.length
-          ? supabase.from('player_profiles').select('id, nickname, appearance, jersey_number').in('id', candidateIds)
+          ? supabase.from('player_profiles').select('id, full_name, appearance, jersey_number, primary_position').in('id', candidateIds)
           : Promise.resolve({ data: [] as any[] }),
         clubIds.length
           ? supabase.from('clubs').select('id, name, short_name, primary_color, secondary_color, crest_url').in('id', clubIds)
@@ -282,7 +283,7 @@ export function MvpPollCard({ scope, entityId, voteRpc, anchorId, title }: Props
                     clubPrimaryColor={club?.primary_color}
                     clubSecondaryColor={club?.secondary_color}
                     clubCrestUrl={club?.crest_url}
-                    playerName={player?.nickname ?? ''}
+                    playerName={player?.full_name ?? ''}
                     fallbackSeed={c.player_profile_id}
                     className="h-full w-full"
                   />
@@ -293,7 +294,7 @@ export function MvpPollCard({ scope, entityId, voteRpc, anchorId, title }: Props
                     onClick={(e) => e.stopPropagation()}
                     className="block text-xs font-display font-bold truncate hover:text-tactical"
                   >
-                    {player?.nickname ?? '—'}
+                    {player?.full_name ?? '—'}
                   </Link>
                   <div className="flex items-center gap-1 mt-0.5">
                     {club && (
@@ -306,7 +307,8 @@ export function MvpPollCard({ scope, entityId, voteRpc, anchorId, title }: Props
                       />
                     )}
                     <span className="text-[10px] text-muted-foreground truncate">
-                      {club?.short_name ?? ''}{c.position ? ` · ${c.position}` : ''}
+                      {club?.short_name ?? ''}
+                      {(c.position || player?.primary_position) ? ` · ${c.position || player?.primary_position}` : ''}
                     </span>
                   </div>
                 </div>
@@ -383,7 +385,7 @@ function WinnerBanner({
           clubPrimaryColor={club?.primary_color}
           clubSecondaryColor={club?.secondary_color}
           clubCrestUrl={club?.crest_url}
-          playerName={player?.nickname ?? ''}
+          playerName={player?.full_name ?? ''}
           fallbackSeed={candidate.player_profile_id}
           className="h-full w-full"
         />
@@ -396,7 +398,7 @@ function WinnerBanner({
           to={`/player/${candidate.player_profile_id}`}
           className="font-display font-bold text-sm hover:text-tactical truncate block"
         >
-          {player?.nickname ?? '—'}
+          {player?.full_name ?? '—'}
         </Link>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           {club && (
