@@ -19,6 +19,8 @@ import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
 import { PlayerMatchesTab } from '@/components/player/PlayerMatchesTab';
+import { PlayerSeasonOverview } from '@/components/player/PlayerSeasonOverview';
+import { PlayerCompareDialog } from '@/components/player/PlayerCompareDialog';
 import { CountryFlag } from '@/components/CountryFlag';
 import { getCountry, getCountryName } from '@/lib/countries';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
@@ -135,6 +137,7 @@ export default function PublicPlayerPage() {
   } | null>(null);
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   const [loading, setLoading] = useState(true);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   useEffect(() => {
     if (!playerId) return;
@@ -238,6 +241,9 @@ export default function PublicPlayerPage() {
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleCopyLink}>
                   <Copy className="h-3 w-3 mr-1" /> {t('header.copy_link')}
                 </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCompareOpen(true)}>
+                  ⇅ Comparar
+                </Button>
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <PositionBadge position={player.primary_position} />
@@ -337,7 +343,13 @@ export default function PublicPlayerPage() {
         {/* Career Statistics (position-specific block) */}
         <CareerStatsBlock playerProfileId={player.id} position={player.primary_position} />
 
-        {/* Recent matches with rating + heatmap drill-down */}
+        {/* Season overview — last-N rating strip + season heatmap + season totals */}
+        <div className="stat-card p-4 space-y-3">
+          <h2 className="font-display text-lg font-bold">Temporada</h2>
+          <PlayerSeasonOverview playerProfileId={player.id} />
+        </div>
+
+        {/* Recent matches with rating + heatmap drill-down + pass/shot maps */}
         <div className="stat-card p-4 space-y-3">
           <h2 className="font-display text-lg font-bold">Partidas</h2>
           <PlayerMatchesTab playerProfileId={player.id} />
@@ -358,6 +370,13 @@ export default function PublicPlayerPage() {
           </div>
         )}
       </div>
+
+      <PlayerCompareDialog
+        open={compareOpen}
+        onOpenChange={setCompareOpen}
+        basePlayerId={player.id}
+        basePlayerName={player.full_name}
+      />
     </Layout>
   );
 }

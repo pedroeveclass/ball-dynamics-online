@@ -4,10 +4,12 @@ import { Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { RatingChip } from './RatingChip';
 import { PitchHeatmap } from './PitchHeatmap';
+import { PlayerPassMap, PlayerShotMap, ShotMapLegend, type PassDatum, type ShotDatum } from './PlayerActionMap';
 
 interface MatchStatRow {
   id: string;
   match_id: string;
+  participant_id: string;
   rating: number | null;
   position: string | null;
   goals: number;
@@ -72,9 +74,63 @@ interface MatchDetailPanelProps {
   row: MatchStatRow;
   opponentClub: ClubLite | null;
   playerIsHome: boolean;
+  participantId: string;
 }
 
-function MatchDetailPanel({ row, opponentClub, playerIsHome }: MatchDetailPanelProps) {
+type DetailTab = 'overview' | 'passes' | 'shots';
+
+function useMatchActionEvents(matchId: string, participantId: string) {
+  const [passes, setPasses] = useState<PassDatum[]>([]);
+  const [shots, setShots] = useState<ShotDatum[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('match_event_logs')
+        .select('event_type, payload')
+        .eq('match_id', matchId)
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post']);
+      if (cancelled) return;
+      const passesList: PassDatum[] = [];
+      const shotsList: ShotDatum[] = [];
+      for (const ev of (data || [])) {
+        const p = (ev.payload || {}) as Record<string, any>;
+        if (ev.event_type === 'pass_complete' || ev.event_type === 'pass_failed') {
+          if (p.passer_participant_id !== participantId) continue;
+          if (typeof p.from_x !== 'number' || typeof p.to_x !== 'number') continue;
+          passesList.push({
+            from: { x: p.from_x, y: p.from_y },
+            to: { x: p.to_x, y: p.to_y },
+            completed: ev.event_type === 'pass_complete',
+          });
+        } else {
+          // Shot family
+          const shooterId = p.shooter_participant_id ?? p.scorer_participant_id;
+          if (shooterId !== participantId) continue;
+          if (typeof p.from_x !== 'number') continue;
+          let outcome: ShotDatum['outcome'];
+          if (ev.event_type === 'goal') outcome = 'goal';
+          else if (ev.event_type === 'shot_post') outcome = 'post';
+          else outcome = p.outcome === 'over' ? 'over' : 'wide';
+          shotsList.push({ from: { x: p.from_x, y: p.from_y }, outcome });
+        }
+      }
+      setPasses(passesList);
+      setShots(shotsList);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [matchId, participantId]);
+
+  return { passes, shots, loading };
+}
+
+function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: MatchDetailPanelProps) {
+  const [tab, setTab] = useState<DetailTab>('overview');
+  const { passes, shots, loading: actionsLoading } = useMatchActionEvents(row.match_id, participantId);
   // Impact bars derived from per-stat ratios.
   const passAcc = row.passes_attempted > 0 ? row.passes_completed / row.passes_attempted : null;
   const shooting = row.goals > 0 ? Math.min(1, row.goals * 0.6) : row.shots_on_target > 0 ? 0.2 : row.shots > 0 ? -0.3 : 0;
@@ -85,47 +141,107 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome }: MatchDetailPanelP
   // attacking direction depends on the half + which side the player's club is on.
   // Heatmap aggregates the whole match, so just mirror by player's home/away affiliation.
   const attackingDirection: 'ltr' | 'rtl' = playerIsHome ? 'ltr' : 'rtl';
+  const [passFilter, setPassFilter] = useState<'all' | 'completed' | 'failed'>('all');
+
+  const tabs: { id: DetailTab; label: string }[] = [
+    { id: 'overview', label: 'Visão geral' },
+    { id: 'passes', label: `Passes (${passes.length})` },
+    { id: 'shots', label: `Finalizações (${shots.length})` },
+  ];
 
   return (
     <div className="bg-muted/20 rounded-lg p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Mapa de calor</h4>
-          <PitchHeatmap
-            samples={row.position_samples ?? []}
-            attackingDirection={attackingDirection}
-            className="rounded-md overflow-hidden"
-          />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            {(row.position_samples?.length ?? 0)} amostras · ataque →
-          </p>
-        </div>
-
-        <div>
-          <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Impacto por área</h4>
-          <div className="space-y-2 mb-4">
-            <ImpactBar label="Finalização" value={shooting} />
-            <ImpactBar label="Passe" value={passing} />
-            <ImpactBar label="Drible" value={dribbling} />
-            <ImpactBar label="Defesa" value={defending} />
-          </div>
-
-          <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Estatísticas</h4>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <Stat label="Gols" value={row.goals} />
-            <Stat label="Assistências" value={row.assists} />
-            <Stat label="Finalizações" value={`${row.shots_on_target}/${row.shots}`} />
-            <Stat label="Passes" value={`${row.passes_completed}/${row.passes_attempted}${row.passes_attempted ? ` (${Math.round((row.passes_completed/row.passes_attempted)*100)}%)` : ''}`} />
-            <Stat label="Desarmes" value={row.tackles} />
-            <Stat label="Interceptações" value={row.interceptions} />
-            <Stat label="Faltas" value={row.fouls_committed} />
-            {row.gk_saves > 0 && <Stat label="Defesas (GK)" value={row.gk_saves} />}
-            {row.clean_sheet && <Stat label="Não sofreu gol" value="✓" />}
-            {row.yellow_cards > 0 && <Stat label="Amarelos" value={row.yellow_cards} />}
-            {row.red_cards > 0 && <Stat label="Vermelhos" value={row.red_cards} />}
-          </div>
-        </div>
+      <div className="flex gap-1 border-b border-border -mx-4 px-4">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-1.5 text-xs font-display font-semibold transition-colors border-b-2 -mb-px ${
+              tab === t.id ? 'border-tactical text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      {tab === 'overview' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Mapa de calor</h4>
+            <PitchHeatmap
+              samples={row.position_samples ?? []}
+              attackingDirection={attackingDirection}
+              className="rounded-md overflow-hidden"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {(row.position_samples?.length ?? 0)} amostras · ataque →
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Impacto por área</h4>
+            <div className="space-y-2 mb-4">
+              <ImpactBar label="Finalização" value={shooting} />
+              <ImpactBar label="Passe" value={passing} />
+              <ImpactBar label="Drible" value={dribbling} />
+              <ImpactBar label="Defesa" value={defending} />
+            </div>
+
+            <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Estatísticas</h4>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <Stat label="Gols" value={row.goals} />
+              <Stat label="Assistências" value={row.assists} />
+              <Stat label="Finalizações" value={`${row.shots_on_target}/${row.shots}`} />
+              <Stat label="Passes" value={`${row.passes_completed}/${row.passes_attempted}${row.passes_attempted ? ` (${Math.round((row.passes_completed/row.passes_attempted)*100)}%)` : ''}`} />
+              <Stat label="Desarmes" value={row.tackles} />
+              <Stat label="Interceptações" value={row.interceptions} />
+              <Stat label="Faltas" value={row.fouls_committed} />
+              {row.gk_saves > 0 && <Stat label="Defesas (GK)" value={row.gk_saves} />}
+              {row.clean_sheet && <Stat label="Não sofreu gol" value="✓" />}
+              {row.yellow_cards > 0 && <Stat label="Amarelos" value={row.yellow_cards} />}
+              {row.red_cards > 0 && <Stat label="Vermelhos" value={row.red_cards} />}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'passes' && (
+        <div className="space-y-3">
+          <div className="flex gap-2 items-center">
+            {(['all', 'completed', 'failed'] as const).map(f => (
+              <button key={f} onClick={() => setPassFilter(f)}
+                className={`text-[11px] font-display px-2.5 py-1 rounded-full transition-colors ${
+                  passFilter === f ? 'bg-tactical text-tactical-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                }`}>
+                {f === 'all' ? 'Todos' : f === 'completed' ? 'Certos' : 'Errados'}
+              </button>
+            ))}
+            <span className="text-[10px] text-muted-foreground ml-auto">
+              {passes.filter(p => p.completed).length}/{passes.length} {passes.length ? `(${Math.round((passes.filter(p => p.completed).length / passes.length) * 100)}%)` : ''}
+            </span>
+          </div>
+          {actionsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <PlayerPassMap passes={passes} attackingDirection={attackingDirection} filter={passFilter} className="rounded-md overflow-hidden" />
+          )}
+          <p className="text-[10px] text-muted-foreground">Verde = certo · Vermelho = errado · Setas apontam para o destino do passe. Ataque →</p>
+        </div>
+      )}
+
+      {tab === 'shots' && (
+        <div className="space-y-3">
+          {actionsLoading ? (
+            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <>
+              <PlayerShotMap shots={shots} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+              <ShotMapLegend />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -150,7 +266,7 @@ export function PlayerMatchesTab({ playerProfileId }: { playerProfileId: string 
       const { data: stats } = await supabase
         .from('player_match_stats')
         .select(`
-          id, match_id, rating, position, goals, assists, shots, shots_on_target,
+          id, match_id, participant_id, rating, position, goals, assists, shots, shots_on_target,
           passes_completed, passes_attempted, tackles, interceptions, fouls_committed,
           yellow_cards, red_cards, gk_saves, goals_conceded, clean_sheet, position_samples,
           player_club:club_id ( id ),
@@ -238,7 +354,7 @@ export function PlayerMatchesTab({ playerProfileId }: { playerProfileId: string 
             </button>
             {isOpen && (
               <div className="border-t border-border p-3">
-                <MatchDetailPanel row={row} opponentClub={opp} playerIsHome={playerIsHome} />
+                <MatchDetailPanel row={row} opponentClub={opp} playerIsHome={playerIsHome} participantId={row.participant_id} />
               </div>
             )}
           </div>
