@@ -20,6 +20,7 @@ import {
   Lock, Loader2, Globe, Lightbulb, Bug, Swords, ArrowRightLeft, Coffee,
   ChevronUp, ChevronDown,
 } from 'lucide-react';
+import { ForumIntroTour } from '@/components/tour/ForumIntroTour';
 
 function ForumLayout({ children }: { children: ReactNode }) {
   const { managerProfile, playerProfile, loading } = useAuth();
@@ -235,8 +236,9 @@ export default function ForumPage() {
   return (
     <ForumLayout>
       <div className="space-y-6">
+        <ForumIntroTour enabled={!loading} hasCategories={!categorySlug && categories.length > 0} hasNewTopicButton={!!profile} />
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div data-tour="forum-header" className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             {categorySlug && (
               <Link to="/forum" className="text-muted-foreground hover:text-foreground transition-colors">
@@ -256,7 +258,7 @@ export default function ForumPage() {
             </div>
           </div>
           {profile && (
-            <Button onClick={() => setShowNewTopic(true)} className="font-display">
+            <Button data-tour="forum-new-topic" onClick={() => setShowNewTopic(true)} className="font-display">
               <Plus className="h-4 w-4 mr-1" /> {t('buttons.new_topic')}
             </Button>
           )}
@@ -273,7 +275,7 @@ export default function ForumPage() {
           <>
             {/* Category grid (only on main forum page) */}
             {!categorySlug && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div data-tour="forum-categories" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {categories.map(cat => {
                   const catName = pickCatName(cat, lang);
                   const catDesc = pickCatDescription(cat, lang);

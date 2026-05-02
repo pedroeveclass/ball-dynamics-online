@@ -141,5 +141,67 @@
       "title": "Create a lobby",
       "body": "Click Create to open a new lobby — pick format (5v5 or 11v11), kickoff time, side of the field and position. Other online players join the open slots.\n\nMax 3 open lobbies on the server — first come, first served."
     }
+  },
+  "contract_intro": {
+    "step1": {
+      "title": "Your financial health",
+      "body": "Overview of your money:\n\n• Balance — what you have in the wallet\n• Weekly salary — how much the club pays you\n• Current club\n• Next payment — always on Monday\n\nNo contract = no salary. That's why having a club matters."
+    },
+    "step2": {
+      "title": "Contract details",
+      "body": "Here are the terms of your contract:\n\n• Weekly salary\n• Release clause — the amount another club pays to take you from here (without having to negotiate with your manager)\n• Start and end dates\n\nIf you're without a club, this card shows a shortcut to go find one."
+    },
+    "step3": {
+      "title": "Leave the club",
+      "body": "Want to leave the club without waiting for an offer from another one?\n\nClick Request Exit to ask the manager for a mutual agreement. If they accept, you become a free agent right away — no clause to pay, no pending. If they refuse, you stay."
+    }
+  },
+  "offers_intro": {
+    "step1": {
+      "title": "Your current status",
+      "body": "Before accepting any offer, remember what you already have: current club, salary, clause. Compare with what's being offered."
+    },
+    "step2": {
+      "title": "Offers that came in",
+      "body": "Here you see offers from clubs that want to sign you. Each card shows:\n\n• Weekly salary\n• Release clause\n• Contract duration\n• Squad role the manager offers (starter / bench)\n• Optional message from the manager\n\nButtons: Accept joins the club instantly; Reject discards the offer. No offers? Just wait — or promote yourself on the forum."
+    }
+  },
+  "bank_intro": {
+    "step1": {
+      "title": "Your credit line",
+      "body": "Ball Dynamics Bank. Here you can take a loan if you need cash fast.\n\nThe 3 cards show: Current balance, Weekly salary (your fixed income) and Loan limit (how much the bank lends you — calculated from your income)."
+    },
+    "step2": {
+      "title": "Take a loan",
+      "body": "Drag the slider to pick how much to borrow. Loan details appear in real time:\n\n• Term and interest rate\n• Weekly payment deducted from your salary\n• Total to pay (principal + interest)\n\nOnly take what you need — interest is unforgiving."
+    },
+    "step3": {
+      "title": "Pay off early",
+      "body": "You have an active loan. Each week pays an automatic installment.\n\nWant to be done with it? Click Pay All to settle the remaining balance and stop paying interest — as long as you have enough cash."
+    }
+  },
+  "store_intro": {
+    "step1": {
+      "title": "Categories and your balance",
+      "body": "Game store. Your balance shows in the top right.\n\nEach tab is a category: trainer (auto-training), physio (energy regen), gloves (GK only), boots (raises attribute cap), consumables and cosmetics. Items give bonuses in training, match and look."
+    },
+    "step2": {
+      "title": "My Items — what's active",
+      "body": "Here you see everything you've bought — active, in the inventory, or canceling renewal.\n\nTrainer / physio / gloves have category exclusivity (only 1 active at a time); boots are exclusive per bonus type. When you buy something that conflicts, the game opens a dialog asking if you want to swap."
+    }
+  },
+  "forum_intro": {
+    "step1": {
+      "title": "Welcome to the Forum",
+      "body": "This is the game's Forum — where the community talks: players, managers, all together.\n\nGood place to introduce yourself (managers see who speaks well and may invite you), discuss tactics, report bugs, or just have fun."
+    },
+    "step2": {
+      "title": "Categories",
+      "body": "Categories organize the conversation — general, tactics, transfers, suggestions, bugs, off-topic.\n\nClick any to see only that topic's threads."
+    },
+    "step3": {
+      "title": "Create a topic",
+      "body": "Click New Topic to start a conversation. Pick the category, write the title and the body.\n\nTip: paste your public profile link (from the Profile page) so managers can see you in one click."
+    }
   }
 }

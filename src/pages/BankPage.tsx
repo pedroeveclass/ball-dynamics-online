@@ -10,6 +10,7 @@ import { Landmark, Wallet, Calendar, Percent, CreditCard, Loader2, AlertTriangle
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { useTranslation } from 'react-i18next';
+import { BankIntroTour } from '@/components/tour/BankIntroTour';
 
 interface Loan {
   id: string;
@@ -180,6 +181,7 @@ function BankContent() {
 
   return (
     <div className="space-y-6">
+      <BankIntroTour enabled={true} hasActiveLoan={!!activeLoan} canTakeLoan={canTakeLoan && maxLoan > 0} />
       {/* Header */}
       <div className="flex items-center gap-3">
         <Landmark className="h-7 w-7 text-amber-500" />
@@ -187,7 +189,7 @@ function BankContent() {
       </div>
 
       {/* Top stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div data-tour="bank-stats" className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <StatCard
           label={t('stats.current_balance')}
           value={formatBRL(currentBalance)}
@@ -208,7 +210,7 @@ function BankContent() {
 
       {/* Active Loan */}
       {activeLoan && (
-        <div className="stat-card border-2 border-amber-500/30 bg-amber-500/5">
+        <div data-tour="bank-loan" className="stat-card border-2 border-amber-500/30 bg-amber-500/5">
           <h2 className="font-display font-semibold text-sm mb-4 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             {t('active_loan.title')}
@@ -262,7 +264,7 @@ function BankContent() {
 
       {/* Request Loan Form */}
       {canTakeLoan && (
-        <div className="stat-card">
+        <div data-tour="bank-request" className="stat-card">
           <h2 className="font-display font-semibold text-sm mb-4 flex items-center gap-2">
             <Landmark className="h-4 w-4 text-amber-500" />
             {t('request.title')}

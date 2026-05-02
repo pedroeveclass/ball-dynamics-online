@@ -22,6 +22,7 @@ import i18n from '@/i18n';
 import { useTranslation } from 'react-i18next';
 import { ATTR_LABELS } from '@/lib/attributes';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
+import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 
 interface StoreItem {
   id: string;
@@ -407,6 +408,7 @@ export default function StorePage() {
 
   const content = (
     <div className="space-y-6">
+      <StoreIntroTour enabled={!loading && items.length > 0} hasMyItemsTab={!isManager && playerPurchases.length > 0} />
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
@@ -451,9 +453,9 @@ export default function StorePage() {
         <div className="text-sm text-muted-foreground py-8 text-center">{t('states.no_items')}</div>
       ) : (
         <Tabs defaultValue={defaultTab} className="w-full">
-          <TabsList className="flex flex-wrap h-auto gap-1">
+          <TabsList data-tour="store-tabs" className="flex flex-wrap h-auto gap-1">
             {!isManager && playerPurchases.length > 0 && (
-              <TabsTrigger value="meus_itens" className="flex items-center gap-1 text-xs">
+              <TabsTrigger data-tour="store-my-items" value="meus_itens" className="flex items-center gap-1 text-xs">
                 <Package className="h-3 w-3" />
                 {categoryTabLabel('meus_itens')}
                 <span className="text-[10px] text-muted-foreground">({playerPurchases.length})</span>

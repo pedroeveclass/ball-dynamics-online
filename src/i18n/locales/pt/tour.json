@@ -141,5 +141,67 @@
       "title": "Cria um lobby",
       "body": "Clica em Criar pra abrir um lobby novo — escolhe formato (5v5 ou 11v11), horário, lado do campo e posição. Os outros jogadores online entram nas vagas abertas.\n\nMáximo 3 lobbies abertos no servidor — primeiro a chegar pega vaga."
     }
+  },
+  "contract_intro": {
+    "step1": {
+      "title": "Sua saúde financeira",
+      "body": "Visão geral da sua grana:\n\n• Saldo — o que você tem na carteira\n• Salário semanal — quanto o clube te paga\n• Clube atual\n• Próximo pagamento — sempre na segunda-feira\n\nSem contrato = sem salário. Por isso ter clube importa."
+    },
+    "step2": {
+      "title": "Detalhes do contrato",
+      "body": "Aqui estão os termos do seu contrato:\n\n• Salário semanal\n• Cláusula de rescisão — o valor que outro clube paga pra te tirar daqui (sem precisar negociar com seu técnico)\n• Início e fim do contrato\n\nSe você está sem clube, esse card mostra um atalho pra ir buscar um."
+    },
+    "step3": {
+      "title": "Sair do clube",
+      "body": "Quer sair do clube sem esperar oferta de outro?\n\nClica em Solicitar Saída pra pedir um comum acordo ao técnico. Se ele aceitar, você vira agente livre na hora — sem pagar cláusula, sem pendência. Se recusar, você fica."
+    }
+  },
+  "offers_intro": {
+    "step1": {
+      "title": "Seu status atual",
+      "body": "Antes de aceitar qualquer oferta, lembra do que você já tem: clube atual, salário, cláusula. Compara com o que está sendo oferecido."
+    },
+    "step2": {
+      "title": "Propostas que chegaram",
+      "body": "Aqui aparecem propostas de clubes que querem te contratar. Cada card mostra:\n\n• Salário semanal\n• Cláusula de rescisão\n• Duração do contrato\n• Papel que o técnico te oferece (titular / banco)\n• Mensagem opcional do técnico\n\nBotões: Aceitar entra no clube na hora; Rejeitar descarta a proposta. Sem propostas? É só esperar — ou se promover no fórum."
+    }
+  },
+  "bank_intro": {
+    "step1": {
+      "title": "Sua linha de crédito",
+      "body": "Banco do Ball Dynamics. Aqui você pega empréstimo se precisar de grana rápida.\n\nOs 3 cards mostram: Saldo atual, Salário semanal (sua renda fixa) e Limite de empréstimo (quanto o banco te empresta — calculado a partir da sua renda)."
+    },
+    "step2": {
+      "title": "Pegar empréstimo",
+      "body": "Arrasta o slider pra escolher quanto pegar emprestado. Os detalhes do empréstimo aparecem em tempo real:\n\n• Prazo e juros do banco\n• Pagamento semanal que vai sair do seu salário\n• Total a pagar (principal + juros)\n\nPega só o que precisa — juros não perdoam ninguém."
+    },
+    "step3": {
+      "title": "Quitar adiantado",
+      "body": "Você tem um empréstimo rodando. Cada semana paga uma parcela automática.\n\nQuer livrar logo? Clica em Pagar tudo pra quitar o saldo restante e parar de pagar juros — desde que tenha grana suficiente."
+    }
+  },
+  "store_intro": {
+    "step1": {
+      "title": "Categorias e seu saldo",
+      "body": "Loja do jogo. Seu saldo aparece no topo direito.\n\nCada aba é uma categoria: treinador (auto-treino), fisio (regen energia), luvas (só GK), chuteiras (sobe teto de atributo), consumíveis e cosméticos. Itens dão bônus em treino, jogo e visual."
+    },
+    "step2": {
+      "title": "Meus Itens — o que está ativo",
+      "body": "Aqui você vê tudo que tem comprado — ativos, no inventário, ou cancelando renovação.\n\nTreinador / fisio / luvas têm exclusividade por categoria (só 1 ativo por vez); chuteira é exclusiva por tipo de bônus. Quando você compra algo que conflita, o jogo abre uma janela perguntando se quer trocar."
+    }
+  },
+  "forum_intro": {
+    "step1": {
+      "title": "Bem-vindo ao Fórum",
+      "body": "Aqui é o Fórum do jogo — onde a comunidade conversa: jogadores, técnicos, todos juntos.\n\nBom lugar pra se apresentar (técnico vê quem fala bem e pode te chamar pro time), discutir táticas, reportar bugs, ou só zoar."
+    },
+    "step2": {
+      "title": "Categorias",
+      "body": "As categorias organizam a conversa — geral, táticas, transferências, sugestões, bugs, off-topic.\n\nClica em qualquer uma pra ver só os tópicos daquele tema."
+    },
+    "step3": {
+      "title": "Cria um tópico",
+      "body": "Clica em Novo Tópico pra começar uma conversa. Escolhe a categoria, escreve o título e o corpo.\n\nDica: cola seu link de perfil público (na página de Perfil) pra técnicos verem você num clique."
+    }
   }
 }

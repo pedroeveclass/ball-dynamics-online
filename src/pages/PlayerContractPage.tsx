@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import type { SupportedLanguage } from '@/i18n';
+import { ContractIntroTour } from '@/components/tour/ContractIntroTour';
 
 interface ContractData {
   id: string;
@@ -254,10 +255,11 @@ export default function PlayerContractPage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
+        <ContractIntroTour enabled={!loading} hasContract={!!contract} />
         <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Financial Summary Card */}
-        <div className="stat-card border-tactical/30">
+        <div data-tour="contract-summary" className="stat-card border-tactical/30">
           <div className="flex items-center gap-2 mb-4">
             <Wallet className="h-4 w-4 text-tactical" />
             <span className="font-display font-semibold text-sm">{t('summary.title')}</span>
@@ -302,7 +304,7 @@ export default function PlayerContractPage() {
         </div>
 
         {/* Contract Details Card */}
-        <div className="stat-card">
+        <div data-tour="contract-details" className="stat-card">
           <div className="flex items-center gap-2 mb-4">
             <FileText className="h-4 w-4 text-tactical" />
             <span className="font-display font-semibold text-sm">{t('contract.title')}</span>
@@ -382,7 +384,7 @@ export default function PlayerContractPage() {
 
         {/* ── Solicitar Saída (Mutual Agreement) ── */}
         {!loading && contract && (
-          <div className="stat-card space-y-3">
+          <div data-tour="contract-exit" className="stat-card space-y-3">
             <div className="flex items-center gap-2 mb-2">
               <Handshake className="h-4 w-4 text-tactical" />
               <span className="font-display font-semibold text-sm">{t('request_exit.title')}</span>

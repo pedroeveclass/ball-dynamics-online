@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import type { SupportedLanguage } from '@/i18n';
+import { OffersIntroTour } from '@/components/tour/OffersIntroTour';
 
 interface Offer {
   id: string;
@@ -236,10 +237,11 @@ export default function PlayerOffersPage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-3xl">
+        <OffersIntroTour enabled={!loading} />
         <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Current contract status */}
-        <div className="stat-card">
+        <div data-tour="offers-current" className="stat-card">
           <div className="flex items-center gap-2 mb-4">
             <FileText className="h-4 w-4 text-tactical" />
             <span className="font-display font-semibold text-sm">{t('current_status.title')}</span>
@@ -280,7 +282,7 @@ export default function PlayerOffersPage() {
         </div>
 
         {/* Pending offers */}
-        <div>
+        <div data-tour="offers-pending">
           <div className="flex items-center gap-2 mb-4">
             <Inbox className="h-4 w-4 text-tactical" />
             <span className="font-display font-semibold">{t('pending.title')}</span>
