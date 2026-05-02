@@ -40,6 +40,7 @@
   },
   "knobs": {
     "attack_label": "Attack:",
+    "defense_label": "Defense:",
     "positioning_label": "Spacing:",
     "inclination_label": "Tilt:",
     "attack": {
@@ -47,10 +48,18 @@
       "balanced": "Balanced",
       "wide": "Out wide"
     },
+    "defense": {
+      "central": "Central defense",
+      "balanced": "Balanced",
+      "wide": "Out wide"
+    },
     "positioning": {
+      "very_narrow": "Very narrow",
+      "narrow": "Narrow",
       "short": "Narrow",
       "normal": "Normal",
-      "spread": "Spread"
+      "spread": "Spread",
+      "very_spread": "Very spread"
     },
     "inclination": {
       "ultra_def": "Ultra defensive",
@@ -93,7 +102,9 @@
   "actions": {
     "reset_quadrant": "Reset this quadrant",
     "reset_all": "Clear all customizations",
-    "duplicate": "Duplicate to another formation"
+    "duplicate": "Duplicate to another formation",
+    "undo": "Undo",
+    "undo_hint": "Undoes the last edit (Ctrl+Z / Cmd+Z)"
   },
   "customized_status": "{{count}}/35 quadrant(s) customized in this phase",
   "explanation": "<0>Dynamic (default):</0> the whole team follows the ball — vertically more, laterally less. When you drag a player, the quadrant becomes <1>customized</1> (yellow dot in the corner) and locks into that shape.",

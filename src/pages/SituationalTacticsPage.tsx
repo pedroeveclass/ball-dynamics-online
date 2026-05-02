@@ -17,7 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal, MoreHorizontal, Plus, Pencil, Trash2, Share2 } from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, Copy, Eye, EyeOff, Users, X, FlipHorizontal, MoreHorizontal, Plus, Pencil, Trash2, Share2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Trans, useTranslation } from 'react-i18next';
 import { FORMATIONS } from './ManagerLineupPage';
@@ -53,8 +53,19 @@ const PHASE_LABEL_KEY: Record<Phase, string> = {
 // These multiply/shift positions on top of the dynamic/custom layout.
 // Same values are used in the match engine so the editor preview matches
 // what actually happens on the pitch.
+// Intelligence (with_ball: "Ataque" / without_ball: "Defesa") — central / balanced / wide.
+// As of 2026-05-01 this knob no longer moves chips; it biases bot AI decisions
+// (passes/dribbles toward middle vs flanks). Same value set as before.
 type AttackType = 'central' | 'balanced' | 'wide';
-type Positioning = 'short' | 'normal' | 'spread';
+
+// Positioning expanded 3 → 5 levels. Scales reproduce the legacy
+// (positioning × attack_type) composition so users don't need to relearn:
+//   very_narrow ≈ short × central (0.82 × 0.78 = 0.64)
+//   narrow      = old "short"
+//   normal      = old "normal"
+//   spread      = old "spread"
+//   very_spread ≈ spread × wide (1.18 × 1.22 = 1.44)
+type Positioning = 'very_narrow' | 'narrow' | 'normal' | 'spread' | 'very_spread';
 type Inclination = 'ultra_def' | 'def' | 'normal' | 'off' | 'ultra_off';
 interface TacticKnobs {
   attack_type: AttackType;
@@ -63,12 +74,37 @@ interface TacticKnobs {
 }
 const DEFAULT_KNOBS: TacticKnobs = { attack_type: 'balanced', positioning: 'normal', inclination: 'normal' };
 
-const ATTACK_TYPE_X_SCALE: Record<AttackType, number> = { central: 0.78, balanced: 1.0, wide: 1.22 };
-const POSITIONING_SCALE: Record<Positioning, number> = { short: 0.82, normal: 1.0, spread: 1.18 };
+// Per-phase knob bundle: with_ball and without_ball each carry their own values.
+type KnobsByPhase = Record<Phase, TacticKnobs>;
+const DEFAULT_KNOBS_BY_PHASE: KnobsByPhase = { with_ball: DEFAULT_KNOBS, without_ball: DEFAULT_KNOBS };
+
+const POSITIONING_SCALE: Record<Positioning, number> = {
+  very_narrow: 0.64,
+  narrow: 0.82,
+  normal: 1.0,
+  spread: 1.18,
+  very_spread: 1.44,
+};
 const INCLINATION_CELLS: Record<Inclination, number> = { ultra_def: 2, def: 1, normal: 0, off: -1, ultra_off: -2 };
 
-const ATTACK_TYPE_KEY: Record<AttackType, string> = { central: 'knobs.attack.central', balanced: 'knobs.attack.balanced', wide: 'knobs.attack.wide' };
-const POSITIONING_KEY: Record<Positioning, string> = { short: 'knobs.positioning.short', normal: 'knobs.positioning.normal', spread: 'knobs.positioning.spread' };
+// Migrate legacy 'short' value silently when reading.
+const normalizePositioning = (v: any): Positioning => {
+  if (v === 'short') return 'narrow';
+  if (v === 'very_narrow' || v === 'narrow' || v === 'normal' || v === 'spread' || v === 'very_spread') return v;
+  return 'normal';
+};
+
+// Label keys differ by phase: with_ball → "Ataque", without_ball → "Defesa".
+const ATTACK_TYPE_KEY = (phase: Phase): Record<AttackType, string> => phase === 'with_ball'
+  ? { central: 'knobs.attack.central', balanced: 'knobs.attack.balanced', wide: 'knobs.attack.wide' }
+  : { central: 'knobs.defense.central', balanced: 'knobs.defense.balanced', wide: 'knobs.defense.wide' };
+const POSITIONING_KEY: Record<Positioning, string> = {
+  very_narrow: 'knobs.positioning.very_narrow',
+  narrow: 'knobs.positioning.narrow',
+  normal: 'knobs.positioning.normal',
+  spread: 'knobs.positioning.spread',
+  very_spread: 'knobs.positioning.very_spread',
+};
 const INCLINATION_KEY: Record<Inclination, string> = {
   ultra_def: 'knobs.inclination.ultra_def', def: 'knobs.inclination.def', normal: 'knobs.inclination.normal', off: 'knobs.inclination.off', ultra_off: 'knobs.inclination.ultra_off',
 };
@@ -157,8 +193,9 @@ function resolvePositions(
   return phaseMap[phase][qIdx] ?? computeDynamicPositions(qIdx, formation);
 }
 
-/** Apply the 3 tactical knobs on top of a set of positions.
- *  Keeper is left untouched so the GK stays in the goal. */
+/** Apply the 2 positional knobs (positioning + inclination) on top of a set
+ *  of positions. attack_type stops affecting layout — it now only hints the
+ *  bot AI. Keeper is left untouched so the GK stays in the goal. */
 function applyKnobs(
   positions: QuadrantPositions,
   knobs: TacticKnobs,
@@ -170,7 +207,6 @@ function applyKnobs(
   const centroidX = outfield.reduce((sum, s) => sum + (positions[s.position]?.x ?? s.x), 0) / outfield.length;
   const centroidY = outfield.reduce((sum, s) => sum + (positions[s.position]?.y ?? s.y), 0) / outfield.length;
 
-  const xScale = ATTACK_TYPE_X_SCALE[knobs.attack_type];
   const posScale = POSITIONING_SCALE[knobs.positioning];
   const yShift = INCLINATION_CELLS[knobs.inclination] * (QUADRANT_H / 3);
 
@@ -184,7 +220,6 @@ function applyKnobs(
     }
     let x = centroidX + (p.x - centroidX) * posScale;
     let y = centroidY + (p.y - centroidY) * posScale;
-    x = 50 + (x - 50) * xScale;
     y += yShift;
     result[slot.position] = { x: clamp(x, 2, 98), y: clamp(y, 2, 98) };
   }
@@ -461,8 +496,18 @@ export default function SituationalTacticsPage() {
   // Opponent overrides are per (formation, quadrant) but kept only in memory.
   const [opponentOverrides, setOpponentOverrides] = useState<Record<number, QuadrantPositions>>({});
 
-  // Tactical knobs (persisted per formation — saved to both phase rows).
-  const [knobs, setKnobs] = useState<TacticKnobs>(DEFAULT_KNOBS);
+  // Tactical knobs are now per-phase: with_ball and without_ball each carry
+  // their own attack_type / positioning / inclination. The active triple
+  // (`knobs`) reflects the currently-viewed phase and writes flow back into
+  // the per-phase bundle.
+  const [knobsByPhase, setKnobsByPhase] = useState<KnobsByPhase>(DEFAULT_KNOBS_BY_PHASE);
+  const knobs = knobsByPhase[phase];
+  const setKnobs = (updater: TacticKnobs | ((prev: TacticKnobs) => TacticKnobs)) => {
+    setKnobsByPhase(prev => ({
+      ...prev,
+      [phase]: typeof updater === 'function' ? (updater as any)(prev[phase]) : updater,
+    }));
+  };
 
   // Compare-with-quadrant feature: when set, ghost shows this quadrant
   // (optionally of a different phase) instead of the opposite phase.
@@ -496,6 +541,62 @@ export default function SituationalTacticsPage() {
     () => presets.find(p => p.id === selectedPresetId) || null,
     [presets, selectedPresetId],
   );
+
+  // ── Undo stack (Ctrl+Z / Cmd+Z) ──
+  // Captures phaseMap + knobsByPhase + setPieceMap before each editing action
+  // (drag, knob change, mirror, reset). Bounded at 10 entries. Cleared when
+  // the editing context changes (preset / formation / club).
+  type HistoryEntry = {
+    phaseMap: PhaseMap;
+    knobsByPhase: KnobsByPhase;
+    setPieceMap: SetPieceMap;
+  };
+  const HISTORY_MAX = 10;
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const captureSnapshot = (): HistoryEntry => ({
+    phaseMap: JSON.parse(JSON.stringify(phaseMap)),
+    knobsByPhase: JSON.parse(JSON.stringify(knobsByPhase)),
+    setPieceMap: JSON.parse(JSON.stringify(setPieceMap)),
+  });
+  const pushHistorySnapshot = () => {
+    setHistory(prev => {
+      const snap = captureSnapshot();
+      const next = [...prev, snap];
+      if (next.length > HISTORY_MAX) next.shift();
+      return next;
+    });
+  };
+  const undo = () => {
+    setHistory(prev => {
+      if (prev.length === 0) return prev;
+      const next = prev.slice(0, -1);
+      const snap = prev[prev.length - 1];
+      setPhaseMap(snap.phaseMap);
+      setKnobsByPhase(snap.knobsByPhase);
+      setSetPieceMap(snap.setPieceMap);
+      return next;
+    });
+  };
+  // Clear stack on context shifts.
+  useEffect(() => {
+    setHistory([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [club?.id, formation, selectedPresetId]);
+
+  // Ctrl+Z / Cmd+Z keyboard shortcut.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
 
   const fieldRef = useRef<HTMLDivElement>(null);
   const setPieceFieldRef = useRef<HTMLDivElement>(null);
@@ -599,11 +700,19 @@ export default function SituationalTacticsPage() {
           }
         }
         setPhaseMap(fresh);
-        setKnobs({
-          attack_type: (selectedPreset.knobs?.attack_type as AttackType) || 'balanced',
-          positioning: (selectedPreset.knobs?.positioning as Positioning) || 'normal',
-          inclination: (selectedPreset.knobs?.inclination as Inclination) || 'normal',
+        // Preset knobs are stored as { with_ball, without_ball } since v2; older
+        // presets carry the flat shape and were migrated server-side, but read
+        // defensively here too in case a preset slipped through.
+        const rawKnobs = (selectedPreset.knobs || {}) as any;
+        const isPerPhase = rawKnobs && (rawKnobs.with_ball || rawKnobs.without_ball);
+        const buildPhase = (k: any): TacticKnobs => ({
+          attack_type: (k?.attack_type as AttackType) || 'balanced',
+          positioning: normalizePositioning(k?.positioning),
+          inclination: (k?.inclination as Inclination) || 'normal',
         });
+        setKnobsByPhase(isPerPhase
+          ? { with_ball: buildPhase(rawKnobs.with_ball), without_ball: buildPhase(rawKnobs.without_ball) }
+          : { with_ball: buildPhase(rawKnobs), without_ball: buildPhase(rawKnobs) });
         setLoading(false);
         return;
       }
@@ -624,16 +733,19 @@ export default function SituationalTacticsPage() {
         return;
       }
       const fresh: PhaseMap = buildEmptyBothPhases();
-      const knobRow = (data || [])[0] as any;
-      if (knobRow) {
-        setKnobs({
-          attack_type: (knobRow.attack_type as AttackType) || 'balanced',
-          positioning: (knobRow.positioning as Positioning) || 'normal',
-          inclination: (knobRow.inclination as Inclination) || 'normal',
-        });
-      } else {
-        setKnobs(DEFAULT_KNOBS);
+      // Knobs are stored per-row (per-phase); load each phase's knobs from its
+      // own row instead of forcing them equal.
+      const freshKnobs: KnobsByPhase = { with_ball: { ...DEFAULT_KNOBS }, without_ball: { ...DEFAULT_KNOBS } };
+      for (const row of (data || []) as any[]) {
+        const ph = row.phase as Phase;
+        if (ph !== 'with_ball' && ph !== 'without_ball') continue;
+        freshKnobs[ph] = {
+          attack_type: (row.attack_type as AttackType) || 'balanced',
+          positioning: normalizePositioning(row.positioning),
+          inclination: (row.inclination as Inclination) || 'normal',
+        };
       }
+      setKnobsByPhase(freshKnobs);
       const validSlots = new Set(slots.map(s => s.position));
       for (const row of (data || []) as any[]) {
         const p = row.phase as Phase;
@@ -728,6 +840,7 @@ export default function SituationalTacticsPage() {
   const currentQuadrantPositions = resolveRenderedPositions(phaseMap, phase, ballQuadrant, formation, knobs);
 
   const updatePlayerPos = (slotPosition: string, newPos: Pos) => {
+    pushHistorySnapshot();
     setPhaseMap(prev => {
       // Promote to customized: take whatever we're currently showing (custom or dynamic+knobs) as the baseline.
       const baseline = prev[phase][ballQuadrant]
@@ -741,6 +854,7 @@ export default function SituationalTacticsPage() {
   };
 
   const resetCurrentQuadrant = () => {
+    pushHistorySnapshot();
     setPhaseMap(prev => ({
       ...prev,
       [phase]: { ...prev[phase], [ballQuadrant]: null },
@@ -767,24 +881,65 @@ export default function SituationalTacticsPage() {
     setOpponentOverrides({});
   };
 
-  // Mirror: copy one side (left or right) of the current quadrant onto the other.
+  // Mirror across the field: take customized quadrants from one side (cols 0+1
+  // for L→R or cols 3+4 for R→L) and replicate them on the opposite side
+  // (col 0 ↔ col 4, col 1 ↔ col 3) with x flipped, slot-by-slot via the
+  // formation's left/right mirror mapping. Then fill the central column (col 2)
+  // by averaging col 1 and col 3 per slot — but only when at least one of them
+  // is customized in the new state. Applies only to the active phase.
   const applyMirror = (direction: 'leftToRight' | 'rightToLeft') => {
+    pushHistorySnapshot();
     const mirrorMap = computeMirrorMapping(formation);
-    const baseline = resolvePositions(phaseMap, phase, ballQuadrant, formation);
-    const next: QuadrantPositions = { ...baseline };
-    for (const s of slots) {
-      const isSource = direction === 'leftToRight' ? s.x < 50 : s.x > 50;
-      if (!isSource) continue;
-      const target = mirrorMap[s.position];
-      if (!target || target === s.position) continue;
-      const src = baseline[s.position];
-      if (!src) continue;
-      next[target] = { x: 100 - src.x, y: src.y };
-    }
-    setPhaseMap(prev => ({
-      ...prev,
-      [phase]: { ...prev[phase], [ballQuadrant]: next },
-    }));
+    const isLeftToRight = direction === 'leftToRight';
+    const sourceCols = isLeftToRight ? [0, 1] : [4, 3];
+    const destCols   = isLeftToRight ? [4, 3] : [0, 1];
+
+    const flipQuadrant = (src: QuadrantPositions): QuadrantPositions => {
+      const out: QuadrantPositions = {};
+      for (const s of slots) {
+        const srcSlot = mirrorMap[s.position] || s.position;
+        const p = src[srcSlot];
+        if (!p) continue;
+        // Slots with x≈50 (e.g. lone striker) mirror to themselves; keep as-is.
+        out[s.position] = srcSlot === s.position ? { x: p.x, y: p.y } : { x: 100 - p.x, y: p.y };
+      }
+      return out;
+    };
+
+    setPhaseMap(prev => {
+      const nextPhase: QuadrantMap = { ...prev[phase] };
+      for (let row = 0; row < ROWS; row++) {
+        for (let i = 0; i < sourceCols.length; i++) {
+          const srcIdx = row * COLS + sourceCols[i];
+          const destIdx = row * COLS + destCols[i];
+          const srcQuadrant = nextPhase[srcIdx];
+          if (!srcQuadrant) continue; // Only mirror customized cells; leave dynamic destinations alone.
+          nextPhase[destIdx] = flipQuadrant(srcQuadrant);
+        }
+        // Center column: average col 1 and col 3 per slot when at least one is
+        // now customized. If both are dynamic, leave center as dynamic.
+        const leftIdx = row * COLS + 1;
+        const rightIdx = row * COLS + 3;
+        const centerIdx = row * COLS + 2;
+        const leftQ = nextPhase[leftIdx];
+        const rightQ = nextPhase[rightIdx];
+        if (leftQ || rightQ) {
+          // Resolve each side: customized → use; dynamic → use dynamic+knobs at that quadrant.
+          const knobsForPhase = knobsByPhase[phase];
+          const leftResolved = leftQ ?? applyKnobs(computeDynamicPositions(leftIdx, formation), knobsForPhase, formation);
+          const rightResolved = rightQ ?? applyKnobs(computeDynamicPositions(rightIdx, formation), knobsForPhase, formation);
+          const merged: QuadrantPositions = {};
+          for (const s of slots) {
+            const a = leftResolved[s.position];
+            const b = rightResolved[s.position];
+            if (!a || !b) continue;
+            merged[s.position] = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          }
+          nextPhase[centerIdx] = merged;
+        }
+      }
+      return { ...prev, [phase]: nextPhase };
+    });
     toast.success(direction === 'leftToRight' ? t('toast.mirror_left_to_right') : t('toast.mirror_right_to_left'));
   };
 
@@ -830,7 +985,7 @@ export default function SituationalTacticsPage() {
         p_preset_id: selectedPreset.id,
         p_name: null,
         p_positions: serializeAllPhases(),
-        p_knobs: knobs,
+        p_knobs: knobsByPhase,
         p_set_pieces: null,
         p_role_overrides: null,
       });
@@ -844,7 +999,7 @@ export default function SituationalTacticsPage() {
       setPresets(prev => prev.map(p => p.id === selectedPreset.id ? {
         ...p,
         positions: serializeAllPhases(),
-        knobs,
+        knobs: knobsByPhase as any,
       } : p));
       toast.success(t('toast.saved'));
       return;
@@ -855,9 +1010,9 @@ export default function SituationalTacticsPage() {
       formation,
       phase: p,
       positions: serializePhase(p) as any,
-      attack_type: knobs.attack_type,
-      positioning: knobs.positioning,
-      inclination: knobs.inclination,
+      attack_type: knobsByPhase[p].attack_type,
+      positioning: knobsByPhase[p].positioning,
+      inclination: knobsByPhase[p].inclination,
     }));
     const { error } = await supabase
       .from('situational_tactics' as any)
@@ -877,6 +1032,7 @@ export default function SituationalTacticsPage() {
     ?? defaultSetPiecePositions(formation, setPieceType, setPiecePhase);
 
   const updateSetPiecePos = (slotPosition: string, newPos: Pos) => {
+    pushHistorySnapshot();
     setSetPieceMap(prev => {
       const baseline = prev[setPieceType][setPiecePhase]
         ?? defaultSetPiecePositions(formation, setPieceType, setPiecePhase);
@@ -889,6 +1045,7 @@ export default function SituationalTacticsPage() {
   };
 
   const resetCurrentSetPiece = () => {
+    pushHistorySnapshot();
     setSetPieceMap(prev => ({
       ...prev,
       [setPieceType]: { ...prev[setPieceType], [setPiecePhase]: null },
@@ -963,6 +1120,7 @@ export default function SituationalTacticsPage() {
   }, [setPieceMap]);
 
   const handleReset = () => {
+    pushHistorySnapshot();
     setPhaseMap(buildEmptyBothPhases());
     toast.success(t('toast.all_cleared'));
   };
@@ -1060,7 +1218,7 @@ export default function SituationalTacticsPage() {
         p_name: name,
         p_base_formation: formation,
         p_positions: serializeAllPhases(),
-        p_knobs: knobs,
+        p_knobs: knobsByPhase,
         p_set_pieces: serializeSetPieces(),
         p_role_overrides: role_overrides,
       });
@@ -1275,6 +1433,16 @@ export default function SituationalTacticsPage() {
                 )}
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5"
+              onClick={undo}
+              disabled={history.length === 0}
+              title={t('actions.undo_hint')}
+            >
+              <Undo2 className="h-4 w-4" /> {t('actions.undo')}
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9 gap-1.5">
@@ -1517,22 +1685,22 @@ export default function SituationalTacticsPage() {
         {/* Tactical knobs + quadrant comparison */}
         <div className="flex items-center gap-2 flex-wrap text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">{t('knobs.attack_label')}</span>
-            <Select value={knobs.attack_type} onValueChange={(v) => setKnobs(k => ({ ...k, attack_type: v as AttackType }))}>
-              <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
+            <span className="text-muted-foreground">{t(phase === 'with_ball' ? 'knobs.attack_label' : 'knobs.defense_label')}</span>
+            <Select value={knobs.attack_type} onValueChange={(v) => { pushHistorySnapshot(); setKnobs(k => ({ ...k, attack_type: v as AttackType })); }}>
+              <SelectTrigger className="h-8 w-[170px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(ATTACK_TYPE_KEY) as AttackType[]).map(k => (
-                  <SelectItem key={k} value={k}>{t(ATTACK_TYPE_KEY[k])}</SelectItem>
+                {(['central','balanced','wide'] as AttackType[]).map(k => (
+                  <SelectItem key={k} value={k}>{t(ATTACK_TYPE_KEY(phase)[k])}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">{t('knobs.positioning_label')}</span>
-            <Select value={knobs.positioning} onValueChange={(v) => setKnobs(k => ({ ...k, positioning: v as Positioning }))}>
-              <SelectTrigger className="h-8 w-[140px]"><SelectValue /></SelectTrigger>
+            <Select value={knobs.positioning} onValueChange={(v) => { pushHistorySnapshot(); setKnobs(k => ({ ...k, positioning: v as Positioning })); }}>
+              <SelectTrigger className="h-8 w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(POSITIONING_KEY) as Positioning[]).map(k => (
+                {(['very_narrow','narrow','normal','spread','very_spread'] as Positioning[]).map(k => (
                   <SelectItem key={k} value={k}>{t(POSITIONING_KEY[k])}</SelectItem>
                 ))}
               </SelectContent>
@@ -1540,7 +1708,7 @@ export default function SituationalTacticsPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">{t('knobs.inclination_label')}</span>
-            <Select value={knobs.inclination} onValueChange={(v) => setKnobs(k => ({ ...k, inclination: v as Inclination }))}>
+            <Select value={knobs.inclination} onValueChange={(v) => { pushHistorySnapshot(); setKnobs(k => ({ ...k, inclination: v as Inclination })); }}>
               <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {(Object.keys(INCLINATION_KEY) as Inclination[]).map(k => (

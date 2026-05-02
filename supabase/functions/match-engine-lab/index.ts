@@ -1569,10 +1569,19 @@ const SITU_GK_CENTER = {
 };
 
 // Tactical knobs — kept in sync with SituationalTacticsPage.tsx.
-const SITU_ATTACK_X_SCALE = { central: 0.78, balanced: 1.0, wide: 1.22 } as const;
-const SITU_POSITIONING_SCALE = { short: 0.82, normal: 1.0, spread: 1.18 } as const;
+// attack_type stops affecting positioning as of 2026-05-01 — it now biases bot
+// AI decisions only (passes/dribbles toward central vs flanks). Positioning
+// expanded 3 → 5 levels; legacy 'short' is a runtime alias for 'narrow'.
+const SITU_POSITIONING_SCALE = {
+  very_narrow: 0.64,
+  narrow: 0.82,
+  short: 0.82, // legacy alias — keep so old rows keep behaving
+  normal: 1.0,
+  spread: 1.18,
+  very_spread: 1.44,
+} as const;
 const SITU_INCLINATION_CELLS = { ultra_def: 2, def: 1, normal: 0, off: -1, ultra_off: -2 } as const;
-type SituAttackType = keyof typeof SITU_ATTACK_X_SCALE;
+type SituAttackType = 'central' | 'balanced' | 'wide';
 type SituPositioning = keyof typeof SITU_POSITIONING_SCALE;
 type SituInclination = keyof typeof SITU_INCLINATION_CELLS;
 type SituKnobs = { attack_type: SituAttackType; positioning: SituPositioning; inclination: SituInclination };
@@ -1581,7 +1590,10 @@ const DEFAULT_SITU_KNOBS: SituKnobs = { attack_type: 'balanced', positioning: 'n
 type SituSide = {
   with_ball?: Record<string, Record<string, { x: number; y: number }>>;
   without_ball?: Record<string, Record<string, { x: number; y: number }>>;
+  // Knobs are now per-phase. `knobs` (flat) is kept for backwards compat with
+  // older snapshots; readers should prefer `knobsByPhase[ph]` when present.
   knobs?: SituKnobs;
+  knobsByPhase?: { with_ball?: SituKnobs; without_ball?: SituKnobs };
 };
 type SituCache = { home?: SituSide; away?: SituSide };
 
@@ -1654,14 +1666,19 @@ function applyKnobsToDynamicSlotPos(
     cx += p.x; cy += p.y;
   }
   cx /= outfield.length; cy /= outfield.length;
-  const xScale = SITU_ATTACK_X_SCALE[knobs.attack_type];
-  const posScale = SITU_POSITIONING_SCALE[knobs.positioning];
+  const posScale = SITU_POSITIONING_SCALE[knobs.positioning] ?? 1.0;
   const yShift = SITU_INCLINATION_CELLS[knobs.inclination] * (SITU_QH / 3);
   let x = cx + (raw.x - cx) * posScale;
   let y = cy + (raw.y - cy) * posScale;
-  x = 50 + (x - 50) * xScale;
   y += yShift;
   return { x: Math.max(2, Math.min(98, x)), y: Math.max(2, Math.min(98, y)) };
+}
+
+/** Resolve the knob bundle for a side+phase, falling back from new per-phase
+ *  shape to the legacy flat `knobs` field, then to defaults. */
+function getSituKnobsForPhase(side: SituSide | undefined, phase: 'with_ball' | 'without_ball'): SituKnobs {
+  if (!side) return DEFAULT_SITU_KNOBS;
+  return side.knobsByPhase?.[phase] || side.knobs || DEFAULT_SITU_KNOBS;
 }
 
 /** Engine ball position → editor quadrant index (0..34), in the team's own frame.
@@ -1740,7 +1757,7 @@ function resolveSituationalTarget(
   const sideTactics = tickCache?.situationalTactics?.[side];
   const savedQuadrant = sideTactics?.[phaseKey]?.[String(quadrantIdx)];
   const savedSlot = savedQuadrant?.[slotPos];
-  const knobs = sideTactics?.knobs ?? DEFAULT_SITU_KNOBS;
+  const knobs = getSituKnobsForPhase(sideTactics, phaseKey);
 
   // GK lock: regardless of whether the quadrant is customized or dynamic, the
   // keeper is always anchored to the goal-area quadrant. Old saved tactics may
@@ -2072,7 +2089,18 @@ function pickBestPassTarget(
   possClubId?: string | null,
   match?: { home_club_id: string; away_club_id: string; current_half?: number },
   setPieceType?: string | null,
+  tickCache?: TickCache,
 ): { target: any; actionType: string } | null {
+  // Attacking style intelligence: when the team picks "central" the bot
+  // prefers passes ending closer to the field's central column; "wide" prefers
+  // the flanks; "balanced" applies no extra bias. Lookup is best-effort —
+  // missing tickCache or knobs falls back to "balanced".
+  const attackingStyle: SituAttackType = (() => {
+    if (!tickCache?.situationalTactics) return 'balanced';
+    const side = isHome ? 'home' : 'away';
+    const k = getSituKnobsForPhase(tickCache.situationalTactics[side], 'with_ball');
+    return k.attack_type;
+  })();
   if (teammates.length === 0) return null;
   // Filter out teammates in offside position — FIFA says no offside on throw-ins,
   // goal kicks, or corners, so skip the check for those restarts.
@@ -2174,6 +2202,17 @@ function pickBestPassTarget(
     const longForwardBonus = forwardGain >= 10 ? 15 : 0;
     const opponentRiskPenalty = (1 - freedom) * 10;
     const backwardPenalty = (hasForwardOption && forwardGain < -3) ? 100 : 0;
+    // Attacking style bias: shape the pass channel (lateral vs central). The
+    // bonus peaks at +6 / -6 — strong enough to break ties between similar
+    // options but not enough to override forward gain or opponent pressure.
+    let styleBias = 0;
+    if (attackingStyle === 'central') {
+      // Lower deviation from x=50 = bigger bonus.
+      styleBias = (1 - Math.min(Math.abs(tx - 50) / 35, 1)) * 6;
+    } else if (attackingStyle === 'wide') {
+      // Higher deviation from x=50 = bigger bonus.
+      styleBias = Math.min(Math.abs(tx - 50) / 35, 1) * 6;
+    }
     // Keep forwardness as an extra mild lever (kept from previous heuristic so
     // role-pref / human bias still tilt sensibly between similarly-forward options).
     const score =
@@ -2185,6 +2224,7 @@ function pickBestPassTarget(
       + rolePreference * 3
       + humanBonus
       + forwardness * 0.1
+      + styleBias
       - backwardPenalty;
     return { ...t, score, dist, freedom, forwardGain };
   }).sort((a: any, b: any) => b.score - a.score);
@@ -2512,7 +2552,7 @@ async function generateBotActions(
 
       // ── Dead ball (kickoff, free kick, etc): BH MUST pass, never move ──
       if (setPieceType) {
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2534,7 +2574,7 @@ async function generateBotActions(
 
       if (isGK) {
         // GK: always pass to nearest free defender/midfielder, never shoot or dribble
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2553,7 +2593,7 @@ async function generateBotActions(
         }
       } else if (role === 'centerBack') {
         // CB: always pass, never dribble. Short pass to midfielder/fullback
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2582,7 +2622,7 @@ async function generateBotActions(
             target_x: crossX, target_y: crossY, status: 'pending',
           });
         } else {
-          const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+          const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
           if (passResult) {
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -2611,7 +2651,7 @@ async function generateBotActions(
             const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
             if (passResult) {
               actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
@@ -2634,7 +2674,7 @@ async function generateBotActions(
             const moveY = posY + (50 - posY) * 0.3 + (Math.random() - 0.5) * 6;
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
             if (passResult) {
               actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
@@ -2682,7 +2722,7 @@ async function generateBotActions(
             const moveY = posY + (50 - posY) * 0.3 + (Math.random() - 0.5) * 6;
             actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
           } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
             if (passResult) {
               actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
             } else {
@@ -2693,7 +2733,7 @@ async function generateBotActions(
         }
       } else {
         // Fallback: pass forward
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType);
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
         if (passResult) {
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -5798,12 +5838,24 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
           const positions = (preset.positions || {}) as { with_ball?: any; without_ball?: any };
           situationalTactics[side]!.with_ball = positions.with_ball || {};
           situationalTactics[side]!.without_ball = positions.without_ball || {};
-          const k = (preset.knobs || {}) as any;
-          situationalTactics[side]!.knobs = {
-            attack_type: (k.attack_type as SituAttackType) || 'balanced',
-            positioning: (k.positioning as SituPositioning) || 'normal',
-            inclination: (k.inclination as SituInclination) || 'normal',
-          };
+          // Knobs are now per-phase. Old presets carry the flat shape — readers
+          // must accept both. The migration backfilled per-phase, but reading
+          // defensively keeps unknown clients safe.
+          const rawKnobs = (preset.knobs || {}) as any;
+          const buildPhase = (k: any): SituKnobs => ({
+            attack_type: (k?.attack_type as SituAttackType) || 'balanced',
+            positioning: (k?.positioning as SituPositioning) || 'normal',
+            inclination: (k?.inclination as SituInclination) || 'normal',
+          });
+          if (rawKnobs.with_ball || rawKnobs.without_ball) {
+            situationalTactics[side]!.knobsByPhase = {
+              with_ball: buildPhase(rawKnobs.with_ball),
+              without_ball: buildPhase(rawKnobs.without_ball),
+            };
+          } else {
+            // Flat legacy shape — apply to both phases.
+            situationalTactics[side]!.knobs = buildPhase(rawKnobs);
+          }
         } else {
           sidesNeedingDefault.push(side);
         }
@@ -5820,10 +5872,12 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
             if (!sidesNeedingDefault.includes(side as any)) continue;
             const expectedFormation = side === 'home' ? homeForm : awayForm;
             if (row.formation !== expectedFormation) continue;
-            if (row.phase !== 'with_ball' && row.phase !== 'without_ball') continue;
-            situationalTactics[side]![row.phase as 'with_ball' | 'without_ball'] = row.positions || {};
+            const ph = row.phase as 'with_ball' | 'without_ball';
+            if (ph !== 'with_ball' && ph !== 'without_ball') continue;
+            situationalTactics[side]![ph] = row.positions || {};
             if (row.attack_type || row.positioning || row.inclination) {
-              situationalTactics[side]!.knobs = {
+              if (!situationalTactics[side]!.knobsByPhase) situationalTactics[side]!.knobsByPhase = {};
+              situationalTactics[side]!.knobsByPhase![ph] = {
                 attack_type: (row.attack_type as SituAttackType) || 'balanced',
                 positioning: (row.positioning as SituPositioning) || 'normal',
                 inclination: (row.inclination as SituInclination) || 'normal',

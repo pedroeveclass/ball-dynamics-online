@@ -40,6 +40,7 @@
   },
   "knobs": {
     "attack_label": "Ataque:",
+    "defense_label": "Defesa:",
     "positioning_label": "Posicionamento:",
     "inclination_label": "Inclinação:",
     "attack": {
@@ -47,10 +48,18 @@
       "balanced": "Balanceado",
       "wide": "Pelos lados"
     },
+    "defense": {
+      "central": "Defesa central",
+      "balanced": "Balanceada",
+      "wide": "Pelos lados"
+    },
     "positioning": {
-      "short": "Jogo curto",
+      "very_narrow": "Muito estreito",
+      "narrow": "Estreito",
+      "short": "Estreito",
       "normal": "Normal",
-      "spread": "Espalhado"
+      "spread": "Espalhado",
+      "very_spread": "Muito espalhado"
     },
     "inclination": {
       "ultra_def": "Ultra defensivo",
@@ -93,7 +102,9 @@
   "actions": {
     "reset_quadrant": "Resetar este quadrante",
     "reset_all": "Limpar todas as personalizações",
-    "duplicate": "Duplicar para outra formação"
+    "duplicate": "Duplicar para outra formação",
+    "undo": "Voltar ação",
+    "undo_hint": "Desfaz a última edição (Ctrl+Z / Cmd+Z)"
   },
   "customized_status": "{{count}}/35 quadrante(s) personalizado(s) nesta fase",
   "explanation": "<0>Dinâmico (padrão):</0> o time inteiro acompanha a bola — verticalmente mais, lateralmente menos. Quando você arrasta um jogador, o quadrante vira <1>personalizado</1> (pontinho amarelo no canto) e trava naquela configuração.",
