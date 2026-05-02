@@ -324,29 +324,42 @@ function crossed(before: number, after: number, threshold: number): boolean {
 // Called after persistMatchPlayerStats. Iterates every player who played
 // the match and emits any career-threshold milestones that crossed in
 // this match (first goal, 50 goals, first hat-trick, 100 matches, etc.)
+//
+// options.humansOnly: skip bot players (user_id IS NULL). Used by the
+// backfill to do humans first, bots after.
 export async function detectAndPersistMatchMilestones(
   supabase: SupabaseClient,
   matchId: string,
+  options: { humansOnly?: boolean } = {},
 ): Promise<void> {
   try {
     const { data: matchStatsAll } = await supabase
       .from('player_match_stats')
-      .select('player_profile_id, club_id, goals, assists, clean_sheet, gk_penalties_saved, tackles, yellow_cards, red_cards')
+      .select('player_profile_id, club_id, season_id, goals, assists, clean_sheet, gk_penalties_saved, tackles, yellow_cards, red_cards')
       .eq('match_id', matchId);
     if (!matchStatsAll || matchStatsAll.length === 0) return;
 
     const { data: match } = await supabase
       .from('matches')
-      .select('home_club_id, away_club_id')
+      .select('home_club_id, away_club_id, finished_at')
       .eq('id', matchId)
       .maybeSingle();
     if (!match) return;
 
-    // Pre-fetch all player profiles + opponent club names
+    // The current match's finished_at — we'll use it to keep
+    // before/after threshold semantics correct when backfilling in
+    // chronological order (without this filter, "first goal" would
+    // never fire because the player already has all future stats in
+    // the DB at backfill time).
+    const currentMatchFinishedAt = match.finished_at as string | null;
+
+    // Pre-fetch all player profiles + opponent club names. We pull
+    // user_id so we can skip bot players — Pedro asked us to backfill
+    // only human-controlled players first; bots can be filled in later.
     const playerIds = matchStatsAll.map((r: any) => r.player_profile_id).filter(Boolean);
     const { data: profiles } = await supabase
       .from('player_profiles')
-      .select('id, full_name, club_id, primary_position')
+      .select('id, full_name, club_id, primary_position, user_id')
       .in('id', playerIds);
     const profileById = new Map<string, any>();
     for (const p of profiles ?? []) profileById.set(p.id, p);
@@ -365,6 +378,18 @@ export async function detectAndPersistMatchMilestones(
       .from('player_match_stats')
       .select('player_profile_id, match_id, season_id, goals, assists, clean_sheet, gk_penalties_saved, tackles, yellow_cards, red_cards')
       .in('player_profile_id', playerIds);
+
+    // For chronological-order backfill we need to know the finished_at
+    // of every match in the career rows so we can filter to "matches
+    // before the current one". Without this, beforeRows = all-rows and
+    // crossed(0, anyN, threshold) returns false for first-* milestones.
+    const careerMatchIds = Array.from(new Set((allCareerRowsRaw ?? []).map((r: any) => r.match_id)));
+    const { data: matchTimesRows } = careerMatchIds.length > 0
+      ? await supabase.from('matches').select('id, finished_at').in('id', careerMatchIds)
+      : { data: [] as any[] };
+    const matchTime = new Map<string, string | null>();
+    for (const m of matchTimesRows ?? []) matchTime.set(m.id, m.finished_at);
+
     const careerByPlayer = new Map<string, any[]>();
     for (const r of allCareerRowsRaw ?? []) {
       const arr = careerByPlayer.get(r.player_profile_id);
@@ -375,14 +400,29 @@ export async function detectAndPersistMatchMilestones(
     for (const ms of matchStatsAll) {
       const profile = profileById.get(ms.player_profile_id);
       if (!profile) continue;
+      if (options.humansOnly && !profile.user_id) continue; // skip bots
 
       const opponentClubId = ms.club_id === match.home_club_id ? match.away_club_id : match.home_club_id;
       const opponentName = clubName.get(opponentClubId) ?? '';
 
       const allRows = careerByPlayer.get(ms.player_profile_id) ?? [];
-      const beforeRows = allRows.filter((r: any) => r.match_id !== matchId);
+      // Chronological filter: "before" = matches finished strictly
+      // before the current one. Without this filter, beforeRows during
+      // backfill would include all of the player's future matches and
+      // crossed(0, n, 1) for first_* milestones would fail.
+      const beforeRows = allRows.filter((r: any) => {
+        if (r.match_id === matchId) return false;
+        if (!currentMatchFinishedAt) return true;
+        const t = matchTime.get(r.match_id);
+        return t !== undefined && t !== null && t < currentMatchFinishedAt;
+      });
       const seasonRows = allRows.filter((r: any) => r.season_id === (ms as any).season_id);
-      const seasonBeforeRows = seasonRows.filter((r: any) => r.match_id !== matchId);
+      const seasonBeforeRows = seasonRows.filter((r: any) => {
+        if (r.match_id === matchId) return false;
+        if (!currentMatchFinishedAt) return true;
+        const t = matchTime.get(r.match_id);
+        return t !== undefined && t !== null && t < currentMatchFinishedAt;
+      });
 
       const careerAfter = aggregate(allRows);
       const careerBefore = aggregate(beforeRows);

@@ -29,6 +29,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const force = url.searchParams.get('force') === '1';
     const maxMatches = Number(url.searchParams.get('max') ?? '0') || Infinity;
+    // Skip bot players (user_id IS NULL) when set to '1'. Pedro asked
+    // to backfill humans first then bots, so caller controls scope.
+    const humansOnly = url.searchParams.get('humans_only') === '1';
 
     if (force) {
       await supabase
@@ -52,7 +55,7 @@ Deno.serve(async (req) => {
     const errors: { id: string; message: string }[] = [];
     for (const m of matches ?? []) {
       try {
-        await detectAndPersistMatchMilestones(supabase, m.id);
+        await detectAndPersistMatchMilestones(supabase, m.id, { humansOnly });
         processedMatches += 1;
       } catch (err: any) {
         errors.push({ id: m.id, message: String(err?.message ?? err) });
