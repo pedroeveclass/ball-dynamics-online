@@ -3833,10 +3833,10 @@ function computeInterceptSuccess(
     const moveRatio = interceptContext?.gkMovementRatio ?? 0.5;
     const skillDelta = defenderSkill - attackerSkill;
     const isEspalmar = context.type === 'block';
-    // Agarrar: 50% still → 27.5% max move | Espalmar: 60% still → 45% max move
+    // Agarrar: 65% still → 40% max move | Espalmar: 75% still → 50% max move
     const baseChance = isEspalmar
-      ? 0.60 - moveRatio * 0.15
-      : 0.50 - moveRatio * 0.225;
+      ? 0.75 - moveRatio * 0.25
+      : 0.65 - moveRatio * 0.25;
     successChance = baseChance + skillDelta * 0.80 + (Math.random() - 0.5) * 0.20;
   } else {
     // Passador bom AJUDA o domínio (independente de amigo/adversário): fator ≥ 1.0
@@ -8191,17 +8191,34 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       // across the goal line after a GK save).
       let deflectShooter: { id: string; clubId: string; name: string | null; shotTargetX: number } | null = null;
       if (prevTurnNumber >= 1) {
-        const { data: prevDeflectEvent } = await supabase
-          .from('match_event_logs')
-          .select('payload')
+        // Scope the deflect lookup to events created during the prev turn — without this,
+        // the query returns the most recent block/save from anywhere in the match, so
+        // a deflect from many turns ago contaminates a fresh loose-ball chain (e.g. failed
+        // pass after possession was already recovered → inertia "snaps" back to the old
+        // deflect direction instead of following the new failed-pass trajectory).
+        const { data: prevTurnFirstRow } = await supabase
+          .from('match_turns')
+          .select('created_at')
           .eq('match_id', match_id)
-          .in('event_type', ['blocked', 'saved', 'block', 'shot_post'])
-          .order('created_at', { ascending: false })
-          .limit(1);
-        if (prevDeflectEvent && prevDeflectEvent.length > 0) {
-          const p = prevDeflectEvent[0].payload as any;
-          if (p && typeof p.deflect_from_x === 'number' && typeof p.deflect_to_x === 'number') {
-            deflectOverride = { fromX: p.deflect_from_x, fromY: p.deflect_from_y, toX: p.deflect_to_x, toY: p.deflect_to_y };
+          .eq('turn_number', prevTurnNumber)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const prevTurnStart = prevTurnFirstRow?.created_at as string | undefined;
+        if (prevTurnStart) {
+          const { data: prevDeflectEvent } = await supabase
+            .from('match_event_logs')
+            .select('payload')
+            .eq('match_id', match_id)
+            .in('event_type', ['blocked', 'saved', 'block', 'shot_post'])
+            .gte('created_at', prevTurnStart)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (prevDeflectEvent && prevDeflectEvent.length > 0) {
+            const p = prevDeflectEvent[0].payload as any;
+            if (p && typeof p.deflect_from_x === 'number' && typeof p.deflect_to_x === 'number') {
+              deflectOverride = { fromX: p.deflect_from_x, fromY: p.deflect_from_y, toX: p.deflect_to_x, toY: p.deflect_to_y };
+            }
           }
         }
         // Fetch the shooter from the previous turn (used only if inertia crosses goal).
