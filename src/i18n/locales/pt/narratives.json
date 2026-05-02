@@ -1,4 +1,11 @@
 {
+  "matchRecap": {
+    "section": {
+      "title": "Crônica do Jogo",
+      "loading": "Carregando crônica...",
+      "missing": "A crônica deste jogo ainda não foi escrita."
+    }
+  },
   "originStory": {
     "section": {
       "title": "História de Origem",

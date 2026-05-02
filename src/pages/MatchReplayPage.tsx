@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, ReactNode, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { MatchRecapCard } from '@/components/match/MatchRecapCard';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -1225,6 +1226,9 @@ export default function MatchReplayPage() {
             </span>
           </div>
         </div>
+
+        {/* Match Recap (canonical narrative) */}
+        {matchId && <MatchRecapCard matchId={matchId} />}
 
         {/* Mobile events */}
         <div className="md:hidden bg-card border rounded-lg p-3">

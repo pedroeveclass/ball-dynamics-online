@@ -1,4 +1,11 @@
 {
+  "matchRecap": {
+    "section": {
+      "title": "Match Recap",
+      "loading": "Loading recap...",
+      "missing": "This match's recap hasn't been written yet."
+    }
+  },
   "originStory": {
     "section": {
       "title": "Origin Story",

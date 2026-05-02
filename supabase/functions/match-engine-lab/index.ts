@@ -1,4 +1,5 @@
 ﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { generateAndPersistMatchRecap } from './match_recap_templates.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9415,6 +9416,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       } catch (e) {
         console.error(`[ENGINE] Failed to process ticket revenue:`, e);
       }
+
+      // ── Match recap (canonical narrative) — best-effort, never blocks ──
+      // Reads finalized score + events, classifies into one of 10 buckets,
+      // assembles a PT/EN paragraph and persists to narratives. UNIQUE
+      // constraint makes it idempotent across retries.
+      await generateAndPersistMatchRecap(supabase, match_id);
 
       // ── Update league standings inline (avoids inter-function fetch issues) ──
       try {
