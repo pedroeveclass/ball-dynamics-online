@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2 } from 'lucide-react';
+import {
+  Loader2, Shield, Goal, TrendingUp, Crosshair, Footprints, ShieldAlert,
+} from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { RatingChip } from './RatingChip';
 import { PitchHeatmap } from './PitchHeatmap';
@@ -406,31 +408,53 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
         )}
       </div>
 
-      {/* Season totals grid */}
+      {/* Season totals — same StatCell style as CareerStatsBlock so the
+          two surfaces match visually. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Partidas" value={aggregate.gp} />
-        <Stat label="Gols" value={aggregate.goals} />
-        <Stat label="Assistências" value={aggregate.assists} />
-        <Stat label="Chutes" value={`${aggregate.shotsOnTarget}/${aggregate.shots}`} />
-        <Stat label="Passes" value={
+        <StatCell label="Partidas" value={aggregate.gp}
+          icon={<Shield className="h-4 w-4" />} />
+        <StatCell label="Gols" value={aggregate.goals}
+          icon={<Goal className="h-4 w-4" />} color="text-pitch" />
+        <StatCell label="Assistências" value={aggregate.assists}
+          icon={<TrendingUp className="h-4 w-4" />} color="text-blue-400" />
+        <StatCell label="Chutes ao gol" value={`${aggregate.shotsOnTarget}/${aggregate.shots}`}
+          icon={<Crosshair className="h-4 w-4" />} />
+        <StatCell label="Passes (acerto)" value={
           aggregate.passesAttempted
-            ? `${aggregate.passesCompleted}/${aggregate.passesAttempted} (${Math.round((aggregate.passesCompleted / aggregate.passesAttempted) * 100)}%)`
-            : '0'
-        } />
-        <Stat label="Desarmes" value={aggregate.tackles} />
-        <Stat label="Interceptações" value={aggregate.interceptions} />
-        {aggregate.gkSaves > 0 && <Stat label="Defesas" value={aggregate.gkSaves} />}
-        {aggregate.cleanSheets > 0 && <Stat label="Sem sofrer" value={aggregate.cleanSheets} />}
+            ? `${Math.round((aggregate.passesCompleted / aggregate.passesAttempted) * 100)}%`
+            : '—'
+        } icon={<TrendingUp className="h-4 w-4" />} />
+        <StatCell label="Desarmes" value={aggregate.tackles}
+          icon={<Footprints className="h-4 w-4" />} />
+        <StatCell label="Interceptações" value={aggregate.interceptions}
+          icon={<ShieldAlert className="h-4 w-4" />} />
+        {aggregate.gkSaves > 0 && (
+          <StatCell label="Defesas" value={aggregate.gkSaves}
+            icon={<Shield className="h-4 w-4" />} />
+        )}
+        {aggregate.cleanSheets > 0 && (
+          <StatCell label="Sem sofrer" value={aggregate.cleanSheets}
+            icon={<Shield className="h-4 w-4" />} color="text-pitch" />
+        )}
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+// Mirrors CareerStatsBlock's StatCell so both surfaces share the same look.
+function StatCell({ label, value, icon, color }: {
+  label: string;
+  value: string | number;
+  icon?: ReactNode;
+  color?: string;
+}) {
   return (
-    <div className="bg-muted/30 rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="font-display font-bold text-lg tabular-nums">{value}</div>
+    <div className="bg-muted/30 rounded-lg p-3 text-center space-y-1">
+      <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
+        {icon}
+        <span className="text-[10px] uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={`font-display text-2xl font-extrabold tabular-nums ${color || ''}`}>{value}</p>
     </div>
   );
 }
