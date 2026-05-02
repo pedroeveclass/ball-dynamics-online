@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PositionBadge } from '@/components/PositionBadge';
 import { Search, UserPlus, Users } from 'lucide-react';
 import { positionLabel } from '@/lib/positions';
+import { archetypeLabel } from '@/lib/attributes';
 import { toast } from 'sonner';
 import { ClubDemandEditor } from '@/components/ClubDemandEditor';
 
@@ -159,7 +160,7 @@ export default function ManagerMarketPage() {
             <SelectTrigger className="w-[160px]"><SelectValue placeholder={t('filters.archetype_placeholder')} /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t('filters.all_archetypes')}</SelectItem>
-              {ARCHETYPES.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+              {ARCHETYPES.map(a => <SelectItem key={a} value={a}>{archetypeLabel(a)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -193,7 +194,7 @@ export default function ManagerMarketPage() {
                     <div className="flex items-center gap-2 mt-0.5">
                       <PositionBadge position={p.primary_position} />
                       {p.secondary_position && <PositionBadge position={p.secondary_position} />}
-                      <span className="text-xs text-muted-foreground">{p.archetype}</span>
+                      <span className="text-xs text-muted-foreground">{archetypeLabel(p.archetype)}</span>
                       <span className="text-xs text-muted-foreground">• {t('card.age', { age: p.age })}</span>
                       <span className="text-xs text-muted-foreground">• {t('card.reputation', { value: p.reputation })}</span>
                     </div>
@@ -220,7 +221,7 @@ export default function ManagerMarketPage() {
                 <span className="font-display text-xl font-extrabold text-tactical">{selected.overall}</span>
                 <div>
                   <p className="font-display font-bold text-sm">{selected.full_name}</p>
-                  <p className="text-xs text-muted-foreground">{t('offer_dialog.player_summary', { position: positionLabel(selected.primary_position, 'short'), archetype: selected.archetype, age: selected.age })}</p>
+                  <p className="text-xs text-muted-foreground">{t('offer_dialog.player_summary', { position: positionLabel(selected.primary_position, 'short'), archetype: archetypeLabel(selected.archetype), age: selected.age })}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

@@ -106,13 +106,13 @@ export function ClubDemandEditor() {
                   ? 'border-tactical bg-tactical/20 text-tactical'
                   : 'border-border bg-card text-muted-foreground hover:border-tactical/50'
               } ${isPending ? 'opacity-50' : ''}`}
-              title={p.label}
+              title={positionLabel(p.value, 'long')}
             >
               <div className="font-display text-[11px] font-bold leading-tight">
                 {positionLabel(p.value, 'short')}
               </div>
               <div className="font-display text-[10px] leading-tight opacity-70">
-                {p.label}
+                {positionLabel(p.value, 'long')}
               </div>
               {isActive && (
                 <Check className="absolute top-0.5 right-0.5 h-3 w-3 text-tactical" />
