@@ -2291,6 +2291,7 @@ export type Database = {
           facts_json: Json | null
           generated_at: string
           id: number
+          milestone_type: string | null
           round: number | null
           scope: string
           season: number | null
@@ -2303,6 +2304,7 @@ export type Database = {
           facts_json?: Json | null
           generated_at?: string
           id?: number
+          milestone_type?: string | null
           round?: number | null
           scope: string
           season?: number | null
@@ -2315,6 +2317,7 @@ export type Database = {
           facts_json?: Json | null
           generated_at?: string
           id?: number
+          milestone_type?: string | null
           round?: number | null
           scope?: string
           season?: number | null

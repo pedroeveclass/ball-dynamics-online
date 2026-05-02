@@ -13,6 +13,14 @@
       "missing": "This round's recap hasn't been written yet."
     }
   },
+  "milestones": {
+    "section": {
+      "title": "Career Milestones",
+      "subtitle": "Achievements and standout moments",
+      "loading": "Loading milestones...",
+      "empty": "No milestones recorded yet."
+    }
+  },
   "originStory": {
     "section": {
       "title": "Origin Story",

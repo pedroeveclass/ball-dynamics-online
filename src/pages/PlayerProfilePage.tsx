@@ -28,6 +28,7 @@ import { formatBRL } from '@/lib/formatting';
 import { formatDate } from '@/lib/formatDate';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
+import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
 import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
 import { ProfileIntroTour } from '@/components/tour/ProfileIntroTour';
 
@@ -605,6 +606,9 @@ export default function PlayerProfilePage() {
 
         {/* ── Origin Story (canonical narrative) ── */}
         <OriginStoryCard playerId={p.id} />
+
+        {/* ── Career Milestones (timeline) ── */}
+        <PlayerMilestonesTimeline playerId={p.id} />
 
         {/* Tour spotlight wraps career stats + attrs overview + training history together */}
         <div data-tour="profile-attrs-overview" className="space-y-6">

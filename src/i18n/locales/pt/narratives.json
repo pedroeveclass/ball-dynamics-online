@@ -13,6 +13,14 @@
       "missing": "A crônica desta rodada ainda não foi escrita."
     }
   },
+  "milestones": {
+    "section": {
+      "title": "Marcos da Carreira",
+      "subtitle": "Conquistas e momentos marcantes",
+      "loading": "Carregando marcos...",
+      "empty": "Nenhum marco registrado ainda."
+    }
+  },
   "originStory": {
     "section": {
       "title": "História de Origem",

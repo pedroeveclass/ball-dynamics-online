@@ -1,6 +1,7 @@
 ﻿import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { generateAndPersistMatchRecap } from './match_recap_templates.ts';
 import { generateAndPersistRoundRecap } from './round_recap_templates.ts';
+import { detectAndPersistMatchMilestones, detectAndPersistSeasonMilestones } from './player_milestones_templates.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -404,28 +405,13 @@ async function persistMatchPlayerStats(
   awayClubId: string,
 ): Promise<void> {
   try {
-    // Only aggregate stats for competitive matches:
-    //   1. League matches (row in league_matches with this match_id)
-    //   2. Team-vs-team friendlies (row in match_challenges with this match_id;
-    //      both clubs are human-managed since the table has
-    //      challenger_manager_profile_id and challenged_manager_profile_id).
-    // Bot-only matches, 5v5 test matches and training matches are skipped.
+    // Only league matches get persistent player_match_stats. Friendlies,
+    // pickup, training and bot-only matches are skipped — Pedro decided
+    // 2026-05-02 to keep stats league-exclusive.
     const { data: leagueMatch } = await supabase
       .from('league_matches').select('round_id').eq('match_id', matchId).maybeSingle();
-    const isLeagueMatch = leagueMatch !== null;
-
-    let isFriendlyTvT = false;
-    if (!isLeagueMatch) {
-      const { data: challenge } = await supabase
-        .from('match_challenges')
-        .select('id')
-        .eq('match_id', matchId)
-        .maybeSingle();
-      isFriendlyTvT = challenge !== null;
-    }
-
-    if (!isLeagueMatch && !isFriendlyTvT) {
-      console.log(`[STATS] Skipping match ${matchId.slice(0,8)} — not league or team-vs-team friendly`);
+    if (leagueMatch === null) {
+      console.log(`[STATS] Skipping match ${matchId.slice(0,8)} — not a league match`);
       return;
     }
 
@@ -444,9 +430,9 @@ async function persistMatchPlayerStats(
     }
     if (parts.length === 0) return;
 
-    // Season (league match only; null for friendlies).
+    // Season — always present for league matches.
     let seasonId: string | null = null;
-    if (leagueMatch?.round_id) {
+    if (leagueMatch.round_id) {
       const { data: round } = await supabase
         .from('league_rounds').select('season_id').eq('id', leagueMatch.round_id).maybeSingle();
       seasonId = round?.season_id ?? null;
@@ -513,6 +499,26 @@ async function persistMatchPlayerStats(
       const goals_conceded = isHome ? awayScore : isAway ? homeScore : 0;
       const clean_sheet = (isHome && awayScore === 0) || (isAway && homeScore === 0);
 
+      // Match rating — base 6.0, capped 4.0–10.0. Pedro will tune the
+      // weights from a table after first observations.
+      const passAccuracy = passes_attempted > 0 ? passes_completed / passes_attempted : 0;
+      const isGK = (position || '').toUpperCase() === 'GK';
+      let rating = 6.0
+        + goals * 1.0
+        + assists * 0.5
+        + (passes_attempted >= 5 ? (passAccuracy - 0.7) * 1.5 : 0)
+        + tackles * 0.15
+        + interceptions * 0.15
+        + gk_saves * 0.2
+        + (clean_sheet && (isGK || (position || '').toUpperCase().includes('Z') || (position || '').toUpperCase().includes('LD') || (position || '').toUpperCase().includes('LE')) ? 0.5 : 0)
+        - fouls_committed * 0.1
+        - yellow_cards * 0.3
+        - red_cards * 1.5
+        - (isGK ? goals_conceded * 0.3 : 0);
+      if (rating < 4.0) rating = 4.0;
+      if (rating > 10.0) rating = 10.0;
+      rating = Math.round(rating * 10) / 10;
+
       return {
         match_id: matchId,
         participant_id: pid,
@@ -537,6 +543,7 @@ async function persistMatchPlayerStats(
         gk_penalties_saved: 0,
         goals_conceded,
         clean_sheet,
+        rating,
       };
     });
 
@@ -7594,6 +7601,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: {
                 shooter_participant_id: ballHolder.id,
                 shooter_name: (ballHolder as any)?._player_name ?? null,
+                shooter_club_id: possClubId,
+                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_y: Number((ballHolder as any).pos_y ?? 50),
+                outcome: 'post',
                 side: postSide ?? null,
                 post_x: postX,
                 post_y: postY,
@@ -7653,6 +7664,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 assister_participant_id: assisterId,
                 assister_name: assisterName,
                 goal_type: 'shot',
+                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_y: Number((ballHolder as any).pos_y ?? 50),
+                target_y: shotTargetY,
               },
             });
 
@@ -7670,6 +7684,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               payload: {
                 shooter_participant_id: ballHolder.id,
                 shooter_name: (ballHolder as any)?._player_name ?? null,
+                shooter_club_id: possClubId,
+                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_y: Number((ballHolder as any).pos_y ?? 50),
+                target_y: shotTargetY,
+                outcome: isOverGoal ? 'over' : 'wide',
               },
             });
             if (LOG_VERBOSE) console.log(`[ENGINE] Shot missed: overGoal=${isOverGoal} targetY=${shotTargetY} (goal range: 38-62)`);
@@ -7720,8 +7739,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 payload: {
                   passer_participant_id: ballHolder.id,
                   passer_name: (ballHolder as any)?._player_name ?? null,
+                  passer_club_id: possClubId,
                   intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                   failure_reason: 'blocked',
+                  from_x: Number((ballHolder as any).pos_x ?? 50),
+                  from_y: Number((ballHolder as any).pos_y ?? 50),
+                  to_x: Number(ballHolderAction?.target_x ?? 50),
+                  to_y: Number(ballHolderAction?.target_y ?? 50),
                 },
               });
             }
@@ -9427,10 +9451,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
 
       // ── Match recap (canonical narrative) — best-effort, never blocks ──
-      // Reads finalized score + events, classifies into one of 10 buckets,
-      // assembles a PT/EN paragraph and persists to narratives. UNIQUE
-      // constraint makes it idempotent across retries.
       await generateAndPersistMatchRecap(supabase, match_id);
+
+      // ── Player milestones (career thresholds crossed in this match) ──
+      await detectAndPersistMatchMilestones(supabase, match_id);
 
       // ── Update league standings inline (avoids inter-function fetch issues) ──
       try {
@@ -9537,6 +9561,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
               const allRoundsFinished = (seasonRounds || []).every((r: any) => r.status === 'finished');
               if (allRoundsFinished) {
+                // End-of-season player milestones (top scorer, title,
+                // runner-up, relegation) before flipping the season status.
+                await detectAndPersistSeasonMilestones(supabase, round.season_id);
+
                 await supabase.from('league_seasons').update({
                   status: 'finished',
                   finished_at: new Date().toISOString(),

@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
+import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
 import { CountryFlag } from '@/components/CountryFlag';
 import { getCountry, getCountryName } from '@/lib/countries';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
@@ -328,6 +329,9 @@ export default function PublicPlayerPage() {
 
         {/* Origin Story (canonical narrative) */}
         <OriginStoryCard playerId={player.id} />
+
+        {/* Career Milestones (timeline) */}
+        <PlayerMilestonesTimeline playerId={player.id} />
 
         {/* Career Statistics (position-specific block) */}
         <CareerStatsBlock playerProfileId={player.id} position={player.primary_position} />
