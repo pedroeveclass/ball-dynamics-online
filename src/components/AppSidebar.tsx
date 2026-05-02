@@ -84,7 +84,14 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {playerNav.map(item => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem
+                  key={item.title}
+                  data-tour={
+                    item.url === '/player/club' ? 'nav-club'
+                    : item.url === '/player/training-plan' ? 'nav-training-plan'
+                    : undefined
+                  }
+                >
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-primary font-medium">
                       <item.icon className="mr-2 h-4 w-4" />

@@ -20,6 +20,7 @@ import {
   type PickupSlot,
 } from '@/lib/fivePickup';
 import { formatBRTDateTime, getNextClubMatch, type NextClubMatch } from '@/lib/upcomingMatches';
+import { MatchesIntroTour } from '@/components/tour/MatchesIntroTour';
 
 interface MatchEntry {
   match_id: string;
@@ -302,11 +303,12 @@ export default function PlayerMatchesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <MatchesIntroTour enabled={!loading} hasLeagueFixture={!!nextLeagueMatch} />
         <div className="flex items-center justify-between">
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
             <Swords className="h-6 w-6 text-tactical" /> {t('title')}
           </h1>
-          <Button size="sm" variant="outline" onClick={handleCreate5v5} disabled={creating5v5}
+          <Button data-tour="matches-test-button" size="sm" variant="outline" onClick={handleCreate5v5} disabled={creating5v5}
             className="font-display text-xs border-warning/40 text-warning hover:bg-warning/10">
             {creating5v5 ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-1" />}
             {creating5v5 ? t('test_match.creating') : t('test_match.create_button')}
@@ -316,7 +318,7 @@ export default function PlayerMatchesPage() {
         {/* Próxima rodada da liga — shows the fixture even before the
             materialized `matches` row exists. */}
         {nextLeagueMatch && (
-          <div className="stat-card border-tactical/40 bg-tactical/5">
+          <div data-tour="matches-next-league" className="stat-card border-tactical/40 bg-tactical/5">
             <div className="flex items-center gap-2 mb-2">
               <Trophy className="h-4 w-4 text-amber-400" />
               <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
@@ -383,6 +385,9 @@ export default function PlayerMatchesPage() {
           </div>
         )}
 
+        {/* Tour spotlight wraps the empty state + the 3 match sections (live/upcoming/past) */}
+        <div data-tour="matches-list" className="space-y-6">
+
         {matches.length === 0 && (
           <div className="stat-card text-center py-12">
             <Swords className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -415,6 +420,8 @@ export default function PlayerMatchesPage() {
             </CollapsibleContent>
           </Collapsible>
         )}
+
+        </div>{/* /matches-list wrapper */}
       </div>
     </AppLayout>
   );

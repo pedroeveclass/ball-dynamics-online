@@ -117,5 +117,19 @@
       "title": "Posições e ações avançadas",
       "body": "Posição primária: 1ª troca grátis, depois custa.\nPosição secundária (logo abaixo): paga, mas zera a penalidade quando o técnico te escala fora da primária.\n\nMais embaixo você também tem opções pra criar um segundo jogador (segunda carreira paralela) e — se for agente livre — resetar o jogador atual e começar do zero."
     }
+  },
+  "matches_intro": {
+    "step1": {
+      "title": "Suas partidas em um lugar",
+      "body": "Aqui você vê todas as suas partidas organizadas:\n\n• Ao vivo / Em breve — entra direto na sala\n• Próximas — o que está agendado\n• Passadas — com botão de replay\n\nQuando você tiver clube e calendário, vão aparecer aqui."
+    },
+    "step2": {
+      "title": "Próxima rodada da liga + presença",
+      "body": "Quando tem um jogo da liga próximo, ele aparece em destaque aqui.\n\nMarca presença pra avisar o técnico que você vai jogar — é só informativo, ele decide a escalação no fim. Mas ajuda ele a planejar."
+    },
+    "step3": {
+      "title": "Quer testar agora? Faz um Teste 5v5",
+      "body": "Bora testar uma partida agora? Clica em Teste 5v5 ali em cima.\n\nVai abrir uma partida rápida 5×5 contra bots em uma nova aba, sem consequências — pra você ver na prática:\n\n• Hotkeys (QWERT / ASDF / ZXCVB)\n• Fases de turno (posicionamento → ação → resolução)\n• Inertia, dominação, passes, chutes...\n\nAprende fazendo. Bora! ⚽"
+    }
   }
 }

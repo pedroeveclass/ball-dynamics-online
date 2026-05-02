@@ -19,6 +19,7 @@ import { ATTRIBUTE_CATEGORIES, attrCategoryLabel, archetypeLabel } from '@/lib/a
 import { useTranslation } from 'react-i18next';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { renderNotificationTitle, renderNotificationBody } from '@/lib/notificationRender';
+import { DashboardIntroTour } from '@/components/tour/DashboardIntroTour';
 
 interface NextMatch {
   id: string;
@@ -133,8 +134,9 @@ export default function PlayerDashboard() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <DashboardIntroTour />
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div data-tour="dashboard-header" className="flex items-start justify-between">
           <div>
             <h1 className="font-display text-3xl font-bold flex items-center gap-2">
               {(p as any).country_code && <CountryFlag code={(p as any).country_code} size="md" />}
@@ -157,7 +159,7 @@ export default function PlayerDashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div data-tour="dashboard-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label={t('player.stats.reputation')} value={p.reputation} icon={<Star className="h-5 w-5" />} />
           <StatCard label={t('player.stats.money')} value={formatBRL(p.money)} icon={<DollarSign className="h-5 w-5" />} />
           <StatCard label={t('player.stats.weekly_salary')} value={contract?.status === 'active' ? formatBRL(contract.weekly_salary) : t('player.stats.no_contract')} />
@@ -165,7 +167,7 @@ export default function PlayerDashboard() {
         </div>
 
         {/* Energy */}
-        <div className="stat-card">
+        <div data-tour="dashboard-energy" className="stat-card">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="h-4 w-4 text-warning" />
             <span className="font-display font-semibold text-sm">{t('player.energy.title')}</span>

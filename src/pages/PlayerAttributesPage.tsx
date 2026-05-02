@@ -16,6 +16,7 @@ import type { Tables } from '@/integrations/supabase/types';
 import { Dumbbell, TrendingUp, History, Shield, Swords, Wrench, Star, Building2, ChevronDown, ChevronUp, Info, GraduationCap, Footprints, Hand, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getStoreItemName } from '@/lib/storeItemLabel';
+import { AttrsIntroTour } from '@/components/tour/AttrsIntroTour';
 
 const ENERGY_COST = 25;
 
@@ -370,7 +371,8 @@ export default function PlayerAttributesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <AttrsIntroTour enabled={!!attrs} />
+        <div data-tour="attrs-header" className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold">{t('header.title')}</h1>
             <p className="text-sm text-muted-foreground">{t('header.subtitle', { name: playerProfile.full_name, ovr: playerProfile.overall, cur: playerProfile.energy_current, max: playerProfile.energy_max })}</p>
@@ -393,7 +395,7 @@ export default function PlayerAttributesPage() {
         </p>
 
         {/* Training Bonuses Info Card */}
-        <div className="stat-card">
+        <div data-tour="attrs-bonus-card" className="stat-card">
           <button
             className="w-full flex items-center justify-between"
             onClick={() => setShowBonusInfo(!showBonusInfo)}
@@ -457,7 +459,7 @@ export default function PlayerAttributesPage() {
         </div>
 
         {/* Equipamento ativo (boots / gloves) — what's adding bonuses to attrs right now */}
-        <div className="stat-card">
+        <div data-tour="attrs-equipment-card" className="stat-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-emerald-400" />
@@ -523,7 +525,7 @@ export default function PlayerAttributesPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div data-tour="attrs-grid" className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {isGK ? (
             <>
               {renderSection(t('categories.goalkeeping'), gkKeys)}

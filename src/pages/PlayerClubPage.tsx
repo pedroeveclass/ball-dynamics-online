@@ -32,6 +32,7 @@ import { formatBRL } from '@/lib/formatting';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import type { SupportedLanguage } from '@/i18n';
 import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
+import { ClubIntroTour } from '@/components/tour/ClubIntroTour';
 
 // ── Types ──
 
@@ -606,8 +607,13 @@ export default function PlayerClubPage() {
     <AppLayout>
       <div className="max-w-4xl space-y-6">
 
+        <ClubIntroTour
+          enabled={!!playerProfile.club_id && !!clubInfo && !!lineup && lineup.slots.length > 0}
+          clubName={clubInfo.name}
+        />
+
         {/* ── Header + Stats (compact beside coach) ── */}
-        <div className="flex items-start justify-between gap-5">
+        <div data-tour="club-header" className="flex items-start justify-between gap-5">
           <div className="flex-1 min-w-0 space-y-4">
           <div className="flex items-center gap-5 min-w-0">
           <ClubCrest
@@ -632,7 +638,7 @@ export default function PlayerClubPage() {
           </div>
 
           {/* Stats: 5 cards arranged in 2 rows beside the coach (dense flow) */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:grid-flow-row-dense">
+          <div data-tour="club-stats" className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:grid-flow-row-dense">
           {/* Team Overall */}
           <div className="stat-card">
             <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -699,7 +705,7 @@ export default function PlayerClubPage() {
           </div>
 
           {/* Manager avatar - full-body block on the right */}
-          <div className="shrink-0 flex flex-col items-center text-center">
+          <div data-tour="club-manager" className="shrink-0 flex flex-col items-center text-center">
             {managerInfo ? (
               <>
                 <div className="w-20 h-40 flex items-end justify-center bg-gradient-to-b from-muted/30 to-muted/60 rounded-lg overflow-hidden">
@@ -786,7 +792,7 @@ export default function PlayerClubPage() {
 
         {/* ── Lineup Preview ── */}
         {lineup && lineup.slots.length > 0 && (
-          <div className="stat-card space-y-4">
+          <div data-tour="club-lineup" className="stat-card space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-display text-sm font-semibold">
                 {lineup.name
@@ -970,7 +976,7 @@ export default function PlayerClubPage() {
         </div>
 
         {/* ── Roster ── */}
-        <div className="stat-card">
+        <div data-tour="club-roster" className="stat-card">
           <div className="mb-4 flex items-center gap-2">
             <Users className="h-4 w-4 text-tactical" />
             <span className="font-display text-sm font-semibold">{t('roster.title', { count: teammates.length })}</span>

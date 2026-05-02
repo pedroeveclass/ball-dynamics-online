@@ -21,6 +21,7 @@ import {
 import type { Tables } from '@/integrations/supabase/types';
 import { Save, Trash2, Battery, Swords, Dumbbell, Trophy, Hourglass } from 'lucide-react';
 import { formatBRTTimeOnly, isoDowInSaoPaulo } from '@/lib/upcomingMatches';
+import { TrainingPlanIntroTour } from '@/components/tour/TrainingPlanIntroTour';
 
 const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const SLOTS_PER_DAY = 4;
@@ -390,6 +391,7 @@ export default function PlayerTrainingPlanPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <TrainingPlanIntroTour enabled={!loading} />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="font-display text-2xl font-bold">{t('header.title')}</h1>
@@ -403,6 +405,7 @@ export default function PlayerTrainingPlanPage() {
               {t('header.clear_week')}
             </Button>
             <Button
+              data-tour="training-save"
               size="sm"
               onClick={savePlan}
               disabled={!dirty || saving}
@@ -444,7 +447,7 @@ export default function PlayerTrainingPlanPage() {
         })()}
 
         {/* Quick status bar */}
-        <div className="stat-card grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div data-tour="training-status" className="stat-card grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <div className="flex items-center gap-2">
             <Battery className="h-4 w-4 text-pitch" />
             <div>
@@ -476,7 +479,7 @@ export default function PlayerTrainingPlanPage() {
         </div>
 
         {/* Weekly grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
+        <div data-tour="training-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
           {DAY_KEYS.map((dayKey, dayIdx) => {
             const label = t(`days.${dayKey}`);
             const isToday = dayIdx === todayDow;

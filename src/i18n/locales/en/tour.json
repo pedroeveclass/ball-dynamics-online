@@ -117,5 +117,19 @@
       "title": "Positions and advanced actions",
       "body": "Primary position: 1st change is free, then costs.\nSecondary position (right below): paid, but zeroes the penalty when the manager plays you outside your primary.\n\nFurther down you also have options to create a second player (parallel career) and — if you're a free agent — reset the current player and start over."
     }
+  },
+  "matches_intro": {
+    "step1": {
+      "title": "Your matches in one place",
+      "body": "Here you see all your matches organized:\n\n• Live / Soon — jump straight into the room\n• Upcoming — what's scheduled\n• Past — with a replay button\n\nOnce you have a club and a calendar, they'll show up here."
+    },
+    "step2": {
+      "title": "Next league round + presence",
+      "body": "When there's an upcoming league match, it shows up highlighted here.\n\nMark presence to let the manager know you'll play — it's just informative, the manager decides the lineup. But it helps them plan."
+    },
+    "step3": {
+      "title": "Want to test now? Run a Test 5v5",
+      "body": "Want to try a match right now? Click Test 5v5 up there.\n\nIt opens a quick 5×5 against bots in a new tab, no consequences — to show you in practice:\n\n• Hotkeys (QWERT / ASDF / ZXCVB)\n• Turn phases (positioning → action → resolution)\n• Inertia, domination, passes, shots...\n\nLearn by doing. Let's go! ⚽"
+    }
   }
 }

@@ -12,6 +12,7 @@ import { formatBRTDateTime, formatBRTTimeOnly, getNextClubMatch, type NextClubMa
 import { formatLeagueName } from '@/lib/leagueName';
 import { formatBRL } from '@/lib/formatting';
 import { Bot, User as UserIcon } from 'lucide-react';
+import { LeagueIntroTour } from '@/components/tour/LeagueIntroTour';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -674,7 +675,8 @@ export default function LeaguePage() {
           <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
         </div>
         <Tabs defaultValue={initialTab} className="space-y-4">
-          <TabsList className={`grid w-full ${(isManagerWithoutClub || isPlayerFreeAgent) ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
+          <LeagueIntroTour enabled={isPlayerFreeAgent && tabFromQuery === 'join' && joinableClubs.length > 0} />
+          <TabsList data-tour="league-tabs" className={`grid w-full ${(isManagerWithoutClub || isPlayerFreeAgent) ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
             <TabsTrigger value="standings">{t('tabs.standings')}</TabsTrigger>
             <TabsTrigger value="rounds">{t('tabs.rounds')}</TabsTrigger>
             <TabsTrigger value="stats" onClick={() => fetchStatistics()}>{t('tabs.stats')}</TabsTrigger>
@@ -1197,7 +1199,7 @@ export default function LeaguePage() {
               the manager can decide. */}
           {isPlayerFreeAgent && (
             <TabsContent value="join" className="space-y-4">
-              <p className="text-xs text-muted-foreground">
+              <p data-tour="league-join-intro" className="text-xs text-muted-foreground">
                 {t('join.intro', {
                   defaultValue: 'Clubes com técnico bot aceitam contrato automaticamente. Clubes com técnico humano precisam te enviar uma proposta.',
                 })}
@@ -1212,8 +1214,8 @@ export default function LeaguePage() {
                       if (b.human_count !== a.human_count) return b.human_count - a.human_count;
                       return a.name.localeCompare(b.name);
                     })
-                    .map((jc) => (
-                    <div key={jc.id} className="stat-card flex flex-col items-center text-center gap-3 p-4">
+                    .map((jc, idx) => (
+                    <div key={jc.id} data-tour={idx === 0 ? 'league-join-first-card' : undefined} className="stat-card flex flex-col items-center text-center gap-3 p-4">
                       {/* Crest + name link to the public club page so players
                           can scout the squad/formation/positions before signing. */}
                       <Link to={`/club/${jc.id}`} className="contents">
