@@ -20,6 +20,7 @@ const PlayerDashboard = lazy(() => import("./pages/PlayerDashboard"));
 const PlayerAttributesPage = lazy(() => import("./pages/PlayerAttributesPage"));
 const PlayerTrainingPlanPage = lazy(() => import("./pages/PlayerTrainingPlanPage"));
 const PlayerProfilePage = lazy(() => import("./pages/PlayerProfilePage"));
+const PlayerOriginPage = lazy(() => import("./pages/PlayerOriginPage"));
 const PlayerContractPage = lazy(() => import("./pages/PlayerContractPage"));
 const PlayerOffersPage = lazy(() => import("./pages/PlayerOffersPage"));
 const PlayerClubPage = lazy(() => import("./pages/PlayerClubPage"));
@@ -114,6 +115,8 @@ const App = () => (
             <Route path="/player/attributes" element={<PlayerRoute><PlayerAttributesPage /></PlayerRoute>} />
             <Route path="/player/training-plan" element={<PlayerRoute><PlayerTrainingPlanPage /></PlayerRoute>} />
             <Route path="/player/profile" element={<PlayerRoute><PlayerProfilePage /></PlayerRoute>} />
+            {/* Backfill page — bypasses PlayerRoute to avoid redirect loop */}
+            <Route path="/player/origem" element={<ProtectedRoute><PlayerOriginPage /></ProtectedRoute>} />
             <Route path="/player/contract" element={<PlayerRoute><PlayerContractPage /></PlayerRoute>} />
             <Route path="/player/offers" element={<PlayerRoute><PlayerOffersPage /></PlayerRoute>} />
             <Route path="/player/club" element={<PlayerRoute><PlayerClubPage /></PlayerRoute>} />

@@ -24,6 +24,7 @@ import ptPlayerMatches from './locales/pt/player_matches.json';
 import ptPublicClub from './locales/pt/public_club.json';
 import ptPublicPlayer from './locales/pt/public_player.json';
 import ptStore from './locales/pt/store.json';
+import ptTour from './locales/pt/tour.json';
 import ptLeague from './locales/pt/league.json';
 import ptLeagueVote from './locales/pt/league_vote.json';
 import ptMatchEvents from './locales/pt/match_events.json';
@@ -38,6 +39,7 @@ import ptManagerMatchCreate from './locales/pt/manager_match_create.json';
 import ptManagerReports from './locales/pt/manager_reports.json';
 import ptManagerStadium from './locales/pt/manager_stadium.json';
 import ptMatchReplay from './locales/pt/match_replay.json';
+import ptNarratives from './locales/pt/narratives.json';
 import ptNav from './locales/pt/nav.json';
 import ptNotificationMessages from './locales/pt/notification_messages.json';
 import ptNotifications from './locales/pt/notifications.json';
@@ -78,6 +80,7 @@ import enPlayerMatches from './locales/en/player_matches.json';
 import enPublicClub from './locales/en/public_club.json';
 import enPublicPlayer from './locales/en/public_player.json';
 import enStore from './locales/en/store.json';
+import enTour from './locales/en/tour.json';
 import enLeague from './locales/en/league.json';
 import enLeagueVote from './locales/en/league_vote.json';
 import enMatchEvents from './locales/en/match_events.json';
@@ -92,6 +95,7 @@ import enManagerMatchCreate from './locales/en/manager_match_create.json';
 import enManagerReports from './locales/en/manager_reports.json';
 import enManagerStadium from './locales/en/manager_stadium.json';
 import enMatchReplay from './locales/en/match_replay.json';
+import enNarratives from './locales/en/narratives.json';
 import enNav from './locales/en/nav.json';
 import enNotificationMessages from './locales/en/notification_messages.json';
 import enNotifications from './locales/en/notifications.json';
@@ -156,6 +160,7 @@ i18n
         match_events: ptMatchEvents,
         match_replay: ptMatchReplay,
         match_room: ptMatchRoom,
+        narratives: ptNarratives,
         nav: ptNav,
         notification_messages: ptNotificationMessages,
         notifications: ptNotifications,
@@ -180,6 +185,7 @@ i18n
         solo_lab: ptSoloLab,
         squad: ptSquad,
         store: ptStore,
+        tour: ptTour,
       },
       en: {
         account_profile: enAccountProfile,
@@ -211,6 +217,7 @@ i18n
         match_events: enMatchEvents,
         match_replay: enMatchReplay,
         match_room: enMatchRoom,
+        narratives: enNarratives,
         nav: enNav,
         notification_messages: enNotificationMessages,
         notifications: enNotifications,
@@ -235,6 +242,7 @@ i18n
         solo_lab: enSoloLab,
         squad: enSquad,
         store: enStore,
+        tour: enTour,
       },
     },
     defaultNS: 'common',

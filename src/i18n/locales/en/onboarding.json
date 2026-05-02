@@ -5,6 +5,8 @@
     "steps": {
       "identity": "Identity",
       "position": "Position",
+      "origin1": "Origin",
+      "origin2": "Identity",
       "height": "Height",
       "body": "Body Type",
       "attributes": "Attributes",

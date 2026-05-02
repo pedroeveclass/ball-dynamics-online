@@ -8,7 +8,16 @@ import { useAuth } from '@/hooks/useAuth';
 import { calculateOverall, POSITIONS, BODY_TYPES, GK_BODY_TYPES, HEIGHT_OPTIONS, FIELD_ATTRS, GK_ATTRS, ATTR_LABELS, ATTRIBUTE_CATEGORIES, archetypeLabel, archetypeDescription, heightLabel as heightLabelI18n, heightDescription, getArchetypeAttributeImpact, getHeightAttributeImpact, attrCategoryLabel } from '@/lib/attributes';
 import { positionLabel } from '@/lib/positions';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, User, MapPin, Shield, Eye, Dumbbell, Ruler, Sparkles } from 'lucide-react';
+import { OriginQuestionScreen } from '@/components/onboarding/OriginQuestionsForm';
+import {
+  ORIGIN_SCREEN_1_QUESTIONS,
+  ORIGIN_SCREEN_2_QUESTIONS,
+  isCompleteOriginAnswers,
+  assembleOriginStoryBilingual,
+  type OriginAnswers,
+  type OriginQuestionKey,
+} from '@/lib/narratives/originStory';
 import { AttributeBar } from '@/components/AttributeBar';
 import { AttributeInfo } from '@/components/AttributeInfo';
 import { AttributeImpactChips } from '@/components/AttributeImpactChips';
@@ -19,7 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { getCountry, getCountryName } from '@/lib/countries';
 
-const STEP_ICONS = [User, MapPin, Ruler, Shield, Dumbbell, Eye];
+const STEP_ICONS = [User, MapPin, Sparkles, Sparkles, Ruler, Shield, Dumbbell, Eye];
 
 export default function OnboardingPlayerPage() {
   const { user, profile, refreshPlayerProfile } = useAuth();
@@ -32,6 +41,8 @@ export default function OnboardingPlayerPage() {
   const STEPS = [
     t('onboarding:player.steps.identity'),
     t('onboarding:player.steps.position'),
+    t('onboarding:player.steps.origin1'),
+    t('onboarding:player.steps.origin2'),
     t('onboarding:player.steps.height'),
     t('onboarding:player.steps.body'),
     t('onboarding:player.steps.attributes'),
@@ -44,6 +55,11 @@ export default function OnboardingPlayerPage() {
   const [height, setHeight] = useState('Médio');
   const [bodyType, setBodyType] = useState('');
   const [countryCode, setCountryCode] = useState<string>(((profile as any)?.country_code as string) || 'BR');
+  const [originAnswers, setOriginAnswers] = useState<Partial<OriginAnswers>>({});
+
+  const setOriginAnswer = (q: OriginQuestionKey, v: string) => {
+    setOriginAnswers(prev => ({ ...prev, [q]: v }));
+  };
 
   // When profile loads, sync the default country (only if user hasn't picked yet)
   useEffect(() => {
@@ -117,14 +133,20 @@ export default function OnboardingPlayerPage() {
   const canNext = () => {
     if (step === 0) return fullName.trim().length >= 2;
     if (step === 1) return !!primaryPosition;
-    if (step === 2) return !!height;
-    if (step === 3) return !!bodyType;
-    if (step === 4) return remainingPoints === 0;
+    if (step === 2) return ORIGIN_SCREEN_1_QUESTIONS.every(q => !!originAnswers[q]);
+    if (step === 3) return ORIGIN_SCREEN_2_QUESTIONS.every(q => !!originAnswers[q]);
+    if (step === 4) return !!height;
+    if (step === 5) return !!bodyType;
+    if (step === 6) return remainingPoints === 0;
     return true;
   };
 
   const handleSubmit = async () => {
     if (!user || !finalAttrs) return;
+    if (!isCompleteOriginAnswers(originAnswers)) {
+      toast.error(t('onboarding:player.error_generic'));
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -134,7 +156,7 @@ export default function OnboardingPlayerPage() {
         if (val > 0) extra[key] = val;
       }
 
-      const { data, error } = await supabase.rpc('create_player_profile', {
+      const { data: newPlayerId, error } = await supabase.rpc('create_player_profile', {
         p_full_name: fullName.trim(),
         p_dominant_foot: dominantFoot,
         p_primary_position: primaryPosition,
@@ -145,6 +167,31 @@ export default function OnboardingPlayerPage() {
       } as any);
 
       if (error) throw error;
+
+      // ── Origin story: assemble bilingual paragraph + persist ──
+      // New players start as free agents (no club_id yet), so clubName is
+      // null and the picker uses the closings_free_agent bucket.
+      const { body_pt, body_en } = assembleOriginStoryBilingual({
+        name: fullName.trim(),
+        clubName: null,
+        answers: originAnswers,
+      });
+
+      const { error: originError } = await (supabase as any).rpc('save_player_origin', {
+        p_player_id: newPlayerId,
+        p_origin_start: originAnswers.scene,
+        p_origin_inspiration: originAnswers.mentor,
+        p_origin_spark: originAnswers.spark,
+        p_origin_obstacle: originAnswers.obstacle,
+        p_origin_trait: originAnswers.trait,
+        p_origin_dream: originAnswers.dream,
+        p_body_pt: body_pt,
+        p_body_en: body_en,
+        p_facts_json: { ...originAnswers, free_agent: true },
+      });
+      // Origin story failure shouldn't block the player creation — log
+      // and continue. The retroactive flow will pick this up next login.
+      if (originError) console.error('save_player_origin failed:', originError);
 
       await refreshPlayerProfile();
       toast.success(t('onboarding:player.success'));
@@ -248,8 +295,28 @@ export default function OnboardingPlayerPage() {
             </div>
           )}
 
-          {/* Step 2: Height */}
+          {/* Step 2: Origin Screen 1 (scene / mentor / spark) */}
           {step === 2 && (
+            <OriginQuestionScreen
+              questions={ORIGIN_SCREEN_1_QUESTIONS}
+              answers={originAnswers}
+              onAnswerChange={setOriginAnswer}
+              headerKey="screen1"
+            />
+          )}
+
+          {/* Step 3: Origin Screen 2 (obstacle / trait / dream) */}
+          {step === 3 && (
+            <OriginQuestionScreen
+              questions={ORIGIN_SCREEN_2_QUESTIONS}
+              answers={originAnswers}
+              onAnswerChange={setOriginAnswer}
+              headerKey="screen2"
+            />
+          )}
+
+          {/* Step 4: Height */}
+          {step === 4 && (
             <div className="space-y-4">
               <Label>{t('onboarding:player.height.label')}</Label>
               <p className="text-xs text-muted-foreground">{t('onboarding:player.height.hint')}</p>
@@ -278,8 +345,8 @@ export default function OnboardingPlayerPage() {
             </div>
           )}
 
-          {/* Step 3: Body Type */}
-          {step === 3 && (
+          {/* Step 5: Body Type */}
+          {step === 5 && (
             <div className="space-y-4">
               <Label>{t('onboarding:player.body.label')}</Label>
               {isGK && <p className="text-xs text-muted-foreground">{t('onboarding:player.body.gk_hint')}</p>}
@@ -308,8 +375,8 @@ export default function OnboardingPlayerPage() {
             </div>
           )}
 
-          {/* Step 4: Distribute Points */}
-          {step === 4 && baseAttrs && finalAttrs && (() => {
+          {/* Step 6: Distribute Points */}
+          {step === 6 && baseAttrs && finalAttrs && (() => {
             const physicalKeys = ATTRIBUTE_CATEGORIES['Físico'];
             const technicalKeys = ATTRIBUTE_CATEGORIES['Técnico'];
             const mentalKeys = ATTRIBUTE_CATEGORIES['Mental'];
@@ -368,8 +435,8 @@ export default function OnboardingPlayerPage() {
             );
           })()}
 
-          {/* Step 5: Review */}
-          {step === 5 && (() => {
+          {/* Step 7: Review */}
+          {step === 7 && (() => {
             const country = getCountry(countryCode);
             return (
             <div className="space-y-4">
@@ -408,7 +475,7 @@ export default function OnboardingPlayerPage() {
               </Button>
             ) : <div />}
 
-            {step < 5 ? (
+            {step < 7 ? (
               <Button onClick={() => setStep(s => s + 1)} disabled={!canNext()} className="bg-tactical text-tactical-foreground hover:bg-tactical/90 font-display">
                 {t('common:actions.next')} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>

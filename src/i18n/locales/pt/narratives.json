@@ -1,0 +1,355 @@
+{
+  "originStory": {
+    "section": {
+      "title": "História de Origem",
+      "subtitle": "A jornada do jogador até aqui",
+      "loading": "Carregando história...",
+      "missing": "Esta história ainda não foi escrita.",
+      "complete_cta": "Completar minha história"
+    },
+    "onboarding": {
+      "screen1_title": "Sua origem",
+      "screen1_subtitle": "Conte um pouco da sua história — vamos transformar isso na biografia do jogador.",
+      "screen2_title": "Sua identidade em campo",
+      "screen2_subtitle": "O que define você como atleta e o que move você daqui pra frente."
+    },
+    "questions": {
+      "scene": "Onde você começou a jogar?",
+      "mentor": "Quem foi sua maior inspiração?",
+      "spark": "Qual foi o momento que você se apaixonou de vez pelo futebol?",
+      "obstacle": "Qual foi o maior obstáculo no caminho?",
+      "trait": "O que te define em campo?",
+      "dream": "Qual seu maior sonho no futebol?"
+    },
+    "options": {
+      "scene": {
+        "varzea": "Pelada na várzea",
+        "escolinha": "Escolinha do bairro",
+        "futsal": "Quadras de futsal",
+        "rua": "No quintal / na rua",
+        "colegio": "Time do colégio"
+      },
+      "mentor": {
+        "pai": "Meu pai",
+        "familia": "Mãe / avó / tio",
+        "irmao": "Irmão mais velho",
+        "idolo": "Um ídolo que via na TV",
+        "sozinho": "Descobri sozinho"
+      },
+      "spark": {
+        "primeiro_gol": "Marcando meu primeiro gol importante",
+        "tv_final": "Vendo uma final / Copa do Mundo na TV",
+        "primeira_chuteira": "Ganhando minha primeira chuteira",
+        "campeao_moleque": "Sendo campeão de um campeonato de moleque",
+        "volta_derrota": "Voltando depois da minha primeira derrota dura"
+      },
+      "obstacle": {
+        "dinheiro": "Falta de dinheiro em casa",
+        "distancia": "Morava longe de qualquer clube",
+        "rejeicoes": "Fui rejeitado em várias peneiras",
+        "lesao": "Lesão grave que quase encerrou tudo",
+        "familia_estudo": "Pressão da família pra largar e estudar"
+      },
+      "trait": {
+        "raca": "Raça e entrega acima de tudo",
+        "frieza": "Frieza e cabeça fria nos momentos decisivos",
+        "tecnica": "Técnica refinada e jogo bonito",
+        "lideranca": "Liderança e voz de comando",
+        "irreverencia": "Irreverência e jogo descontraído"
+      },
+      "dream": {
+        "liga": "Ganhar a Liga com o clube do coração",
+        "selecao": "Vestir a camisa da Seleção",
+        "familia": "Sustentar minha família com o futebol",
+        "europa": "Jogar na Europa",
+        "idolo_clube": "Virar ídolo eterno de um clube"
+      }
+    },
+    "scenes": {
+      "varzea": [
+        "{name} cresceu chutando bola descalço nos campos de várzea aos domingos, onde o gramado é mais terra que grama e cada partida termina com discussão.",
+        "O futebol de {name} começou onde sempre começa: nos campinhos de várzea, num bate-bola bruto em que a bola corre em cima de pedrinha e a defesa vem de carrinho mesmo.",
+        "Antes de qualquer escolinha, foi a várzea que ensinou {name} a jogar — campo torto, sol forte e meninos mais velhos que nunca pegavam leve.",
+        "A várzea foi a primeira escola de {name}: chutes em traves de chinelo, peladas que duravam até escurecer, e a certeza de que ali, naquele campo capenga, ele se sentia em casa.",
+        "Foi nos campos de várzea, com a poeira subindo a cada chute, que {name} descobriu cedo que sabia jogar diferente dos outros."
+      ],
+      "escolinha": [
+        "{name} foi descoberto cedo numa escolinha de bairro, daquelas que cobram mensalidade simbólica e sonham grande junto com cada moleque que aparece.",
+        "A história de {name} no futebol começou numa escolinha modesta da vizinhança, num treino de quarta-feira que parecia rotina e acabou virando vocação.",
+        "Foi uma escolinha de bairro que abriu os primeiros portões pra {name} — dois treinos por semana, um técnico paciente, e a primeira chuteira que era dele de verdade.",
+        "Antes da pressão dos clubes, {name} aprendeu fundamentos numa escolinha simples: rondo, finalização, e o conselho repetido de que talento sem disciplina não leva ninguém a lugar nenhum.",
+        "{name} levantou cedo aos sábados pra ir treinar numa escolinha de bairro, e foi ali — entre cones de plástico e bolas meio murchas — que a paixão deixou de ser brincadeira."
+      ],
+      "futsal": [
+        "{name} aprendeu a jogar nas quadras de futsal, onde não tem espaço pra erro e a bola passa por dentro das pernas antes mesmo da gente entender o que aconteceu.",
+        "O traço técnico de {name} vem de longe — anos batendo bola em quadra coberta, ginásio fechado, drible curto e finalização rápida no canto baixo.",
+        "Antes do gramado, foi o futsal que esculpiu {name}: piso liso, parede como aliada, e a obrigação de pensar três passes à frente.",
+        "{name} começou no futsal, em quadras que cabiam no fundo de qualquer escola, mas onde se aprendia a mais difícil das artes: jogar com a cabeça erguida.",
+        "A escola de futsal moldou tudo em {name} — toque curto, leitura de jogo, e aquela ansiedade boa de quem cresceu jogando 40 minutos sem respirar."
+      ],
+      "rua": [
+        "{name} começou batendo bola na própria rua, dribles entre carros estacionados e gols comemorados antes do 'carro!' gritado pelos mais novos.",
+        "A rua de {name} virou seu primeiro campo — asfalto quente no verão, joelho ralado a cada queda, e uma turma de moleques que jogava até a mãe chamar pra jantar.",
+        "Antes do clube, antes da escolinha, antes de qualquer coisa — {name} aprendeu o jogo no quintal de casa, onde o muro fazia o papel de zagueiro e o portão era o gol.",
+        "{name} jogou tanta bola na rua de casa que os vizinhos sabiam o nome dele pelos gritos: cruzava, marcava, comemorava, recomeçava — sempre na mesma rotina.",
+        "Foi naquela rua sem saída, com a trave desenhada de giz no muro, que {name} se apaixonou pelo futebol antes mesmo de saber direito o que era um campo oficial."
+      ],
+      "colegio": [
+        "{name} despontou no futebol jogando pelo time do colégio, daqueles campeonatos modestos onde quem se destacava virava assunto entre as turmas.",
+        "Foi nos torneios escolares que {name} chamou atenção pela primeira vez — uniforme do colégio, torcida feita de colegas, e jogadas que rodavam o pátio inteiro nas semanas seguintes.",
+        "A escola foi o primeiro palco de {name} — recreios virados em rachões, e finais entre salas que ele encarava como se fossem decisões de Copa.",
+        "{name} começou jogando pelo colégio, num futebol meio improvisado com balizas de mochila, mas que ensinou cedo a importância de jogar sob pressão.",
+        "Antes de qualquer convite formal, {name} já era nome marcado nas peladas do colégio, daquelas em que vencer dava bragging right pra semana inteira."
+      ]
+    },
+    "mentors": {
+      "pai": [
+        "Quem primeiro acreditou foi o pai, que largava o trabalho mais cedo às quartas pra levá-lo ao treino.",
+        "O pai foi seu primeiro técnico, primeiro torcedor e o primeiro a apostar que aquele moleque magrelo tinha algo diferente.",
+        "Foi nos olhos do pai, brilhando na arquibancada de cada jogo, que ele encontrou força nos dias em que tudo parecia difícil demais.",
+        "O pai não entendia muito de tática, mas entendia de filho — e foi ele quem garantiu que cada tênis furado fosse trocado, custasse o que custasse.",
+        "Pai e filho dividiram cada conquista: do primeiro gol no campinho ao convite que mudou tudo, sempre com a mesma frase no fim do dia — 'amanhã a gente treina mais'."
+      ],
+      "familia": [
+        "Coube à mãe a tarefa de acreditar antes de todo mundo — costurando uniformes velhos, contando moedas pra inscrição, segurando a barra dos dias em que o filho voltava chorando do treino.",
+        "Foi a avó quem o levou pelo primeiro corredor de clube, com aquela determinação silenciosa de quem sabia que ali estava nascendo algo importante.",
+        "Um tio meio jogador de pelada, meio professor improvisado, foi quem viu primeiro: 'esse moleque tem coisa diferente, tem que insistir'.",
+        "A família inteira virou comissão técnica — mãe lavando uniforme, irmã filmando jogos com o celular, todo mundo dizendo a mesma coisa: 'você consegue'.",
+        "Em casa, ninguém duvidava: a mãe segurou a fé quando ele duvidou de si mesmo, e isso fez toda a diferença nos momentos em que ele quase desistiu."
+      ],
+      "irmao": [
+        "O irmão mais velho, esse jogador frustrado que parou no meio do caminho, virou o primeiro mestre — passes errados eram corrigidos no quintal, na base do 'de novo, agora certo'.",
+        "Foi seguindo o irmão mais velho pra todo lugar que ele aprendeu o jogo: ia atrás dos rachões dos mais velhos, apanhava no meio-campo, voltava pra casa machucado mas mais inteiro.",
+        "O irmão era ídolo dentro de casa muito antes de qualquer ídolo da TV — toda jogada nova aprendida vinha dele, e cada elogio dele valia o dobro.",
+        "Quando o irmão mais velho largou o futebol pra trabalhar, o caçula prometeu em silêncio que ia jogar pelos dois — e nunca mais voltou atrás.",
+        "Foi o irmão mais velho quem primeiro disse a frase que ele guardaria pra sempre: 'você joga melhor do que eu jogava na sua idade — não desperdiça isso'."
+      ],
+      "idolo": [
+        "Não tinha mentor de carne e osso por perto — tinha um ídolo na TV, jogadas reassistidas em loop, e a vontade infantil de fazer igual no campinho da rua.",
+        "O ídolo da televisão fez o trabalho de inspirar — todo gol comemorado em casa, todo drible memorizado, todo grito copiado nos campinhos da semana seguinte.",
+        "Não havia quem ensinasse dentro de casa, mas havia o ídolo da TV — um número de camisa pra imitar, uma comemoração pra repetir, um modelo distante que parecia possível.",
+        "Aprendeu sozinho assistindo aos craques, com olho atento e cabeça boa pra leitura — gravava as jogadas, repetia no campinho, errava muito, acertava de vez em quando, ajustava de novo.",
+        "O ídolo daqueles vídeos antigos no YouTube virou professor à distância, e pra cada chute ensaiado em casa havia um fragmento de jogada decorada na cabeça."
+      ],
+      "sozinho": [
+        "Sem ninguém pra puxar, descobriu o futebol sozinho — pegava a bola debaixo do braço e ia atrás de qualquer pelada que estivesse rolando no quarteirão.",
+        "Foi a vontade própria que abriu o caminho — sem técnico em casa, sem incentivo, só ele, a bola e a teimosia de não desistir.",
+        "Nunca teve um mentor de verdade — descobriu o jogo na própria pele, aprendeu errando, ajustou observando, e construiu cada habilidade como quem aprende a andar de bicicleta sem ninguém segurando atrás.",
+        "Coube só a ele se cobrar — era o próprio técnico, o próprio crítico, e o próprio fã na arquibancada vazia da imaginação.",
+        "Foi cedo na vida que entendeu que ninguém ia fazer por ele — pegou o destino na mão e foi caçar o futebol onde ele estivesse."
+      ]
+    },
+    "sparks": {
+      "primeiro_gol": [
+        "O dia que entendeu que podia viver disso foi numa final de moleque, quando entrou nos minutos finais e fez o gol da virada — voltou pra casa carregado nos ombros e não dormiu naquela noite.",
+        "Tudo mudou numa tarde que ele jamais esqueceria: bola nos pés, time perdendo, e o chute no ângulo que calou o campo inteiro — saiu de campo sabendo que era aquilo que queria fazer pra sempre.",
+        "O ponto de virada foi um gol bobo numa pelada qualquer — a bola entrou, o time gritou, e algo dentro dele se acendeu de um jeito que nunca mais apagaria.",
+        "A faísca veio num gol que ninguém esperava — adversário melhor, jogo decidido, e ele soltando o pé de longe pra ver a bola morrer no fundo da rede e o mundo girar diferente a partir dali.",
+        "Foi marcando seu primeiro gol importante, num campeonato que pouca gente lembraria depois, que ele entendeu — sem precisar de palavras — qual seria a profissão pelo resto da vida."
+      ],
+      "tv_final": [
+        "Foi vendo uma final de Copa em casa, com a família reunida e o coração na boca, que o futebol deixou de ser brincadeira e virou destino.",
+        "O futebol entrou de vez na vida dele numa Copa do Mundo — assistido em silêncio, hino cantado em pé na sala, e a certeza pueril de que um dia ele também ia estar ali.",
+        "Aquela final na TV virou divisor de águas — saiu da frente da tela com a cabeça em chamas, calçou a chuteira surrada e foi treinar sozinho no quintal até escurecer.",
+        "Bastou uma decisão importante na televisão — a explosão da torcida, o craque erguendo a taça — pra ele saber que era pra ali que estava indo, mesmo que ainda não soubesse o caminho.",
+        "Foi diante da TV, numa final que o país inteiro parou pra ver, que algo mudou — ele largou o sofá em silêncio e nunca mais devolveu a chuteira pra caixa."
+      ],
+      "primeira_chuteira": [
+        "A virada veio no aniversário em que ganhou a primeira chuteira de verdade — aquela trava de plástico amarelo brilhante que ele nem queria tirar pra dormir.",
+        "O dia que recebeu a primeira chuteira própria — não emprestada, não herdada, não de tamanho errado — foi o dia em que entendeu que aquilo ali era pra valer.",
+        "Não foi um gol nem uma final — foi uma caixa embrulhada em papel barato, com uma chuteira dentro que custou meses de poupança da família, que abriu a porta de tudo.",
+        "A chuteira nova ficou guardada um dia inteiro antes de estrear, com medo de sujar — quando finalmente calçou, jurou em silêncio que aquele presente não ia ser desperdiçado.",
+        "Foi a primeira chuteira que mudou tudo — não pelo modelo, não pela marca, mas pelo peso simbólico de saber que alguém em casa tinha acreditado o suficiente pra investir."
+      ],
+      "campeao_moleque": [
+        "Foi sendo campeão de um torneio de bairro, taça pequena erguida com mãos sujas, que ele sentiu pela primeira vez o que é ganhar — e não quis mais perder esse gosto.",
+        "A taça era de plástico, o campeonato era amador, mas pra ele aquele título ergueu mais que troféu — ergueu uma certeza interna que nunca mais se desfez.",
+        "O primeiro título de moleque, num campeonato que ninguém lembraria fora da família, virou pra ele a coisa mais importante do mundo — e foi ali que decidiu transformar paixão em ofício.",
+        "Quando o time saiu campeão daquele campeonato modesto, e ele foi o nome da campanha, alguma coisa dentro dele se ajustou pra sempre — descobriu que o pódio era um lugar que cabia nele.",
+        "Foi erguendo uma taça pequena, em campo de várzea, com a torcida feita só dos pais dos jogadores, que ele entendeu o que era ser protagonista — e nunca mais aceitou outro papel."
+      ],
+      "volta_derrota": [
+        "A faísca veio no avesso — numa derrota pesada que doeu fundo, e na decisão consciente, ainda no vestiário, de que a próxima ele não ia perder.",
+        "Foi numa derrota que o futebol o capturou de verdade — saiu de campo chorando, e voltou no dia seguinte pro treino antes de todo mundo, com o coração em brasa.",
+        "Não foi a vitória que mudou tudo — foi uma derrota humilhante, gols sofridos em sequência, e o silêncio do ônibus de volta que o fez prometer nunca mais sentir aquilo sem reagir.",
+        "A queda mais dura veio cedo, e foi ela que o ergueu pra valer — cada treino dali em diante carregava o peso da última derrota e a vontade dela jamais se repetir.",
+        "O ponto de virada foi uma humilhação em campo — placar elástico, torcida adversária rindo, e a decisão silenciosa de que ali se acabava o moleque que jogava por brincadeira."
+      ]
+    },
+    "obstacles": {
+      "dinheiro": [
+        "O caminho exigiu sacrifício: chuteira velha, ônibus quando dava, e meses em que era escolher entre o material escolar e a inscrição da peneira.",
+        "Não foi fácil — faltou dinheiro pra muita coisa, sobrou improviso pra quase tudo, e o sonho seguiu rodando dentro de tênis furado.",
+        "Cada centavo pesava — uniforme de irmão mais velho, chuteira que apertava porque não tinha grana pra nova, e a vergonha silenciosa que ele aprendeu a transformar em combustível.",
+        "Faltou dinheiro em quase todo passo do caminho — mas sobrou jeito de improvisar, e foi nessa escassez que ele endureceu o que precisava endurecer.",
+        "A pobreza tava na mesa, no transporte, na chuteira — e foi aprendendo a virar a partida com pouco que ele ficou bom em virar a partida com pouco."
+      ],
+      "distancia": [
+        "Morava longe de qualquer clube de verdade — duas conduções pra ir, duas pra voltar, e horários impossíveis que ninguém com menos vontade aguentaria.",
+        "A distância era o adversário invisível — três horas de ida e volta entre casa e treino, todos os dias, e a tentação constante de simplesmente desistir.",
+        "O ônibus virou parte da rotina antes mesmo do treino — sair de madrugada, voltar no escuro, e usar o tempo entre uma coisa e outra pra estudar ou cochilar entre solavancos.",
+        "Não bastava ter talento — pra chegar no treino, precisava sair de casa duas horas antes, atravessar a cidade inteira e ainda chegar com perna pra correr.",
+        "Quem mora longe sabe: cada treino exigia logística — favor de tio com carro, dinheiro de passagem que faltava, e a teimosia diária de não largar pelo cansaço."
+      ],
+      "rejeicoes": [
+        "Foi rejeitado em peneira atrás de peneira — clube grande, clube médio, clube pequeno — antes que alguém finalmente parasse pra olhar com mais paciência.",
+        "As portas se fecharam várias vezes antes de uma se abrir — saiu chorando de mais peneira do que gostaria de admitir, mas voltava sempre pra próxima.",
+        "Cada 'obrigado, mas não' virou tijolo na muralha que ele construía — eram tantos os 'não' que o 'sim' parecia mais sonho que realidade quando finalmente veio.",
+        "Rodou peneiras como quem coleciona derrotas — e foi exatamente nesse acúmulo que ele aprendeu a entrar em campo com a faca nos dentes, sem nada a perder.",
+        "A rejeição foi colega de viagem por anos — e cada vez que parecia que ia desistir, alguma coisa por dentro dizia mais uma, mais uma, mais uma."
+      ],
+      "lesao": [
+        "Uma lesão grave quase encerrou tudo antes de começar — meses sem jogar, fisioterapia cara, e o medo silencioso de nunca mais ser o mesmo.",
+        "O joelho falhou cedo, num momento em que ele achava que já tinha vencido — e a longa volta dali pra cá foi feita de paciência, dor e teimosia.",
+        "A lesão veio do nada e levou tudo: meses imobilizado, treino assistido de longe, e a vertigem de ver outros jogadores avançando enquanto ele ficava parado.",
+        "Quando a lesão chegou, parecia o fim — mas foi naquele tempo de recuperação, longe do campo, que ele descobriu que amava o jogo ainda mais do que sabia.",
+        "Voltar de uma lesão grave o tornou outro jogador — mais consciente do corpo, mais grato pelos minutos em campo, mais preparado mentalmente pra valorizar cada partida."
+      ],
+      "familia_estudo": [
+        "Em casa, batiam a tecla do estudo — 'futebol é loteria, melhor um diploma' — e ele aprendeu cedo a equilibrar caderno e chuteira no mesmo dia.",
+        "A família torcia, mas torcia preocupada — queriam estudo, profissão estável, plano B real — e ele teve que provar que dava conta dos dois ao mesmo tempo.",
+        "Houve cobrança em casa: terminar a escola, manter notas boas, não confiar só no pé — e foi essa pressão que o ensinou a equilibrar duas vidas em uma só rotina.",
+        "Convencer a família foi uma batalha à parte — cada nota baixa virava ameaça de 'larga essa bola e estuda de uma vez', e cada vitória em campo virava argumento.",
+        "Em casa, o sonho era visto com desconfiança — 'não dá pra contar com isso' — e ele teve que insistir mais do que jogar, no início, pra continuar permitido a treinar."
+      ]
+    },
+    "traits": {
+      "raca": [
+        "Em campo, é raça antes de qualquer outra coisa — desarme até o último minuto, briga por bola dividida que ninguém mais quer, peito estufado mesmo perdendo de três.",
+        "Pergunta a quem joga ao lado dele: a marca registrada é a raça. O cara não desliga — quando o time desanima, é ele quem puxa de volta.",
+        "O traço dele é entrega — não tem partida ganha de antemão, não tem bola perdida sem disputa, não tem segundo tempo em que ele não corra como no primeiro minuto.",
+        "Joga sempre como se fosse o último jogo — corre por dois, marca por três, e arrasta o time mesmo nos dias em que tudo parece dar errado.",
+        "Quem encara ele descobre rápido: aqui não tem fórmula mágica, tem pulmão, tem coração, tem teimosia de quem se recusa a perder sem antes deixar a pele em campo."
+      ],
+      "frieza": [
+        "Em campo, é frieza acima de tudo — bola na trave nos minutos finais, ele encara como se fosse treino, e converte como se já tivesse visto o gol acontecer.",
+        "O traço que separa ele de outros é a calma — quanto mais o jogo aperta, mais ele baixa o ritmo interno, e é nesse silêncio que decide partidas.",
+        "Sob pressão, vira outra pessoa — pulso firme, decisão clara, lance tomado antes mesmo do oponente entender o que vai acontecer.",
+        "Pergunta a quem joga com ele: o cara não tem nervo. Pênalti decisivo, falta no fim, finalização com goleiro avançado — a cabeça dele opera num andar acima.",
+        "A marca registrada é a frieza nos minutos finais — quando os outros tremem, ele lê a partida com clareza e resolve com simplicidade que assusta o adversário."
+      ],
+      "tecnica": [
+        "Em campo, prioriza técnica acima de tudo — passe que rasga linha, recepção limpa de costas pro gol, finalização colocada onde o goleiro não alcança.",
+        "O traço dele é a elegância — bola colada no pé, drible curto que tira o defensor do chão, e jogadas que ficam na cabeça da torcida muito depois do apito final.",
+        "Quem assiste percebe rápido: cada toque dele tem intenção, cada passe tem peso, cada movimento foi ensaiado mil vezes pra parecer simples.",
+        "Joga como quem entendeu que beleza é argumento — passe enfeitado quando dá, drible que humilha quando precisa, finalização que decora a moldura do gol.",
+        "A diferença está no detalhe — onde os outros chutam, ele coloca; onde os outros passam, ele desenha; onde os outros correm, ele lê o jogo."
+      ],
+      "lideranca": [
+        "É voz de comando dentro de campo — chama responsabilidade, organiza marcação, conversa com goleiro, briga com árbitro quando precisa.",
+        "Líder por natureza, com aquele tipo de carisma que faz o time crescer junto — gesto pra cobrar, palavra pra acalmar, exemplo pra puxar.",
+        "No vestiário e em campo, é referência — o moleque mais novo procura ele, o veterano respeita ele, o técnico conta com ele em todo lance importante.",
+        "A camisa pesa quando ele veste — não pelo número, mas pela função que assume: organizar o time, motivar quando cai, conter quando passa do ponto.",
+        "Pergunta a qualquer companheiro — o cara é líder. Voz firme, gesto certo, presença que organiza o caos das partidas mais difíceis."
+      ],
+      "irreverencia": [
+        "Em campo, é irreverência pura — sorriso no canto da boca durante o jogo duro, chapéu no zagueiro mais velho, comemoração que nunca repete.",
+        "Joga como quem não esqueceu da pelada — drible debochado, jogada de risco quando o jogo pede equilíbrio, e aquele jeito leve que contagia o time inteiro.",
+        "O traço dele é o atrevimento — não tem lance fácil que ele complique, não tem lance complicado que ele tente facilitar, e a torcida ama essa imprevisibilidade.",
+        "Quem encara ele descobre na marra: o cara não respeita momento. Empate em decisão? Faz firula. Disputando a taça? Comemora rindo. Joga como se a bola fosse extensão da brincadeira.",
+        "A marca registrada é a alegria — entra em campo com o sorriso que sobreviveu desde os campinhos, e é justamente isso que faz ele tão difícil de prever."
+      ]
+    },
+    "dreams": {
+      "liga": [
+        "Hoje, mira o que sempre sonhou em voz baixa: levantar a Liga com o clube do coração, ouvir hino e ver bandeira erguida nas arquibancadas.",
+        "O sonho dele é claro — vencer a Liga vestindo o manto que ele torcia desde menino, e devolver pra torcida o título que tantos esperam há muito tempo.",
+        "No fundo, é sempre a mesma cena que ele projeta na cabeça — taça erguida ao vento, torcida em delírio, e o crachá daquele clube específico ao redor do pescoço.",
+        "Quando perguntam o que quer no futebol, a resposta sai pronta — quer ser campeão da Liga pelo time que escolheu antes mesmo de saber chutar direito.",
+        "Mais do que qualquer prêmio individual, o que move ele é uma única imagem: a taça da Liga subindo nas mãos dele, com a camisa que ele beijou tantas vezes na infância."
+      ],
+      "selecao": [
+        "E o sonho, esse, ele sabe descrever em uma frase só: vestir a Seleção um dia.",
+        "O alvo é claro — amarelinha, hino na boca do túnel, a chance de representar o país com o peito estufado.",
+        "Quando perguntam o que ainda quer no futebol, a resposta vem sem hesitação — ouvir o hino da Seleção em pé, com a camisa amarela vestida, antes de uma decisão importante.",
+        "O sonho que ele guarda em silêncio é a Seleção — uma convocação, um minuto que seja em campo, qualquer coisa que prove que tudo aquilo valeu a pena.",
+        "Mira alto — quer ouvir o hino com a mão no peito, ver a bandeira subir, e saber que representa milhões de pessoas no momento em que a bola rolar."
+      ],
+      "familia": [
+        "O sonho dele é simples e gigante ao mesmo tempo — sustentar a família com o futebol, dar pra mãe a casa que ela merece, devolver em segurança o que recebeu em fé.",
+        "No fim do dia, joga pelos seus — pra que a mãe não precise mais trabalhar até tarde, pro irmão estudar onde quiser, pro pai ter sossego depois de uma vida inteira de aperto.",
+        "O motor dele tem nome e endereço — a casa onde cresceu, as pessoas que pagaram a chuteira, as horas que ninguém viu mas que ele jamais esqueceria.",
+        "Quando perguntam por que joga, a resposta é familiar — pra retribuir, pra cuidar, pra fazer com que cada centavo investido nele renda em forma de paz pra quem investiu.",
+        "O maior sonho dele cabe num gesto pequeno — comprar a casa pra mãe, e olhar pra ela morando ali, sabendo que veio do futebol o que mudou tudo."
+      ],
+      "europa": [
+        "O sonho dele atravessa o Atlântico — jogar na Europa, ouvir torcida em outro idioma, vestir camisa de clube tradicional num campeonato grande.",
+        "Mira o futebol europeu com a clareza de quem cresceu vendo aquelas finais na TV — quer estar lá, vestir aquela camisa, escutar aquele hino antes do jogo começar.",
+        "Sabe pra onde quer ir — estádio cheio em alguma capital europeia, gramado impecável, transmissão pro mundo inteiro, e ele em campo, fazendo parte daquilo.",
+        "Quando fecha os olhos, o cenário é específico — Champions League, fase mata-mata, e ele entrando em campo num clube grande do continente, vestindo a camisa por mérito próprio.",
+        "O destino que ele projeta no horizonte é a Europa — não como vaidade, mas como medida — porque é lá que joga quem é considerado o melhor, e ele quer ser medido por essa régua."
+      ],
+      "idolo_clube": [
+        "O sonho dele é virar ídolo — não estatística, não passagem rápida, mas nome de criança em camisa décadas depois, foto na sala de troféus, história que se conta de geração pra geração.",
+        "Quer ser daqueles jogadores cujo nome a torcida grita mesmo quando ele já não está mais em campo — virar parte da história do clube, não só um capítulo.",
+        "Mira longevidade onde tantos miram passagem — quer um clube só, uma camisa só, e a memória de torcida transformada em monumento ao longo dos anos.",
+        "O alvo dele é específico — ser o cara que a torcida lembra pra sempre, que ganha estátua na entrada do estádio, que tem música cantada décadas depois da aposentadoria.",
+        "Não quer ser bom — quer ser eterno. Estátua, camisa aposentada, nome em arquibancada. Quer virar lenda do clube em que decidir vestir a camisa."
+      ]
+    },
+    "closings": [
+      "Agora, no {club}, escreve a primeira página de uma história que parecia impossível de ser escrita.",
+      "E é justamente no {club} que essa caminhada toda encontra seu primeiro capítulo profissional — o resto, agora, é com ele.",
+      "Hoje, com a camisa do {club} no peito, abre o primeiro capítulo profissional de uma jornada que mal começou.",
+      "A trajetória chega ao {club}, e é a partir daqui que cada minuto em campo conta como história de verdade.",
+      "Tudo o que veio antes preparou o terreno — agora, no {club}, começa o que importa.",
+      "Veste pela primeira vez a camisa do {club} sabendo que é aqui que o nome dele começa a ser escrito de verdade.",
+      "O caminho até o {club} foi longo; o caminho a partir do {club}, ele promete, vai ser inesquecível.",
+      "Chegou ao {club} com a humildade de quem sabe de onde veio e a fome de quem entende onde quer chegar.",
+      "No {club}, encontra o palco onde tudo o que treinou pode finalmente virar resultado — e o tempo de provar começa agora.",
+      "A jornada profissional dele começa no {club}, com a mochila carregada de passado e a cabeça toda voltada pro próximo passo.",
+      "É no {club} que ele estreia como profissional — e cada treino, daqui pra frente, vale como tijolo da carreira que vai construir.",
+      "Pisa no gramado do {club} sabendo que o moleque dos campinhos e o profissional que entra agora são a mesma pessoa, apenas mais inteira.",
+      "Hoje veste o {club} pela primeira vez — e o que vem depois desse instante depende só dele e da bola.",
+      "O {club} é o primeiro clube profissional, mas pra ele é mais que isso — é a chance que demorou a chegar e que ele não pretende soltar.",
+      "Aterrissa no {club} carregando todo mundo que acreditou nele — e disposto a transformar cada confiança em gols, jogos, memórias.",
+      "Começa no {club} a era em que ele para de prometer e passa a entregar — todo o resto que vier vai ser resposta pro que provar agora.",
+      "O {club} é o primeiro nome da estrada profissional dele — e ele garante, em silêncio, que não vai ser o último capítulo importante dessa história.",
+      "Entra no {club} convicto de que cada cicatriz do caminho até aqui vai virar argumento dentro das quatro linhas.",
+      "Agora é hora — a estreia oficial vem com a camisa do {club}, e o moleque dos campinhos finalmente pode ser chamado de profissional.",
+      "Veste a camisa do {club} com a sensação familiar de quem já viveu isso mil vezes na imaginação — só que agora é de verdade.",
+      "No {club}, abre a porta que tantas vezes ficou fechada em outras peneiras — e está pronto pra atravessar correndo.",
+      "Pisa no campo do {club} sabendo que aqui acaba a fase de promessa e começa a fase de resposta.",
+      "O primeiro contracheque vai vir do {club} — mas, pra ele, o que pesa mesmo é a oportunidade de finalmente jogar pra valer.",
+      "A história profissional começa agora, no {club}, e ele entra em campo como quem sabe exatamente o porquê de estar ali.",
+      "Estreia no profissional defendendo o {club}, com a certeza calma de que cada minuto em campo é resposta pra alguém que duvidou.",
+      "Chega ao {club} sem tempo a perder — não porque o tempo seja curto, mas porque cada minuto fora dele já era preparação demais.",
+      "No {club}, encontra finalmente o lugar onde a vontade dele pode se transformar em registro oficial.",
+      "O {club} é palco da estreia profissional — daqui pra frente, cada jogo entra na estatística que vai contar a vida toda dele.",
+      "Entra no {club} sabendo que tudo o que sonhou começa a depender, agora, só dele e do que mostrar entre as quatro linhas.",
+      "Começa, no {club}, a etapa em que cada treino tem peso, cada jogo conta, cada minuto vira história.",
+      "A camisa do {club} marca o início — e ele sabe que esse início precisa ser dos bons, porque os próximos passos dependem desse primeiro.",
+      "No {club}, a primeira página enfim é virada — e o livro inteiro depende do que ele escrever a partir de hoje.",
+      "O {club} é apenas o começo — e ele entra em campo determinado a fazer com que esse começo seja inesquecível.",
+      "Hoje, no {club}, pisa em gramado profissional pela primeira vez — e leva consigo todos que apostaram que esse dia ia chegar.",
+      "Estreia oficial no {club}, e a sensação é mista — gratidão por ter chegado, fome de ir muito além.",
+      "Chega no {club} sem dar entrevista — prefere falar com o pé, mostrar com gesto, deixar que cada jogo conte por ele.",
+      "No {club}, o moleque dos campinhos vira profissional — e é só agora que a história começa a ser escrita pelas mãos do mundo inteiro.",
+      "A jornada chega ao {club}, e a partir daqui cada lance vira material pra biografia que algum dia alguém vai querer contar.",
+      "O {club} é o primeiro patamar — e ele não chegou aqui pra parar, chegou pra subir mais.",
+      "Estreia no {club} com a chuteira nova, a cabeça pronta e a história inteira do passado se transformando em combustível pro futuro imediato.",
+      "No {club}, finalmente, o que era sonho na cabeceira vira contrato no balcão — e o profissional nasce de fato.",
+      "Chega ao {club} com a tranquilidade de quem entendeu o caminho — e a urgência de quem não quer desperdiçar o tempo que conquistou.",
+      "Veste o {club} ciente de que tudo o que veio antes foi escola; tudo o que vem agora é prova.",
+      "A primeira camisa profissional é a do {club}, e ele vai vestir como se fosse tatuagem — convicção no peito, identidade ali pra ficar.",
+      "No {club}, a chance enfim está nas mãos dele — e ele não chegou tão longe pra desperdiçar nada agora.",
+      "Pisa no {club} levando uma única certeza — o difícil já passou, e o difícil mesmo está por vir, mas ele tá pronto.",
+      "O {club} é a estreia, mas ele encara como prólogo — porque a história mesmo, ele jura, ainda vai ser muito maior.",
+      "Chega ao {club} carregando o passado como carteira de identidade e o futuro como tarefa diária.",
+      "Hoje, com a camisa do {club}, entra no profissional pra escrever uma história que ninguém ainda sabe contar — só ele.",
+      "No {club}, começa o capítulo que importa — o resto, daqui pra frente, é com ele."
+    ],
+    "closings_free_agent": [
+      "Agora ele dá os primeiros passos no profissional como agente livre, prestes a encontrar o clube que vai marcar sua história.",
+      "A jornada profissional começa agora, ainda sem clube — e cada peneira, cada apresentação, é tijolo do próximo capítulo.",
+      "Estreia no profissional como agente livre, com a confiança de quem sabe que o próximo passo é só escolher onde vai pisar.",
+      "Sai para o mercado profissional sabendo que o caminho até aqui foi árduo — e que o próximo clube vai colher os frutos.",
+      "Entra na carreira profissional sem clube fixo, mas com a certeza de que o próximo a apostar nele não vai se arrepender.",
+      "O começo é como agente livre — porta aberta, futuro ainda em branco, e a vontade intacta de transformar tudo em história.",
+      "Sem clube ainda, mas com a primeira página da história pronta pra ser escrita — basta o convite certo aparecer.",
+      "Agora é a parte profissional da jornada, e ele encara o mercado como encarava tudo antes — pronto pra mostrar valor a quem aparecer.",
+      "Estreia oficialmente no futebol profissional como agente livre, e sabe — é só uma questão de tempo até o próximo capítulo começar.",
+      "A carreira profissional dele começa em aberto, sem camisa fixa, mas com a história inteira do passado servindo de combustível pro que vier."
+    ]
+  }
+}

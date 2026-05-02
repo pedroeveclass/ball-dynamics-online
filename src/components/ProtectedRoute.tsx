@@ -27,6 +27,10 @@ export function PlayerRoute({ children }: { children: React.ReactNode }) {
   // One-shot forced avatar creation — any player without a saved visual must
   // customize before entering the app. Editing later is not allowed.
   if ((playerProfile as any).appearance == null) return <Navigate to="/player/avatar/create" replace />;
+  // Origin story backfill — players created before this system rolled
+  // out have no origin tags. Force them through the questions screen
+  // once. New players answer this during onboarding so they skip here.
+  if ((playerProfile as any).origin_start == null) return <Navigate to="/player/origem" replace />;
   return <>{children}</>;
 }
 

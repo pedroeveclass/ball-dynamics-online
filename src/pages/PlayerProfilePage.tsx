@@ -27,7 +27,9 @@ import { positionLabel } from '@/lib/positions';
 import { formatBRL } from '@/lib/formatting';
 import { formatDate } from '@/lib/formatDate';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
+import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
+import { ProfileIntroTour } from '@/components/tour/ProfileIntroTour';
 
 // ── Attribute category definitions (same keys as PublicClubPage) ──
 
@@ -432,6 +434,8 @@ export default function PlayerProfilePage() {
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
 
+        <ProfileIntroTour enabled={!!attrs} />
+
         {/* ── Retired Banner ── */}
         {isRetired && (
           <div className="stat-card space-y-2 border-amber-500/40 bg-amber-500/5">
@@ -476,7 +480,7 @@ export default function PlayerProfilePage() {
         )}
 
         {/* ── Player Card ── */}
-        <div className="stat-card space-y-4">
+        <div data-tour="profile-card" className="stat-card space-y-4">
           <div className="flex items-start gap-4">
             {/* Avatar */}
             <PlayerAvatar
@@ -557,7 +561,7 @@ export default function PlayerProfilePage() {
 
         {/* ── Full-body visual ── */}
         {(p as any).appearance && (
-          <div className="stat-card p-4">
+          <div data-tour="profile-visual" className="stat-card p-4">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-display font-semibold text-sm flex items-center gap-2">
                 <User className="h-4 w-4 text-tactical" /> {t('visual.title')}
@@ -598,6 +602,12 @@ export default function PlayerProfilePage() {
             </div>
           </div>
         )}
+
+        {/* ── Origin Story (canonical narrative) ── */}
+        <OriginStoryCard playerId={p.id} />
+
+        {/* Tour spotlight wraps career stats + attrs overview + training history together */}
+        <div data-tour="profile-attrs-overview" className="space-y-6">
 
         {/* ── Career Statistics (position-specific block) ── */}
         <CareerStatsBlock playerProfileId={p.id} position={p.primary_position} />
@@ -662,6 +672,11 @@ export default function PlayerProfilePage() {
             <p className="text-xs text-muted-foreground text-center py-4">{t('history.empty')}</p>
           )}
         </div>
+
+        </div>{/* /profile-attrs-overview wrapper */}
+
+        {/* Tour spotlight wraps primary + secondary positions + new player + retire + reset */}
+        <div data-tour="profile-positions" className="space-y-6">
 
         {/* ── Primary Position ── */}
         {(() => {
@@ -795,6 +810,8 @@ export default function PlayerProfilePage() {
             <Trash2 className="h-4 w-4" /> {t('reset.button')}
           </Button>
         </div>
+
+        </div>{/* /profile-positions wrapper */}
       </div>
 
       {/* ── Slot Type Choice Dialog (Player vs Manager) ── */}

@@ -2198,6 +2198,12 @@ export type Database = {
           last_match_at: string | null
           last_trained_at: string | null
           money: number
+          origin_dream: string | null
+          origin_inspiration: string | null
+          origin_obstacle: string | null
+          origin_spark: string | null
+          origin_start: string | null
+          origin_trait: string | null
           overall: number
           primary_position: string
           primary_position_changes: number
@@ -2225,6 +2231,12 @@ export type Database = {
           last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
+          origin_dream?: string | null
+          origin_inspiration?: string | null
+          origin_obstacle?: string | null
+          origin_spark?: string | null
+          origin_start?: string | null
+          origin_trait?: string | null
           overall?: number
           primary_position: string
           primary_position_changes?: number
@@ -2252,6 +2264,12 @@ export type Database = {
           last_match_at?: string | null
           last_trained_at?: string | null
           money?: number
+          origin_dream?: string | null
+          origin_inspiration?: string | null
+          origin_obstacle?: string | null
+          origin_spark?: string | null
+          origin_start?: string | null
+          origin_trait?: string | null
           overall?: number
           primary_position?: string
           primary_position_changes?: number
@@ -2261,6 +2279,45 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
           weekly_salary?: number
+        }
+        Relationships: []
+      }
+      narratives: {
+        Row: {
+          body_en: string
+          body_pt: string
+          entity_id: string
+          entity_type: string
+          facts_json: Json | null
+          generated_at: string
+          id: number
+          round: number | null
+          scope: string
+          season: number | null
+        }
+        Insert: {
+          body_en: string
+          body_pt: string
+          entity_id: string
+          entity_type: string
+          facts_json?: Json | null
+          generated_at?: string
+          id?: number
+          round?: number | null
+          scope: string
+          season?: number | null
+        }
+        Update: {
+          body_en?: string
+          body_pt?: string
+          entity_id?: string
+          entity_type?: string
+          facts_json?: Json | null
+          generated_at?: string
+          id?: number
+          round?: number | null
+          scope?: string
+          season?: number | null
         }
         Relationships: []
       }
@@ -3224,6 +3281,21 @@ export type Database = {
         Returns: number
       }
       retire_player: { Args: { p_player_profile_id: string }; Returns: Json }
+      save_player_origin: {
+        Args: {
+          p_player_id: string
+          p_origin_start: string
+          p_origin_inspiration: string
+          p_origin_spark: string
+          p_origin_obstacle: string
+          p_origin_trait: string
+          p_origin_dream: string
+          p_body_pt: string
+          p_body_en: string
+          p_facts_json?: Json | null
+        }
+        Returns: undefined
+      }
       set_club_assistant_manager: {
         Args: { p_assistant_user_id: string; p_club_id: string }
         Returns: undefined
