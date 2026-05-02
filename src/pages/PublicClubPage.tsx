@@ -701,7 +701,7 @@ export default function PublicClubPage() {
         })()}
 
         {/* ── Club Awards history ── */}
-        <ClubAwardsHistory clubId={id!} />
+        <ClubAwardsHistory clubId={clubId!} />
 
         {/* ── Squad table ── */}
         <div className="stat-card space-y-3">
