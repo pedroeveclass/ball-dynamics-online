@@ -131,5 +131,15 @@
       "title": "Quer testar agora? Faz um Teste 5v5",
       "body": "Bora testar uma partida agora? Clica em Teste 5v5 ali em cima.\n\nVai abrir uma partida rápida 5×5 contra bots em uma nova aba, sem consequências — pra você ver na prática:\n\n• Hotkeys (QWERT / ASDF / ZXCVB)\n• Fases de turno (posicionamento → ação → resolução)\n• Inertia, dominação, passes, chutes...\n\nAprende fazendo. Bora! ⚽"
     }
+  },
+  "pickup_intro": {
+    "step1": {
+      "title": "Várzea — joguinho casual",
+      "body": "Aqui você junta gente aleatória pra um joguinho 5v5 ou 11v11.\n\nSem responsabilidade, sem gastar energia, sem XP — só pra se divertir e treinar a mecânica do jogo. Se faltar gente no apito, bots completam os times."
+    },
+    "step2": {
+      "title": "Cria um lobby",
+      "body": "Clica em Criar pra abrir um lobby novo — escolhe formato (5v5 ou 11v11), horário, lado do campo e posição. Os outros jogadores online entram nas vagas abertas.\n\nMáximo 3 lobbies abertos no servidor — primeiro a chegar pega vaga."
+    }
   }
 }

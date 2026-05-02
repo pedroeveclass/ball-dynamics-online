@@ -19,6 +19,7 @@ import { Users2, Plus, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PICKUP_SLOTS, type PickupFormat, totalSlotsPerSide } from '@/lib/pickupSlots';
+import { PickupIntroTour } from '@/components/tour/PickupIntroTour';
 
 type PickupRow = {
   id: string;
@@ -218,8 +219,9 @@ export default function PickupListPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <PickupIntroTour enabled={true} />
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
+          <div data-tour="pickup-header">
             <h1 className="text-2xl font-display font-bold flex items-center gap-2">
               <Users2 className="h-6 w-6 text-primary" /> {t('title')}
             </h1>
@@ -230,7 +232,7 @@ export default function PickupListPage() {
 
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button data-tour="pickup-create-button">
                 <Plus className="h-4 w-4 mr-2" /> {t('create_button')}
               </Button>
             </DialogTrigger>

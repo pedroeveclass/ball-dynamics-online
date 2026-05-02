@@ -131,5 +131,15 @@
       "title": "Want to test now? Run a Test 5v5",
       "body": "Want to try a match right now? Click Test 5v5 up there.\n\nIt opens a quick 5×5 against bots in a new tab, no consequences — to show you in practice:\n\n• Hotkeys (QWERT / ASDF / ZXCVB)\n• Turn phases (positioning → action → resolution)\n• Inertia, domination, passes, shots...\n\nLearn by doing. Let's go! ⚽"
     }
+  },
+  "pickup_intro": {
+    "step1": {
+      "title": "Pickup — casual matches",
+      "body": "Here you join random people for a quick 5v5 or 11v11 match.\n\nNo responsibility, no energy cost, no XP — just for fun and to practice the game's mechanics. If people don't show up at kickoff, bots fill the teams."
+    },
+    "step2": {
+      "title": "Create a lobby",
+      "body": "Click Create to open a new lobby — pick format (5v5 or 11v11), kickoff time, side of the field and position. Other online players join the open slots.\n\nMax 3 open lobbies on the server — first come, first served."
+    }
   }
 }
