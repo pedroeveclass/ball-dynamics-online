@@ -6460,8 +6460,9 @@ export default function MatchRoomPage() {
                 </p>
               </div>
             )}
-            {isFinished && (
+            {isFinished && matchId && (
               <MatchEndStats
+                matchId={matchId}
                 events={events}
                 homeClub={homeClub}
                 awayClub={awayClub}

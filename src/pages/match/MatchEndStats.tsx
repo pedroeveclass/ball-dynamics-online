@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ClubCrest } from '@/components/ClubCrest';
+import { supabase } from '@/integrations/supabase/client';
 import type { ClubInfo, EventLog, Participant } from './types';
 
 interface MatchEndStatsProps {
+  matchId: string;
   events: EventLog[];
   homeClub: ClubInfo | null;
   awayClub: ClubInfo | null;
@@ -141,6 +143,7 @@ function StatRow({ label, home, away, homeColor, awayColor, asPercent }: StatRow
 }
 
 export function MatchEndStats({
+  matchId,
   events,
   homeClub,
   awayClub,
@@ -151,9 +154,31 @@ export function MatchEndStats({
 }: MatchEndStatsProps) {
   const { t } = useTranslation('match_room');
 
+  // The live event stream is capped (LIVE_EVENT_LIMIT) so it only holds the
+  // last N events when the match ends. Fetch the full history for accurate
+  // tallies; fall back to the in-memory list if the fetch fails or is in flight.
+  const [fullEvents, setFullEvents] = useState<EventLog[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('match_event_logs')
+        .select('id, event_type, title, body, created_at, payload')
+        .eq('match_id', matchId)
+        .order('created_at', { ascending: true });
+      if (cancelled) return;
+      if (error || !data) return;
+      setFullEvents(data as unknown as EventLog[]);
+    })();
+    return () => { cancelled = true; };
+  }, [matchId]);
+
+  const sourceEvents = fullEvents ?? events;
+
   const stats = useMemo(
-    () => computeStats(events, homeClub?.id, awayClub?.id, homePlayers, awayPlayers),
-    [events, homeClub?.id, awayClub?.id, homePlayers, awayPlayers],
+    () => computeStats(sourceEvents, homeClub?.id, awayClub?.id, homePlayers, awayPlayers),
+    [sourceEvents, homeClub?.id, awayClub?.id, homePlayers, awayPlayers],
   );
 
   const homeColor = homeClub?.primary_color || '#22c55e';
