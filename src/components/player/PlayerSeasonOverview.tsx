@@ -137,11 +137,15 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
         });
       }
 
+      // PostgREST default cap is 1000 rows; a season with many matches can
+      // easily blow past that across pass/shot/dispute/dribble events.
+      // Bump the limit so the season aggregate doesn't silently truncate.
       const { data } = await supabase
         .from('match_event_logs')
         .select('match_id, event_type, payload')
         .in('match_id', matchIds)
-        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'dispute', 'possession_change', 'bh_dribble']);
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'dispute', 'possession_change', 'bh_dribble'])
+        .limit(50000);
       if (cancelled) return;
 
       const passesList: PassDatum[] = [];
