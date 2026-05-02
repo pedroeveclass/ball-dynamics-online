@@ -610,3 +610,152 @@ export async function detectAndPersistSeasonMilestones(
     console.error('[milestones] season detect failed:', err);
   }
 }
+
+// ── Per-player detector (memory-efficient backfill) ──
+// Walks one player's career chronologically and emits milestones at each
+// threshold crossing. Used by the "missing_only" backfill mode to fill in
+// players whose detection was skipped during the per-match backfill due
+// to WORKER_RESOURCE_LIMIT. Processes one player per call so memory is
+// bounded by that player's career history, not the entire match × roster.
+export async function detectMilestonesForSinglePlayer(
+  supabase: SupabaseClient,
+  playerProfileId: string,
+): Promise<number> {
+  const { data: stats } = await supabase
+    .from('player_match_stats')
+    .select('match_id, season_id, club_id, goals, assists, clean_sheet, gk_penalties_saved, tackles, yellow_cards, red_cards')
+    .eq('player_profile_id', playerProfileId);
+  if (!stats || stats.length === 0) return 0;
+
+  const { data: profile } = await supabase
+    .from('player_profiles')
+    .select('id, full_name, club_id, primary_position, user_id')
+    .eq('id', playerProfileId)
+    .maybeSingle();
+  if (!profile) return 0;
+
+  const matchIds = Array.from(new Set(stats.map((s: any) => s.match_id)));
+  const { data: matchInfo } = matchIds.length > 0
+    ? await supabase.from('matches').select('id, finished_at, home_club_id, away_club_id').in('id', matchIds)
+    : { data: [] as any[] };
+
+  const matchById = new Map<string, any>();
+  for (const m of matchInfo ?? []) matchById.set(m.id, m);
+
+  // Sort stats by finished_at so we replay the career in order.
+  stats.sort((a: any, b: any) => {
+    const ta = matchById.get(a.match_id)?.finished_at ?? '';
+    const tb = matchById.get(b.match_id)?.finished_at ?? '';
+    return String(ta).localeCompare(String(tb));
+  });
+
+  // Resolve club names for opponents.
+  const clubIds = new Set<string>();
+  for (const m of matchInfo ?? []) {
+    if (m.home_club_id) clubIds.add(m.home_club_id);
+    if (m.away_club_id) clubIds.add(m.away_club_id);
+  }
+  const { data: clubs } = clubIds.size > 0
+    ? await supabase.from('clubs').select('id, name').in('id', Array.from(clubIds))
+    : { data: [] as any[] };
+  const clubName = new Map<string, string>();
+  for (const c of clubs ?? []) clubName.set(c.id, c.name);
+
+  const pos = (profile.primary_position ?? '').toUpperCase();
+  const isGK = pos === 'GK';
+  const isDefenderOrMid = ['CB', 'LB', 'RB', 'CDM', 'DM', 'CM', 'CAM', 'LM', 'RM'].includes(pos);
+
+  const career: CareerStats = emptyStats();
+  const seasonStats = new Map<string, CareerStats>();
+  let triggered = 0;
+
+  for (const ms of stats) {
+    const matchRow = matchById.get(ms.match_id);
+    if (!matchRow) continue;
+
+    const opponentClubId = ms.club_id === matchRow.home_club_id ? matchRow.away_club_id : matchRow.home_club_id;
+    const opponentName = clubName.get(opponentClubId) ?? '';
+    const baseVars = { player_name: profile.full_name, opponent_name: opponentName };
+
+    // Snapshot of career BEFORE applying current match
+    const cb: CareerStats = { ...career };
+    const sb: CareerStats = ms.season_id
+      ? { ...(seasonStats.get(ms.season_id) ?? emptyStats()) }
+      : emptyStats();
+
+    // Apply current match
+    career.goals += ms.goals ?? 0;
+    career.assists += ms.assists ?? 0;
+    if (ms.clean_sheet) career.cleanSheets += 1;
+    career.penaltiesSaved += ms.gk_penalties_saved ?? 0;
+    career.tackles += ms.tackles ?? 0;
+    career.yellow += ms.yellow_cards ?? 0;
+    career.red += ms.red_cards ?? 0;
+    career.matches += 1;
+    if ((ms.goals ?? 0) >= 3) career.hatTrickMatches += 1;
+    if ((ms.goals ?? 0) >= 4) career.pokerMatches += 1;
+    if ((ms.goals ?? 0) >= 5) career.handfulMatches += 1;
+
+    if (ms.season_id) {
+      const cur = seasonStats.get(ms.season_id) ?? emptyStats();
+      cur.goals += ms.goals ?? 0;
+      cur.assists += ms.assists ?? 0;
+      cur.matches += 1;
+      seasonStats.set(ms.season_id, cur);
+    }
+    const sa: CareerStats = ms.season_id
+      ? (seasonStats.get(ms.season_id) ?? emptyStats())
+      : emptyStats();
+
+    const triggers: MilestoneTrigger[] = [];
+
+    if (crossed(cb.goals, career.goals, 1)) triggers.push({ type: 'first_goal', vars: baseVars });
+    for (const t of [10, 25, 50, 100, 200] as const) {
+      if (crossed(cb.goals, career.goals, t)) triggers.push({ type: `goals_${t}` as MilestoneType, vars: baseVars });
+    }
+    if ((ms.goals ?? 0) >= 3 && cb.hatTrickMatches === 0) triggers.push({ type: 'first_hat_trick', vars: baseVars });
+    if ((ms.goals ?? 0) >= 4 && cb.pokerMatches === 0) triggers.push({ type: 'first_poker', vars: baseVars });
+    if ((ms.goals ?? 0) >= 5 && cb.handfulMatches === 0) triggers.push({ type: 'first_handful', vars: baseVars });
+
+    for (const t of [5, 10, 20, 30] as const) {
+      if (crossed(sb.goals, sa.goals, t)) triggers.push({ type: `season_${t}_goals` as MilestoneType, vars: baseVars });
+    }
+
+    if (crossed(cb.assists, career.assists, 1)) triggers.push({ type: 'first_assist', vars: baseVars });
+    for (const t of [25, 50, 100] as const) {
+      if (crossed(cb.assists, career.assists, t)) triggers.push({ type: `assists_${t}` as MilestoneType, vars: baseVars });
+    }
+    for (const t of [10, 20] as const) {
+      if (crossed(sb.assists, sa.assists, t)) triggers.push({ type: `season_${t}_assists` as MilestoneType, vars: baseVars });
+    }
+
+    if (isGK) {
+      if (crossed(cb.cleanSheets, career.cleanSheets, 1)) triggers.push({ type: 'first_clean_sheet', vars: baseVars });
+      for (const t of [10, 25, 50, 100] as const) {
+        if (crossed(cb.cleanSheets, career.cleanSheets, t)) triggers.push({ type: `clean_sheets_${t}` as MilestoneType, vars: baseVars });
+      }
+      if (crossed(cb.penaltiesSaved, career.penaltiesSaved, 1)) triggers.push({ type: 'first_penalty_save', vars: baseVars });
+    }
+
+    if (isDefenderOrMid || isGK) {
+      for (const t of [50, 100, 250] as const) {
+        if (crossed(cb.tackles, career.tackles, t)) triggers.push({ type: `tackles_${t}` as MilestoneType, vars: baseVars });
+      }
+    }
+
+    if (crossed(cb.matches, career.matches, 1)) triggers.push({ type: 'first_match', vars: baseVars });
+    for (const t of [10, 50, 100, 200, 300] as const) {
+      if (crossed(cb.matches, career.matches, t)) triggers.push({ type: `matches_${t}` as MilestoneType, vars: baseVars });
+    }
+
+    if (crossed(cb.red, career.red, 1)) triggers.push({ type: 'first_red_card', vars: baseVars });
+    if (crossed(cb.yellow, career.yellow, 100)) triggers.push({ type: 'yellows_100', vars: baseVars });
+
+    for (const trig of triggers) {
+      await persistMilestone(supabase, playerProfileId, trig);
+      triggered += 1;
+    }
+  }
+
+  return triggered;
+}
