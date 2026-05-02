@@ -29,6 +29,7 @@ import { formatDate } from '@/lib/formatDate';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
+import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
 import { ProfileIntroTour } from '@/components/tour/ProfileIntroTour';
 
@@ -606,6 +607,9 @@ export default function PlayerProfilePage() {
 
         {/* ── Origin Story (canonical narrative) ── */}
         <OriginStoryCard playerId={p.id} />
+
+        {/* Trophy Room (player_awards) */}
+        <PlayerAwardsBlock playerProfileId={p.id} />
 
         {/* ── Career Milestones (timeline) ── */}
         <PlayerMilestonesTimeline playerId={p.id} />

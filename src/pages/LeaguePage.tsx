@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { RoundRecapCard } from '@/components/league/RoundRecapCard';
 import { RoundMvpVoteCard } from '@/components/league/RoundMvpVoteCard';
+import { SeasonAwardsCard } from '@/components/league/SeasonAwardsCard';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
 import { Trophy, Calendar, Loader2, Users, Pencil, BarChart3, Shield, Swords, Award, ArrowLeft, Clock, ChevronDown, ChevronUp } from 'lucide-react';
@@ -156,6 +157,7 @@ export default function LeaguePage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [seasonId, setSeasonId] = useState<string | null>(null);
+  const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [scorersExpanded, setScorersExpanded] = useState(false);
   const [assistsExpanded, setAssistsExpanded] = useState(false);
   const SCORERS_PREVIEW_COUNT = 5;
@@ -222,6 +224,7 @@ export default function LeaguePage() {
       if (!season) { setLoading(false); return; }
       setSeasonNumber(season.season_number);
       setSeasonId(season.id);
+      setSeasonStatus(season.status ?? null);
 
       // 3. Fetch standings and rounds in parallel
       const [standingsRes, roundsRes] = await Promise.all([
@@ -683,7 +686,13 @@ export default function LeaguePage() {
             <Trophy className="h-5 w-5 text-tactical" />
             <h1 className="font-display text-2xl font-bold">{leagueName ? formatLeagueName(leagueName) : t('title_fallback')}</h1>
           </div>
-          <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
+          <div className="flex items-center gap-3">
+            <Link to="/league/hall-of-fame" className="text-xs text-muted-foreground hover:text-amber-500 transition-colors flex items-center gap-1 font-display font-bold">
+              <Trophy className="h-3.5 w-3.5" />
+              {t('hallOfFame.title')}
+            </Link>
+            <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
+          </div>
         </div>
         <Tabs defaultValue={initialTab} className="space-y-4">
           <LeagueIntroTour enabled={isPlayerFreeAgent && tabFromQuery === 'join' && joinableClubs.length > 0} />
@@ -804,6 +813,11 @@ export default function LeaguePage() {
 
           {/* Rodadas tab */}
           <TabsContent value="rounds" className="space-y-4">
+            {/* Premiações + Season MVP — só aparece quando a temporada já fechou. */}
+            {seasonId && seasonStatus === 'finished' && (
+              <SeasonAwardsCard seasonId={seasonId} seasonNumber={seasonNumber} />
+            )}
+
             {/* Próximo Jogo highlight — only shown when the viewer has
                 a club context AND there's a future fixture we could find. */}
             {nextMatch && (

@@ -98,5 +98,13 @@
   "round_mvp_won": {
     "title": "🏆 Você é o MVP da Rodada {{round}}!",
     "body": "Os colegas escolheram você como melhor jogador da Rodada {{round}} ({{votes}} votos)."
+  },
+  "season_mvp_open": {
+    "title": "🏆 MVP da Temporada {{season}}",
+    "body": "A votação para melhor jogador da Temporada {{season}} está aberta. Vote!"
+  },
+  "season_mvp_won": {
+    "title": "🏆 Você é o MVP da Temporada {{season}}!",
+    "body": "Os colegas escolheram você como melhor jogador da temporada ({{votes}} votos)."
   }
 }

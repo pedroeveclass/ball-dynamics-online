@@ -98,5 +98,13 @@
   "round_mvp_won": {
     "title": "🏆 You're the Round {{round}} MVP!",
     "body": "Your peers picked you as the best player of Round {{round}} ({{votes}} votes)."
+  },
+  "season_mvp_open": {
+    "title": "🏆 Season {{season}} MVP",
+    "body": "Voting for the best player of Season {{season}} is open. Cast your vote!"
+  },
+  "season_mvp_won": {
+    "title": "🏆 You're the Season {{season}} MVP!",
+    "body": "Your peers picked you as the best player of the season ({{votes}} votes)."
   }
 }

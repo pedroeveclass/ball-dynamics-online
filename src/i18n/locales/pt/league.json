@@ -156,5 +156,61 @@
       "login_required": "Faça login pra votar.",
       "error": "Não foi possível registrar seu voto."
     }
+  },
+  "clubAwards": {
+    "title": "Premiações do Elenco",
+    "total_one": "{{count}} troféu",
+    "total_other": "{{count}} troféus"
+  },
+  "trophyRoom": {
+    "title": "Sala dos Troféus",
+    "total_one": "{{count}} troféu",
+    "total_other": "{{count}} troféus",
+    "round_label": "R{{round}}/T{{season}}",
+    "season_label": "T{{season}}",
+    "empty": "Nenhum troféu ainda."
+  },
+  "hallOfFame": {
+    "title": "Hall da Fama",
+    "subtitle": "Os mais premiados de todas as temporadas",
+    "tabs": {
+      "all": "Todos",
+      "season_mvp": "MVPs",
+      "season_top_scorer": "Artilheiros",
+      "season_top_assists": "Assistências",
+      "season_top_tackles": "Desarmes",
+      "season_golden_glove": "Luvas de Ouro",
+      "season_fair_play": "Fair Play"
+    },
+    "no_awards": "Nenhum troféu registrado ainda.",
+    "season": "Temporada {{n}}",
+    "appearances_one": "{{count}} título",
+    "appearances_other": "{{count}} títulos"
+  },
+  "seasonAwards": {
+    "title": "Premiações da Temporada {{season}}",
+    "mvp_title": "MVP da Temporada {{season}}",
+    "labels": {
+      "season_top_scorer": "Artilheiro",
+      "season_top_assists": "Mais Assistências",
+      "season_top_tackles": "Mais Desarmes",
+      "season_golden_glove": "Luva de Ouro",
+      "season_fair_play": "Fair Play",
+      "season_mvp": "MVP da Temporada"
+    },
+    "metric": {
+      "goals_one": "{{count}} gol",
+      "goals_other": "{{count}} gols",
+      "assists_one": "{{count}} assistência",
+      "assists_other": "{{count}} assistências",
+      "tackles_one": "{{count}} desarme",
+      "tackles_other": "{{count}} desarmes",
+      "saves_one": "{{count}} defesa",
+      "saves_other": "{{count}} defesas",
+      "fair_play": "fair play"
+    },
+    "no_awards": "Nenhuma premiação registrada ainda.",
+    "section_auto": "Estatísticas",
+    "section_mvp": "Votação"
   }
 }

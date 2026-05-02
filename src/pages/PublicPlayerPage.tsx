@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
+import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { PlayerMatchesTab } from '@/components/player/PlayerMatchesTab';
 import { PlayerSeasonOverview } from '@/components/player/PlayerSeasonOverview';
 import { PlayerCompareDialog } from '@/components/player/PlayerCompareDialog';
@@ -336,6 +337,9 @@ export default function PublicPlayerPage() {
 
         {/* Origin Story (canonical narrative) */}
         <OriginStoryCard playerId={player.id} />
+
+        {/* Trophy Room (player_awards) */}
+        <PlayerAwardsBlock playerProfileId={player.id} />
 
         {/* Career Milestones (timeline) */}
         <PlayerMilestonesTimeline playerId={player.id} />

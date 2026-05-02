@@ -156,5 +156,61 @@
       "login_required": "Log in to vote.",
       "error": "Could not register your vote."
     }
+  },
+  "clubAwards": {
+    "title": "Squad Trophies",
+    "total_one": "{{count}} trophy",
+    "total_other": "{{count}} trophies"
+  },
+  "trophyRoom": {
+    "title": "Trophy Room",
+    "total_one": "{{count}} trophy",
+    "total_other": "{{count}} trophies",
+    "round_label": "R{{round}}/S{{season}}",
+    "season_label": "S{{season}}",
+    "empty": "No trophies yet."
+  },
+  "hallOfFame": {
+    "title": "Hall of Fame",
+    "subtitle": "The most decorated players across all seasons",
+    "tabs": {
+      "all": "All",
+      "season_mvp": "MVPs",
+      "season_top_scorer": "Top Scorers",
+      "season_top_assists": "Assists",
+      "season_top_tackles": "Tackles",
+      "season_golden_glove": "Golden Gloves",
+      "season_fair_play": "Fair Play"
+    },
+    "no_awards": "No trophies on record yet.",
+    "season": "Season {{n}}",
+    "appearances_one": "{{count}} title",
+    "appearances_other": "{{count}} titles"
+  },
+  "seasonAwards": {
+    "title": "Season {{season}} Awards",
+    "mvp_title": "Season {{season}} MVP",
+    "labels": {
+      "season_top_scorer": "Top Scorer",
+      "season_top_assists": "Most Assists",
+      "season_top_tackles": "Most Tackles",
+      "season_golden_glove": "Golden Glove",
+      "season_fair_play": "Fair Play",
+      "season_mvp": "Season MVP"
+    },
+    "metric": {
+      "goals_one": "{{count}} goal",
+      "goals_other": "{{count}} goals",
+      "assists_one": "{{count}} assist",
+      "assists_other": "{{count}} assists",
+      "tackles_one": "{{count}} tackle",
+      "tackles_other": "{{count}} tackles",
+      "saves_one": "{{count}} save",
+      "saves_other": "{{count}} saves",
+      "fair_play": "fair play"
+    },
+    "no_awards": "No awards yet.",
+    "section_auto": "Stats",
+    "section_mvp": "Voting"
   }
 }
