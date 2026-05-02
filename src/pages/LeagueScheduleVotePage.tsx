@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { ManagerVoteIntroTour } from '@/components/tour/ManagerVoteIntroTour';
 
 const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
@@ -154,6 +155,7 @@ export default function LeagueScheduleVotePage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerVoteIntroTour enabled={!loading} />
         <div>
           <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">
@@ -162,7 +164,7 @@ export default function LeagueScheduleVotePage() {
         </div>
 
         {/* Current schedule */}
-        <Card>
+        <Card data-tour="vote-results">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Calendar className="h-4 w-4 text-tactical" />
@@ -179,7 +181,7 @@ export default function LeagueScheduleVotePage() {
         </Card>
 
         {/* Vote form */}
-        <Card>
+        <Card data-tour="vote-form">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Vote className="h-4 w-4 text-tactical" />

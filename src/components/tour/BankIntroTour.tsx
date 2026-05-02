@@ -1,6 +1,7 @@
 import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
+import { useAuth } from '@/hooks/useAuth';
 
 interface BankIntroTourProps {
   enabled: boolean;
@@ -13,6 +14,7 @@ interface BankIntroTourProps {
 export function BankIntroTour({ enabled, hasActiveLoan, canTakeLoan }: BankIntroTourProps) {
   const { t } = useTranslation('tour');
   const { shouldRun, markSeen } = useLocalTour('bank_intro');
+  const { managerProfile } = useAuth();
 
   const renderStep = (titleKey: string, bodyKey: string) => (
     <div className="text-left">
@@ -53,7 +55,8 @@ export function BankIntroTour({ enabled, hasActiveLoan, canTakeLoan }: BankIntro
     }
   };
 
-  if (!enabled || !shouldRun || steps.length === 0) return null;
+  // Player tour: don't run when a manager profile is active — managers see BankManagerIntroTour instead.
+  if (!enabled || !shouldRun || steps.length === 0 || !!managerProfile) return null;
 
   return (
     <Joyride

@@ -203,5 +203,239 @@
       "title": "Cria um tópico",
       "body": "Clica em Novo Tópico pra começar uma conversa. Escolhe a categoria, escreve o título e o corpo.\n\nDica: cola seu link de perfil público (na página de Perfil) pra técnicos verem você num clique."
     }
+  },
+  "manager_dashboard_intro": {
+    "step1": {
+      "title": "Bem-vindo, técnico!",
+      "body": "Esse é o seu clube — escudo, nome, cidade. Embaixo do nome aparece o seu estilo de técnico (defensivo / ofensivo / técnico / completo). Esse estilo dá bônus diferentes em treinos do seu elenco."
+    },
+    "step2": {
+      "title": "Saúde do clube de relance",
+      "body": "Os 4 números mais importantes:\n\n• Reputação do clube — atrai jogadores\n• Sua reputação como técnico — sobe com vitórias\n• Tamanho do elenco\n• Saldo em caixa — sem grana, falência"
+    },
+    "step3": {
+      "title": "Atalhos pra cada área",
+      "body": "Esses cards são resumos com link — clica em qualquer um pra ir direto na área completa: Finanças, Estádio, Elenco, Mercado, Instalações, Liga.\n\nTudo isso também tá na barra esquerda quando precisar voltar."
+    },
+    "step4": {
+      "title": "Relatórios — quem está ativo",
+      "body": "Relatórios mostra o engajamento dos seus jogadores — quem treinou, jogou, comprou itens. Quando aparece o aviso amarelo, é porque tem jogador inativo — vale dispensar e abrir vaga pra outro humano.\n\nBora gerenciar! Próximo passo: explorar Clube na barra esquerda."
+    }
+  },
+  "manager_club_intro": {
+    "step1": {
+      "title": "Identidade do clube",
+      "body": "Aqui é a página de identidade do clube — escudo, nome, cidade, cores do uniforme. Algumas dessas customizações são pagas (R$ 500k pra editar), pensa bem antes de gastar."
+    },
+    "step2": {
+      "title": "Atalhos rápidos",
+      "body": "Os cards mostram resumos das áreas principais: Finanças, Squad, Estádio, Liga. Clica pra ir direto na área completa."
+    },
+    "step3": {
+      "title": "Uniformes, técnico e assistente",
+      "body": "Embaixo você gerencia uniformes (camisa de casa, fora, goleiro), seu perfil como técnico e — se quiser — define um assistente. O assistente tem acesso de edição igual ao seu (escala, faz oferta), mas não pode te demitir."
+    }
+  },
+  "manager_squad_intro": {
+    "step1": {
+      "title": "Seu elenco",
+      "body": "Lista completa do elenco: OVR, número da camisa, nome, posição, salário, status. No topo aparece o número de humanos no time (em verde) — quanto mais humanos, melhor o jogo.\n\nClica em qualquer jogador pra ver atributos detalhados, oferecer novo contrato, mudar papel (titular/banco) ou dispensar."
+    },
+    "step2": {
+      "title": "Folha salarial",
+      "body": "No subtítulo você vê o total da folha semanal. Compara com a receita semanal do clube (em Finanças) — folha maior que receita = falência rápida.\n\nDica: bots ganham R$ 250/semana. Humanos custam mais, mas valem cada centavo."
+    }
+  },
+  "manager_lineup_intro": {
+    "step1": {
+      "title": "Formação, tática e salvar",
+      "body": "Aqui em cima você escolhe a formação base (4-4-2, 4-3-3, 3-5-2, etc), abre o Jogo Situacional (estilo tático completo) e salva qualquer alteração da escalação.\n\nMudar a formação re-organiza os slots no campo embaixo."
+    },
+    "step2": {
+      "title": "Time escalado, banco e convocação",
+      "body": "Aqui é o seu time escalado: titulares no campo (esquerda), banco e jogadores disponíveis (direita). Arrasta jogadores entre os slots.\n\nAtenção: escalar fora da posição dá penalidade de atributo (5% mesmo grupo, até 20% grupos distantes). Posição secundária zera a penalidade.\n\nMais embaixo, na Convocação, os humanos confirmam que vão estar presentes — você decide se chama mesmo assim quem não confirmou."
+    },
+    "step3": {
+      "title": "Funções táticas + Assistente",
+      "body": "Funções táticas: você define o capitão e quem cobra cada bola parada (escanteio direito/esquerdo, lateral, falta).\n\nLogo abaixo, Assistente: nomeia outro humano com poder de edição igual ao seu (escala, contrata, vende) — só não pode te demitir nem dispensar a si mesmo."
+    },
+    "step4": {
+      "title": "Uniformes",
+      "body": "Os uniformes do time — casa, fora e goleiro. Ajusta as cores aqui pra mudar a aparência do time em campo nas partidas."
+    },
+    "step5": {
+      "title": "Próximo: Jogo Situacional",
+      "body": "Escalação é só metade da tática. Pra controlar como seu time se posiciona em cada zona do campo (ataque, defesa, bola parada), clica em Táticas — Jogo Situacional. É lá que você desenha o estilo do time.\n\nClica nele agora pra eu te mostrar."
+    }
+  },
+  "manager_situational_intro": {
+    "step1": {
+      "title": "Jogo Situacional — o cérebro tático",
+      "body": "Bem vindo ao coração da tática! Aqui você define como o time se comporta em cada zona do campo — sem precisar mandar mensagem pros jogadores.\n\nCampo dividido em 35 quadrantes (5×7). Pra cada quadrante você desenha onde cada jogador fica."
+    },
+    "step2": {
+      "title": "Com bola e sem bola",
+      "body": "Cada quadrante tem 2 cenários: COM BOLA (o time está atacando) e SEM BOLA (defendendo). Você desenha layout pra cada um — totalizando 70 micro-táticas.\n\nNão precisa fazer tudo de uma vez — começa por uns 4-5 quadrantes principais e vai aprimorando."
+    },
+    "step3": {
+      "title": "Visualização e ESPELHAR",
+      "body": "Ferramentas de visualização e o atalho mais importante:\n\n• Fase Oposta — sobrepõe a fase contrária pra você comparar como o time muda entre ataque e defesa\n• Mostrar numeração — cada quadrante ganha um número visível\n• ESPELHAR — desenha um lado do campo (direita, por exemplo) e clica pra espelhar; o lado esquerdo fica igual e invertido. Você só precisa montar METADE da jogada."
+    },
+    "step4": {
+      "title": "Knobs e atalhos rápidos",
+      "body": "Pros quadrantes que você não desenhou manualmente, 3 botões controlam o time todo:\n\n• Tipo de ataque (central / balanceado / pelos lados)\n• Posicionamento (compacto / espalhado)\n• Inclinação do time (ofensivo / defensivo)\n\nMexer aqui muda o time todo de uma vez — só não sobrescreve quadrantes que você customizou."
+    },
+    "step5": {
+      "title": "Bola Parada (set-pieces)",
+      "body": "Aqui também é onde você desenha as Bolas Paradas: escanteio, lateral, falta e tiro de meta — tanto COM bola (você cobra) como SEM bola (adversário cobra).\n\nO sistema espelha o lado automaticamente — você desenha um lado, vale pros dois. Salvo, todo jogo seu time se posiciona exato como você definiu."
+    }
+  },
+  "manager_market_intro": {
+    "step1": {
+      "title": "Mercado de jogadores",
+      "body": "Lista de agentes livres prontos pra serem contratados. Filtra por posição, arquétipo, idade, OVR.\n\nClica em qualquer jogador pra ver detalhes e enviar uma proposta com salário, cláusula de rescisão, duração e papel (titular/banco)."
+    },
+    "step2": {
+      "title": "Demanda de Posição",
+      "body": "Antes de sair contratando, define quais posições seu clube precisa. Marca aqui as posições demandadas — quando um humano novo for criar conta, ele vê seu clube como 'querendo' aquela posição e tem mais chance de te escolher.\n\nÉ recrutamento passivo: você atrai humanos sem precisar fazer oferta."
+    },
+    "step3": {
+      "title": "Como negociar",
+      "body": "Ao enviar uma proposta:\n\n• Salário maior atrai melhor\n• Cláusula de rescisão alta protege contra outros clubes te roubarem\n• Duração mais longa dá estabilidade\n• Papel titular vs banco influencia se o jogador aceita\n\nMensagem opcional ajuda — humanos respondem mais a quem se apresenta."
+    }
+  },
+  "manager_finance_intro": {
+    "step1": {
+      "title": "Receitas semanais",
+      "body": "Aqui aparecem todas as fontes de renda do clube: instalações (souvenir, patrocínio), bilheteria do estádio, e qualquer renda extra.\n\nQuanto melhor as instalações, maior a receita. Dá upgrade pelo menu Instalações."
+    },
+    "step2": {
+      "title": "Despesas semanais",
+      "body": "Folha salarial dos jogadores, manutenção de estádio e instalações, juros de empréstimo (se tiver). Tudo sai automaticamente toda semana.\n\nFolha > Receita = perda semanal → falência se persistir."
+    },
+    "step3": {
+      "title": "Saldo final + bilheteria",
+      "body": "O resumo final mostra se a semana fechou no positivo ou negativo. Histórico de bilheteria mostra quanto cada jogo em casa rendeu.\n\nGere caixa positivo regularmente pra investir em upgrades e contratações."
+    }
+  },
+  "manager_stadium_intro": {
+    "step1": {
+      "title": "Seu estádio",
+      "body": "Capacidade, qualidade e prestígio do estádio. Quanto maior a capacidade, mais bilheteria; qualidade afeta a renda por torcedor; prestígio atrai jogadores melhores.\n\nUpgrade custa caro mas paga ao longo prazo."
+    },
+    "step2": {
+      "title": "Setores do estádio",
+      "body": "Cada setor (Norte, Sul, Leste, Oeste, VIP) tem capacidade e qualidade próprias. Você upgrada cada um separadamente pra balancear custo vs renda."
+    },
+    "step3": {
+      "title": "Personalize o campo",
+      "body": "Aqui você customiza a aparência do gramado: cores, padrão de corte (listrado, xadrez, etc), tom da grama. Ajusta como quiser e salva — todo jogo em casa o time joga no SEU campo personalizado."
+    }
+  },
+  "manager_facilities_intro": {
+    "step1": {
+      "title": "Instalações do clube",
+      "body": "4 instalações que afetam o clube: Souvenir Shop (renda passiva), Patrocínio (renda fixa), Centro de Treinamento (boost de treino do squad), e Estádio (capacidade)."
+    },
+    "step2": {
+      "title": "Níveis 1 a 5",
+      "body": "Cada instalação vai do nível 1 ao 5. Custos aumentam: 1→2 R$ 50k, 2→3 R$ 150k, 3→4 R$ 400k, 4→5 R$ 1M.\n\nPriorize CT primeiro (treina seu squad mais rápido) e Patrocínio (renda fixa garantida)."
+    }
+  },
+  "manager_coach_intro": {
+    "step1": {
+      "title": "Boost semanal do técnico",
+      "body": "Toda semana você escolhe UM boost pro time — tática, formação, preparação física, bola parada, mentalidade, pressão alta ou foco de treino.\n\nO boost dura a semana inteira e afeta todas as partidas e treinos do clube."
+    },
+    "step2": {
+      "title": "Reset segunda 00:00",
+      "body": "Depois de confirmar, fica trancado até segunda-feira meia-noite (BRT) — quando libera, você escolhe o próximo. Pense no estilo que o time vai jogar essa semana antes de confirmar."
+    }
+  },
+  "manager_reports_intro": {
+    "step1": {
+      "title": "Engajamento do elenco",
+      "body": "Lista de jogadores ordenada por engajamento — dias treinados × 2 + jogos × 5 + compras na loja.\n\nQuanto maior o score, mais ativo. Quem tá zerado há semanas é candidato a dispensa pra abrir vaga."
+    },
+    "step2": {
+      "title": "Detectar inativos",
+      "body": "Foco nos vermelhos: jogadores que não logaram nem treinaram há muito tempo. Manter inativo no elenco trava vaga e custa salário toa.\n\nEsse painel é só pro dono do clube — assistente não vê."
+    }
+  },
+  "manager_challenges_intro": {
+    "step1": {
+      "title": "Convites e amistosos",
+      "body": "Aqui você cria amistosos e desafios entre clubes. Tem 3 tipos:\n\n• Lab Solo — você joga sozinho contra bots\n• Teste 5v5 — partida rápida sem consequência\n• Amistoso x BOT — partida completa contra time bot\n\nTambém pode enviar convite pra outro técnico real."
+    },
+    "step2": {
+      "title": "Próxima rodada da liga",
+      "body": "Se tem jogo da liga próximo, ele aparece em destaque aqui — link direto pra entrar no jogo no horário."
+    },
+    "step3": {
+      "title": "Recebidos / Enviados",
+      "body": "Acompanhe convites recebidos (aceitar/rejeitar) e enviados (aguardando). Convite de amistoso vira partida real quando o adversário aceita."
+    }
+  },
+  "manager_league_intro": {
+    "step1": {
+      "title": "Sua Liga",
+      "body": "Aqui você acompanha toda a temporada. Tem 3 abas principais: Classificação, Rodadas e Estatísticas. Vou te mostrar cada uma."
+    },
+    "step2": {
+      "title": "Classificação",
+      "body": "A tabela do campeonato. Seu clube aparece destacado. Mostra pontos, V/E/D, gols feitos/sofridos, saldo.\n\nBom desempenho aqui sobe sua reputação como técnico e atrai jogadores melhores."
+    },
+    "step3": {
+      "title": "Rodadas",
+      "body": "Clica na aba Rodadas pra ver todos os jogos da temporada divididos por rodada.\n\nEm cada jogo finalizado você pode abrir o Replay (assistir o jogo de novo) e ver as estatísticas detalhadas da partida."
+    },
+    "step4": {
+      "title": "Estatísticas",
+      "body": "Clica na aba Estatísticas pra ver os artilheiros, líderes de assistências e melhores performers da liga.\n\nBom pra acompanhar quem tá em forma — e quem você pode tentar contratar."
+    },
+    "step5": {
+      "title": "Times Disponíveis",
+      "body": "Como você ainda não tem clube, esta aba extra mostra os Times Disponíveis pra você assumir. Clica num time, customiza nome/escudo/cores e começa a comandar.\n\nDepois que assumir um clube, essa aba some."
+    }
+  },
+  "manager_vote_intro": {
+    "step1": {
+      "title": "Votação dos horários da liga",
+      "body": "Aqui os técnicos votam nos horários dos jogos da liga. Você escolhe 2 dias preferidos e 1 horário.\n\nO horário ganhador é aplicado na próxima temporada — então participe pra garantir que o calendário caiba na sua rotina."
+    },
+    "step2": {
+      "title": "Resultado em tempo real",
+      "body": "Embaixo aparece o horário atual da liga e a opção mais votada até agora. Você pode mudar seu voto a qualquer momento até a votação fechar."
+    }
+  },
+  "bank_intro_manager": {
+    "step1": {
+      "title": "Banco do clube",
+      "body": "Banco do Ball Dynamics — versão técnico. Aqui você pega empréstimo no nome do clube se precisar de caixa rápido.\n\nOs cards mostram: Saldo do clube, Receita semanal e Limite de empréstimo (calculado a partir da receita)."
+    },
+    "step2": {
+      "title": "Pegar empréstimo",
+      "body": "Empréstimo do clube é pago automaticamente toda semana, descontado da receita. Pega só o necessário — juros corroem caixa que você poderia investir em jogador ou instalação."
+    }
+  },
+  "store_intro_manager": {
+    "step1": {
+      "title": "Loja — versão técnico",
+      "body": "Saldo do clube aparece no topo. Aqui você pode comprar presentes pros seus jogadores (boost de moral) e itens cosméticos do clube.\n\nDiferente do jogador, você gasta o caixa do clube — não o seu pessoal."
+    },
+    "step2": {
+      "title": "Categorias",
+      "body": "Cada aba é uma categoria. Foco principal pra técnico: Presentes (manter humanos felizes) e cosméticos do clube. Presente bem dado aumenta engajamento do humano e diminui chance dele sair."
+    }
+  },
+  "forum_intro_manager": {
+    "step1": {
+      "title": "Fórum — versão técnico",
+      "body": "Fórum é onde a comunidade conversa. Como técnico, é onde você acha humanos pra contratar — bom técnico se faz visto, fala de tática, propõe parceria, reconhece bons jogadores.\n\nQuem fala bem aqui contrata melhor."
+    },
+    "step2": {
+      "title": "Categorias e tópicos",
+      "body": "Categorias organizam por tema. Pra recrutar, foque em Transferências e Geral.\n\nClica em Novo Tópico pra anunciar uma vaga ou propor algo pra comunidade."
+    }
   }
 }

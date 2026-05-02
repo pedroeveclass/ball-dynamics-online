@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, Building2, Users, Store, Handshake, Dumbbell, Loader2 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
 import { formatDate } from '@/lib/formatDate';
+import { ManagerFinanceIntroTour } from '@/components/tour/ManagerFinanceIntroTour';
 
 const FACILITY_STATS: Record<string, Record<number, { revenue: number; cost: number }>> = {
   souvenir_shop: { 1: { revenue: 3000, cost: 500 }, 2: { revenue: 6000, cost: 1000 }, 3: { revenue: 12000, cost: 2000 }, 4: { revenue: 22000, cost: 4000 }, 5: { revenue: 40000, cost: 7000 } },
@@ -138,6 +139,7 @@ export default function ManagerFinancePage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerFinanceIntroTour enabled={true} />
         <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Top stats */}
@@ -153,7 +155,7 @@ export default function ManagerFinancePage() {
         </div>
 
         {/* Revenue breakdown */}
-        <div className="stat-card">
+        <div data-tour="finance-revenue" className="stat-card">
           <h2 className="font-display font-semibold text-sm mb-4 text-pitch">{t('revenue_section.title')}</h2>
           <div className="space-y-2 text-sm">
             {facilityBreakdown.filter(f => f.revenue > 0).map(f => {
@@ -186,7 +188,7 @@ export default function ManagerFinancePage() {
         </div>
 
         {/* Expense breakdown */}
-        <div className="stat-card">
+        <div data-tour="finance-expenses" className="stat-card">
           <h2 className="font-display font-semibold text-sm mb-4 text-destructive">{t('expense_section.title')}</h2>
           <div className="space-y-2 text-sm">
             {/* Facility costs */}
@@ -245,7 +247,7 @@ export default function ManagerFinancePage() {
         )}
 
         {/* Weekly summary */}
-        <div className={`stat-card border-2 ${weeklyProfit >= 0 ? 'border-pitch/30 bg-pitch/5' : 'border-destructive/30 bg-destructive/5'}`}>
+        <div data-tour="finance-summary" className={`stat-card border-2 ${weeklyProfit >= 0 ? 'border-pitch/30 bg-pitch/5' : 'border-destructive/30 bg-destructive/5'}`}>
           <h2 className="font-display font-semibold text-sm mb-3">{t('summary.title')}</h2>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">

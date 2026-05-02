@@ -203,5 +203,239 @@
       "title": "Create a topic",
       "body": "Click New Topic to start a conversation. Pick the category, write the title and the body.\n\nTip: paste your public profile link (from the Profile page) so managers can see you in one click."
     }
+  },
+  "manager_dashboard_intro": {
+    "step1": {
+      "title": "Welcome, manager!",
+      "body": "This is your club — crest, name, city. Below the name your manager style appears (defensive / offensive / technical / complete). This style gives different bonuses to your squad's training."
+    },
+    "step2": {
+      "title": "Club health at a glance",
+      "body": "The 4 most important numbers:\n\n• Club reputation — attracts players\n• Your reputation as a manager — rises with wins\n• Squad size\n• Cash on hand — no money, bankruptcy"
+    },
+    "step3": {
+      "title": "Shortcuts to each area",
+      "body": "These cards are summaries with a link — click any to go straight to the full area: Finance, Stadium, Squad, Market, Facilities, League.\n\nAll of this is also in the left sidebar when you need to come back."
+    },
+    "step4": {
+      "title": "Reports — who's active",
+      "body": "Reports shows your players' engagement — who trained, played, bought items. When the yellow warning shows, there's an inactive player — worth releasing them to open a slot for another human.\n\nLet's manage! Next: explore Club in the left sidebar."
+    }
+  },
+  "manager_club_intro": {
+    "step1": {
+      "title": "Club identity",
+      "body": "This is the club identity page — crest, name, city, uniform colors. Some customizations cost money (R$ 500k to edit), think before spending."
+    },
+    "step2": {
+      "title": "Quick shortcuts",
+      "body": "The cards show summaries of the main areas: Finance, Squad, Stadium, League. Click to go straight to the full area."
+    },
+    "step3": {
+      "title": "Uniforms, manager and assistant",
+      "body": "Below you manage uniforms (home, away, goalkeeper kits), your manager profile and — if you want — set an assistant. The assistant has the same edit access as you (lineup, offers), but cannot fire you."
+    }
+  },
+  "manager_squad_intro": {
+    "step1": {
+      "title": "Your squad",
+      "body": "Full squad list: OVR, jersey number, name, position, salary, status. At the top you see how many humans are on the team (in green) — more humans = better game.\n\nClick any player to see detailed attributes, offer a new contract, change role (starter/bench) or release."
+    },
+    "step2": {
+      "title": "Wage bill",
+      "body": "The subtitle shows the total weekly wage. Compare with the club's weekly revenue (in Finance) — wage bill higher than revenue = quick bankruptcy.\n\nTip: bots earn R$ 250/week. Humans cost more, but they're worth every cent."
+    }
+  },
+  "manager_lineup_intro": {
+    "step1": {
+      "title": "Formation, tactics and save",
+      "body": "Up here you pick the base formation (4-4-2, 4-3-3, 3-5-2, etc), open Situational Tactics (full tactical style) and save any lineup change.\n\nChanging the formation re-organizes the slots on the field below."
+    },
+    "step2": {
+      "title": "Lineup, bench and call-ups",
+      "body": "Here is your lineup: starters on the field (left), bench and available players (right). Drag players between slots.\n\nWatch out: playing out of position gives an attribute penalty (5% same group, up to 20% distant groups). Secondary position zeros the penalty.\n\nFurther down, on Call-ups, humans confirm they'll be present — you decide whether to play them anyway when they didn't confirm."
+    },
+    "step3": {
+      "title": "Tactical roles + Assistant",
+      "body": "Tactical roles: define the captain and who takes each set piece (right/left corner, throw-in, free-kick).\n\nRight below, Assistant: name another human with edit power equal to yours (lineup, sign, sell) — only can't fire you or dismiss themselves."
+    },
+    "step4": {
+      "title": "Uniforms",
+      "body": "Team uniforms — home, away and goalkeeper. Tweak colors here to change the team's look on the field during matches."
+    },
+    "step5": {
+      "title": "Next: Situational Tactics",
+      "body": "Lineup is only half the tactic. To control how your team positions in each zone of the field (attack, defense, set-pieces), click Tactics — Situational Game. That's where you draw the team's style.\n\nClick on it now so I can show you."
+    }
+  },
+  "manager_situational_intro": {
+    "step1": {
+      "title": "Situational Tactics — the tactical brain",
+      "body": "Welcome to the heart of the tactic! Here you define how the team behaves in each zone of the field — without needing to message the players.\n\nField split into 35 quadrants (5×7). For each quadrant you draw where each player goes."
+    },
+    "step2": {
+      "title": "With ball and without ball",
+      "body": "Each quadrant has 2 scenarios: WITH BALL (team is attacking) and WITHOUT BALL (defending). You draw a layout for each — totaling 70 micro-tactics.\n\nNo need to do everything at once — start with 4-5 main quadrants and improve over time."
+    },
+    "step3": {
+      "title": "Visualization and MIRROR",
+      "body": "Visualization tools and the most important shortcut:\n\n• Opposite Phase — overlays the opposite phase so you can compare how the team shifts between attack and defense\n• Show numbers — each quadrant gets a visible number\n• MIRROR — draw one side of the field (right, for instance) and click to mirror; the left side becomes equal and inverted. You only need to design HALF the play."
+    },
+    "step4": {
+      "title": "Knobs and quick shortcuts",
+      "body": "For quadrants you didn't draw manually, 3 buttons control the whole team:\n\n• Attack type (central / balanced / wide)\n• Positioning (compact / spread)\n• Team inclination (offensive / defensive)\n\nAdjusting here changes the whole team at once — only doesn't override quadrants you customized."
+    },
+    "step5": {
+      "title": "Set Pieces",
+      "body": "This is also where you draw set pieces: corner, throw-in, free kick and goal kick — both WITH ball (you take it) and WITHOUT ball (opponent takes).\n\nThe system mirrors the side automatically — you draw one side, it works for both. Once saved, every match your team positions exactly as you defined."
+    }
+  },
+  "manager_market_intro": {
+    "step1": {
+      "title": "Player market",
+      "body": "List of free agents ready to be signed. Filter by position, archetype, age, OVR.\n\nClick any player to see details and send an offer with salary, release clause, duration and role (starter/bench)."
+    },
+    "step2": {
+      "title": "Position Demand",
+      "body": "Before going around signing, define which positions your club needs. Mark demanded positions here — when a new human creates an account, they see your club as 'wanting' that position and have a higher chance of choosing you.\n\nIt's passive recruitment: you attract humans without needing to make an offer."
+    },
+    "step3": {
+      "title": "How to negotiate",
+      "body": "When sending an offer:\n\n• Higher salary attracts better\n• High release clause protects against other clubs poaching\n• Longer duration gives stability\n• Starter vs bench role influences whether the player accepts\n\nOptional message helps — humans respond more to those who introduce themselves."
+    }
+  },
+  "manager_finance_intro": {
+    "step1": {
+      "title": "Weekly revenue",
+      "body": "Here you see all the club's income sources: facilities (souvenir, sponsorship), stadium ticket sales, and any extra revenue.\n\nThe better the facilities, the higher the revenue. Upgrade via the Facilities menu."
+    },
+    "step2": {
+      "title": "Weekly expenses",
+      "body": "Player wages, stadium and facilities maintenance, loan interest (if any). Everything goes out automatically every week.\n\nWages > Revenue = weekly loss → bankruptcy if it persists."
+    },
+    "step3": {
+      "title": "Final balance + ticket sales",
+      "body": "The final summary shows whether the week closed positive or negative. Ticket history shows how much each home match generated.\n\nGenerate positive cash regularly to invest in upgrades and signings."
+    }
+  },
+  "manager_stadium_intro": {
+    "step1": {
+      "title": "Your stadium",
+      "body": "Capacity, quality and prestige of the stadium. Higher capacity = more ticket sales; quality affects revenue per fan; prestige attracts better players.\n\nUpgrade is expensive but pays off long-term."
+    },
+    "step2": {
+      "title": "Stadium sectors",
+      "body": "Each sector (North, South, East, West, VIP) has its own capacity and quality. Upgrade each one separately to balance cost vs revenue."
+    },
+    "step3": {
+      "title": "Customize the pitch",
+      "body": "Here you customize the pitch's look: colors, mowing pattern (stripes, checker, etc), grass tone. Adjust as you wish and save — every home match the team plays on YOUR custom pitch."
+    }
+  },
+  "manager_facilities_intro": {
+    "step1": {
+      "title": "Club facilities",
+      "body": "4 facilities that affect the club: Souvenir Shop (passive revenue), Sponsorship (fixed revenue), Training Center (squad training boost), and Stadium (capacity)."
+    },
+    "step2": {
+      "title": "Levels 1 to 5",
+      "body": "Each facility goes from level 1 to 5. Costs increase: 1→2 R$ 50k, 2→3 R$ 150k, 3→4 R$ 400k, 4→5 R$ 1M.\n\nPrioritize Training Center first (trains your squad faster) and Sponsorship (guaranteed fixed income)."
+    }
+  },
+  "manager_coach_intro": {
+    "step1": {
+      "title": "Weekly coach boost",
+      "body": "Every week you pick ONE boost for the team — tactics, formation, fitness, set pieces, mentality, high press, or training focus.\n\nThe boost lasts the whole week and applies to every match and training session."
+    },
+    "step2": {
+      "title": "Reset Monday 00:00",
+      "body": "Once confirmed, it's locked until Monday midnight (BRT) — when it resets, you pick the next one. Think about the style the team will play this week before confirming."
+    }
+  },
+  "manager_reports_intro": {
+    "step1": {
+      "title": "Squad engagement",
+      "body": "Player list ordered by engagement — days trained × 2 + matches × 5 + store purchases.\n\nThe higher the score, the more active. Anyone at zero for weeks is a release candidate to open a slot."
+    },
+    "step2": {
+      "title": "Detect inactives",
+      "body": "Focus on the reds: players who haven't logged in or trained for a long time. Keeping inactives in the squad locks a slot and wastes salary.\n\nThis panel is owner-only — assistant doesn't see it."
+    }
+  },
+  "manager_challenges_intro": {
+    "step1": {
+      "title": "Invites and friendlies",
+      "body": "Here you create friendlies and challenges between clubs. 3 types:\n\n• Solo Lab — you play alone against bots\n• Test 5v5 — quick match without consequences\n• Friendly vs BOT — full match against a bot team\n\nYou can also send invites to other real managers."
+    },
+    "step2": {
+      "title": "Next league round",
+      "body": "If there's an upcoming league match, it shows up highlighted here — direct link to enter the match at kickoff."
+    },
+    "step3": {
+      "title": "Received / Sent",
+      "body": "Track received invites (accept/reject) and sent ones (waiting). A friendly invite becomes a real match when the opponent accepts."
+    }
+  },
+  "manager_league_intro": {
+    "step1": {
+      "title": "Your League",
+      "body": "Here you follow the whole season. There are 3 main tabs: Standings, Rounds and Stats. Let me show you each one."
+    },
+    "step2": {
+      "title": "Standings",
+      "body": "The league table. Your club shows up highlighted. Displays points, W/D/L, goals for/against, goal difference.\n\nGood performance here raises your reputation as a manager and attracts better players."
+    },
+    "step3": {
+      "title": "Rounds",
+      "body": "Click the Rounds tab to see all season matches split by round.\n\nFor each finished match you can open the Replay (rewatch the match) and see detailed match stats."
+    },
+    "step4": {
+      "title": "Stats",
+      "body": "Click the Stats tab to see top scorers, assist leaders and the league's best performers.\n\nGreat for tracking who's in form — and who you might try to sign."
+    },
+    "step5": {
+      "title": "Available Teams",
+      "body": "Since you don't have a club yet, this extra tab shows the Available Teams for you to take over. Click a team, customize name/crest/colors and start managing.\n\nAfter taking a club, this tab disappears."
+    }
+  },
+  "manager_vote_intro": {
+    "step1": {
+      "title": "League schedule vote",
+      "body": "Here managers vote on the league match times. You pick 2 preferred days and 1 time.\n\nThe winning time is applied next season — so participate to make sure the calendar fits your routine."
+    },
+    "step2": {
+      "title": "Real-time results",
+      "body": "Below you see the current league time and the most-voted option so far. You can change your vote anytime until the vote closes."
+    }
+  },
+  "bank_intro_manager": {
+    "step1": {
+      "title": "Club bank",
+      "body": "Ball Dynamics Bank — manager edition. Here you take loans in the club's name if you need quick cash.\n\nThe cards show: Club balance, Weekly revenue and Loan limit (calculated from revenue)."
+    },
+    "step2": {
+      "title": "Take a loan",
+      "body": "Club loans are paid automatically every week, deducted from revenue. Take only what's needed — interest eats cash you could invest in players or facilities."
+    }
+  },
+  "store_intro_manager": {
+    "step1": {
+      "title": "Store — manager edition",
+      "body": "Club balance shows at the top. Here you can buy gifts for your players (morale boost) and club cosmetics.\n\nUnlike the player, you spend the club's cash — not your personal."
+    },
+    "step2": {
+      "title": "Categories",
+      "body": "Each tab is a category. Main focus for managers: Gifts (keep humans happy) and club cosmetics. A well-given gift increases human engagement and lowers their chance of leaving."
+    }
+  },
+  "forum_intro_manager": {
+    "step1": {
+      "title": "Forum — manager edition",
+      "body": "Forum is where the community talks. As a manager, this is where you find humans to sign — a good manager makes themselves seen, talks tactics, proposes partnerships, recognizes good players.\n\nWhoever speaks well here signs better."
+    },
+    "step2": {
+      "title": "Categories and topics",
+      "body": "Categories organize by theme. To recruit, focus on Transfers and General.\n\nClick New Topic to announce an opening or propose something to the community."
+    }
   }
 }

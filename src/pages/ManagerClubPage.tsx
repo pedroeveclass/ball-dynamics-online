@@ -22,6 +22,7 @@ import { formatBRL } from '@/lib/formatting';
 import { ClubCrest } from '@/components/ClubCrest';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { seededAppearance } from '@/lib/avatar';
+import { ManagerClubIntroTour } from '@/components/tour/ManagerClubIntroTour';
 
 const CREST_EMOJI_PRESETS = ['⚽', '🦁', '🦅', '🐺', '🐉', '🐻', '🐯', '🦈', '⭐', '🔥', '🛡️', '⚓', '👑', '🌪️', '🦊', '🐍'];
 
@@ -317,8 +318,9 @@ export default function ManagerClubPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerClubIntroTour enabled={!!club} />
         {/* Club header */}
-        <div className="flex items-start justify-between">
+        <div data-tour="manager-club-header" className="flex items-start justify-between">
           <div className="flex items-center gap-5">
             <ClubCrest
               crestUrl={(club as any).crest_url}
@@ -366,7 +368,7 @@ export default function ManagerClubPage() {
         </div>
 
         {/* Top stats row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div data-tour="manager-club-shortcuts" className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Link to="/manager/finance" className="stat-card hover:border-pitch/30 transition-colors cursor-pointer">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
               <DollarSign className="h-3.5 w-3.5" /> {t('stats.balance')}
@@ -408,7 +410,7 @@ export default function ManagerClubPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div data-tour="manager-club-extras" className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Manager & Identity */}
           <div className="stat-card">
             <h3 className="font-display font-semibold text-sm mb-3">{t('identity.title')}</h3>

@@ -1,6 +1,7 @@
 import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
+import { useAuth } from '@/hooks/useAuth';
 
 interface StoreIntroTourProps {
   enabled: boolean;
@@ -11,6 +12,7 @@ interface StoreIntroTourProps {
 export function StoreIntroTour({ enabled, hasMyItemsTab }: StoreIntroTourProps) {
   const { t } = useTranslation('tour');
   const { shouldRun, markSeen } = useLocalTour('store_intro');
+  const { managerProfile } = useAuth();
 
   const renderStep = (titleKey: string, bodyKey: string) => (
     <div className="text-left">
@@ -43,7 +45,8 @@ export function StoreIntroTour({ enabled, hasMyItemsTab }: StoreIntroTourProps) 
     }
   };
 
-  if (!enabled || !shouldRun) return null;
+  // Player tour: don't run when a manager profile is active — managers see StoreManagerIntroTour instead.
+  if (!enabled || !shouldRun || !!managerProfile) return null;
 
   return (
     <Joyride

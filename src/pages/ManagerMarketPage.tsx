@@ -16,6 +16,7 @@ import { positionLabel } from '@/lib/positions';
 import { archetypeLabel } from '@/lib/attributes';
 import { toast } from 'sonner';
 import { ClubDemandEditor } from '@/components/ClubDemandEditor';
+import { ManagerMarketIntroTour } from '@/components/tour/ManagerMarketIntroTour';
 
 interface FreeAgent {
   id: string;
@@ -135,16 +136,17 @@ export default function ManagerMarketPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
-        <div>
+        <ManagerMarketIntroTour enabled={!loading} />
+        <div data-tour="market-header">
           <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
 
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div data-tour="market-demand" className="rounded-lg border border-border bg-card p-4">
           <ClubDemandEditor />
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div data-tour="market-list" className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder={t('filters.search_placeholder')} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />

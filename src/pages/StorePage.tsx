@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { ATTR_LABELS } from '@/lib/attributes';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
+import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
 
 interface StoreItem {
   id: string;
@@ -409,6 +410,7 @@ export default function StorePage() {
   const content = (
     <div className="space-y-6">
       <StoreIntroTour enabled={!loading && items.length > 0} hasMyItemsTab={!isManager && playerPurchases.length > 0} />
+      <StoreManagerIntroTour enabled={!loading && items.length > 0 && isManager} />
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">

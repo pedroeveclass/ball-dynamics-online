@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { ManagerFacilitiesIntroTour } from '@/components/tour/ManagerFacilitiesIntroTour';
 
 const MAX_LEVEL: Record<string, number> = {
   souvenir_shop: 5,
@@ -186,10 +187,11 @@ export default function ManagerFacilitiesPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerFacilitiesIntroTour enabled={true} />
         <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 
         {/* Summary bar */}
-        <div className="stat-card">
+        <div data-tour="facilities-summary" className="stat-card">
           <h2 className="font-display font-semibold text-sm mb-4">{t('summary.title')}</h2>
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="flex flex-col items-center gap-1">
@@ -213,7 +215,7 @@ export default function ManagerFacilitiesPage() {
         </div>
 
         {/* Facility cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div data-tour="facilities-list" className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {FACILITY_META.map((meta) => {
             const Icon = meta.icon;
             const level = getFacilityLevel(meta.key);

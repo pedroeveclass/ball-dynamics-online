@@ -12,6 +12,7 @@ import { BarChart3, Bell, Clock, Dumbbell, Trophy, ShoppingBag, TrendingUp, Lock
 import { PlayerActivityDrawer, type PlayerReportDetail, type ReportEvent } from '@/components/reports/PlayerActivityDrawer';
 import { NotifyPlayerDialog } from '@/components/reports/NotifyPlayerDialog';
 import type { DayActivity } from '@/components/reports/ActivityHeatmap';
+import { ManagerReportsIntroTour } from '@/components/tour/ManagerReportsIntroTour';
 
 interface RosterPlayer {
   id: string;
@@ -332,6 +333,7 @@ export default function ManagerReportsPage() {
   return (
     <ManagerLayout>
       <div className="space-y-5">
+        <ManagerReportsIntroTour enabled={!loading} />
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <BarChart3 className="h-6 w-6 text-pitch" />
@@ -354,7 +356,7 @@ export default function ManagerReportsPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div data-tour="reports-summary" className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <SummaryCard icon={<Dumbbell className="h-4 w-4" />} label={t('summary.trainings')} value={trainings.length} />
           <SummaryCard icon={<Trophy className="h-4 w-4" />} label={t('summary.matches')} value={matches.length} />
           <SummaryCard icon={<ShoppingBag className="h-4 w-4" />} label={t('summary.purchases')} value={purchases.length} />
@@ -367,7 +369,7 @@ export default function ManagerReportsPage() {
         </div>
 
         {/* Table */}
-        <div className="rounded-lg border bg-card overflow-hidden">
+        <div data-tour="reports-list" className="rounded-lg border bg-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">

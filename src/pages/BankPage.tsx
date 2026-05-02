@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { useTranslation } from 'react-i18next';
 import { BankIntroTour } from '@/components/tour/BankIntroTour';
+import { BankManagerIntroTour } from '@/components/tour/BankManagerIntroTour';
 
 interface Loan {
   id: string;
@@ -182,6 +183,7 @@ function BankContent() {
   return (
     <div className="space-y-6">
       <BankIntroTour enabled={true} hasActiveLoan={!!activeLoan} canTakeLoan={canTakeLoan && maxLoan > 0} />
+      <BankManagerIntroTour enabled={isManager} canTakeLoan={canTakeLoan && maxLoan > 0} />
       {/* Header */}
       <div className="flex items-center gap-3">
         <Landmark className="h-7 w-7 text-amber-500" />

@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { toast } from 'sonner';
 import { useNavigate, Link } from 'react-router-dom';
 import { ClubCrest } from '@/components/ClubCrest';
+import { ManagerChallengesIntroTour } from '@/components/tour/ManagerChallengesIntroTour';
 import { format } from 'date-fns';
 import { formatDate } from '@/lib/formatDate';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
@@ -599,11 +600,12 @@ export default function ManagerChallengesPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerChallengesIntroTour enabled={!loading} hasNextLeagueMatch={!!nextLeagueMatch} />
         <div className="flex items-center justify-between">
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
             <Swords className="h-6 w-6 text-tactical" /> Jogos
           </h1>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div data-tour="challenges-actions" className="flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => navigate('/match-lab/solo')} className="font-display text-xs border-tactical/40 text-tactical hover:bg-tactical/10">
               <FlaskConical className="h-4 w-4 mr-1" /> Lab Solo
             </Button>
@@ -623,7 +625,7 @@ export default function ManagerChallengesPage() {
             even when the materialized `matches` row doesn't exist yet
             (the scheduler creates it ~5 min before kickoff). */}
         {nextLeagueMatch && (
-          <div className="stat-card border-tactical/40 bg-tactical/5">
+          <div data-tour="challenges-next-league" className="stat-card border-tactical/40 bg-tactical/5">
             <div className="flex items-center gap-2 mb-2">
               <Trophy className="h-4 w-4 text-amber-400" />
               <span className="font-display font-bold text-sm uppercase tracking-wide text-tactical">
@@ -743,7 +745,7 @@ export default function ManagerChallengesPage() {
         )}
 
         <Collapsible defaultOpen>
-          <section>
+          <section data-tour="challenges-tabs">
           <CollapsibleTrigger className="flex items-center gap-2 font-display font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide hover:text-foreground transition-colors">
             <ChevronDown className="h-4 w-4" /> Convites Recebidos ({received.length})
           </CollapsibleTrigger>

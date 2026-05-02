@@ -14,6 +14,7 @@ import { formatLeagueName } from '@/lib/leagueName';
 import { formatBRL } from '@/lib/formatting';
 import { Bot, User as UserIcon } from 'lucide-react';
 import { LeagueIntroTour } from '@/components/tour/LeagueIntroTour';
+import { ManagerLeagueIntroTour } from '@/components/tour/ManagerLeagueIntroTour';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -677,12 +678,13 @@ export default function LeaguePage() {
         </div>
         <Tabs defaultValue={initialTab} className="space-y-4">
           <LeagueIntroTour enabled={isPlayerFreeAgent && tabFromQuery === 'join' && joinableClubs.length > 0} />
+          <ManagerLeagueIntroTour enabled={!!managerProfile} isManagerWithoutClub={isManagerWithoutClub} />
           <TabsList data-tour="league-tabs" className={`grid w-full ${(isManagerWithoutClub || isPlayerFreeAgent) ? 'grid-cols-4' : 'grid-cols-3'} max-w-lg`}>
-            <TabsTrigger value="standings">{t('tabs.standings')}</TabsTrigger>
-            <TabsTrigger value="rounds">{t('tabs.rounds')}</TabsTrigger>
-            <TabsTrigger value="stats" onClick={() => fetchStatistics()}>{t('tabs.stats')}</TabsTrigger>
+            <TabsTrigger data-tour="league-tab-standings" value="standings">{t('tabs.standings')}</TabsTrigger>
+            <TabsTrigger data-tour="league-tab-rounds" value="rounds">{t('tabs.rounds')}</TabsTrigger>
+            <TabsTrigger data-tour="league-tab-stats" value="stats" onClick={() => fetchStatistics()}>{t('tabs.stats')}</TabsTrigger>
             {isManagerWithoutClub && (
-              <TabsTrigger value="available" className="relative">
+              <TabsTrigger data-tour="league-tab-available" value="available" className="relative">
                 {t('tabs.available')}
                 {availableClubs.length > 0 && (
                   <span className="ml-1.5 bg-pitch text-white text-[10px] rounded-full px-1.5 py-0.5">

@@ -25,6 +25,7 @@ import { sortPlayersByPosition, positionalPenaltyPercent, formatPlayerPositions,
 import { applyRoleNudge, canonicalRole, getSwappableRoles } from '@/lib/formations';
 import { getNextClubMatch, formatBRTDateTime, type NextClubMatch } from '@/lib/upcomingMatches';
 import type { Tables } from '@/integrations/supabase/types';
+import { ManagerLineupIntroTour } from '@/components/tour/ManagerLineupIntroTour';
 
 interface SquadPlayer {
   id: string;
@@ -751,7 +752,8 @@ export default function ManagerLineupPage() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <ManagerLineupIntroTour enabled={!loading && squad.length > 0} />
+        <div data-tour="manager-lineup-header" className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
             <p className="text-sm text-muted-foreground">{t('subtitle', { starters: assignments.length, maxStarters: slots.length, bench: benchPlayers.length, maxBench: MAX_BENCH })}</p>
@@ -784,7 +786,7 @@ export default function ManagerLineupPage() {
                 )}
               </SelectContent>
             </Select>
-            <Button asChild variant="outline" className="gap-1.5">
+            <Button asChild variant="outline" className="gap-1.5" data-tour="manager-lineup-tactics-link">
               <Link to="/manager/lineup/tactics">
                 <Target className="h-4 w-4" />
                 {t('tactics_button')}
@@ -810,6 +812,7 @@ export default function ManagerLineupPage() {
           </div>
         )}
 
+        <div data-tour="manager-lineup-squad-area" className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Field */}
           <div className="lg:col-span-2">
@@ -1104,7 +1107,10 @@ export default function ManagerLineupPage() {
           );
         })()}
 
+        </div>{/* /manager-lineup-squad-area */}
+
         {/* Funções Táticas */}
+        <div data-tour="manager-lineup-roles" className="space-y-6">
         <div className="space-y-4">
           <h2 className="font-display text-xl font-bold">{t('tactical_roles.title')}</h2>
           <Card>
@@ -1177,9 +1183,11 @@ export default function ManagerLineupPage() {
           </div>
         )}
 
+        </div>{/* /manager-lineup-roles */}
+
         {/* Uniformes */}
         {uniforms.length > 0 && (
-          <div className="space-y-4">
+          <div data-tour="manager-lineup-uniforms" className="space-y-4">
             <h2 className="font-display text-xl font-bold">{t('uniforms.title')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[1, 2, 3].map(num => {

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, useAnimationControls } from 'framer-motion';
 import { ManagerLayout } from '@/components/ManagerLayout';
 import { AppLayout } from '@/components/AppLayout';
+import { ManagerSituationalIntroTour } from '@/components/tour/ManagerSituationalIntroTour';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -1465,8 +1466,9 @@ export default function SituationalTacticsPage() {
   return (
     <Layout>
       <div className="space-y-4">
+        <ManagerSituationalIntroTour enabled={!loading} />
         {/* Header */}
-        <div className="flex items-start justify-between flex-wrap gap-3">
+        <div data-tour="situational-header" className="flex items-start justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm" className="gap-1">
               <Link to="/manager/lineup"><ArrowLeft className="h-4 w-4" /> {t('header.back')}</Link>
@@ -1588,7 +1590,7 @@ export default function SituationalTacticsPage() {
 
         {/* Top-level mode toggle: Geral (35-quadrant) vs Bola Parada */}
         <Tabs value={mode} onValueChange={(v) => setMode(v as 'general' | 'set_piece')}>
-          <TabsList>
+          <TabsList data-tour="situational-setpieces">
             <TabsTrigger value="general">{t('modes.general')}</TabsTrigger>
             <TabsTrigger value="set_piece">{t('modes.set_piece')}</TabsTrigger>
           </TabsList>
@@ -1693,7 +1695,7 @@ export default function SituationalTacticsPage() {
         </div>
 
         {/* Visualization toolbar: ghost overlay, distance, opponent, mirror */}
-        <div className="flex items-center gap-2 flex-wrap text-xs">
+        <div data-tour="situational-viz" className="flex items-center gap-2 flex-wrap text-xs">
           <Button
             variant={showGhost ? 'default' : 'outline'}
             size="sm"
@@ -1749,7 +1751,7 @@ export default function SituationalTacticsPage() {
         </div>
 
         {/* Tactical knobs + quadrant comparison */}
-        <div className="flex items-center gap-2 flex-wrap text-xs">
+        <div data-tour="situational-knobs" className="flex items-center gap-2 flex-wrap text-xs">
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">{t(phase === 'with_ball' ? 'knobs.attack_label' : 'knobs.defense_label')}</span>
             <Select value={knobs.attack_type} onValueChange={(v) => { pushHistorySnapshot(); setKnobs(k => ({ ...k, attack_type: v as AttackType })); }}>
@@ -1812,7 +1814,7 @@ export default function SituationalTacticsPage() {
         </div>
 
         {/* Field */}
-        <Card>
+        <Card data-tour="situational-grid">
           <CardContent className="p-3">
             <div
               ref={fieldRef}

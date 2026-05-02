@@ -21,6 +21,7 @@ import { sortPlayersByPosition } from '@/lib/positions';
 import { archetypeLabel } from '@/lib/attributes';
 import { CountryFlag } from '@/components/CountryFlag';
 import { useTranslation } from 'react-i18next';
+import { ManagerSquadIntroTour } from '@/components/tour/ManagerSquadIntroTour';
 
 interface SquadPlayer {
   id: string;
@@ -336,8 +337,9 @@ export default function ManagerSquadPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <ManagerSquadIntroTour enabled={!loading} />
+        <div data-tour="manager-squad-header" className="flex items-center justify-between">
+          <div data-tour="manager-squad-summary">
             <h1 className="font-display text-2xl font-bold">{t('squad:title')}</h1>
             <p className="text-sm text-muted-foreground">
               {t('squad:summary', { count: players.length, wages: formatBRL(totalWages) })}

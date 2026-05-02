@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { formatBRL } from '@/lib/formatting';
 import { PitchSVG, DEFAULT_STADIUM_STYLE, type StadiumStyle } from '@/components/PitchSVG';
 import type { TFunction } from 'i18next';
+import { ManagerStadiumIntroTour } from '@/components/tour/ManagerStadiumIntroTour';
 
 interface Sector {
   id: string;
@@ -405,10 +406,11 @@ export default function ManagerStadiumPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerStadiumIntroTour enabled={!!stadium} />
         <h1 className="font-display text-2xl font-bold">{stadium.name}</h1>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div data-tour="stadium-header" className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label={t('stats.capacity')} value={totalCapacity.toLocaleString()} icon={<Users className="h-5 w-5" />} />
           <StatCard label={t('stats.quality')} value={`${stadium.quality}/100`} icon={<Building2 className="h-5 w-5" />} />
           <StatCard label={t('stats.avg_occupancy')} value={`${avgOccupancy.toFixed(0)}%`} icon={<BarChart3 className="h-5 w-5" />} />
@@ -433,7 +435,7 @@ export default function ManagerStadiumPage() {
         </div>
 
         {/* Sectors */}
-        <div className="stat-card">
+        <div data-tour="stadium-sectors" className="stat-card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display font-semibold text-sm">{t('sectors.title')}</h2>
             {hasChanges && (
@@ -520,6 +522,7 @@ export default function ManagerStadiumPage() {
         </div>
 
         {/* Stadium Style Editor */}
+        <div data-tour="stadium-style">
         <StadiumStyleEditor
           editedStyle={editedStyle}
           setEditedStyle={setEditedStyle}
@@ -528,6 +531,7 @@ export default function ManagerStadiumPage() {
           onSave={handleSaveStyle}
           t={t}
         />
+        </div>
 
         {/* Info */}
         <div className="text-xs text-muted-foreground space-y-1 px-1">

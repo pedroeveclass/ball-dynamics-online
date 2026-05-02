@@ -13,6 +13,7 @@ import { ClubCrest } from '@/components/ClubCrest';
 import { CountryFlag } from '@/components/CountryFlag';
 import { Button } from '@/components/ui/button';
 import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
+import { ManagerDashboardIntroTour } from '@/components/tour/ManagerDashboardIntroTour';
 
 const COACH_TYPE_ICON: Record<string, typeof Shield> = {
   defensive: Shield,
@@ -97,6 +98,7 @@ export default function ManagerDashboard() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <ManagerDashboardIntroTour enabled={!!club && !!managerProfile} />
         {/* Transfer Window Banner */}
         {(() => {
           const day = new Date().getDate();
@@ -134,7 +136,7 @@ export default function ManagerDashboard() {
           </div>
         )}
 
-        <div className="flex items-start justify-between">
+        <div data-tour="manager-header" className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <ClubCrest crestUrl={(club as any).crest_url} primaryColor={club.primary_color} secondaryColor={club.secondary_color} shortName={club.short_name} className="w-14 h-14 rounded-lg text-xl" />
             <div>
@@ -171,14 +173,14 @@ export default function ManagerDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div data-tour="manager-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label={t('dashboard:manager.cards.club_rep')} value={club.reputation} icon={<Trophy className="h-5 w-5" />} />
           <StatCard label={t('dashboard:manager.cards.manager_rep')} value={managerProfile.reputation} icon={<Star className="h-5 w-5" />} />
           <StatCard label={t('dashboard:manager.cards.squad')} value={playerCount} icon={<Users className="h-5 w-5" />} subtitle={t('dashboard:manager.cards.squad_subtitle')} />
           <StatCard label={t('dashboard:manager.cards.balance')} value={finance ? `$${(finance.balance / 1000).toFixed(0)}k` : '...'} icon={<DollarSign className="h-5 w-5" />} />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div data-tour="manager-shortcuts" className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Finances summary */}
           <Link to="/manager/finance" className="stat-card block hover:border-tactical/40 transition-colors">
             <div className="flex items-center gap-2 mb-3">
@@ -270,6 +272,7 @@ export default function ManagerDashboard() {
         </div>
 
         <Link
+          data-tour="manager-reports"
           to="/manager/relatorios"
           className={`stat-card block transition-colors ${inactivePlayerCount > 0 ? 'hover:border-amber-500/50 border-amber-500/30 bg-amber-500/5' : 'hover:border-tactical/40'}`}
         >

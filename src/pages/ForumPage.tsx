@@ -21,6 +21,7 @@ import {
   ChevronUp, ChevronDown,
 } from 'lucide-react';
 import { ForumIntroTour } from '@/components/tour/ForumIntroTour';
+import { ForumManagerIntroTour } from '@/components/tour/ForumManagerIntroTour';
 
 function ForumLayout({ children }: { children: ReactNode }) {
   const { managerProfile, playerProfile, loading } = useAuth();
@@ -101,7 +102,7 @@ export default function ForumPage() {
   const navigate = useNavigate();
   const { t } = useTranslation('forum');
   const { current: lang } = useAppLanguage();
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, managerProfile } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,6 +238,7 @@ export default function ForumPage() {
     <ForumLayout>
       <div className="space-y-6">
         <ForumIntroTour enabled={!loading} hasCategories={!categorySlug && categories.length > 0} hasNewTopicButton={!!profile} />
+        <ForumManagerIntroTour enabled={!loading && !!managerProfile} hasCategories={!categorySlug && categories.length > 0} />
         {/* Header */}
         <div data-tour="forum-header" className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">

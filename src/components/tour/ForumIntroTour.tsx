@@ -1,6 +1,7 @@
 import { Joyride, CallBackProps, STATUS, Step } from 'react-joyride';
 import { useTranslation } from 'react-i18next';
 import { useLocalTour } from '@/hooks/useLocalTour';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ForumIntroTourProps {
   enabled: boolean;
@@ -12,6 +13,7 @@ interface ForumIntroTourProps {
 export function ForumIntroTour({ enabled, hasCategories, hasNewTopicButton }: ForumIntroTourProps) {
   const { t } = useTranslation('tour');
   const { shouldRun, markSeen } = useLocalTour('forum_intro');
+  const { managerProfile } = useAuth();
 
   const renderStep = (titleKey: string, bodyKey: string) => (
     <div className="text-left">
@@ -52,7 +54,8 @@ export function ForumIntroTour({ enabled, hasCategories, hasNewTopicButton }: Fo
     }
   };
 
-  if (!enabled || !shouldRun || steps.length === 0) return null;
+  // Player tour: don't run when a manager profile is active — managers see ForumManagerIntroTour instead.
+  if (!enabled || !shouldRun || steps.length === 0 || !!managerProfile) return null;
 
   return (
     <Joyride
