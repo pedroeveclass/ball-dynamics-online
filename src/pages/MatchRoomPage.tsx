@@ -1379,15 +1379,11 @@ export default function MatchRoomPage() {
   }, [playerAttrsMap, match?.current_turn_number, match?.current_half, match?.home_club_id, activeTurn?.ball_holder_participant_id, activeTurn?.phase, activeTurn?.set_piece_type, turnActions, participants, tackleMovementPenalty]);
 
   // Apply ballSpeedFactor to a player's range based on current ball trajectory action.
-  // Outfield players get reduced range (fast ball = less time to react).
-  // GK is handled by getGkAreaMultiplier (applied earlier in computeMaxMoveRange): ×2.0 on
-  // any shot or on passes/headers into the penalty area, ×1.5 on penalty, else ×1.0.
-  // We skip ballSpeedFactor for GK so it doesn't stack on top of that bonus.
-  const applyBallSpeedFactor = useCallback((baseRange: number, participantId: string, trajectoryActionType: string | null | undefined): number => {
+  // Fast ball = less time to react. Applies to everyone, GK included — the GK already
+  // got his area-boost inside computeMaxMoveRange (×2 on shots / passes into own PA,
+  // ×1.5 on penalty), so this reduction stacks on top of that boosted base.
+  const applyBallSpeedFactor = useCallback((baseRange: number, _participantId: string, trajectoryActionType: string | null | undefined): number => {
     if (!trajectoryActionType) return baseRange;
-    const player = participantsRef.current.find(p => p.id === participantId);
-    const isGK = player?.field_pos === 'GK' || (player as any)?.slot_position === 'GK' || (player as any)?.pickup_slot_id === 'GK';
-    if (isGK) return baseRange;
     const factor =
       (trajectoryActionType === 'shoot_power' || trajectoryActionType === 'header_power') ? 0.25 :
       (trajectoryActionType === 'shoot_controlled' || trajectoryActionType === 'header_controlled') ? 0.35 :
@@ -2979,22 +2975,19 @@ export default function MatchRoomPage() {
           // findInterceptorCandidates calls computeMaxMoveRange without targetDirection,
           // so applying inertia here would make the client stricter than the server.
           const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          const clickIsGK = drawingParticipant.field_pos === 'GK' || drawingParticipant.slot_position === 'GK' || drawingParticipant.pickup_slot_id === 'GK';
-          const clickActionType = ballPathAction.action_type;
-          const clickIsShot = clickActionType === 'shoot_controlled' || clickActionType === 'shoot_power' || clickActionType === 'header_controlled' || clickActionType === 'header_power';
-          // For GK-on-shot: pass action type 'move' (ballSpeedFactor=1) so range isn't shrunk.
-          const effectiveActionType = (clickIsGK && clickIsShot) ? 'move' : clickActionType;
 
           // Physical reach: defender start → projection point within t × range × factor.
           // Tolerance 0.5 matches the engine's TIMING_TOLERANCE — see match-engine-lab/index.ts
           // (was 1.5; trimmed so the purple circle never lies about what the server will accept).
+          // GK has no special bypass anymore: ballSpeedFactor applies to everyone, the GK's
+          // area-boost is already baked into baseRange.
           const reachesTrajPoint = canReachTrajectoryPoint(
             { x: drawingParticipant.field_x, y: drawingParticipant.field_y },
             { x: bfx, y: bfy },
             { x: btx, y: bty },
             _t,
             baseRange,
-            effectiveActionType,
+            ballPathAction.action_type,
             0.5,
           );
 
@@ -5079,14 +5072,12 @@ export default function MatchRoomPage() {
     if (distToTraj > 1.0) return;
 
     const baseRange = computeMaxMoveRange(participantId);
-    const isGK = player.field_pos === 'GK' || player.slot_position === 'GK' || player.pickup_slot_id === 'GK';
-    // GK skips ballSpeedFactor reduction (see applyBallSpeedFactor): force action type to
-    // 'move' so canReachTrajectoryPoint uses a factor of 1.0 for the GK.
-    const effectiveActionType = isGK ? 'move' : bta.action_type;
+    // ballSpeedFactor applies to everyone, GK included. GK's area-boost is already
+    // baked into baseRange via computeMaxMoveRange/getGkAreaMultiplier.
     const reaches = canReachTrajectoryPoint(
       { x: player.field_x, y: player.field_y },
       { x: bfx, y: bfy }, { x: btx, y: bty },
-      t, baseRange, effectiveActionType, 0.5,
+      t, baseRange, bta.action_type, 0.5,
     );
     if (!reaches) return;
 
@@ -5840,9 +5831,8 @@ export default function MatchRoomPage() {
                     // option at all.
                     const actionType = effectiveBallTrajectoryAction.action_type;
                     const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-                    const drawingIsGK = drawingFrom.field_pos === 'GK' || drawingFrom.slot_position === 'GK' || drawingFrom.pickup_slot_id === 'GK';
-                    const isShot = actionType === 'shoot_controlled' || actionType === 'shoot_power' || actionType === 'header_controlled' || actionType === 'header_power';
-                    const effectiveActionType = (drawingIsGK && isShot) ? 'move' : actionType;
+                    // ballSpeedFactor applies to everyone, GK included. The GK already
+                    // received his area-boost inside computeMaxMoveRange.
                     const playerPos = { x: drawingFrom.field_x!, y: drawingFrom.field_y! };
                     const ballStart = { x: bfx, y: bfy };
                     const ballEnd = { x: btx, y: bty };
@@ -5860,14 +5850,14 @@ export default function MatchRoomPage() {
                     for (let i = 0; i <= 20; i++) {
                       const t = i / 20;
                       if (isRedZoneAt(t)) continue;
-                      if (canReachTrajectoryPoint(playerPos, ballStart, ballEnd, t, baseRange, effectiveActionType, 0.5)) {
+                      if (canReachTrajectoryPoint(playerPos, ballStart, ballEnd, t, baseRange, actionType, 0.5)) {
                         foundReachable = true;
                         break;
                       }
                     }
                     canReachBall = foundReachable;
                     if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
-                      console.log('[REACH][render]', { baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(effectiveActionType), purple: canReachBall, cursorIndependent: true });
+                      console.log('[REACH][render]', { baseRange: baseRange.toFixed(1), factor: getBallSpeedFactor(actionType), purple: canReachBall, cursorIndependent: true });
                     }
                   } else {
                     // Stationary ball holder — if within reach, can tackle

@@ -4538,18 +4538,17 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
             null, // resolveAction processes live ball trajectory; no loose-ball position yet
           );
           if (gkAreaMult !== 1.0) maxRange *= gkAreaMult;
-          // GK uses full range on shots, everyone else gets ballSpeed reduction
-          const isInterceptorGK = isGKPosition(interceptor._slot_position || interceptor.primary_position || '');
-          const isShot = bhActionType === 'shoot_controlled' || bhActionType === 'shoot_power' || bhActionType === 'header_controlled' || bhActionType === 'header_power';
-          const useFullRange = isInterceptorGK && isShot;
-          const adjustedMaxRange = useFullRange ? maxRange : maxRange * ballSpeedFactor;
+          // ballSpeedFactor applies to everyone, GK included. The GK still keeps
+          // his area-boost from getGkAreaMultiplier (×2 on shots / passes into own PA,
+          // ×1.5 on penalty); a fast ball just gives less time to react.
+          const adjustedMaxRange = maxRange * ballSpeedFactor;
           const posX = Number(interceptor.pos_x ?? 50);
           const posY = Number(interceptor.pos_y ?? 50);
           const distToIntercept = getMovementDistance(posX - cx, posY - cy);
           candidateMoveRatio = adjustedMaxRange > 0 ? Math.min(1, distToIntercept / adjustedMaxRange) : 0;
           // Range check: can the player physically reach the intercept point?
           if (distToIntercept > adjustedMaxRange) {
-            if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor}${isInterceptorGK ? ' GK_FULL_RANGE' : ''})`);
+            if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected: player ${interceptor.id} distToIntercept=${distToIntercept.toFixed(1)} > adjustedMaxRange=${adjustedMaxRange.toFixed(1)} (ballSpeed=${ballSpeedFactor})`);
             if (isHumanInitiated) {
               unreachable.push({
                 participantId: a.participant_id,
