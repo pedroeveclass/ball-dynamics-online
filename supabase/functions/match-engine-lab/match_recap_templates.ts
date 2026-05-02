@@ -1,7 +1,8 @@
-// Match Recap narrative system (Deno).
-// Templates + classifier + fact extractor + persister, all callable from
-// the engine's final_whistle handler. Deno can't read src/i18n JSONs, so
-// the PT/EN strings live inline here.
+// Match Recap narrative system v2 (Deno).
+// 3-paragraph structure: §1 (match overview by bucket) + §2 (individual
+// highlight: hat-trick, gk hero, dribble play, etc.) + §3 (table
+// implication: leader, top4, relegation, top scorer change). Picks one
+// template from each bucket and joins with a blank line.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -18,475 +19,341 @@ export type MatchRecapBucket =
   | 'draw_goalfest'
   | 'draw_low';
 
+type Par2Type =
+  | 'hat_trick'
+  | 'red_card_drama'
+  | 'gk_hero'
+  | 'dribble_play'
+  | 'top_scorer_brace'
+  | 'shot_machine'
+  | 'tackle_master'
+  | 'generic';
+
+type Par3Type =
+  | 'leader'
+  | 'top4'
+  | 'relegation'
+  | 'midtable'
+  | 'new_top_scorer'
+  | 'draw_neutral';
+
 export interface MatchRecapFacts {
+  // Basic
   homeName: string;
   awayName: string;
   homeGoals: number;
   awayGoals: number;
+  homeClubId: string;
+  awayClubId: string;
   stadium: string | null;
   round: number | null;
-  topScorerName: string | null;
-  topScorerGoals: number;
+
+  // Special bucket triggers
+  hasComeback: boolean;
+  decisivePenaltyScorer: string | null;
   lateScorerName: string | null;
   lateMinute: number | null;
   redCardPlayerName: string | null;
-  redCardLoserSide: boolean; // true = the red went to the losing side (decisive)
-  hasComeback: boolean;
-  decisivePenaltyScorer: string | null;
+  redCardLoserSide: boolean;
+
+  // Individual highlights
+  hatTrickPlayer: string | null;
+  hatTrickGoals: number;
+  matchTopScorerName: string | null;
+  matchTopScorerGoals: number;
+  gkHeroName: string | null;
+  gkHeroSaves: number;
+  dribblePlayPlayer: string | null;
+  dribblePlayCount: number;
+  shotMachineName: string | null;
+  shotMachineCount: number;
+  tackleMasterName: string | null;
+  tackleMasterCount: number;
+  yellowCardCount: number;
+
+  // Standings (after match)
+  numClubsInLeague: number;
+  leaderClubName: string | null;
+  isWinnerLeader: boolean;
+  winnerStandingPos: number | null;
+  winnerPoints: number;
+  loserStandingPos: number | null;
+  loserPoints: number;
+  homeStandingPos: number | null;
+  homePoints: number;
+  awayStandingPos: number | null;
+  awayPoints: number;
+
+  // Season top scorer
+  seasonTopScorerName: string | null;
+  seasonTopScorerGoals: number;
 }
 
-// ── PT templates: 20 per bucket ──
-const TEMPLATES_PT: Record<MatchRecapBucket, string[]> = {
+// ── PT §1 templates (one per bucket × 3) ──
+const PAR1_PT: Record<MatchRecapBucket, string[]> = {
   red_card_decided: [
-    "{loser} ficou com um a menos cedo após expulsão de {red_card_player} e perdeu para {winner} por {winner_goals} a {loser_goals}. Os mandantes administraram a vantagem numérica e levaram os três pontos sem grandes sustos.",
-    "Com {red_card_player} expulso ainda no primeiro tempo, {loser} viu {winner} controlar o jogo e fechar em {winner_goals}-{loser_goals}. A diferença numérica fez o estrago.",
-    "{winner} aproveitou a expulsão de {red_card_player} e bateu {loser} por {winner_goals} a {loser_goals}. Foi um daqueles jogos em que o cartão vermelho mudou o roteiro.",
-    "Vermelho de {red_card_player} mudou o jogo: {winner} venceu {loser} por {winner_goals}-{loser_goals} explorando o espaço deixado pelo adversário.",
-    "Após a expulsão de {red_card_player}, {loser} não conseguiu reagir e {winner} confirmou {winner_goals} a {loser_goals} sem dificuldade.",
-    "Jogo decidido cedo no cartão: {red_card_player} foi pra rua, {winner} cresceu e venceu {loser} por {winner_goals}-{loser_goals}.",
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo marcado pela expulsão de {red_card_player}, que deixou o time desfalcado pelo restante da partida.",
-    "Os 11 contra 10 fizeram diferença: {winner} bateu {loser} por {winner_goals}-{loser_goals} depois que {red_card_player} foi expulso e os mandantes pegaram o ritmo.",
-    "Com um a mais desde a expulsão de {red_card_player}, {winner} cuidou do jogo e venceu {loser} por {winner_goals} a {loser_goals}.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: a noite ficou marcada pelo cartão vermelho de {red_card_player}, virada definitiva no roteiro do jogo.",
-    "{loser} reclamou, mas a expulsão de {red_card_player} foi decisiva. {winner} venceu por {winner_goals}-{loser_goals} e levou os pontos pra casa.",
-    "Vermelho de {red_card_player} desorganizou {loser}, e {winner} aproveitou pra fechar em {winner_goals} a {loser_goals}. Vitória sem mistério depois disso.",
-    "Cartão vermelho cedo, decisão tarde: {winner} venceu {loser} por {winner_goals}-{loser_goals} explorando o homem a mais que veio com a expulsão de {red_card_player}.",
-    "{winner} {winner_goals}-{loser_goals} {loser}, com {red_card_player} expulso ainda na primeira etapa. A inferioridade numérica custou caro pros visitantes.",
-    "A expulsão de {red_card_player} foi o ponto de virada: {winner} cresceu na partida e venceu {loser} por {winner_goals} a {loser_goals}.",
-    "Não tem o que discutir: o vermelho de {red_card_player} mudou o jogo. {winner} venceu {loser} por {winner_goals}-{loser_goals} aproveitando o desfalque.",
-    "{winner} bateu {loser} por {winner_goals} a {loser_goals} numa partida que o cartão vermelho de {red_card_player} desequilibrou cedo.",
-    "Com a saída forçada de {red_card_player}, {loser} encolheu, e {winner} fez {winner_goals}-{loser_goals} sem cerimônia.",
-    "Mais um daqueles em que o cartão fala mais que o futebol: {red_card_player} foi expulso, {winner} cresceu e fechou em {winner_goals} a {loser_goals} sobre {loser}.",
-    "Vitória de {winner} sobre {loser} por {winner_goals}-{loser_goals} carrega um asterisco — a expulsão de {red_card_player} antes do intervalo facilitou demais o trabalho dos mandantes.",
+    "{loser} ficou com um a menos cedo após expulsão de {red_card_player} e perdeu para {winner} por {winner_goals} a {loser_goals}{round_clause}. Os mandantes administraram a vantagem numérica com inteligência, controlaram a posse de bola e exploraram os espaços deixados pela equipe desfalcada. A diferença numérica fez o estrago: {loser} não conseguiu organizar saída de bola, foi pressionado constantemente e viu o jogo escorrer entre os dedos enquanto {winner} ditava o ritmo da partida {stadium_clause}.",
+    "Vermelho de {red_card_player} mudou tudo {stadium_clause}: {winner} venceu {loser} por {winner_goals}-{loser_goals}{round_clause} explorando com competência o homem a mais. A partir da expulsão, o time foi totalmente dominado, viu o adversário tomar conta do meio-campo e tentar acelerar as transições ofensivas a cada bola recuperada. Foi um daqueles jogos em que o cartão escreveu o roteiro, e a torcida adversária aproveitou cada minuto da inferioridade numérica.",
+    "{winner} {winner_goals} x {loser_goals} {loser}{round_clause}: a noite ficou marcada pela expulsão de {red_card_player}, que abriu as portas pra vitória dos mandantes. Antes do cartão, o jogo era estudado e equilibrado, mas a saída forçada do jogador desorganizou completamente a estrutura defensiva do time perdedor. {winner} aproveitou a vantagem numérica pra impor seu jogo, marcar gols decisivos e administrar o resultado até o apito final {stadium_clause}.",
   ],
   penalty_decided: [
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} com gol de pênalti decisivo de {decisive_penalty_scorer}. Não foi bonito, mas foi vitória.",
-    "{decisive_penalty_scorer} bateu firme da marca da cal e garantiu {winner_goals}-{loser_goals} pra {winner} contra {loser}. Pênalti que valeu três pontos.",
-    "Pênalti convertido por {decisive_penalty_scorer} decidiu: {winner} {winner_goals} x {loser_goals} {loser} num jogo equilibrado decidido na bola parada.",
-    "Foi na cal: {decisive_penalty_scorer} bateu, {winner} venceu {loser} por {winner_goals}-{loser_goals}, e os pontos voaram pra quem encarou a pressão melhor.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: a partida foi decidida em pênalti convertido por {decisive_penalty_scorer}, e o herói da noite virou ele.",
-    "Pênalti decisivo, frieza no apito: {decisive_penalty_scorer} bateu pra valer e {winner} fechou em {winner_goals}-{loser_goals} sobre {loser}.",
-    "Faltou pouco pra {loser} resistir, mas {decisive_penalty_scorer} cobrou o pênalti com classe e {winner} venceu por {winner_goals}-{loser_goals}.",
-    "Bola na cal, jogo decidido: {decisive_penalty_scorer} converteu o pênalti que valeu {winner_goals}-{loser_goals} pra {winner} sobre {loser}.",
-    "{decisive_penalty_scorer} pegou a bola, encarou o goleiro e bateu firme. Resultado: {winner} {winner_goals} x {loser_goals} {loser}.",
-    "Pênalti que mudou o roteiro: {decisive_penalty_scorer} converteu, e {winner} bateu {loser} por {winner_goals}-{loser_goals} numa noite tensa.",
-    "Sem espaço pra erro, {decisive_penalty_scorer} bateu o pênalti com a frieza necessária. {winner} venceu {loser} por {winner_goals}-{loser_goals}.",
-    "{winner} confirmou vitória sobre {loser} por {winner_goals}-{loser_goals} num pênalti convertido por {decisive_penalty_scorer} que vai entrar pra história da partida.",
-    "Bola parada, pulso firme: {decisive_penalty_scorer} bateu o pênalti que valeu três pontos pra {winner} sobre {loser} ({winner_goals}-{loser_goals}).",
-    "Não tinha como zerar o jogo sem antes passar pela bola da cal: {decisive_penalty_scorer} converteu o pênalti que decidiu {winner_goals}-{loser_goals} pra {winner}.",
-    "Pênalti, gol, festa: {decisive_penalty_scorer} bateu, {winner} venceu {loser} por {winner_goals}-{loser_goals} num jogo que parecia indefinido até a bola parada.",
-    "{winner} {winner_goals} x {loser_goals} {loser} num jogo que precisou da bola da cal pra desempatar — {decisive_penalty_scorer} bateu, e o resto foi comemoração.",
-    "Pelo apito o jogo seguiria zerado por mais alguns minutos, mas {decisive_penalty_scorer} cobrou o pênalti, balançou as redes e fechou {winner} {winner_goals} x {loser_goals} {loser}.",
-    "{decisive_penalty_scorer} carregou a responsabilidade da cobrança e devolveu em forma de gol. {winner} venceu {loser} por {winner_goals}-{loser_goals}.",
-    "Pênalti decisivo: {decisive_penalty_scorer} bateu, {winner} cresceu, {loser} pagou. Resultado final {winner_goals}-{loser_goals}.",
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo decidido na cal — {decisive_penalty_scorer} converteu o pênalti que valeu o resultado.",
+    "{winner} venceu {loser} por {winner_goals} a {loser_goals}{round_clause} num jogo decidido na bola parada — {decisive_penalty_scorer} bateu firme da marca da cal e converteu o pênalti que valeu três pontos. A partida foi equilibrada do começo ao fim, com defesas atentas e ataques travados {stadium_clause}, e a única bola que entrou veio em uma cobrança preparada e executada com a frieza necessária no momento mais tenso. Não foi bonita, mas foi vitória.",
+    "Pênalti convertido por {decisive_penalty_scorer} fez a diferença: {winner} bateu {loser} por {winner_goals}-{loser_goals}{round_clause} numa partida que estava aberta até a chance da bola da cal. Os times trocavam golpes no meio-campo sem grandes finalizações claras, e quando finalmente surgiu a oportunidade, o batedor cumpriu seu papel com classe. Vitória apertada mas extremamente importante pra equipe vencedora, que sai {stadium_clause} com um resultado precioso.",
+    "Decisão na cal: {winner} venceu {loser} por {winner_goals} a {loser_goals}{round_clause} com gol de pênalti convertido por {decisive_penalty_scorer}. Era um jogo de poucas chances, com defesas se sobressaindo aos ataques e cada finalização sendo motivo de comemoração antecipada. Quando o pênalti foi marcado, todo mundo no estádio segurou a respiração — e o batedor não decepcionou. Três pontos importantíssimos pra {winner} numa noite tensa {stadium_clause}.",
   ],
   comeback: [
-    "Virada épica {stadium_clause}: {winner} estava perdendo, mas reagiu e bateu {loser} por {winner_goals} a {loser_goals}. Time que não desistiu.",
-    "{loser} chegou a abrir vantagem, mas {winner} virou o jogo e fechou em {winner_goals}-{loser_goals}. Reação que vale mais do que vitória normal.",
-    "Estava difícil, virou rotina: {winner} reverteu o placar contra {loser} e venceu por {winner_goals}-{loser_goals} numa partida pra entrar pra galeria das viradas.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: virada de jogo construída no segundo tempo, com {top_scorer} no comando da reação.",
-    "Estava pegando, mas {winner} ressuscitou no segundo tempo e virou pra {winner_goals}-{loser_goals} contra {loser}. {top_scorer} foi o nome da virada.",
-    "{loser} comemorou cedo demais. {winner} achou o caminho de volta e fechou em {winner_goals} a {loser_goals} numa virada que valeu mais que três pontos.",
-    "Tinha tudo pra {loser} sair com a vitória, mas {winner} virou no segundo tempo e bateu por {winner_goals}-{loser_goals}. Caráter no estilo bruto.",
-    "Virada por mérito: {winner} buscou o resultado contra {loser} e fechou em {winner_goals}-{loser_goals} depois de sair atrás do placar.",
-    "Não foi fácil pra {winner}, que viu {loser} abrir o placar. Mas a reação veio, {top_scorer} apareceu, e fechou {winner_goals}-{loser_goals}.",
-    "{winner} foi pra cima, virou o jogo, e venceu {loser} por {winner_goals} a {loser_goals}. Atuação de quem entendeu que não dava pra perder mais essa.",
-    "Saiu atrás, virou na raça: {winner} reverteu o placar contra {loser} e venceu {winner_goals}-{loser_goals} numa partida que ganhou cores no segundo tempo.",
-    "Quando parecia que {loser} ia administrar a vantagem, {winner} entrou em estado de jogo e virou pra {winner_goals}-{loser_goals}. Vitória de orgulho.",
-    "{winner} {winner_goals} x {loser_goals} {loser}, vitória construída no avesso — saiu atrás, deu trabalho, e fechou com mais um do que o adversário.",
-    "Virada nervosa: {winner} sofreu pra reverter o placar, mas conseguiu, e bateu {loser} por {winner_goals}-{loser_goals} no apagar das luzes.",
-    "{loser} jogou bem por um tempo, mas {winner} cresceu, virou e fechou em {winner_goals} a {loser_goals} numa daquelas viradas que ficam pra história.",
-    "Estava perdendo, virou {winner_goals}-{loser_goals}: {winner} mostrou que tem coração e bateu {loser} numa noite memorável.",
-    "Reação de orgulho: {winner} virou contra {loser} e venceu por {winner_goals}-{loser_goals} num jogo que parecia perdido aos 30 do primeiro tempo.",
-    "Virada com sabor especial: {winner} achou um jeito, jogou pra valer no segundo tempo, e fechou em {winner_goals}-{loser_goals} contra {loser}.",
-    "Quem viu o primeiro tempo achou que {loser} ia ganhar fácil. Quem viu o segundo viu {winner} virar o roteiro e fechar em {winner_goals}-{loser_goals}.",
-    "Saiu atrás e ainda virou: {winner} bateu {loser} por {winner_goals}-{loser_goals} numa virada construída no fôlego dos minutos finais.",
+    "Virada épica {stadium_clause}: {winner} estava perdendo, mas reagiu e bateu {loser} por {winner_goals} a {loser_goals}{round_clause} numa partida pra entrar na galeria das viradas memoráveis. {loser} chegou a abrir vantagem ainda no primeiro tempo e parecia caminhar tranquilamente pra vitória, até que {winner} resolveu mudar o roteiro com pressão alta, troca de passes mais rápida e finalizações precisas. Time que não desistiu, jogo que não acabou até o último apito.",
+    "{winner} {winner_goals} x {loser_goals} {loser}{round_clause}: virada construída na raça depois de sair atrás do placar. {loser} comemorou cedo demais a vantagem inicial e viu o adversário crescer minuto a minuto, recuperar bolas no meio-campo e impor um ritmo que não conseguiu acompanhar. Foi um segundo tempo dominado pelos vencedores, com torcida em estado de delírio a cada gol marcado {stadium_clause}. Reação que vale ainda mais do que três pontos.",
+    "Caráter no estilo bruto: {winner} virou o placar contra {loser} e venceu por {winner_goals}-{loser_goals}{round_clause}. O time vencedor, que viu o adversário abrir o placar e administrar a vantagem por boa parte do jogo, encontrou forças no fôlego dos minutos finais pra reverter o roteiro. Cada bola disputada virava uma trincheira de orgulho, e a torcida {stadium_clause} respondeu à altura. Vitória de quem entendeu que não dava pra perder mais essa.",
   ],
   late_winner: [
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} com gol salvador de {late_scorer} aos {late_minute}'. Faltavam minutos pro fim, e veio o gol que decidiu.",
-    "Aos {late_minute}', {late_scorer} balançou as redes e definiu {winner_goals}-{loser_goals} pra {winner} sobre {loser}. Sufoco até o último lance.",
-    "{late_scorer} marcou o gol da vitória aos {late_minute}', e {winner} venceu {loser} por {winner_goals} a {loser_goals} num final de partida tenso.",
-    "No apagar das luzes: {late_scorer} fez o gol decisivo aos {late_minute}', e {winner} bateu {loser} por {winner_goals}-{loser_goals}.",
-    "{winner} {winner_goals} x {loser_goals} {loser} no fôlego final — {late_scorer} apareceu aos {late_minute}' pra resolver.",
-    "Empate parecia certo até {late_scorer} balançar as redes aos {late_minute}'. {winner} venceu {loser} por {winner_goals}-{loser_goals} no susto.",
-    "Final dramático: {late_scorer} fez o gol da vitória aos {late_minute}', {winner} bateu {loser} por {winner_goals}-{loser_goals} e o estádio quase veio abaixo.",
-    "Quando todo mundo já contava com empate, {late_scorer} balançou as redes aos {late_minute}'. {winner} {winner_goals} x {loser_goals} {loser} no apagar das luzes.",
-    "{late_scorer} brilhou nos minutos finais: gol aos {late_minute}', vitória de {winner} sobre {loser} por {winner_goals}-{loser_goals}, e três pontos preciosos.",
-    "Faltava muito pouco pro apito final quando {late_scorer} balançou as redes aos {late_minute}'. {winner} venceu {loser} por {winner_goals}-{loser_goals}.",
-    "Tudo indicava empate, mas {late_scorer} apareceu aos {late_minute}' pra fazer o gol da vitória. {winner} {winner_goals} x {loser_goals} {loser} no susto.",
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} com gol de {late_scorer} aos {late_minute}'. Vitória de quem insistiu até o fim.",
-    "Aos {late_minute}' o jogo ainda estava aberto, mas {late_scorer} resolveu. {winner} {winner_goals} x {loser_goals} {loser} no último suspiro.",
-    "Coração na mão: {late_scorer} fez aos {late_minute}', {winner} venceu {loser} por {winner_goals}-{loser_goals}, e o time saiu de campo aos pulos.",
-    "Gol nos acréscimos da vida: {late_scorer} marcou aos {late_minute}', {winner} bateu {loser} por {winner_goals}-{loser_goals}, e três pontos vieram no susto.",
-    "Não tinha mais tempo, mas tinha {late_scorer}: gol aos {late_minute}', vitória de {winner} sobre {loser} por {winner_goals}-{loser_goals}.",
-    "Vitória nos minutos finais: {late_scorer} balançou as redes aos {late_minute}', e {winner} bateu {loser} por {winner_goals} a {loser_goals}.",
-    "{late_scorer} foi o herói da noite — gol aos {late_minute}', {winner} venceu {loser} por {winner_goals}-{loser_goals} num final de jogo eletrizante.",
-    "Faltava pouco, mas chegou: {late_scorer} marcou aos {late_minute}', {winner} fechou em {winner_goals}-{loser_goals} contra {loser}.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: gol salvador de {late_scorer} aos {late_minute}' fez a torcida explodir nos minutos finais.",
+    "{winner} venceu {loser} por {winner_goals} a {loser_goals}{round_clause} num final dramático {stadium_clause} — {late_scorer} balançou as redes aos {late_minute}' e fez a torcida explodir nos minutos finais. Até aquele momento, tudo indicava empate, com defesas vencendo a maioria dos lances e ataques travados pelos sistemas defensivos bem organizados. Mas, quando todos já contavam com a divisão de pontos, surgiu o gol salvador que decidiu a partida no último suspiro.",
+    "Aos {late_minute}', {late_scorer} marcou o gol da vitória que valeu três pontos pra {winner}. {winner} {winner_goals} x {loser_goals} {loser}{round_clause}, num jogo que foi se arrastando até a explosão final {stadium_clause}. As duas equipes pareciam aceitar o empate, com poucas chances reais de gol durante todo o segundo tempo, até que numa última jogada o atacante apareceu pra fazer a diferença. Vitória de quem insistiu até o último lance.",
+    "Final eletrizante {stadium_clause}: {late_scorer} fez aos {late_minute}' o gol que decidiu a partida, e {winner} venceu {loser} por {winner_goals}-{loser_goals}{round_clause} no apagar das luzes. O jogo estava aberto, com momentos de pressão pros dois lados, mas sem aquela jogada definitiva que mudasse o placar. Coube ao herói da noite resolver com uma finalização salvadora nos minutos finais, num daqueles gols que ficam guardados na memória da torcida vencedora por muito tempo.",
   ],
   rout: [
-    "Goleada sem mistério: {winner} atropelou {loser} por {winner_goals} a {loser_goals}. {top_scorer} foi o destaque.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: time mandante deu show e fechou em ritmo de treino.",
-    "Show de bola e baile completo: {winner} bateu {loser} por {winner_goals}-{loser_goals} numa atuação de gala.",
-    "{winner} não deu chance: {winner_goals}-{loser_goals} sobre {loser}, com {top_scorer} carregando o ataque.",
-    "Goleada categórica: {winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo decidido ainda no primeiro tempo.",
-    "Atropelamento {stadium_clause}: {winner} {winner_goals} x {loser_goals} {loser}, num daqueles jogos em que a torcida pode comemorar tranquila.",
-    "{loser} não teve resposta: {winner} venceu por {winner_goals}-{loser_goals}, com {top_scorer} se destacando.",
-    "Sem freio: {winner} bateu {loser} por {winner_goals} a {loser_goals}. Foi goleada construída com paciência e finalização.",
-    "{winner} fez 'show' contra {loser} e fechou em {winner_goals}-{loser_goals}. Resultado elástico que reflete a superioridade dentro de campo.",
-    "Goleada que entra pra história: {winner} bateu {loser} por {winner_goals} a {loser_goals} numa atuação coletiva acima da média.",
-    "Não teve jogo: {winner} controlou tudo e venceu {loser} por {winner_goals}-{loser_goals}. {top_scorer} brilhou.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: o placar elástico mostra como o jogo foi de mão única do começo ao fim.",
-    "Tinha tudo pra ser duro, mas {winner} resolveu cedo: {winner_goals}-{loser_goals} sobre {loser}, jogo decidido antes do intervalo.",
-    "Baile em campo: {winner} venceu {loser} por {winner_goals} a {loser_goals} jogando bonito e finalizando com eficiência.",
-    "{winner} cresceu, {loser} caiu: goleada de {winner_goals}-{loser_goals} num jogo unilateral do começo ao fim.",
-    "Show, baile, festa: {winner} bateu {loser} por {winner_goals} a {loser_goals} numa noite especial pros mandantes.",
-    "{winner} jogou no estilo, {loser} sofreu — placar de {winner_goals}-{loser_goals} reflete o domínio em campo.",
-    "Goleada de marca maior: {winner} venceu {loser} por {winner_goals} a {loser_goals}. {top_scorer} ficou marcado pelos gols.",
-    "Não dava pra {loser} resistir: {winner} controlou, marcou várias vezes e fechou {winner_goals}-{loser_goals}.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: a goleada saiu por mérito — domínio total, gol em todas as situações, e adversário sem resposta.",
+    "Não teve história {stadium_clause}: {winner} atropelou {loser} por {winner_goals} a {loser_goals}{round_clause} num jogo de mão única do começo ao fim. Os mandantes abriram o placar cedo, controlaram totalmente o ritmo da partida e mantiveram a pressão até o apito final, sem dar chances reais ao adversário. O domínio absoluto se traduziu em finalizações em sequência e numa exibição de futebol que justifica plenamente o resultado elástico.",
+    "{winner} {winner_goals} x {loser_goals} {loser}{round_clause}: goleada construída com paciência, qualidade técnica e finalização clínica {stadium_clause}. {loser} não conseguiu sair do próprio campo nos primeiros 30 minutos, e quando finalmente cruzou o meio-campo, já estava com o placar sangrando. Foi um jogo que mostrou claramente quem estava mais bem preparado, e os números na placa só reforçam essa diferença gritante na noite.",
+    "Atropelamento total {stadium_clause}: {winner} bateu {loser} por {winner_goals} a {loser_goals}{round_clause} numa noite em que o time mandante simplesmente não deu chance pro adversário respirar. Pressão alta, transições rápidas, finalização precisa — um coquetel ofensivo que a defesa visitante não conseguiu desarmar em momento algum. Quando soou o apito final, a sensação era de que o placar poderia ter sido ainda maior, e a torcida saiu de campo aplaudindo de pé.",
   ],
   jogao: [
-    "Que jogão! {home} {home_goals} x {away_goals} {away} numa partida pra entrar pra história, com gols rolando dos dois lados.",
-    "{home} e {away} fizeram um jogaço {stadium_clause}: {home_goals}-{away_goals}, vitória de {winner} numa noite de muitos gols.",
-    "Jogo bonito de assistir: {winner} venceu {loser} por {winner_goals} a {loser_goals} num roteiro que prendeu a torcida do início ao fim.",
-    "Que partida! {home} {home_goals} x {away_goals} {away}, com {winner} levando os pontos no que pareceu mais espetáculo do que jogo.",
-    "Jogaço {stadium_clause}: {winner_goals}-{loser_goals} pra {winner}, num confronto recheado de gols e emoção.",
-    "Jogo de fogo: {home} e {away} se enfrentaram com tudo, e o placar de {home_goals}-{away_goals} pra {winner} mostra o que foi dentro de campo.",
-    "Quem viu não esquece: {winner} bateu {loser} por {winner_goals} a {loser_goals} numa partida frenética com gols dos dois lados.",
-    "Que partidão! {winner} venceu {loser} por {winner_goals}-{loser_goals} num jogo de muitos gols e pouca defesa.",
-    "{home} {home_goals} x {away_goals} {away}: jogão de respeito, com gols, polêmicas e final tenso até o apito.",
-    "Espetáculo em campo: {winner} levou {winner_goals}-{loser_goals} sobre {loser} numa partida pra entrar pra galeria das melhores.",
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} num jogaço de domingo: gols, emoção e torcida em pé do início ao fim.",
-    "Não dava pra piscar: {home} {home_goals} x {away_goals} {away} num jogo que teve de tudo — gols, viradas, polêmicas, festa.",
-    "Partida pra ficar marcada: {winner} bateu {loser} por {winner_goals}-{loser_goals} num confronto que mereceu cada minuto da torcida.",
-    "Jogão de bola: {winner_goals}-{loser_goals} pra {winner} sobre {loser}, com {top_scorer} se destacando entre os gols marcados.",
-    "Que noite! {home} e {away} botaram tudo em campo, e o resultado foi {home_goals}-{away_goals} pra {winner}, num jogo digno de mata-mata.",
-    "Festa do gol: {winner} venceu {loser} por {winner_goals} a {loser_goals} num daqueles jogos que rendem horas de comentário depois.",
-    "Pra quem gosta de gol, foi prato cheio: {home} {home_goals} x {away_goals} {away}, com {winner} saindo de campo na vitória.",
-    "Jogão sem freio: {winner} bateu {loser} por {winner_goals}-{loser_goals} num confronto onde o ataque mandou e a defesa só observou.",
-    "Que partida o {home} e o {away} fizeram {stadium_clause}! {home_goals}-{away_goals}, com {winner} confirmando vitória num jogo de muitos gols.",
-    "{home} {home_goals} x {away_goals} {away}: jogão de muitos gols, emoção até o último minuto, e {winner} se segurando pra sair com os três pontos.",
+    "Que partida {stadium_clause}! {home} {home_goals} x {away_goals} {away}{round_clause} num jogão pra entrar pra história, com gols rolando dos dois lados e emoção até o último minuto. As defesas pareciam inexistentes, os ataques entraram em estado de graça, e cada vez que a bola cruzava o meio-campo era ameaça concreta de gol. Vitória de {winner} num confronto que mereceu cada minuto de atenção da torcida e que vai render conversa por dias.",
+    "{home} e {away} fizeram um jogaço {stadium_clause}: {home_goals}-{away_goals}{round_clause}, vitória de {winner} numa noite recheada de gols e emoção. As duas equipes entraram em campo dispostas a atacar, e o resultado foi um espetáculo aberto, com chances claras pros dois lados, finalizações em sequência e um clima de mata-mata mesmo numa partida de pontos corridos. Quem viu não esquece — o tipo de jogo que aproxima a torcida do espetáculo.",
+    "Espetáculo {stadium_clause}: {winner} venceu {loser} por {winner_goals}-{loser_goals}{round_clause} num jogão recheado de emoção do início ao fim. Os times entraram com tudo, abriram o jogo desde os primeiros minutos, e o resultado foi uma partida de muitos gols, polêmicas e final tenso até o apito. Vitória de {winner} que terá lugar de destaque entre as melhores partidas da rodada — daquelas que rendem horas de comentário e ficam marcadas no calendário.",
   ],
   comfortable_win: [
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo controlado {stadium_clause}. Vantagem construída cedo, fim sem sustos.",
-    "Vitória sem maiores problemas: {winner} bateu {loser} por {winner_goals}-{loser_goals}, jogando dentro do que se esperava.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: triunfo confortável, com a vantagem encaminhada antes do segundo tempo começar.",
-    "Triunfo tranquilo de {winner} sobre {loser}: {winner_goals}-{loser_goals}, com {top_scorer} no comando do ataque.",
-    "{winner} cuidou do jogo e venceu {loser} por {winner_goals}-{loser_goals} sem grandes percalços.",
-    "Vitória sólida: {winner} bateu {loser} por {winner_goals} a {loser_goals} num jogo bem controlado dos mandantes.",
-    "Sem sufoco: {winner} venceu {loser} por {winner_goals}-{loser_goals}, com domínio claro do começo ao fim.",
-    "{winner} mostrou o porquê de ser favorito: {winner_goals}-{loser_goals} sobre {loser}, e jogo encaminhado cedo.",
-    "Triunfo merecido: {winner} bateu {loser} por {winner_goals} a {loser_goals} num jogo que ficou de mão única depois do segundo gol.",
-    "{winner} venceu {loser} por {winner_goals}-{loser_goals} numa partida sem grandes emoções, mas com superioridade clara dos mandantes.",
-    "Vantagem construída e mantida: {winner} {winner_goals} x {loser_goals} {loser}, vitória sem mistério {stadium_clause}.",
-    "{winner} fez o trabalho: bateu {loser} por {winner_goals}-{loser_goals} e segurou a vantagem do jeito que se espera de quem joga em casa.",
-    "Sem espaço pra surpresas: {winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo encaminhado já no primeiro tempo.",
-    "{winner} jogou no ritmo necessário e venceu {loser} por {winner_goals}-{loser_goals}. Triunfo competente, sem brilho excessivo.",
-    "Triunfo confortável: {winner} bateu {loser} por {winner_goals} a {loser_goals}, com {top_scorer} botando o time na frente cedo.",
-    "{winner} mostrou superioridade e fechou em {winner_goals}-{loser_goals} sobre {loser}. Vitória dentro do esperado.",
-    "Vitória de quem é favorito: {winner} {winner_goals} x {loser_goals} {loser}, com domínio claro e poucos sustos.",
-    "{winner} venceu {loser} por {winner_goals}-{loser_goals} cuidando do jogo do início ao fim. Sem brilho excepcional, mas com eficiência.",
-    "Triunfo eficiente: {winner} bateu {loser} por {winner_goals} a {loser_goals} num jogo onde os mandantes administraram o resultado.",
-    "{winner} confirmou favoritismo: {winner_goals}-{loser_goals} sobre {loser}, partida encaminhada cedo e fim sem grandes ameaças.",
+    "{winner} venceu {loser} por {winner_goals} a {loser_goals}{round_clause} num jogo controlado de ponta a ponta {stadium_clause}. A vantagem foi construída ainda no primeiro tempo, e a partir daí os mandantes administraram o resultado com competência, valorizando a posse de bola e fechando os espaços defensivos. Sem grandes sustos no segundo tempo, foi um triunfo dentro do esperado pra equipe que entrou em campo como favorita, cumprindo seu papel sem brilho excepcional mas com eficiência.",
+    "Vitória sólida e tranquila: {winner} bateu {loser} por {winner_goals}-{loser_goals}{round_clause} num jogo bem controlado pelos mandantes {stadium_clause}. Não foi a partida mais espetacular do calendário, mas foi competente — domínio claro do começo ao fim, finalização eficiente nas chances criadas e defesa atenta nos contra-ataques adversários. Triunfo merecido que reforça o momento positivo da equipe vencedora e a coloca entre as protagonistas da temporada.",
+    "{winner} {winner_goals} x {loser_goals} {loser}{round_clause}: triunfo confortável {stadium_clause}, com a vantagem encaminhada antes mesmo do segundo tempo começar. Não havia mistério na partida — diferença técnica clara, organização tática melhor estruturada, e jogadores entrosados explorando os pontos fracos do adversário. Vitória sem brilho excepcional mas com eficiência, daquelas que constroem temporada e mostram regularidade num campeonato em que cada ponto pesa muito.",
   ],
   narrow_win: [
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo apertado decidido nos detalhes. {top_scorer} marcou o gol que valeu três pontos.",
-    "Vitória magra mas vitória: {winner} bateu {loser} por {winner_goals}-{loser_goals} num jogo de poucas chances claras.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: jogo apertado, decidido por um detalhe, mas três pontos contam igual.",
-    "Não foi bonito, mas foi vitória: {winner} venceu {loser} por {winner_goals}-{loser_goals}, com {top_scorer} sendo o nome do gol decisivo.",
-    "Triunfo curto: {winner} bateu {loser} por {winner_goals} a {loser_goals} num jogo equilibrado decidido na bola parada.",
-    "{winner} sofreu, mas venceu: {winner_goals}-{loser_goals} sobre {loser} num confronto que ficou aberto até o último minuto.",
-    "Jogo pra ataque de nervos: {winner} venceu {loser} por {winner_goals}-{loser_goals} num final de partida tenso.",
-    "Vitória sofrida: {winner} bateu {loser} por {winner_goals} a {loser_goals}, e o placar magro mostra como o jogo foi disputado.",
-    "{winner} {winner_goals} x {loser_goals} {loser}: vitória de quem aproveitou a chance que teve, num jogo pegado em todos os setores.",
-    "{winner} venceu {loser} por {winner_goals}-{loser_goals} num jogo decidido por detalhes — bola na trave, gol salvador e nervos de aço.",
-    "Apertado mas favorável: {winner} bateu {loser} por {winner_goals} a {loser_goals} num confronto equilibrado decidido no detalhe.",
-    "Não foi fácil: {winner} venceu {loser} por {winner_goals}-{loser_goals} num jogo que pediu paciência até o último apito.",
-    "Vitória magra que vale ouro: {winner} {winner_goals} x {loser_goals} {loser}, com {top_scorer} fazendo o gol decisivo.",
-    "{winner} bateu {loser} por {winner_goals} a {loser_goals} num jogo equilibrado em que cada bola dividida valia ouro.",
-    "Triunfo curto, conquistado na raça: {winner} venceu {loser} por {winner_goals}-{loser_goals} num jogo decidido nos detalhes.",
-    "{winner} venceu {loser} por {winner_goals} a {loser_goals} num jogo pegado, decidido pela qualidade do gol marcado por {top_scorer}.",
-    "Sem espaço pra erro: {winner} bateu {loser} por {winner_goals}-{loser_goals} num jogo apertado em que o gol veio cedo e foi cuidado até o fim.",
-    "Triunfo no detalhe: {winner} venceu {loser} por {winner_goals} a {loser_goals}, e o resultado pequeno mostra o equilíbrio em campo.",
-    "{winner} segurou {loser} no que pôde e venceu por {winner_goals}-{loser_goals}. Vitória magra, mas três pontos importantes.",
-    "Vitória apertada: {winner} {winner_goals} x {loser_goals} {loser}, com final de jogo eletrizante e gol salvador de {top_scorer}.",
+    "{winner} venceu {loser} por {winner_goals} a {loser_goals}{round_clause} num jogo apertado decidido nos detalhes {stadium_clause}. Foram poucas as chances claras pros dois lados, com defesas atentas e meios-campos disputados em cada bola dividida. O gol que valeu três pontos veio numa jogada bem trabalhada, e a partir dali a equipe vencedora soube administrar o resultado com inteligência, fechando os espaços e segurando a pressão final do adversário.",
+    "Triunfo curto mas valioso: {winner} bateu {loser} por {winner_goals}-{loser_goals}{round_clause} num confronto equilibrado decidido pela qualidade do gol marcado. Os times se anularam taticamente por boa parte da partida {stadium_clause}, com posse de bola dividida e finalizações escassas, e foi preciso uma jogada individual de qualidade pra desempatar. Vitória magra que soma três pontos importantes na campanha e mantém a confiança em alta pra próxima rodada.",
+    "{winner} {winner_goals} x {loser_goals} {loser}{round_clause}: vitória apertada num jogo pegado em todos os setores. Bola dividida, marcação dura, finalização escassa — uma típica partida de campeonato em que cada ponto pesa demais e os times entram preocupados em primeiro lugar não tomar gol. {winner} aproveitou a única chance que teve com clareza de finalização e garantiu o triunfo no detalhe, saindo {stadium_clause} com três pontos preciosos no bolso.",
   ],
   draw_goalfest: [
-    "Empate de muitos gols: {home} {home_goals} x {away_goals} {away}, num jogão recheado de emoção do início ao fim.",
-    "Que partida! {home} e {away} ficaram no {home_goals}-{away_goals} num jogo de muitos gols e pouca defesa.",
-    "{home} {home_goals} x {away_goals} {away}: empate festivo, com gols dos dois lados e torcida nervosa o tempo todo.",
-    "Empate de jogo aberto: {home} e {away} dividiram os pontos no {home_goals}-{away_goals} numa partida frenética.",
-    "Pra quem gosta de gol, deu pra todo mundo: {home} {home_goals} x {away_goals} {away} num confronto recheado de emoções.",
-    "Empate movimentado {stadium_clause}: {home} e {away} ficaram no {home_goals}-{away_goals} num jogo cheio de altos e baixos.",
-    "Não teve vencedor, mas teve futebol: {home} {home_goals} x {away_goals} {away} num jogo de gols, emoção e final aberto.",
-    "Empate festivo: {home} e {away} fizeram {home_goals}-{away_goals} num jogo digno de capítulo de novela.",
-    "Jogão sem vencedor: {home} {home_goals} x {away_goals} {away}, com chances dos dois lados e finalização pra ninguém botar defeito.",
-    "Empate em jogo aberto: {home} {home_goals} x {away_goals} {away}, num confronto que poderia ter ido pra qualquer lado.",
-    "{home} e {away} dividiram pontos num {home_goals}-{away_goals} de jogo aberto. Quem assistiu não viu falta de emoção.",
-    "Empate dramático: {home} {home_goals} x {away_goals} {away}, com gols na reta final que mantiveram o jogo aberto até o apito.",
-    "Cada um pra um lado: {home} e {away} fizeram {home_goals}-{away_goals} num jogo recheado de chances pra ambas as equipes.",
-    "Empate digno de espetáculo: {home} {home_goals} x {away_goals} {away}, com momentos pros dois ataques brilharem.",
-    "Quem viu o jogo viu de tudo: {home} {home_goals} x {away_goals} {away}, empate justo num confronto disputado de igual pra igual.",
-    "Empate de muitos gols {stadium_clause}: {home} {home_goals} x {away_goals} {away} numa partida pra entrar nas conversas da semana.",
-    "{home} e {away} se igualaram em {home_goals}-{away_goals} num jogo aberto que pediu mais minutos de prorrogação.",
-    "Empate quente: {home} {home_goals} x {away_goals} {away} num confronto que teve de tudo, menos vencedor.",
-    "Festa de gols, divisão de pontos: {home} e {away} fizeram {home_goals}-{away_goals} numa partida que valeu pelo espetáculo.",
-    "{home} {home_goals} x {away_goals} {away}: empate generoso em gols, restritivo em pontos.",
+    "Empate movimentado {stadium_clause}: {home} {home_goals} x {away_goals} {away}{round_clause} num jogo recheado de emoção do início ao fim. As duas equipes entraram com mentalidade ofensiva, abriram o jogo desde os primeiros minutos, e o resultado foi uma partida com gols dos dois lados, viradas no placar e clima de festa nas arquibancadas. Não teve vencedor mas teve futebol — e a torcida saiu de campo com a sensação de ter assistido a uma partida especial.",
+    "{home} e {away} fizeram um espetáculo {stadium_clause}: {home_goals}-{away_goals}{round_clause}, empate festivo digno de capítulo de novela. Os times trocaram golpes no meio-campo, criaram chances claras nos dois lados, e cada bola que entrava parecia abrir o caminho pra mais. No fim, ficou tudo igual — mas pra quem assistiu foi um jogo pra guardar na memória, com momentos de qualidade técnica que valorizam o espetáculo do futebol.",
+    "Empate generoso em gols: {home} {home_goals} x {away_goals} {away}{round_clause} num jogo aberto que poderia ter ido pra qualquer lado. Defesas instáveis, ataques inspirados, e um ritmo frenético do começo ao fim {stadium_clause}. Cada equipe abriu vantagens em momentos diferentes da partida, mas nenhuma conseguiu manter — e o resultado é um placar generoso em gols, restritivo em pontos, mas certamente generoso em emoção pra quem comprou o ingresso.",
   ],
   draw_low: [
-    "Empate sem gols: {home} 0-0 {away} num jogo travado {stadium_clause}, com defesas se sobressaindo aos ataques.",
-    "{home} {home_goals} x {away_goals} {away}: empate magro, jogo de poucos lances claros e muita marcação.",
-    "Igualdade no placar e nas dificuldades: {home} e {away} ficaram no {home_goals}-{away_goals} num jogo travado do começo ao fim.",
-    "{home} {home_goals} x {away_goals} {away}: empate de jogo emperrado, decidido nos erros mais que nos acertos.",
-    "Sem grandes emoções: {home} e {away} fizeram {home_goals}-{away_goals} num confronto preso ao meio-campo.",
-    "Empate magro entre {home} e {away}: {home_goals}-{away_goals}, com poucos minutos de futebol propriamente dito.",
-    "Jogo amarrado, empate pequeno: {home} {home_goals} x {away_goals} {away} numa partida de poucas oportunidades.",
-    "{home} e {away} dividiram pontos num {home_goals}-{away_goals} de jogo lento, mais tático que emocional.",
-    "Empate burocrático: {home} {home_goals} x {away_goals} {away}, num confronto de pouca produção ofensiva pelos dois lados.",
-    "{home} {home_goals} x {away_goals} {away}: empate sem espetáculo, jogo decidido pelas marcações.",
-    "Empate magro: {home} e {away} fizeram {home_goals}-{away_goals} num jogo travado em todos os setores.",
-    "{home} e {away} não saíram do {home_goals}-{away_goals} num jogo de poucas finalizações reais.",
-    "Empate sem brilho: {home} {home_goals} x {away_goals} {away} num confronto controlado pelas defesas.",
-    "{home} e {away} ficaram no {home_goals}-{away_goals} num jogo decidido mais pelo cansaço que pelo talento.",
-    "Empate apertado: {home} {home_goals} x {away_goals} {away}, partida pegada e poucas chances reais de gol.",
-    "Sem gol, sem grandes emoções: {home} {home_goals} x {away_goals} {away} num jogo equilibrado mas pouco produtivo.",
-    "{home} {home_goals} x {away_goals} {away}: empate decidido na marcação, com defesas atentas e ataques frustrados.",
-    "Empate sob a chuva — não literal, mas figurativa: {home} {home_goals} x {away_goals} {away} num jogo de pouca alegria.",
-    "{home} e {away} fizeram {home_goals}-{away_goals} num jogo travado, sem grandes momentos pra qualquer um dos lados.",
-    "Empate sem brilho: {home} {home_goals} x {away_goals} {away}, com defesas se destacando mais que os ataques.",
+    "Empate sem brilho {stadium_clause}: {home} {home_goals} x {away_goals} {away}{round_clause} num jogo travado em todos os setores. Os meios-campos cancelaram-se mutuamente, as defesas se sobressaíram aos ataques, e as poucas finalizações que aconteceram esbarraram em goleiros bem postados. Foi mais uma partida tática do que técnica, com os dois times preocupados em primeiro lugar não tomar gol — e o resultado, embora justo, deixa a sensação de oportunidade desperdiçada pra quem queria os três pontos.",
+    "{home} e {away} dividiram pontos no {home_goals}-{away_goals}{round_clause} num confronto preso ao meio-campo {stadium_clause}. Foram raras as chances claras de gol, com defesas atentas, marcações bem feitas e ataques sem inspiração. Empate burocrático, decidido mais pelo cansaço e pela falta de ousadia do que pelo talento individual ou coletivo das duas equipes. Pontinho que serve, mas não empolga ninguém.",
+    "{home} {home_goals} x {away_goals} {away}{round_clause}: empate de jogo emperrado, decidido nos erros mais que nos acertos. {stadium_clause}, o que se viu foi um confronto tático, com poucos minutos de futebol propriamente dito e muitas paralisações pra reorganização defensiva. Quando soou o apito final, a sensação geral era de que ambos saíram satisfeitos com o ponto, mas a torcida ficou querendo mais ousadia — daquelas partidas que se assistem por obrigação e se esquecem rapidamente.",
   ],
 };
 
-// ── EN templates: 20 per bucket ──
-const TEMPLATES_EN: Record<MatchRecapBucket, string[]> = {
+// ── PT §2 templates (individual highlights) ──
+const PAR2_PT: Record<Par2Type, string[]> = {
+  hat_trick: [
+    "{hat_trick_player} foi o nome inquestionável da partida — {hat_trick_goals} gols solitários, cada um construído de uma maneira diferente, cada um decisivo pro desenrolar do jogo. O atacante mostrou faro de gol em todas as situações que apareceram, finalizou com precisão dentro e fora da área, e provou por que tem chamado atenção dos olheiros das principais equipes. Hat-trick que entra direto pra galeria das melhores atuações individuais da temporada.",
+    "Noite mágica de {hat_trick_player}: {hat_trick_goals} gols num só jogo, números de jogador em estado de graça absoluto. Não tem como elaborar sobre uma atuação dessas — o atacante esteve em todos os lances importantes, encontrou os caminhos do gol em situações distintas e carregou o time sozinho nos momentos em que precisou. Hat-trick que coloca o nome dele entre os destaques da rodada e prova mais uma vez seu valor pro elenco.",
+    "Quando o time precisou, {hat_trick_player} respondeu com {hat_trick_goals} gols. Hat-trick construído com qualidade técnica, posicionamento certo na hora certa e aquela faísca de talento que separa os jogadores comuns dos artilheiros consagrados. Atuação que vai render conversa por semanas e que reforça por que ele é, hoje, uma das principais armas ofensivas da equipe — daquelas exibições que entram pra história pessoal e merecem destaque nos jornais.",
+  ],
+  red_card_drama: [
+    "A expulsão de {red_card_player} foi o lance que mais marcou o roteiro do jogo. Cartão dado em momento decisivo, decisão polêmica que dividiu opiniões na arquibancada e nos comentários — alguns defendendo o rigor da arbitragem, outros achando exagero pelo que viram em campo. Independentemente da análise técnica, o fato é que o jogador deixou os companheiros em desvantagem numérica e mudou completamente o equilíbrio de forças que vinha sendo estabelecido até ali.",
+    "{red_card_player} foi pra rua e mudou o rumo da partida. Expulsão controversa, com torcida vibrando ou reclamando dependendo do lado da arquibancada, mas que teve impacto enorme no que veio depois. O time que ficou com um a menos perdeu organização, pressão ofensiva e capacidade de reagir, e viu o adversário ditar o ritmo final com tranquilidade. Cartão vermelho que vai render discussão e análise nos próximos dias entre torcedores e comentaristas.",
+    "Cartão vermelho de {red_card_player} ficou marcado como o ponto de inflexão do jogo. Antes da expulsão, o equilíbrio entre os times era visível e as duas equipes mantinham a chance de vencer. Depois, o cenário virou completamente — quem ficou com o homem a mais aproveitou bem a vantagem, e quem perdeu o jogador desabou dentro do próprio sistema. Foi a jogada que escreveu o desfecho da partida, gostando ou não da análise da arbitragem.",
+  ],
+  gk_hero: [
+    "{gk_hero} foi o nome menos esperado da noite — o goleiro fez {gk_hero_saves} defesas importantes e segurou o time numa atuação digna de admiração. Em momentos cruciais, ele apareceu pra evitar gols certeiros, vestiu a capa de herói e impediu que o placar tomasse rumo diferente. Pra quem assistiu, ficou claro: sem o trabalho dele entre as traves, o resultado teria sido outro, e o time saiu da partida devendo muito pra esse desempenho.",
+    "Noite de gala pra {gk_hero}: o goleiro fez {gk_hero_saves} defesas dificílimas e foi o herói anônimo da partida. Bola na trave, finalização cara a cara, chute de fora da área — em todas as situações o arqueiro respondeu com reflexo e posicionamento perfeitos. Atuações como essa são as que separam goleiros comuns dos verdadeiros guardiões, e dificilmente vai passar despercebida pelos analistas da rodada nem pela torcida do clube.",
+    "{gk_hero} salvou o time. {gk_hero_saves} defesas providenciais, em momentos em que a partida já parecia perdida, garantiram um resultado que não teria sido possível sem o trabalho dele. Goleiro que cresce nas partidas decisivas, que tem sangue frio nos momentos de pressão e que mostra por que é considerado peça fundamental do elenco — pra ser justo na avaliação geral, ele provavelmente foi o jogador mais importante do confronto.",
+  ],
+  dribble_play: [
+    "O lance que decidiu a partida começou com {dribble_play_player} carregando a bola e passando por {dribble_play_count} marcadores em sequência. Foi uma jogada individual pra entrar em qualquer compilação de melhores momentos da rodada — drible curto, finta de corpo, mudança de direção repentina — e culminou no gol que ficou marcado como ponto alto da partida. Tipo de jogada que separa atletas medianos dos verdadeiramente diferenciados em campo.",
+    "{dribble_play_player} fez sozinho o que muitos times tentam fazer com ataque organizado: passou por {dribble_play_count} adversários, criou seu próprio espaço e gerou a finalização mais perigosa do jogo. Foi uma exibição de talento individual que justifica plenamente seu papel de protagonista no esquema técnico do treinador. Lance que vai render replay em todos os programas esportivos da semana e que entra pra galeria pessoal do jogador.",
+    "Jogada de craque: {dribble_play_player} pegou a bola, encarou {dribble_play_count} marcadores, driblou com classe e definiu o lance que ficou marcado como ponto alto da partida. Esse tipo de exibição, que mistura técnica refinada com leitura rápida do jogo, é exatamente o que torna o futebol um espetáculo. Atuação que merece destaque na coluna dos melhores momentos da rodada e que confirma o status do jogador entre os principais nomes do elenco.",
+  ],
+  top_scorer_brace: [
+    "{top_scorer} fez os {top_scorer_goals} gols que decidiram o jogo numa atuação de protagonista absoluto. O atacante esteve nos lugares certos nos momentos certos, finalizou com precisão técnica clara e mostrou por que tem chamado atenção dos analistas da rodada. Brace pessoal que reforça seu papel de referência ofensiva do time e o coloca entre os destaques da partida — exatamente o tipo de exibição esperada de um camisa importante do elenco.",
+    "Dois gols decisivos de {top_scorer} colocaram o nome do atacante na lista dos protagonistas da rodada. Em situações distintas, ele encontrou o caminho da rede com qualidade técnica, posicionamento adequado e aquela faísca de talento que separa os bons artilheiros dos meramente regulares. Atuação que vai render boa repercussão e que confirma sua importância pro esquema do treinador na temporada — exibição daquelas que entram direto pro radar dos olheiros.",
+    "{top_scorer_goals} gols na conta pra {top_scorer}, que foi o nome ofensivo do jogo. Em todas as suas finalizações, o atacante mostrou a frieza necessária, e os dois gols marcados foram fundamentais pro desfecho. Pergunta a quem joga ao lado: o cara faz o que precisa ser feito, no momento que precisa ser feito. Atuação que reforça por que ele é peça-chave no elenco — daquelas exibições que valem o ingresso pra ver o atacante em ação.",
+  ],
+  shot_machine: [
+    "{shot_machine} foi a furadeira da noite: {shot_machine_count} chutes ao longo da partida, alguns no alvo, outros no susto, mas sempre criando perigo na área adversária. O jogador insistiu de longe, tentou dentro da área, finalizou de cabeça — e mesmo sem balançar as redes, foi o atleta mais perigoso do ataque do seu time. Atuação que merece destaque pelo volume de finalizações e pela capacidade de criar perigo constante no setor ofensivo do jogo.",
+    "Foi a noite mais frustrante pra {shot_machine} — {shot_machine_count} finalizações tentadas, e nenhuma virou gol. O atacante teve oportunidades pra resolver, mas a precisão não veio na hora certa. Mesmo sem marcar, sua presença incomodou a defesa adversária do começo ao fim, e o desempenho mostra que ele continuou tentando até o último minuto. Tipo de exibição que merece reconhecimento mesmo sem o gol esperado pelos torcedores.",
+    "{shot_machine} insistiu durante todo o jogo: {shot_machine_count} chutes, várias situações criadas, mas a finalização não rendeu o que a estatística prometia. O atacante carregou o ataque do time, criou jogadas individuais de qualidade e gerou as principais ameaças da partida. Resta esperar que o número de finalizações vire mais gols nas próximas rodadas — quando isso acontecer, o jogador vai estar entre os candidatos a artilheiro do campeonato.",
+  ],
+  tackle_master: [
+    "{tackle_master} foi o muro defensivo da noite: {tackle_master_count} desarmes ao longo da partida, em momentos em que o time precisava resistir e em momentos em que precisava recuperar bola. Posicionamento perfeito, leitura de jogo exemplar e timing certo na hora de entrar dura na bola — o jogador foi a peça que sustentou a defesa numa noite em que o adversário tentou pressionar. Atuação que vai entrar pros relatórios de estatística da rodada.",
+    "Trabalho de bastidor de {tackle_master} merece destaque na crônica desse jogo. {tackle_master_count} desarmes, todos no momento certo, todos sem falta — uma exibição de técnica defensiva que serve de aula pra qualquer zagueiro que queira evoluir. Esses números mostram por que o jogador é considerado peça fundamental do sistema, mesmo que o reconhecimento da torcida costume ir mais pros atacantes que pros pilares defensivos do esquema.",
+    "{tackle_master} pegou pra ele a função de proteger a defesa: {tackle_master_count} desarmes na conta, vários deles em situações de perigo iminente. O jogador foi o tampão que faltava em vários momentos da partida, fechando passes nas costas dos zagueiros e neutralizando jogadas que pareciam perigosas. Atuação fundamental que merece reconhecimento na análise pós-jogo — daquelas exibições silenciosas mas absolutamente decisivas pro resultado final.",
+  ],
+  generic: [
+    "{top_scorer} fez o gol que decidiu a partida numa jogada de oportunismo dentro da área. O atacante esteve no lugar certo na hora certa, finalizou sem hesitar e garantiu três pontos preciosos pro time. Não foi a atuação mais espetacular da temporada, mas teve a importância que precisava ter — pra times que disputam objetivos importantes, gols como esse fazem toda a diferença na soma final dos pontos.",
+    "Jogo coletivo decidiu a partida — não houve um destaque individual gritante, mas um time que jogou em conjunto. {top_scorer} marcou o gol importante, mas a vitória teve dedo de todo mundo: meio-campo organizado, defesa bem postada, transições rápidas. Tipo de exibição que mostra que treinador e jogadores estão alinhados na proposta tática — daquelas que fazem confiança crescer no elenco.",
+    "Sem grandes individualidades brilhando, foi o coletivo quem decidiu o jogo. {top_scorer} fez o gol relevante, mas a história da partida vai pra muitos outros nomes que fizeram seu trabalho silenciosamente. Vitória de equipe, daquelas que reforçam a estrutura do time e mostram que, mesmo sem o ataque inspirado, é possível vencer fazendo o feijão com arroz tático bem feito.",
+  ],
+};
+
+// ── PT §3 templates (table implication) ──
+const PAR3_PT: Record<Par3Type, string[]> = {
+  leader: [
+    "Com a vitória, {winner} chega aos {winner_points} pontos e segue na ponta da tabela isolado. Posição {winner_pos} ocupada com folga, jogo a jogo, e a sensação de que a equipe está em momento dominante na temporada. Vai precisar manter essa regularidade pra confirmar a expectativa do título no fim do campeonato, mas o fato é que hoje {winner} é o time mais consistente da competição — ninguém aparenta querer arrancar a liderança a curto prazo.",
+    "{winner} reforça liderança da competição com mais três pontos: {winner_points} no total, posição {winner_pos} mantida com tranquilidade. A vitória consolida a equipe como favorita ao título, com regularidade de atuações e elenco em sintonia. Próximas rodadas vão definir se a vantagem aberta vira realidade matemática ou se algum perseguidor vai conseguir se aproximar — mas no momento, o ambiente é de confiança total e foco em manter o ritmo.",
+    "Liderança confirmada: {winner} ocupa o primeiro lugar com {winner_points} pontos depois desta vitória. {leader_club} segue como referência da temporada, jogando em alto nível e mostrando estrutura compatível com a expectativa de título. Quem acompanha o campeonato sabe que ainda há muito chão pela frente, mas o time entra na próxima rodada com a confiança de quem conhece o caminho — e isso faz uma diferença psicológica enorme no decorrer da competição.",
+  ],
+  top4: [
+    "{winner} chega aos {winner_points} pontos com a vitória e ocupa a {winner_pos}ª posição na tabela, dentro da zona de classificação pras competições importantes da próxima temporada. Momento bom da equipe, que vem somando pontos com regularidade e mostrando estrutura tática compatível com os objetivos traçados antes do início do campeonato. Próximas rodadas vão confirmar se a vaga vai virar realidade no fim da competição.",
+    "Mais três pontos pra {winner}, que sobe pra {winner_pos}ª posição com {winner_points} pontos. Equipe entra firme na briga pelas vagas em competições continentais, com elenco em sintonia e treinador imprimindo identidade de jogo cada vez mais clara. Vai ser uma reta final de campeonato apertada na luta pelas vagas, mas o time vencedor mostra hoje que tem condições de se manter no pelotão da frente até o final.",
+    "{winner} {winner_points} pontos, {winner_pos}ª posição: vitória consolida o time entre os principais candidatos a vagas em torneios continentais. Não é mais surpresa quando aparece em zona de classificação — vem se mostrando regular há várias rodadas, com defesa estável e ataque produtivo. Reta final do campeonato vai ser decisiva pra confirmar o objetivo, mas o ambiente é positivo e o elenco tem demonstrado a maturidade necessária.",
+  ],
+  relegation: [
+    "Do lado perdedor, situação preocupante: {loser} permanece na {loser_pos}ª posição com {loser_points} pontos, dentro da zona de rebaixamento. Reta final do campeonato vai ser dramática, e cada partida agora vale ouro pra equipe escapar do descenso. Pressão na comissão técnica e nos jogadores tende a aumentar nos próximos dias, e a torcida vai cobrar reação imediata se quiser ver o time longe da degola na próxima rodada.",
+    "{loser} acumula nova derrota e segue afundando na tabela: {loser_pos}ª colocação com {loser_points} pontos, em situação delicada na luta contra o rebaixamento. O quadro tático precisa de revisão, o desempenho dentro de campo precisa de reação, e o tempo pra correção vai diminuindo a cada rodada que passa. Cobranças virão de todos os lados — torcida, imprensa, diretoria — e a próxima partida vira praticamente uma final pra equipe.",
+    "Mais um tropeço pra {loser}, que segue na zona de rebaixamento: posição {loser_pos}, {loser_points} pontos, ambiente de tensão crescente. A reta final do campeonato será fundamental pra definir se a equipe consegue reagir a tempo de evitar o descenso ou se vai cair à temporada seguinte na divisão inferior. Vai precisar de uma virada de chave imediata — em desempenho, em postura, em resultados — pra manter a chance da permanência.",
+  ],
+  midtable: [
+    "{winner} chega aos {winner_points} pontos com esta vitória, ocupando a {winner_pos}ª posição na tabela. Posição mediana que mantém o time longe da zona de rebaixamento mas sem realmente brigar pelas vagas em competições importantes. Reta final pode definir um lado ou outro — depende do nível de regularidade que conseguirem manter nas próximas rodadas. Sem urgência mas sem conforto excessivo é como vai a campanha do time.",
+    "Vitória deixa {winner} com {winner_points} pontos, na {winner_pos}ª colocação — posição neutra na tabela, longe da degola e da zona de classificação europeia. Time fica observando o que acontece nas duas pontas e busca encerrar o campeonato com a melhor colocação possível dentro das circunstâncias. Sem grandes pressões, mas também sem grandes ambições no curto prazo, segue trabalhando rodada a rodada na construção da temporada seguinte.",
+    "{winner} soma três pontos importantes mas mantém posição mediana: {winner_pos}º lugar com {winner_points} pontos. A equipe segue distante das pontas — não brigando pelo título nem ameaçada pelo rebaixamento — em uma temporada de manutenção e de planejamento pro futuro. Cada vitória conta, mas não muda muito o quadro geral; é momento de jogar com tranquilidade e construir base sólida pra próxima temporada.",
+  ],
+  new_top_scorer: [
+    "Outro destaque da partida: {season_top_scorer} agora lidera a artilharia da competição com {season_top_scorer_goals} gols na temporada. Os gols deste jogo o colocaram à frente dos antigos perseguidores, e o atacante segue numa fase produtiva impressionante, em ritmo de melhor goleador da história recente do clube. Bota-fé pra concorrer ao título de artilheiro do campeonato, especialmente se mantiver esse nível pelas próximas rodadas que faltam.",
+    "Liderança da artilharia muda de mãos: {season_top_scorer} chega aos {season_top_scorer_goals} gols na temporada e assume isolado a primeira posição entre os goleadores. Atacante em estado de graça, marcando em sequência e carregando o time sempre que aparece na frente da meta. Quem acompanha o campeonato sabe que ele vinha empurrando essa cifra rodada após rodada — e agora é, oficialmente, o melhor finalizador da competição.",
+    "{season_top_scorer} é o novo líder isolado da artilharia: {season_top_scorer_goals} gols na temporada, lugar de protagonista no ranking dos goleadores. Mais um capítulo brilhante de uma campanha individual que já não estava sendo escondida — o atacante vinha mostrando a forma boa há semanas, e os gols deste jogo só confirmaram o status. Promete render conversa e atenção dos olheiros nas próximas rodadas, que serão decisivas pra fechar a temporada com a chuteira de ouro.",
+  ],
+  draw_neutral: [
+    "Com o empate, {home} fica com {home_points} pontos na {home_pos}ª colocação, e {away} soma {away_points} pontos na {away_pos}ª posição. Pra ambos, é resultado que mantém o ritmo mas não muda significativamente o quadro geral da tabela. Próximas rodadas seguem decisivas pra cada lado: pra cima ou pra baixo, ainda há muito a se definir, e o ponto somado hoje pode valer mais ou menos dependendo do que acontecer nos confrontos diretos vindouros.",
+    "Empate distribui pontos de forma equilibrada: {home} {home_points} pontos ({home_pos}º), {away} {away_points} pontos ({away_pos}º). Resultado que não desequilibra ninguém na tabela, mas que serve pra manter o ritmo dos dois lados. Cada equipe segue trabalhando na sua campanha — buscando subir ou consolidar posição — e o calendário denso pelo próximo mês vai pesar pra definir se esse ponto somado hoje terá peso definitivo na conta final.",
+    "Pontuação dividida com o empate: {home} fica com {home_points} pontos ({home_pos}ª colocação) e {away} com {away_points} pontos ({away_pos}ª colocação). Pra os dois lados, o resultado tem leitura mista — pode ser visto como ponto somado em jogo difícil ou como ponto perdido em oportunidade real de vitória. Cada equipe segue sua trajetória nos próximos compromissos, com a mesma necessidade de pontuar pra atingir os objetivos da temporada que projetaram desde o começo.",
+  ],
+};
+
+// ── EN §1 templates ──
+const PAR1_EN: Record<MatchRecapBucket, string[]> = {
   red_card_decided: [
-    "{loser} dropped to ten early after {red_card_player}'s red and lost {winner_goals}-{loser_goals} to {winner}. The hosts managed the man advantage and walked away with the points.",
-    "With {red_card_player} sent off in the first half, {loser} watched {winner} take charge and close it out at {winner_goals}-{loser_goals}. The numbers told the story.",
-    "{winner} capitalized on {red_card_player}'s red and beat {loser} {winner_goals}-{loser_goals}. One of those nights when the card rewrote the script.",
-    "{red_card_player}'s red changed the game: {winner} beat {loser} {winner_goals}-{loser_goals} by exploiting the space the opponent left.",
-    "After {red_card_player} was sent off, {loser} couldn't react and {winner} secured {winner_goals}-{loser_goals} without much trouble.",
-    "Match decided by the card: {red_card_player} walked, {winner} grew into it and beat {loser} {winner_goals}-{loser_goals}.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a match marked by {red_card_player}'s sending-off, which left the team a man down for the rest of the night.",
-    "Eleven against ten made the difference: {winner} beat {loser} {winner_goals}-{loser_goals} after {red_card_player}'s red and the hosts found their rhythm.",
-    "Up a man since {red_card_player}'s expulsion, {winner} took care of the game and beat {loser} {winner_goals}-{loser_goals}.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: the night will be remembered for {red_card_player}'s red, the moment that turned the script.",
-    "{loser} protested, but {red_card_player}'s red was decisive. {winner} took the win {winner_goals}-{loser_goals} and the points home.",
-    "{red_card_player}'s red broke {loser}'s rhythm, and {winner} closed it at {winner_goals}-{loser_goals}. No mystery from there.",
-    "Early red, late decision: {winner} beat {loser} {winner_goals}-{loser_goals} by exploiting the man advantage gained when {red_card_player} was sent off.",
-    "{winner} {winner_goals}-{loser_goals} {loser}, with {red_card_player} dismissed before the break. The numerical disadvantage cost the visitors dearly.",
-    "{red_card_player}'s expulsion was the turning point: {winner} grew into the match and beat {loser} {winner_goals}-{loser_goals}.",
-    "Nothing to argue: {red_card_player}'s red changed the game. {winner} beat {loser} {winner_goals}-{loser_goals} by exploiting the absence.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a match where {red_card_player}'s red unbalanced things early.",
-    "With {red_card_player}'s forced exit, {loser} shrank, and {winner} made it {winner_goals}-{loser_goals} without ceremony.",
-    "Another one where the card spoke louder than football: {red_card_player} was sent off, {winner} grew into it, and closed it at {winner_goals}-{loser_goals} over {loser}.",
-    "{winner}'s {winner_goals}-{loser_goals} win over {loser} carries an asterisk — {red_card_player}'s expulsion before halftime made the hosts' job too easy.",
+    "{loser} dropped to ten early after {red_card_player}'s red card and lost {winner_goals}-{loser_goals} to {winner}{round_clause}. The hosts smartly managed the man advantage, controlled possession, and exploited the spaces left by the depleted side. The numerical disadvantage did the damage: {loser} couldn't organize their build-up play, were pressed constantly, and watched the match slip away as {winner} dictated the rhythm {stadium_clause}.",
+    "{red_card_player}'s red changed everything {stadium_clause}: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} by exploiting the man advantage with skill. From the expulsion onward, the team was completely dominated, watched the opponent take over midfield and accelerate offensive transitions on every recovered ball. One of those matches where the card wrote the script, and the visiting fans took advantage of every minute of numerical inferiority.",
+    "{winner} {winner_goals}-{loser_goals} {loser}{round_clause}: the night was marked by {red_card_player}'s expulsion, which opened the door for the hosts' victory. Before the card, the match was studied and balanced, but the forced exit completely disorganized the losing side's defensive structure. {winner} took advantage of the numerical superiority to impose their game, score decisive goals, and manage the result until the final whistle {stadium_clause}.",
   ],
   penalty_decided: [
-    "{winner} beat {loser} {winner_goals}-{loser_goals} thanks to a decisive penalty from {decisive_penalty_scorer}. Not pretty, but it was a win.",
-    "{decisive_penalty_scorer} struck firmly from the spot and secured {winner_goals}-{loser_goals} for {winner} over {loser}. A penalty worth three points.",
-    "Penalty converted by {decisive_penalty_scorer} settled it: {winner} {winner_goals}-{loser_goals} {loser} in a balanced match decided on the dead ball.",
-    "From the spot: {decisive_penalty_scorer} struck, {winner} beat {loser} {winner_goals}-{loser_goals}, and the points flew to whoever handled the pressure better.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: the match was decided by a penalty converted by {decisive_penalty_scorer}, who became the hero of the night.",
-    "Decisive penalty, ice in his veins: {decisive_penalty_scorer} struck for real and {winner} closed it {winner_goals}-{loser_goals} over {loser}.",
-    "{loser} nearly held on, but {decisive_penalty_scorer} converted the penalty with class and {winner} won {winner_goals}-{loser_goals}.",
-    "Ball on the spot, match decided: {decisive_penalty_scorer} converted the penalty that was worth {winner_goals}-{loser_goals} for {winner} over {loser}.",
-    "{decisive_penalty_scorer} took the ball, faced the keeper and struck firmly. Result: {winner} {winner_goals}-{loser_goals} {loser}.",
-    "Penalty that changed the script: {decisive_penalty_scorer} converted, and {winner} beat {loser} {winner_goals}-{loser_goals} on a tense night.",
-    "No room for error, {decisive_penalty_scorer} took the penalty with the necessary cool. {winner} beat {loser} {winner_goals}-{loser_goals}.",
-    "{winner} confirmed victory over {loser} {winner_goals}-{loser_goals} with a penalty converted by {decisive_penalty_scorer} that will go down in this match's history.",
-    "Dead ball, steady hand: {decisive_penalty_scorer} converted the penalty worth three points for {winner} over {loser} ({winner_goals}-{loser_goals}).",
-    "There was no closing this match without going through the spot first: {decisive_penalty_scorer} converted the penalty that decided {winner_goals}-{loser_goals} for {winner}.",
-    "Penalty, goal, party: {decisive_penalty_scorer} struck, {winner} beat {loser} {winner_goals}-{loser_goals} in a match that seemed undecided until the dead ball.",
-    "{winner} {winner_goals}-{loser_goals} {loser} in a match that needed a penalty to break the deadlock — {decisive_penalty_scorer} struck, and the rest was celebration.",
-    "By the run of play the match would've stayed level a few more minutes, but {decisive_penalty_scorer} converted the spot kick, found the net, and closed it {winner} {winner_goals}-{loser_goals} {loser}.",
-    "{decisive_penalty_scorer} carried the responsibility of the spot kick and gave back a goal. {winner} beat {loser} {winner_goals}-{loser_goals}.",
-    "Decisive penalty: {decisive_penalty_scorer} struck, {winner} grew into it, {loser} paid. Final score {winner_goals}-{loser_goals}.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a match decided from the spot — {decisive_penalty_scorer} converted the penalty that was worth the result.",
+    "{winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a match decided on the dead ball — {decisive_penalty_scorer} struck firmly from the spot and converted the penalty worth three points. The match was balanced from start to finish, with attentive defenses and stalled attacks {stadium_clause}, and the only ball that went in came from a set piece prepared and executed with the necessary cool in the tensest moment. Not pretty, but it was a win.",
+    "Penalty converted by {decisive_penalty_scorer} made the difference: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a match that stayed open until the spot kick. The teams traded blows in midfield without major clear chances, and when the opportunity finally arose, the taker did his job with class. A narrow but extremely important win for the winning side, who leaves {stadium_clause} with a precious result.",
+    "Decision from the spot: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} with a penalty converted by {decisive_penalty_scorer}. It was a match of few chances, with defenses outshining attacks and every attempt being a reason for early celebration. When the penalty was awarded, the entire stadium held its breath — and the taker didn't disappoint. Crucial three points for {winner} on a tense night {stadium_clause}.",
   ],
   comeback: [
-    "Epic comeback {stadium_clause}: {winner} were trailing but reacted and beat {loser} {winner_goals}-{loser_goals}. A team that didn't quit.",
-    "{loser} took the lead, but {winner} turned the game around and closed it at {winner_goals}-{loser_goals}. A reaction worth more than a normal win.",
-    "It was tough, then it became routine: {winner} reversed the score against {loser} and won {winner_goals}-{loser_goals} in a match for the comeback hall of fame.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: comeback built in the second half, with {top_scorer} leading the charge.",
-    "It was getting away, but {winner} came back to life in the second half and turned it into {winner_goals}-{loser_goals} over {loser}. {top_scorer} was the name of the comeback.",
-    "{loser} celebrated too early. {winner} found the way back and closed it {winner_goals}-{loser_goals} in a comeback worth more than three points.",
-    "Everything pointed to a {loser} win, but {winner} flipped it in the second half and won {winner_goals}-{loser_goals}. Character in raw form.",
-    "Comeback by merit: {winner} chased the result against {loser} and closed it {winner_goals}-{loser_goals} after going behind.",
-    "It wasn't easy for {winner}, who saw {loser} open the scoring. But the reaction came, {top_scorer} appeared, and the score read {winner_goals}-{loser_goals}.",
-    "{winner} pushed forward, turned it around, and beat {loser} {winner_goals}-{loser_goals}. Performance from a team that knew it couldn't drop another.",
-    "Behind on the scoreboard, ahead in spirit: {winner} reversed the result against {loser} and won {winner_goals}-{loser_goals} in a match that found color in the second half.",
-    "When it looked like {loser} would manage the lead, {winner} clicked into game mode and turned it into {winner_goals}-{loser_goals}. Pride win.",
-    "{winner} {winner_goals}-{loser_goals} {loser}, win built in reverse — went behind, fought hard, came out one goal ahead.",
-    "Tense comeback: {winner} struggled to reverse the score but did, beating {loser} {winner_goals}-{loser_goals} as the lights dimmed.",
-    "{loser} played well for a stretch, but {winner} grew into it, turned around and closed at {winner_goals}-{loser_goals} in one of those comebacks for the books.",
-    "Trailing, then turning it to {winner_goals}-{loser_goals}: {winner} showed they have heart and beat {loser} on a memorable night.",
-    "Pride reaction: {winner} flipped the script against {loser} and won {winner_goals}-{loser_goals} in a match that looked lost at the 30-minute mark.",
-    "Comeback with a special flavor: {winner} found a way, played hard in the second half, and closed it {winner_goals}-{loser_goals} over {loser}.",
-    "Whoever saw the first half thought {loser} would win easy. Whoever saw the second saw {winner} flip the script and close it {winner_goals}-{loser_goals}.",
-    "Trailed, then turned: {winner} beat {loser} {winner_goals}-{loser_goals} in a comeback built on stamina in the closing minutes.",
+    "Epic comeback {stadium_clause}: {winner} were trailing but reacted and beat {loser} {winner_goals}-{loser_goals}{round_clause} in a match for the gallery of memorable comebacks. {loser} took an early first-half lead and seemed to be cruising, until {winner} decided to change the script with high pressing, faster ball circulation, and precise finishing. A team that didn't quit, a match that didn't end until the final whistle.",
+    "{winner} {winner_goals}-{loser_goals} {loser}{round_clause}: comeback built on grit after going behind. {loser} celebrated the early lead too soon and watched the opponent grow minute by minute, recover balls in midfield, and impose a rhythm they couldn't match. It was a second half dominated by the winners, with the {stadium_clause} crowd erupting at every goal. A reaction worth more than three points.",
+    "Character in raw form: {winner} flipped the score against {loser} and won {winner_goals}-{loser_goals}{round_clause}. The winning team, which saw the opponent open the score and manage the lead for much of the match, found strength in the closing minutes' stamina to reverse the script. Every contested ball became a trench of pride, and the {stadium_clause} crowd responded in kind. A win for those who knew they couldn't drop another.",
   ],
   late_winner: [
-    "{winner} beat {loser} {winner_goals}-{loser_goals} with a savior strike from {late_scorer} at {late_minute}'. With minutes to go, the decisive goal arrived.",
-    "At {late_minute}', {late_scorer} found the net and made it {winner_goals}-{loser_goals} for {winner} over {loser}. Tense to the very last.",
-    "{late_scorer} scored the winner at {late_minute}', and {winner} beat {loser} {winner_goals}-{loser_goals} in a tense closing stretch.",
-    "As the lights dimmed: {late_scorer} scored the decider at {late_minute}', and {winner} beat {loser} {winner_goals}-{loser_goals}.",
-    "{winner} {winner_goals}-{loser_goals} {loser} in the dying breath — {late_scorer} appeared at {late_minute}' to settle it.",
-    "A draw seemed certain until {late_scorer} found the net at {late_minute}'. {winner} beat {loser} {winner_goals}-{loser_goals} on the late drama.",
-    "Dramatic finale: {late_scorer} scored the winner at {late_minute}', {winner} beat {loser} {winner_goals}-{loser_goals} and the stadium nearly came down.",
-    "When everyone counted on a draw, {late_scorer} found the net at {late_minute}'. {winner} {winner_goals}-{loser_goals} {loser} on the scare.",
-    "{late_scorer} shone in the final minutes: goal at {late_minute}', win for {winner} over {loser} {winner_goals}-{loser_goals}, and three precious points.",
-    "Very little time left when {late_scorer} found the net at {late_minute}'. {winner} beat {loser} {winner_goals}-{loser_goals}.",
-    "Everything pointed to a draw, but {late_scorer} appeared at {late_minute}' to score the winner. {winner} {winner_goals}-{loser_goals} {loser} on the late scare.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} with {late_scorer}'s strike at {late_minute}'. A win for the team that never stopped pressing.",
-    "At {late_minute}' the match was still open, but {late_scorer} settled it. {winner} {winner_goals}-{loser_goals} {loser} on the last gasp.",
-    "Heart in mouth: {late_scorer} struck at {late_minute}', {winner} beat {loser} {winner_goals}-{loser_goals}, and the team left the pitch jumping.",
-    "Goal in life's stoppage time: {late_scorer} scored at {late_minute}', {winner} beat {loser} {winner_goals}-{loser_goals}, and three points came in the scare.",
-    "Time was out, but {late_scorer} wasn't: goal at {late_minute}', win for {winner} over {loser} {winner_goals}-{loser_goals}.",
-    "Win in the closing minutes: {late_scorer} found the net at {late_minute}', and {winner} beat {loser} {winner_goals}-{loser_goals}.",
-    "{late_scorer} was the hero of the night — goal at {late_minute}', {winner} beat {loser} {winner_goals}-{loser_goals} in an electrifying close.",
-    "Time was short, but it arrived: {late_scorer} scored at {late_minute}', {winner} closed at {winner_goals}-{loser_goals} over {loser}.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: savior goal from {late_scorer} at {late_minute}' made the crowd erupt in the closing minutes.",
+    "{winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a dramatic finish {stadium_clause} — {late_scorer} found the net at {late_minute}' and made the crowd erupt in the final minutes. Until then, everything pointed to a draw, with defenses winning most of the duels and attacks stalled by well-organized defensive systems. But when everyone counted on a point shared, the savior goal arrived to settle the match in the dying breath.",
+    "At {late_minute}', {late_scorer} scored the winning goal worth three points for {winner}. {winner} {winner_goals}-{loser_goals} {loser}{round_clause}, in a match that dragged on until the final eruption {stadium_clause}. Both teams seemed to accept the draw, with few real chances throughout the second half, until on a last play the striker appeared to make the difference. A win for those who pressed until the last play.",
+    "Electrifying finish {stadium_clause}: {late_scorer} scored at {late_minute}' the goal that settled the match, and {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} on the last gasp. The match was open, with moments of pressure for both sides, but without that defining play to change the score. The hero of the night settled it with a savior strike in the closing minutes — the kind of goal that stays in the winning crowd's memory for a long time.",
   ],
   rout: [
-    "Rout with no mystery: {winner} crushed {loser} {winner_goals}-{loser_goals}. {top_scorer} was the standout.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: the hosts put on a show and closed it at training pace.",
-    "Show of football and full clinic: {winner} beat {loser} {winner_goals}-{loser_goals} in a top-class performance.",
-    "{winner} gave no chance: {winner_goals}-{loser_goals} over {loser}, with {top_scorer} carrying the attack.",
-    "Categorical thrashing: {winner} beat {loser} {winner_goals}-{loser_goals} in a match decided in the first half.",
-    "Steamrolling {stadium_clause}: {winner} {winner_goals}-{loser_goals} {loser}, one of those matches where the crowd can celebrate easy.",
-    "{loser} had no answer: {winner} won {winner_goals}-{loser_goals}, with {top_scorer} standing out.",
-    "No brakes: {winner} beat {loser} {winner_goals}-{loser_goals}. A rout built on patience and finishing.",
-    "{winner} put on a 'show' against {loser} and closed it at {winner_goals}-{loser_goals}. An elastic score that mirrors the on-pitch superiority.",
-    "Rout for the history: {winner} beat {loser} {winner_goals}-{loser_goals} in an above-average collective performance.",
-    "There was no game: {winner} controlled everything and beat {loser} {winner_goals}-{loser_goals}. {top_scorer} shone.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: the elastic scoreline shows how one-way the match was from start to finish.",
-    "Looked like it'd be tough, but {winner} settled it early: {winner_goals}-{loser_goals} over {loser}, decided before halftime.",
-    "Clinic on the pitch: {winner} beat {loser} {winner_goals}-{loser_goals} playing pretty and finishing efficiently.",
-    "{winner} grew, {loser} fell: a {winner_goals}-{loser_goals} rout in a one-sided match from start to finish.",
-    "Show, clinic, party: {winner} beat {loser} {winner_goals}-{loser_goals} in a special night for the hosts.",
-    "{winner} played in style, {loser} suffered — the {winner_goals}-{loser_goals} score reflects the on-pitch dominance.",
-    "Headline rout: {winner} beat {loser} {winner_goals}-{loser_goals}. {top_scorer} stood out with the goals.",
-    "{loser} couldn't resist: {winner} controlled, scored several times, and closed it {winner_goals}-{loser_goals}.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: the rout was earned — total dominance, goals from every situation, and an opponent without an answer.",
+    "There was no contest {stadium_clause}: {winner} steamrolled {loser} {winner_goals}-{loser_goals}{round_clause} in a one-way match from start to finish. The hosts opened the scoring early, completely controlled the rhythm, and maintained pressure until the final whistle, giving no real chances to the opponent. Total dominance translated into finishing chances in sequence and a display of football that fully justifies the elastic scoreline.",
+    "{winner} {winner_goals}-{loser_goals} {loser}{round_clause}: rout built on patience, technical quality, and clinical finishing {stadium_clause}. {loser} couldn't get out of their own half in the first 30 minutes, and when they finally crossed midfield, the score was already bleeding. It was a match that clearly showed who was better prepared, and the numbers on the board only reinforce the glaring difference on the night.",
+    "Total steamrolling {stadium_clause}: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} on a night when the hosts simply gave no chance for the opponent to breathe. High pressing, fast transitions, precise finishing — an offensive cocktail the visiting defense couldn't disarm at any moment. When the final whistle blew, the feeling was that the score could've been even bigger, and the crowd left applauding.",
   ],
   jogao: [
-    "What a match! {home} {home_goals}-{away_goals} {away} in a contest for the history books, with goals flying both ways.",
-    "{home} and {away} put on a thriller {stadium_clause}: {home_goals}-{away_goals}, win for {winner} on a high-scoring night.",
-    "Pretty match to watch: {winner} beat {loser} {winner_goals}-{loser_goals} in a script that gripped the crowd from start to finish.",
-    "What a game! {home} {home_goals}-{away_goals} {away}, with {winner} taking the points in what felt more like spectacle than match.",
-    "Thriller {stadium_clause}: {winner_goals}-{loser_goals} for {winner} in a confrontation packed with goals and emotion.",
-    "Fire match: {home} and {away} traded blows, and the {home_goals}-{away_goals} score for {winner} shows what it was on the pitch.",
-    "Whoever watched won't forget: {winner} beat {loser} {winner_goals}-{loser_goals} in a frenetic match with goals on both sides.",
-    "What a contest! {winner} beat {loser} {winner_goals}-{loser_goals} in a high-scoring match where defenses watched.",
-    "{home} {home_goals}-{away_goals} {away}: serious thriller, with goals, controversy and a tense final until the whistle.",
-    "Spectacle on the pitch: {winner} took {winner_goals}-{loser_goals} over {loser} in a match for the gallery of the best.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a Sunday thriller — goals, emotion and a crowd standing from start to finish.",
-    "Couldn't blink: {home} {home_goals}-{away_goals} {away} in a match that had everything — goals, comebacks, controversy, party.",
-    "Match to be remembered: {winner} beat {loser} {winner_goals}-{loser_goals} in a confrontation that earned every minute of the crowd's attention.",
-    "Quality match: {winner_goals}-{loser_goals} for {winner} over {loser}, with {top_scorer} standing out among the goals scored.",
-    "What a night! {home} and {away} laid it all on the pitch, and the result was {home_goals}-{away_goals} for {winner}, in a match worthy of knockout football.",
-    "Goal festival: {winner} beat {loser} {winner_goals}-{loser_goals} in one of those matches that produces hours of post-game commentary.",
-    "For those who like goals, plenty to chew on: {home} {home_goals}-{away_goals} {away}, with {winner} leaving the pitch a winner.",
-    "Thriller without brakes: {winner} beat {loser} {winner_goals}-{loser_goals} in a confrontation where the attack ruled and defense only watched.",
-    "What a match {home} and {away} put on {stadium_clause}! {home_goals}-{away_goals}, with {winner} confirming the win in a high-scoring affair.",
-    "{home} {home_goals}-{away_goals} {away}: many-goal thriller, emotion to the last minute, and {winner} hanging on for the three points.",
+    "What a match {stadium_clause}! {home} {home_goals}-{away_goals} {away}{round_clause} in a thriller for the history books, with goals on both sides and emotion until the last minute. The defenses seemed nonexistent, the attacks entered a state of grace, and every time the ball crossed midfield it was a real goal threat. {winner}'s win in a confrontation that earned every minute of the crowd's attention and will keep people talking for days.",
+    "{home} and {away} put on a show {stadium_clause}: {home_goals}-{away_goals}{round_clause}, a {winner} win on a goal-filled, emotion-packed night. Both teams entered the pitch ready to attack, and the result was an open spectacle, with clear chances on both sides, finishing in sequence, and a knockout-football feel even in a regular round-robin match. Whoever watched won't forget — the kind of game that brings fans closer to the spectacle.",
+    "Spectacle {stadium_clause}: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a thriller packed with emotion from start to finish. The teams came out swinging, opened the game from the first minutes, and the result was a match of many goals, controversy, and a tense final until the whistle. {winner}'s win will have a place of honor among the round's best games — the kind that produces hours of commentary and stays marked on the calendar.",
   ],
   comfortable_win: [
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a controlled match {stadium_clause}. Lead built early, no scares at the close.",
-    "Win without major issues: {winner} beat {loser} {winner_goals}-{loser_goals}, playing within expectations.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: comfortable triumph, with the lead settled before the second half began.",
-    "Calm victory for {winner} over {loser}: {winner_goals}-{loser_goals}, with {top_scorer} leading the attack.",
-    "{winner} took care of the match and beat {loser} {winner_goals}-{loser_goals} without major hitches.",
-    "Solid win: {winner} beat {loser} {winner_goals}-{loser_goals} in a well-controlled match by the hosts.",
-    "No suffocation: {winner} beat {loser} {winner_goals}-{loser_goals}, with clear dominance from start to finish.",
-    "{winner} showed why they're the favorite: {winner_goals}-{loser_goals} over {loser}, match settled early.",
-    "Deserved triumph: {winner} beat {loser} {winner_goals}-{loser_goals} in a match that became one-way after the second goal.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a match without major emotions, but with clear superiority from the hosts.",
-    "Lead built and held: {winner} {winner_goals}-{loser_goals} {loser}, no-mystery win {stadium_clause}.",
-    "{winner} did the job: beat {loser} {winner_goals}-{loser_goals} and held the lead the way you'd expect from a team playing at home.",
-    "No room for surprises: {winner} beat {loser} {winner_goals}-{loser_goals} in a match settled in the first half.",
-    "{winner} played at the necessary pace and beat {loser} {winner_goals}-{loser_goals}. Competent triumph, no excessive shine.",
-    "Comfortable triumph: {winner} beat {loser} {winner_goals}-{loser_goals}, with {top_scorer} putting the team ahead early.",
-    "{winner} showed superiority and closed it at {winner_goals}-{loser_goals} over {loser}. Win within expectations.",
-    "Favorite's win: {winner} {winner_goals}-{loser_goals} {loser}, with clear dominance and few scares.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} taking care of the match from start to finish. No exceptional shine, but with efficiency.",
-    "Efficient triumph: {winner} beat {loser} {winner_goals}-{loser_goals} in a match where the hosts managed the result.",
-    "{winner} confirmed favoritism: {winner_goals}-{loser_goals} over {loser}, match settled early and finished without major threats.",
+    "{winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in an end-to-end controlled match {stadium_clause}. The lead was built in the first half, and from there the hosts managed the result with skill, valuing possession and closing defensive spaces. No major scares in the second half — it was a triumph within expectations for the team that entered as favorite, fulfilling its role without exceptional brilliance but with efficiency.",
+    "Solid and calm win: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a well-controlled match by the hosts {stadium_clause}. It wasn't the most spectacular match of the calendar, but it was competent — clear dominance from start to finish, efficient finishing on the chances created, and an alert defense on the opponent's counter-attacks. Deserved triumph that reinforces the winning team's positive momentum and places them among the season's protagonists.",
+    "{winner} {winner_goals}-{loser_goals} {loser}{round_clause}: comfortable triumph {stadium_clause}, with the lead settled before the second half even began. There was no mystery in the match — clear technical difference, better tactical organization, and well-coordinated players exploiting the opponent's weak points. A win without exceptional brilliance but with efficiency, the kind that builds a season and shows consistency in a championship where every point weighs heavily.",
   ],
   narrow_win: [
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a tight match decided on the details. {top_scorer} scored the goal worth three points.",
-    "Narrow win but a win: {winner} beat {loser} {winner_goals}-{loser_goals} in a match of few clear chances.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: tight match, decided on a detail, but three points count the same.",
-    "Wasn't pretty, but it was a win: {winner} beat {loser} {winner_goals}-{loser_goals}, with {top_scorer} the name behind the decisive goal.",
-    "Slim triumph: {winner} beat {loser} {winner_goals}-{loser_goals} in a balanced match decided on a set piece.",
-    "{winner} suffered, but won: {winner_goals}-{loser_goals} over {loser} in a confrontation that stayed open until the last minute.",
-    "Match for stretched nerves: {winner} beat {loser} {winner_goals}-{loser_goals} in a tense closing stretch.",
-    "Hard-earned win: {winner} beat {loser} {winner_goals}-{loser_goals}, and the slim score shows how disputed the match was.",
-    "{winner} {winner_goals}-{loser_goals} {loser}: a win for those who took the chance they had, in a match contested in every sector.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a match decided on details — ball off the post, savior goal, and steel nerves.",
-    "Narrow but in their favor: {winner} beat {loser} {winner_goals}-{loser_goals} in a balanced confrontation decided on a detail.",
-    "It wasn't easy: {winner} beat {loser} {winner_goals}-{loser_goals} in a match that demanded patience until the final whistle.",
-    "Slim win worth gold: {winner} {winner_goals}-{loser_goals} {loser}, with {top_scorer} scoring the decider.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a balanced match where every loose ball was worth gold.",
-    "Slim triumph, earned by grit: {winner} beat {loser} {winner_goals}-{loser_goals} in a match decided on the details.",
-    "{winner} beat {loser} {winner_goals}-{loser_goals} in a tight match, decided by the quality of the goal scored by {top_scorer}.",
-    "No room for error: {winner} beat {loser} {winner_goals}-{loser_goals} in a tight match where the goal came early and was protected to the end.",
-    "Triumph by detail: {winner} beat {loser} {winner_goals}-{loser_goals}, and the small score shows the on-pitch balance.",
-    "{winner} held off {loser} as best they could and won {winner_goals}-{loser_goals}. Slim win, but three important points.",
-    "Slim win: {winner} {winner_goals}-{loser_goals} {loser}, with electrifying close and a savior goal from {top_scorer}.",
+    "{winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a tight match decided on the details {stadium_clause}. There were few clear chances on either side, with attentive defenses and contested midfields on every loose ball. The goal worth three points came from a well-worked play, and from there the winning team smartly managed the result, closing spaces and holding the opponent's late pressure.",
+    "Slim but valuable triumph: {winner} beat {loser} {winner_goals}-{loser_goals}{round_clause} in a balanced match decided by the quality of the goal scored. The teams cancelled each other out tactically for much of the match {stadium_clause}, with split possession and scarce shots, and it took an individual quality play to break the tie. A slim win that adds three important points to the campaign and keeps confidence high for the next round.",
+    "{winner} {winner_goals}-{loser_goals} {loser}{round_clause}: tight win in a match contested in every sector. Loose balls disputed, hard marking, scarce shots — a typical league match where every point weighs hugely and teams come in worried about not conceding first. {winner} took the only chance with finishing clarity and secured the triumph on a detail, leaving {stadium_clause} with three precious points in the bag.",
   ],
   draw_goalfest: [
-    "Goal-filled draw: {home} {home_goals}-{away_goals} {away}, in a thriller packed with emotion from start to finish.",
-    "What a match! {home} and {away} ended at {home_goals}-{away_goals} in a high-scoring contest with little defense.",
-    "{home} {home_goals}-{away_goals} {away}: festive draw, with goals on both sides and nervous fans throughout.",
-    "Open-game draw: {home} and {away} split points at {home_goals}-{away_goals} in a frenetic match.",
-    "For those who like goals, there was something for everyone: {home} {home_goals}-{away_goals} {away} in a confrontation packed with emotion.",
-    "Lively draw {stadium_clause}: {home} and {away} ended at {home_goals}-{away_goals} in a match full of ups and downs.",
-    "No winner, but football aplenty: {home} {home_goals}-{away_goals} {away} in a match of goals, emotion, and an open finish.",
-    "Festive draw: {home} and {away} made it {home_goals}-{away_goals} in a match worthy of a soap opera chapter.",
-    "Winnerless thriller: {home} {home_goals}-{away_goals} {away}, with chances on both sides and finishing nothing to fault.",
-    "Open-match draw: {home} {home_goals}-{away_goals} {away}, in a contest that could have gone either way.",
-    "{home} and {away} split points at {home_goals}-{away_goals} in an open contest. Whoever watched didn't lack emotion.",
-    "Dramatic draw: {home} {home_goals}-{away_goals} {away}, with late goals that kept the match open until the whistle.",
-    "Each going their way: {home} and {away} ended {home_goals}-{away_goals} in a match packed with chances for both teams.",
-    "Draw worthy of spectacle: {home} {home_goals}-{away_goals} {away}, with moments for both attacks to shine.",
-    "Whoever watched the match saw it all: {home} {home_goals}-{away_goals} {away}, fair draw in a contest played on equal terms.",
-    "Goal-filled draw {stadium_clause}: {home} {home_goals}-{away_goals} {away} in a match for the conversations of the week.",
-    "{home} and {away} leveled at {home_goals}-{away_goals} in an open match that asked for more minutes of overtime.",
-    "Heated draw: {home} {home_goals}-{away_goals} {away} in a confrontation that had everything except a winner.",
-    "Goal party, point-sharing: {home} and {away} made it {home_goals}-{away_goals} in a match that earned its keep through spectacle.",
-    "{home} {home_goals}-{away_goals} {away}: generous draw in goals, restrictive in points.",
+    "Lively draw {stadium_clause}: {home} {home_goals}-{away_goals} {away}{round_clause} in a match packed with emotion from start to finish. Both teams came in with offensive mindset, opened the game from the first minutes, and the result was a match with goals on both sides, score reversals, and a festive atmosphere in the stands. No winner but plenty of football — and the crowd left with the feeling of having watched a special match.",
+    "{home} and {away} put on a spectacle {stadium_clause}: {home_goals}-{away_goals}{round_clause}, a festive draw worthy of a soap opera chapter. The teams traded blows in midfield, created clear chances on both sides, and every ball that went in seemed to open the way for more. In the end, everything was even — but for whoever watched, it was a match to keep in memory, with moments of technical quality that elevate the spectacle of football.",
+    "Goal-filled draw: {home} {home_goals}-{away_goals} {away}{round_clause} in an open match that could have gone either way. Unstable defenses, inspired attacks, and a frenetic rhythm from start to finish {stadium_clause}. Each team opened leads at different moments, but neither managed to keep them — and the result is a generous score in goals, restrictive in points, but certainly generous in emotion for whoever bought the ticket.",
   ],
   draw_low: [
-    "Goalless draw: {home} {home_goals}-{away_goals} {away} in a stuck match {stadium_clause}, with defenses outshining attacks.",
-    "{home} {home_goals}-{away_goals} {away}: slim draw, match of few clear plays and lots of marking.",
-    "Equality on the scoreboard and in the difficulties: {home} and {away} ended at {home_goals}-{away_goals} in a stuck match from start to finish.",
-    "{home} {home_goals}-{away_goals} {away}: stuck-match draw, decided more on errors than on quality plays.",
-    "Without major emotions: {home} and {away} made it {home_goals}-{away_goals} in a confrontation locked at midfield.",
-    "Slim draw between {home} and {away}: {home_goals}-{away_goals}, with few minutes of actual football.",
-    "Tied-up match, slim draw: {home} {home_goals}-{away_goals} {away} in a match of few opportunities.",
-    "{home} and {away} split points at {home_goals}-{away_goals} in a slow match, more tactical than emotional.",
-    "Bureaucratic draw: {home} {home_goals}-{away_goals} {away}, in a confrontation of little offensive output from either side.",
-    "{home} {home_goals}-{away_goals} {away}: draw without spectacle, match decided by the marking.",
-    "Slim draw: {home} and {away} made it {home_goals}-{away_goals} in a tied-up match in every sector.",
-    "{home} and {away} didn't escape {home_goals}-{away_goals} in a match of few real shots.",
-    "Lackluster draw: {home} {home_goals}-{away_goals} {away} in a confrontation controlled by the defenses.",
-    "{home} and {away} ended at {home_goals}-{away_goals} in a match decided more by fatigue than by talent.",
-    "Tight draw: {home} {home_goals}-{away_goals} {away}, hard-fought match with few real chances of a goal.",
-    "No goals, no major emotions: {home} {home_goals}-{away_goals} {away} in a balanced but unproductive match.",
-    "{home} {home_goals}-{away_goals} {away}: draw decided in the marking, with attentive defenses and frustrated attacks.",
-    "Draw under figurative rain: {home} {home_goals}-{away_goals} {away} in a match of little joy.",
-    "{home} and {away} made it {home_goals}-{away_goals} in a stuck match, with no big moments for either side.",
-    "Lackluster draw: {home} {home_goals}-{away_goals} {away}, with defenses standing out more than attacks.",
+    "Lackluster draw {stadium_clause}: {home} {home_goals}-{away_goals} {away}{round_clause} in a match locked up in every sector. The midfields cancelled each other out, the defenses outshone the attacks, and the few shots that happened ran into well-positioned goalkeepers. It was more a tactical match than a technical one, with both teams worried first and foremost about not conceding — and the result, though fair, leaves a feeling of wasted opportunity for whoever wanted three points.",
+    "{home} and {away} split points at {home_goals}-{away_goals}{round_clause} in a confrontation locked at midfield {stadium_clause}. Clear chances were rare, with attentive defenses, well-executed marking, and uninspired attacks. Bureaucratic draw, decided more by fatigue and lack of boldness than by individual or collective talent on either side. A point that serves but excites no one.",
+    "{home} {home_goals}-{away_goals} {away}{round_clause}: stuck-match draw, decided more by errors than by quality plays. {stadium_clause}, what was seen was a tactical confrontation, with few minutes of actual football and many stoppages for defensive reorganization. When the final whistle blew, the general feeling was that both sides left satisfied with the point, but the crowd was wanting more boldness — the kind of match you watch out of obligation and quickly forget.",
+  ],
+};
+
+// ── EN §2 templates ──
+const PAR2_EN: Record<Par2Type, string[]> = {
+  hat_trick: [
+    "{hat_trick_player} was the unquestionable name of the match — {hat_trick_goals} solo goals, each constructed differently, each decisive to the unfolding of the game. The striker showed a nose for goal in every situation that appeared, finished with precision inside and outside the area, and proved why he's been catching the eye of scouts from major teams. A hat-trick that goes straight into the gallery of the season's best individual performances.",
+    "Magical night for {hat_trick_player}: {hat_trick_goals} goals in a single match, numbers from a player in absolute state of grace. There's no need to elaborate on a performance like this — the striker was in every important play, found the paths to goal in distinct situations, and carried the team alone in the moments needed. A hat-trick that places his name among the round's standouts and proves once again his worth to the squad.",
+    "When the team needed it, {hat_trick_player} answered with {hat_trick_goals} goals. A hat-trick built on technical quality, the right positioning at the right time, and that spark of talent that separates ordinary players from established goalscorers. A performance that will produce talk for weeks and reinforces why he is, today, one of the team's main offensive weapons — the kind of display that goes down in personal history and deserves headlines.",
+  ],
+  red_card_drama: [
+    "{red_card_player}'s expulsion was the play that most marked the match's script. A card given at a decisive moment, a controversial decision that divided opinions in the stands and the commentary — some defending the referee's strictness, others finding it excessive given what they saw on the pitch. Regardless of the technical analysis, the fact is that the player left teammates at numerical disadvantage and completely changed the balance of forces being established until then.",
+    "{red_card_player} was sent off and changed the course of the match. A controversial expulsion, with fans cheering or protesting depending on which side of the stands they were on, but with massive impact on what came next. The team that ended up a man down lost organization, offensive pressure, and ability to react, and watched the opponent dictate the final rhythm calmly. A red card that will produce discussion and analysis among fans and pundits in the coming days.",
+    "{red_card_player}'s red card was marked as the inflection point of the match. Before the expulsion, the balance between teams was visible and both sides retained chances of winning. After, the scenario flipped completely — the team with the man advantage exploited it well, and the team that lost the player collapsed within their own system. It was the play that wrote the match's outcome, like it or not the analysis of the refereeing.",
+  ],
+  gk_hero: [
+    "{gk_hero} was the most unexpected name of the night — the goalkeeper made {gk_hero_saves} important saves and held the team in a performance worthy of admiration. In crucial moments, he appeared to prevent certain goals, donned the hero's cape, and stopped the score from heading in a different direction. For whoever watched, it became clear: without his work between the posts, the result would've been different, and the team owes much to that performance.",
+    "A gala night for {gk_hero}: the keeper made {gk_hero_saves} difficult saves and was the silent hero of the match. Ball off the crossbar, one-on-one finishing, long-range shot — in every situation the goalkeeper responded with perfect reflex and positioning. Performances like this are what separate ordinary keepers from true guardians, and it'll hardly go unnoticed by the round's analysts or the club's fans.",
+    "{gk_hero} saved the team. {gk_hero_saves} providential saves, in moments when the match seemed lost, secured a result that wouldn't have been possible without his work. A goalkeeper who grows in decisive matches, has cool blood under pressure, and shows why he's considered a fundamental piece of the squad — to be fair in the overall assessment, he was probably the most important player of the confrontation.",
+  ],
+  dribble_play: [
+    "The play that decided the match started with {dribble_play_player} carrying the ball and beating {dribble_play_count} markers in sequence. It was an individual play to enter any compilation of the round's best moments — short dribble, body feint, sudden change of direction — and culminated in the goal marked as the high point of the match. The kind of play that separates average athletes from truly differentiated ones on the pitch.",
+    "{dribble_play_player} did alone what many teams try to do with organized attack: beat {dribble_play_count} opponents, created his own space, and generated the most dangerous finish of the match. It was a display of individual talent that fully justifies his role as protagonist in the coach's tactical setup. A play that will produce replay on every sports show this week and goes into the player's personal gallery.",
+    "Star play: {dribble_play_player} took the ball, faced {dribble_play_count} markers, dribbled with class, and defined the play marked as the high point of the match. This kind of display, mixing refined technique with quick game reading, is exactly what makes football a spectacle. A performance that deserves highlight in the round's best moments column and confirms the player's status among the squad's main names.",
+  ],
+  top_scorer_brace: [
+    "{top_scorer} scored the {top_scorer_goals} goals that decided the match in a performance of absolute protagonism. The striker was in the right places at the right times, finished with clear technical precision, and showed why he's been catching the eye of the round's analysts. A personal brace that reinforces his role as offensive reference of the team and places him among the match's standouts — exactly the kind of display expected from a key squad number.",
+    "Two decisive goals from {top_scorer} placed the striker's name on the round's protagonists list. In distinct situations, he found the way to the net with technical quality, adequate positioning, and that spark of talent that separates good goalscorers from the merely regular. A performance that will produce good repercussion and confirms his importance to the coach's setup for the season — the kind of display that goes straight onto scouts' radars.",
+    "{top_scorer_goals} goals on the count for {top_scorer}, who was the offensive name of the match. In all his finishes, the striker showed the necessary cool, and the two goals scored were fundamental to the outcome. Ask anyone who plays alongside: the guy does what needs to be done, when it needs to be done. A performance that reinforces why he's a key piece in the squad — the kind of display that's worth the ticket to see the striker in action.",
+  ],
+  shot_machine: [
+    "{shot_machine} was the night's drilling machine: {shot_machine_count} shots throughout the match, some on target, others scaring the keeper, but always creating danger in the opposing area. The player insisted from distance, tried inside the area, finished with the head — and even without finding the net, was the most dangerous attacker of his team's offense. A performance that deserves recognition for the volume of finishes and the ability to create constant danger in the offensive sector.",
+    "It was the most frustrating night for {shot_machine} — {shot_machine_count} attempts tried, and none became a goal. The striker had opportunities to settle it, but precision didn't come at the right time. Even without scoring, his presence troubled the opposing defense from start to finish, and the performance shows he kept trying until the last minute. The kind of display that deserves recognition even without the goal expected by the fans.",
+    "{shot_machine} insisted throughout the match: {shot_machine_count} shots, several situations created, but the finishing didn't yield what the statistic promised. The striker carried his team's attack, created individual quality plays, and generated the match's main threats. Time will tell if the volume of finishes turns into more goals in the coming rounds — when that happens, the player will be among the championship's top scorer candidates.",
+  ],
+  tackle_master: [
+    "{tackle_master} was the night's defensive wall: {tackle_master_count} tackles throughout the match, in moments when the team needed to resist and in moments when it needed to recover the ball. Perfect positioning, exemplary game reading, and the right timing to enter hard on the ball — the player was the piece that sustained the defense on a night when the opponent tried to press. A performance that will go into the round's statistical reports.",
+    "{tackle_master}'s background work deserves highlight in this match's chronicle. {tackle_master_count} tackles, all at the right moment, all without a foul — a display of defensive technique that serves as a lesson for any defender wanting to evolve. These numbers show why the player is considered a fundamental piece of the system, even if fan recognition usually goes more to the strikers than to the defensive pillars of the setup.",
+    "{tackle_master} took on the function of protecting the defense: {tackle_master_count} tackles on the count, several of them in situations of imminent danger. The player was the buffer that was missing in several moments of the match, closing passes behind the centerbacks and neutralizing plays that seemed dangerous. A fundamental performance that deserves recognition in the post-match analysis — the kind of silent but absolutely decisive display for the final result.",
+  ],
+  generic: [
+    "{top_scorer} scored the goal that decided the match in a play of opportunism inside the area. The striker was in the right place at the right time, finished without hesitation, and secured precious three points for the team. It wasn't the season's most spectacular performance, but it had the importance it needed to have — for teams disputing important objectives, goals like that make all the difference in the final point sum.",
+    "Collective play decided the match — there wasn't a screaming individual standout, but a team that played together. {top_scorer} scored the important goal, but the win had everyone's fingerprint: organized midfield, well-positioned defense, fast transitions. The kind of display that shows coach and players are aligned on the tactical proposal — the kind that builds confidence in the squad.",
+    "Without major individuals shining, it was the collective that decided the match. {top_scorer} scored the relevant goal, but the match's story goes to many other names that did their work silently. A team win, the kind that reinforces the team's structure and shows that, even without an inspired attack, it's possible to win by doing the basic tactical work well.",
+  ],
+};
+
+// ── EN §3 templates ──
+const PAR3_EN: Record<Par3Type, string[]> = {
+  leader: [
+    "With this win, {winner} reaches {winner_points} points and remains alone at the top of the table. {winner_pos}st position held with comfort, game by game, and the feeling that the team is in a dominant moment of the season. They'll need to maintain this consistency to confirm title expectations at the end of the championship, but the fact is that today {winner} is the most consistent team in the competition — no one seems eager to wrestle the lead away in the short term.",
+    "{winner} reinforces competition leadership with three more points: {winner_points} in total, {winner_pos}st position maintained calmly. The win consolidates the team as title favorite, with consistent performances and a squad in sync. Coming rounds will determine if the open advantage becomes mathematical reality or if some chaser manages to close the gap — but for now, the atmosphere is one of total confidence and focus on maintaining rhythm.",
+    "Leadership confirmed: {winner} occupies first place with {winner_points} points after this win. {leader_club} remains the season's reference, playing at high level and showing structure compatible with title expectations. Whoever follows the championship knows there's still a lot of road ahead, but the team enters the next round with the confidence of those who know the way — and that makes a huge psychological difference over the course of the competition.",
+  ],
+  top4: [
+    "{winner} reaches {winner_points} points with this win and occupies {winner_pos}th place on the table, within the qualification zone for next season's important competitions. A good moment for the team, which has been adding points consistently and showing tactical structure compatible with the objectives drawn before the championship started. Coming rounds will confirm if the spot turns into reality at the end of the competition.",
+    "Three more points for {winner}, who climb to {winner_pos}th position with {winner_points} points. The team enters firmly into the fight for slots in continental competitions, with the squad in sync and the coach increasingly imprinting a clear playing identity. The championship's final stretch will be tight in the slot fight, but the winning team shows today that they have conditions to remain in the lead pack until the end.",
+    "{winner} {winner_points} points, {winner_pos}th position: the win consolidates the team among the main candidates for slots in continental tournaments. It's no longer a surprise when they appear in the qualification zone — they've been showing consistency for several rounds, with stable defense and productive attack. The championship's final stretch will be decisive in confirming the objective, but the atmosphere is positive and the squad has shown the necessary maturity.",
+  ],
+  relegation: [
+    "On the losing side, a worrying situation: {loser} remains in {loser_pos}th place with {loser_points} points, inside the relegation zone. The championship's final stretch will be dramatic, and every match now is worth gold for the team to escape the drop. Pressure on the technical staff and players tends to increase in the coming days, and the fans will demand immediate reaction if they want to see the team away from the relegation zone in the next round.",
+    "{loser} accumulates another defeat and continues sinking on the table: {loser_pos}th position with {loser_points} points, in a delicate situation in the relegation fight. The tactical setup needs review, the on-pitch performance needs reaction, and the time for correction shrinks with each round that passes. Demands will come from all sides — fans, press, board — and the next match becomes practically a final for the team.",
+    "Another stumble for {loser}, who remain in the relegation zone: {loser_pos}th position, {loser_points} points, growing tension atmosphere. The championship's final stretch will be fundamental in defining if the team can react in time to avoid the drop or if it'll fall to the next season in the lower division. They'll need an immediate switch — in performance, in attitude, in results — to maintain a chance of staying up.",
+  ],
+  midtable: [
+    "{winner} reaches {winner_points} points with this win, occupying {winner_pos}th position on the table. A mid-table position that keeps the team away from the relegation zone but without really fighting for spots in important competitions. The final stretch can define one side or the other — depends on the level of consistency they manage to maintain in the coming rounds. Without urgency but without excessive comfort is how the team's campaign goes.",
+    "The win leaves {winner} with {winner_points} points, in {winner_pos}th place — neutral position on the table, away from the drop and the qualification zone. The team watches what happens at both ends and seeks to close the championship in the best possible position within the circumstances. Without major pressures, but also without major short-term ambitions, they keep working round by round on building the next season.",
+    "{winner} adds three important points but maintains a mid-table position: {winner_pos}th place with {winner_points} points. The team remains distant from the ends — neither fighting for the title nor threatened by relegation — in a season of maintenance and planning for the future. Every win counts, but doesn't change the overall picture much; it's a moment to play with tranquility and build a solid base for next season.",
+  ],
+  new_top_scorer: [
+    "Another match standout: {season_top_scorer} now leads the competition's top scorer race with {season_top_scorer_goals} goals on the season. The goals from this match placed him ahead of his former chasers, and the striker continues in an impressive productive phase, in the rhythm of the club's best goalscorer in recent history. A serious bid to compete for the championship's golden boot, especially if he maintains this level for the remaining rounds.",
+    "Top scorer leadership changes hands: {season_top_scorer} reaches {season_top_scorer_goals} goals on the season and takes alone the first position among scorers. A striker in state of grace, scoring in sequence and carrying the team whenever he appears in front of goal. Whoever follows the championship knows he was pushing this number round after round — and now he is, officially, the competition's best finisher.",
+    "{season_top_scorer} is the new isolated top scorer leader: {season_top_scorer_goals} goals on the season, protagonist place in the goalscorers' ranking. Another brilliant chapter in an individual campaign that was no longer being hidden — the striker had been showing good form for weeks, and the goals in this match only confirmed the status. He promises to produce talk and scout attention in the coming rounds, which will be decisive in closing the season with the golden boot.",
+  ],
+  draw_neutral: [
+    "With the draw, {home} ends with {home_points} points in {home_pos}th place, and {away} adds {away_points} points in {away_pos}th position. For both, it's a result that maintains the rhythm but doesn't significantly change the overall picture of the table. Coming rounds remain decisive for each side: up or down, there's still much to be defined, and the point added today may be worth more or less depending on what happens in the upcoming direct encounters.",
+    "The draw distributes points in balanced fashion: {home} {home_points} points ({home_pos}th), {away} {away_points} points ({away_pos}th). A result that doesn't unbalance anyone on the table, but serves to maintain the rhythm of both sides. Each team continues working on its campaign — seeking to climb or consolidate position — and the dense calendar over the coming month will weigh in defining if this point added today will have definitive weight in the final count.",
+    "Points split with the draw: {home} ends with {home_points} points ({home_pos}th place) and {away} with {away_points} points ({away_pos}th place). For both sides, the result has mixed reading — it can be seen as a point added in a difficult match or as a point lost in a real win opportunity. Each team continues its trajectory in the next commitments, with the same need to score points to reach the season objectives projected from the start.",
   ],
 };
 
 // ── Classifier ──
-// Order matters — first match wins. Special-case buckets (red card,
-// penalty, comeback, late winner) take priority over score-based ones
-// so a 2-1 win decided by penalty doesn't get flattened into narrow_win.
 export function classifyMatch(f: MatchRecapFacts): MatchRecapBucket {
   const winner: 'home' | 'away' | 'draw' =
     f.homeGoals > f.awayGoals ? 'home' : f.homeGoals < f.awayGoals ? 'away' : 'draw';
@@ -505,7 +372,37 @@ export function classifyMatch(f: MatchRecapFacts): MatchRecapBucket {
   return 'draw_low';
 }
 
-// ── Picker + filler ──
+// ── §2 selector: priority hat-trick > red_card > gk_hero > dribble > brace > shot_machine > tackle_master > generic ──
+function pickPar2Type(f: MatchRecapFacts): Par2Type {
+  if (f.hatTrickPlayer && f.hatTrickGoals >= 3) return 'hat_trick';
+  if (f.redCardPlayerName) return 'red_card_drama';
+  if (f.gkHeroName && f.gkHeroSaves >= 2) return 'gk_hero';
+  if (f.dribblePlayPlayer && f.dribblePlayCount >= 2) return 'dribble_play';
+  if (f.matchTopScorerName && f.matchTopScorerGoals >= 2) return 'top_scorer_brace';
+  if (f.shotMachineName && f.shotMachineCount >= 5) return 'shot_machine';
+  if (f.tackleMasterName && f.tackleMasterCount >= 4) return 'tackle_master';
+  return 'generic';
+}
+
+// ── §3 selector: depends on whether match has a winner + standings ──
+function pickPar3Type(f: MatchRecapFacts): Par3Type {
+  // Drawn match → neutral or new top scorer
+  const isDraw = f.homeGoals === f.awayGoals;
+  if (isDraw) {
+    // Even on a draw, mention if a player from the match is the season top scorer
+    if (f.seasonTopScorerName && f.seasonTopScorerGoals >= 5) return 'new_top_scorer';
+    return 'draw_neutral';
+  }
+  // Otherwise focus on the winner's table position
+  if (f.isWinnerLeader) return 'leader';
+  // Loser in relegation zone (last 4) → mention it
+  if (f.loserStandingPos && f.numClubsInLeague && f.loserStandingPos > f.numClubsInLeague - 4) return 'relegation';
+  if (f.winnerStandingPos && f.winnerStandingPos <= 4) return 'top4';
+  // New top scorer angle wins over midtable when applicable
+  if (f.seasonTopScorerName && f.seasonTopScorerGoals >= 5) return 'new_top_scorer';
+  return 'midtable';
+}
+
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -516,51 +413,91 @@ function fillTemplate(template: string, vars: Record<string, string | number | n
     const replacement = v == null ? '' : String(v);
     out = out.replace(new RegExp(`\\{${k}\\}`, 'g'), replacement);
   }
-  // Cleanup: collapse multiple spaces and stray whitespace before punctuation
   return out.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').trim();
 }
 
-export function assembleMatchRecap(facts: MatchRecapFacts, lang: 'pt' | 'en'): { bucket: MatchRecapBucket; body: string } {
-  const bucket = classifyMatch(facts);
-  const templates = (lang === 'en' ? TEMPLATES_EN : TEMPLATES_PT)[bucket];
-  const template = pickRandom(templates);
+function buildVars(f: MatchRecapFacts, lang: 'pt' | 'en'): Record<string, string | number | null> {
+  const winnerName = f.homeGoals > f.awayGoals ? f.homeName : f.awayName;
+  const loserName = f.homeGoals > f.awayGoals ? f.awayName : f.homeName;
+  const winnerGoals = Math.max(f.homeGoals, f.awayGoals);
+  const loserGoals = Math.min(f.homeGoals, f.awayGoals);
 
-  const winnerName = facts.homeGoals > facts.awayGoals ? facts.homeName : facts.awayName;
-  const loserName = facts.homeGoals > facts.awayGoals ? facts.awayName : facts.homeName;
-  const winnerGoals = Math.max(facts.homeGoals, facts.awayGoals);
-  const loserGoals = Math.min(facts.homeGoals, facts.awayGoals);
-
-  const stadiumClause = facts.stadium
-    ? (lang === 'en' ? `at ${facts.stadium}` : `em ${facts.stadium}`)
+  const stadiumClause = f.stadium
+    ? (lang === 'en' ? `at ${f.stadium}` : `em ${f.stadium}`)
     : (lang === 'en' ? 'at home' : 'em casa');
 
-  const body = fillTemplate(template, {
-    home: facts.homeName,
-    away: facts.awayName,
-    home_goals: facts.homeGoals,
-    away_goals: facts.awayGoals,
+  const roundClause = f.round
+    ? (lang === 'en' ? ` in round ${f.round}` : ` pela rodada ${f.round}`)
+    : '';
+
+  return {
+    home: f.homeName,
+    away: f.awayName,
+    home_goals: f.homeGoals,
+    away_goals: f.awayGoals,
     winner: winnerName,
     loser: loserName,
     winner_goals: winnerGoals,
     loser_goals: loserGoals,
-    stadium: facts.stadium ?? '',
+    stadium: f.stadium ?? '',
     stadium_clause: stadiumClause,
-    round: facts.round ?? '',
-    top_scorer: facts.topScorerName ?? '',
-    top_scorer_goals: facts.topScorerGoals,
-    late_scorer: facts.lateScorerName ?? '',
-    late_minute: facts.lateMinute ?? '',
-    red_card_player: facts.redCardPlayerName ?? '',
-    decisive_penalty_scorer: facts.decisivePenaltyScorer ?? '',
-  });
+    round: f.round ?? '',
+    round_clause: roundClause,
+    top_scorer: f.matchTopScorerName ?? '',
+    top_scorer_goals: f.matchTopScorerGoals,
+    late_scorer: f.lateScorerName ?? '',
+    late_minute: f.lateMinute ?? '',
+    red_card_player: f.redCardPlayerName ?? '',
+    decisive_penalty_scorer: f.decisivePenaltyScorer ?? '',
+    hat_trick_player: f.hatTrickPlayer ?? '',
+    hat_trick_goals: f.hatTrickGoals,
+    gk_hero: f.gkHeroName ?? '',
+    gk_hero_saves: f.gkHeroSaves,
+    dribble_play_player: f.dribblePlayPlayer ?? '',
+    dribble_play_count: f.dribblePlayCount,
+    shot_machine: f.shotMachineName ?? '',
+    shot_machine_count: f.shotMachineCount,
+    tackle_master: f.tackleMasterName ?? '',
+    tackle_master_count: f.tackleMasterCount,
+    leader_club: f.leaderClubName ?? '',
+    winner_pos: f.winnerStandingPos ?? '',
+    winner_points: f.winnerPoints,
+    loser_pos: f.loserStandingPos ?? '',
+    loser_points: f.loserPoints,
+    home_pos: f.homeStandingPos ?? '',
+    home_points: f.homePoints,
+    away_pos: f.awayStandingPos ?? '',
+    away_points: f.awayPoints,
+    season_top_scorer: f.seasonTopScorerName ?? '',
+    season_top_scorer_goals: f.seasonTopScorerGoals,
+    num_clubs: f.numClubsInLeague,
+  };
+}
+
+export function assembleMatchRecap(facts: MatchRecapFacts, lang: 'pt' | 'en'): { bucket: MatchRecapBucket; body: string } {
+  const bucket = classifyMatch(facts);
+  const par2Type = pickPar2Type(facts);
+  const par3Type = pickPar3Type(facts);
+
+  const par1Set = (lang === 'en' ? PAR1_EN : PAR1_PT)[bucket];
+  const par2Set = (lang === 'en' ? PAR2_EN : PAR2_PT)[par2Type];
+  const par3Set = (lang === 'en' ? PAR3_EN : PAR3_PT)[par3Type];
+
+  const par1 = pickRandom(par1Set);
+  const par2 = pickRandom(par2Set);
+  const par3 = pickRandom(par3Set);
+
+  const vars = buildVars(facts, lang);
+  const body = [
+    fillTemplate(par1, vars),
+    fillTemplate(par2, vars),
+    fillTemplate(par3, vars),
+  ].join('\n\n');
 
   return { bucket, body };
 }
 
 // ── Fact extraction from DB ──
-// Supabase client is passed in (created with service_role inside the
-// engine), so we don't bypass anything here — just read.
-
 // deno-lint-ignore no-explicit-any
 type SupabaseClient = ReturnType<typeof createClient<any, any>>;
 
@@ -578,15 +515,16 @@ async function extractFacts(supabase: SupabaseClient, matchId: string): Promise<
     supabase.from('clubs').select('id, name').eq('id', match.away_club_id).maybeSingle(),
   ]);
 
-  // Stadium of the home club
+  // Stadium
   const { data: stadium } = await supabase
     .from('stadiums')
     .select('name')
     .eq('club_id', match.home_club_id)
     .maybeSingle();
 
-  // League round (if league match)
+  // League round + season (if league match)
   let round: number | null = null;
+  let seasonId: string | null = null;
   const { data: leagueMatch } = await supabase
     .from('league_matches')
     .select('round_id')
@@ -595,45 +533,58 @@ async function extractFacts(supabase: SupabaseClient, matchId: string): Promise<
   if (leagueMatch?.round_id) {
     const { data: roundRow } = await supabase
       .from('league_rounds')
-      .select('round_number')
+      .select('round_number, season_id')
       .eq('id', leagueMatch.round_id)
       .maybeSingle();
     round = roundRow?.round_number ?? null;
+    seasonId = roundRow?.season_id ?? null;
   }
 
-  // Events: goals, red cards
+  // Events
   const { data: events } = await supabase
     .from('match_event_logs')
-    .select('event_type, title, body, payload, created_at')
+    .select('id, event_type, title, body, payload, created_at')
     .eq('match_id', matchId)
-    .in('event_type', ['goal', 'red_card'])
     .order('created_at', { ascending: true });
 
-  const goals = (events ?? []).filter((e: any) => e.event_type === 'goal');
-  const reds = (events ?? []).filter((e: any) => e.event_type === 'red_card');
+  const allEvents = events ?? [];
+  const goals = allEvents.filter((e: any) => e.event_type === 'goal');
+  const reds = allEvents.filter((e: any) => e.event_type === 'red_card');
+  const yellows = allEvents.filter((e: any) => e.event_type === 'yellow_card');
+  const dribbles = allEvents.filter((e: any) => e.event_type === 'dribble');
 
-  // Top scorer: the name with the most goals overall (any side)
-  const goalCount = new Map<string, { name: string; club: string | null; count: number }>();
+  // Goal counts per scorer name
+  const goalsByName = new Map<string, { name: string; club: string | null; count: number; goals: any[] }>();
   for (const g of goals) {
     const name = (g.payload as any)?.scorer_name ?? null;
     const club = (g.payload as any)?.scorer_club_id ?? null;
     if (!name) continue;
-    const prev = goalCount.get(name);
-    if (prev) prev.count += 1;
-    else goalCount.set(name, { name, club, count: 1 });
-  }
-  let topScorerName: string | null = null;
-  let topScorerGoals = 0;
-  for (const v of goalCount.values()) {
-    if (v.count > topScorerGoals) {
-      topScorerGoals = v.count;
-      topScorerName = v.name;
+    const prev = goalsByName.get(name);
+    if (prev) {
+      prev.count += 1;
+      prev.goals.push(g);
+    } else {
+      goalsByName.set(name, { name, club, count: 1, goals: [g] });
     }
   }
 
-  // Compute approximate minute for each goal from created_at vs started_at.
-  // Engine ticks ≈ minutes; this is a coarse heuristic but good enough for
-  // distinguishing "late winner" (>=80') from earlier strikes.
+  // Match top scorer + hat-trick
+  let matchTopScorerName: string | null = null;
+  let matchTopScorerGoals = 0;
+  let hatTrickPlayer: string | null = null;
+  let hatTrickGoals = 0;
+  for (const v of goalsByName.values()) {
+    if (v.count > matchTopScorerGoals) {
+      matchTopScorerGoals = v.count;
+      matchTopScorerName = v.name;
+    }
+    if (v.count >= 3 && v.count > hatTrickGoals) {
+      hatTrickPlayer = v.name;
+      hatTrickGoals = v.count;
+    }
+  }
+
+  // Approximate minute from created_at vs started_at
   const startedAt = match.started_at ? new Date(match.started_at).getTime() : 0;
   const minuteOf = (createdAt: string): number => {
     if (!startedAt) return 0;
@@ -641,7 +592,7 @@ async function extractFacts(supabase: SupabaseClient, matchId: string): Promise<
     return Math.max(0, Math.round((t - startedAt) / 60000));
   };
 
-  // Comeback detection: track running score, see if the eventual winner was ever behind.
+  // Comeback detection
   let runningHome = 0;
   let runningAway = 0;
   let homeEverBehind = false;
@@ -659,13 +610,14 @@ async function extractFacts(supabase: SupabaseClient, matchId: string): Promise<
     (winnerSide === 'home' && homeEverBehind) ||
     (winnerSide === 'away' && awayEverBehind);
 
-  // Late winner: the last goal scored by the winning side, if minute >= 80
+  // Late winner
   let lateScorerName: string | null = null;
   let lateMinute: number | null = null;
+  let lastWinnerGoal: any = null;
   if (winnerSide !== 'draw') {
     const winnerClubId = winnerSide === 'home' ? match.home_club_id : match.away_club_id;
     const winnerGoalsList = goals.filter((g: any) => g.payload?.scorer_club_id === winnerClubId);
-    const lastWinnerGoal = winnerGoalsList[winnerGoalsList.length - 1];
+    lastWinnerGoal = winnerGoalsList[winnerGoalsList.length - 1];
     if (lastWinnerGoal) {
       const m = minuteOf(lastWinnerGoal.created_at);
       if (m >= 80) {
@@ -675,29 +627,189 @@ async function extractFacts(supabase: SupabaseClient, matchId: string): Promise<
     }
   }
 
-  // Red card from the losing side (decisive)
+  // Red card on losing side
   let redCardPlayerName: string | null = null;
   let redCardLoserSide = false;
   if (winnerSide !== 'draw' && reds.length > 0) {
     const loserClubId = winnerSide === 'home' ? match.away_club_id : match.home_club_id;
-    const loserRed = reds.find((r: any) => r.payload?.club_id === loserClubId || r.payload?.scorer_club_id === loserClubId);
+    const loserRed = reds.find((r: any) =>
+      r.payload?.club_id === loserClubId
+      || r.payload?.player_club_id === loserClubId
+      || r.payload?.scorer_club_id === loserClubId
+    );
     if (loserRed) {
-      redCardPlayerName = (loserRed.payload as any)?.player_name ?? (loserRed.payload as any)?.scorer_name ?? null;
+      redCardPlayerName =
+        (loserRed.payload as any)?.player_name
+        ?? (loserRed.payload as any)?.scorer_name
+        ?? null;
       redCardLoserSide = !!redCardPlayerName;
     }
   }
 
-  // Penalty heuristic: look for "pênalti"/"penalty" mentions in the
-  // last winner goal's title or body (engine writes Portuguese titles).
+  // Decisive penalty heuristic
   let decisivePenaltyScorer: string | null = null;
-  if (winnerSide !== 'draw') {
-    const winnerClubId = winnerSide === 'home' ? match.home_club_id : match.away_club_id;
-    const winnerGoalsList = goals.filter((g: any) => g.payload?.scorer_club_id === winnerClubId);
-    const lastWinnerGoal = winnerGoalsList[winnerGoalsList.length - 1];
-    if (lastWinnerGoal) {
-      const text = `${lastWinnerGoal.title ?? ''} ${lastWinnerGoal.body ?? ''}`.toLowerCase();
-      if (/p[êe]nal/.test(text) || (lastWinnerGoal.payload as any)?.kind === 'penalty') {
-        decisivePenaltyScorer = (lastWinnerGoal.payload as any)?.scorer_name ?? null;
+  if (winnerSide !== 'draw' && lastWinnerGoal) {
+    const text = `${lastWinnerGoal.title ?? ''} ${lastWinnerGoal.body ?? ''}`.toLowerCase();
+    if (/p[êe]nal/.test(text) || (lastWinnerGoal.payload as any)?.kind === 'penalty') {
+      decisivePenaltyScorer = (lastWinnerGoal.payload as any)?.scorer_name ?? null;
+    }
+  }
+
+  // Dribble play before decisive goal: count dribbles by the scorer in the
+  // 8 events immediately preceding the last winner goal.
+  let dribblePlayPlayer: string | null = null;
+  let dribblePlayCount = 0;
+  if (lastWinnerGoal) {
+    const scorerPid = (lastWinnerGoal.payload as any)?.scorer_participant_id;
+    const scorerName = (lastWinnerGoal.payload as any)?.scorer_name;
+    if (scorerPid && scorerName) {
+      const goalIdx = allEvents.findIndex((e: any) => e.id === lastWinnerGoal.id);
+      const window = allEvents.slice(Math.max(0, goalIdx - 8), goalIdx);
+      const count = window.filter((e: any) =>
+        e.event_type === 'dribble'
+        && (e.payload as any)?.dribbler_participant_id === scorerPid
+      ).length;
+      if (count >= 2) {
+        dribblePlayPlayer = scorerName;
+        dribblePlayCount = count;
+      }
+    }
+  }
+
+  // GK hero, shot machine, tackle master from player_match_stats
+  let gkHeroName: string | null = null;
+  let gkHeroSaves = 0;
+  let shotMachineName: string | null = null;
+  let shotMachineCount = 0;
+  let tackleMasterName: string | null = null;
+  let tackleMasterCount = 0;
+  const { data: pms } = await supabase
+    .from('player_match_stats')
+    .select('player_profile_id, gk_saves, shots, tackles, goals')
+    .eq('match_id', matchId);
+
+  if (pms && pms.length > 0) {
+    const profileIds = pms
+      .map((p: any) => p.player_profile_id)
+      .filter(Boolean);
+    const { data: profiles } = profileIds.length > 0
+      ? await supabase
+          .from('player_profiles')
+          .select('id, full_name')
+          .in('id', profileIds)
+      : { data: [] as any[] };
+    const nameById = new Map<string, string>();
+    for (const p of profiles ?? []) nameById.set(p.id, p.full_name);
+
+    for (const row of pms) {
+      const name = nameById.get(row.player_profile_id);
+      if (!name) continue;
+      if (row.gk_saves > gkHeroSaves) {
+        gkHeroSaves = row.gk_saves;
+        gkHeroName = name;
+      }
+      // Shot machine: many shots without scoring much
+      if (row.shots > shotMachineCount && row.goals < 2) {
+        shotMachineCount = row.shots;
+        shotMachineName = name;
+      }
+      if (row.tackles > tackleMasterCount) {
+        tackleMasterCount = row.tackles;
+        tackleMasterName = name;
+      }
+    }
+  }
+
+  // Standings (after match) — only meaningful for league matches
+  let leaderClubName: string | null = null;
+  let isWinnerLeader = false;
+  let winnerStandingPos: number | null = null;
+  let winnerPoints = 0;
+  let loserStandingPos: number | null = null;
+  let loserPoints = 0;
+  let homeStandingPos: number | null = null;
+  let homePoints = 0;
+  let awayStandingPos: number | null = null;
+  let awayPoints = 0;
+  let numClubsInLeague = 0;
+
+  if (seasonId) {
+    const { data: standings } = await supabase
+      .from('league_standings')
+      .select('club_id, points, goals_for, goals_against, won, drawn, lost')
+      .eq('season_id', seasonId);
+    if (standings && standings.length > 0) {
+      // Sort: points DESC, goal_diff DESC, goals_for DESC
+      const sorted = [...standings].sort((a: any, b: any) => {
+        if (b.points !== a.points) return b.points - a.points;
+        const gdA = a.goals_for - a.goals_against;
+        const gdB = b.goals_for - b.goals_against;
+        if (gdB !== gdA) return gdB - gdA;
+        return b.goals_for - a.goals_for;
+      });
+      numClubsInLeague = sorted.length;
+      const posByClub = new Map<string, number>();
+      sorted.forEach((s: any, i: number) => posByClub.set(s.club_id, i + 1));
+      const ptsByClub = new Map<string, number>();
+      for (const s of sorted) ptsByClub.set(s.club_id, s.points);
+
+      const leaderClubId = sorted[0]?.club_id;
+      if (leaderClubId) {
+        const { data: leaderClub } = await supabase
+          .from('clubs')
+          .select('name')
+          .eq('id', leaderClubId)
+          .maybeSingle();
+        leaderClubName = leaderClub?.name ?? null;
+      }
+
+      const winnerClubId = winnerSide === 'home' ? match.home_club_id : winnerSide === 'away' ? match.away_club_id : null;
+      const loserClubId = winnerSide === 'home' ? match.away_club_id : winnerSide === 'away' ? match.home_club_id : null;
+
+      if (winnerClubId) {
+        winnerStandingPos = posByClub.get(winnerClubId) ?? null;
+        winnerPoints = ptsByClub.get(winnerClubId) ?? 0;
+        isWinnerLeader = winnerClubId === leaderClubId;
+      }
+      if (loserClubId) {
+        loserStandingPos = posByClub.get(loserClubId) ?? null;
+        loserPoints = ptsByClub.get(loserClubId) ?? 0;
+      }
+      homeStandingPos = posByClub.get(match.home_club_id) ?? null;
+      homePoints = ptsByClub.get(match.home_club_id) ?? 0;
+      awayStandingPos = posByClub.get(match.away_club_id) ?? null;
+      awayPoints = ptsByClub.get(match.away_club_id) ?? 0;
+    }
+  }
+
+  // Season top scorer
+  let seasonTopScorerName: string | null = null;
+  let seasonTopScorerGoals = 0;
+  if (seasonId) {
+    const { data: seasonStats } = await supabase
+      .from('player_match_stats')
+      .select('player_profile_id, goals')
+      .eq('season_id', seasonId);
+    if (seasonStats && seasonStats.length > 0) {
+      const totalByPlayer = new Map<string, number>();
+      for (const s of seasonStats) {
+        const cur = totalByPlayer.get(s.player_profile_id) ?? 0;
+        totalByPlayer.set(s.player_profile_id, cur + (s.goals ?? 0));
+      }
+      let topId: string | null = null;
+      for (const [pid, total] of totalByPlayer.entries()) {
+        if (total > seasonTopScorerGoals) {
+          seasonTopScorerGoals = total;
+          topId = pid;
+        }
+      }
+      if (topId) {
+        const { data: topPlayer } = await supabase
+          .from('player_profiles')
+          .select('full_name')
+          .eq('id', topId)
+          .maybeSingle();
+        seasonTopScorerName = topPlayer?.full_name ?? null;
       }
     }
   }
@@ -707,22 +819,46 @@ async function extractFacts(supabase: SupabaseClient, matchId: string): Promise<
     awayName: awayClub?.name ?? 'Visitante',
     homeGoals: match.home_score,
     awayGoals: match.away_score,
+    homeClubId: match.home_club_id,
+    awayClubId: match.away_club_id,
     stadium: stadium?.name ?? null,
     round,
-    topScorerName,
-    topScorerGoals,
+    hasComeback,
+    decisivePenaltyScorer,
     lateScorerName,
     lateMinute,
     redCardPlayerName,
     redCardLoserSide,
-    hasComeback,
-    decisivePenaltyScorer,
+    hatTrickPlayer,
+    hatTrickGoals,
+    matchTopScorerName,
+    matchTopScorerGoals,
+    gkHeroName,
+    gkHeroSaves,
+    dribblePlayPlayer,
+    dribblePlayCount,
+    shotMachineName,
+    shotMachineCount,
+    tackleMasterName,
+    tackleMasterCount,
+    yellowCardCount: yellows.length,
+    numClubsInLeague,
+    leaderClubName,
+    isWinnerLeader,
+    winnerStandingPos,
+    winnerPoints,
+    loserStandingPos,
+    loserPoints,
+    homeStandingPos,
+    homePoints,
+    awayStandingPos,
+    awayPoints,
+    seasonTopScorerName,
+    seasonTopScorerGoals,
   };
 }
 
-// ── Top-level entry point: extract facts, assemble bilingual recap, persist. ──
-// Idempotent — narratives table has UNIQUE (entity_type, entity_id, scope),
-// so a second call after final_whistle won't overwrite the first recap.
+// ── Public entry point ──
 export async function generateAndPersistMatchRecap(supabase: SupabaseClient, matchId: string): Promise<void> {
   try {
     const facts = await extractFacts(supabase, matchId);
@@ -740,7 +876,6 @@ export async function generateAndPersistMatchRecap(supabase: SupabaseClient, mat
       facts_json: { ...facts, bucket: pt.bucket },
     });
   } catch (err) {
-    // Recap generation is best-effort — never block the engine.
     console.error('[match_recap] generation failed:', err);
   }
 }

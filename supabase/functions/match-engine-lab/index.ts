@@ -493,7 +493,11 @@ async function persistMatchPlayerStats(
       const passes_completed = countBy('pass_complete', 'passer_participant_id', pid);
       const passes_failed = countBy('pass_failed', 'passer_participant_id', pid);
       const passes_attempted = passes_completed + passes_failed;
-      const tackles = countBy('tackle', 'tackler_participant_id', pid);
+      // A successful tackle is a `dispute` event with winner='defender'.
+      // The engine never emits a literal 'tackle' event_type, so the old
+      // counter always returned 0 (verified in prod 2026-05-02).
+      const tackles = countBy('dispute', 'defender_participant_id', pid,
+        (pl: any) => pl?.winner === 'defender');
       const interceptions = countBy('possession_change', 'new_ball_holder_participant_id', pid,
         (pl: any) => pl?.cause === 'interception');
       const fouls_committed = countBy(['foul', 'penalty'], 'fouler_participant_id', pid);

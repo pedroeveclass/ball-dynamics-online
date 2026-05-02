@@ -22,10 +22,20 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Pull all finished matches missing a recap. Use a left-join via
-    // two queries since Supabase JS doesn't support NOT IN (subquery)
-    // directly — fetch ids of matches that already have a recap, then
-    // exclude them from the finished set.
+    const url = new URL(req.url);
+    const force = url.searchParams.get('force') === '1';
+
+    // When force=1 wipe existing match recaps so v2 templates regenerate
+    // over the v1 paragraphs. Without force, only fill in matches that
+    // never had a recap (default safe behavior).
+    if (force) {
+      await supabase
+        .from('narratives')
+        .delete()
+        .eq('entity_type', 'match')
+        .eq('scope', 'match_recap');
+    }
+
     const { data: existing } = await supabase
       .from('narratives')
       .select('entity_id')
