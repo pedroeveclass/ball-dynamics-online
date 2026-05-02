@@ -69,10 +69,10 @@
         "colegio": "Time do colégio"
       },
       "mentor": {
-        "pai": "Meu pai",
-        "familia": "Mãe / avó / tio",
+        "pai": "Meu pai / Minha mãe",
+        "familia": "Um parente (Vô/Vó/Tio/Tia)",
         "irmao": "Irmão mais velho",
-        "idolo": "Um ídolo que via na TV",
+        "idolo": "Um Jogador de Futebol que assisti na TV",
         "sozinho": "Descobri sozinho"
       },
       "spark": {
@@ -144,17 +144,17 @@
     "mentors": {
       "pai": [
         "Quem primeiro acreditou foi o pai, que largava o trabalho mais cedo às quartas pra levá-lo ao treino.",
+        "A mãe foi a primeira torcedora — costurava uniformes velhos, juntava moedas pra inscrição da peneira, e sustentou a fé nos dias em que o filho voltava chorando do treino.",
         "O pai foi seu primeiro técnico, primeiro torcedor e o primeiro a apostar que aquele moleque magrelo tinha algo diferente.",
-        "Foi nos olhos do pai, brilhando na arquibancada de cada jogo, que ele encontrou força nos dias em que tudo parecia difícil demais.",
-        "O pai não entendia muito de tática, mas entendia de filho — e foi ele quem garantiu que cada tênis furado fosse trocado, custasse o que custasse.",
+        "A mãe não entendia muito de tática, mas entendia de filho — foi ela quem garantiu que nada faltasse na hora do treino, custasse o que custasse.",
         "Pai e filho dividiram cada conquista: do primeiro gol no campinho ao convite que mudou tudo, sempre com a mesma frase no fim do dia — 'amanhã a gente treina mais'."
       ],
       "familia": [
-        "Coube à mãe a tarefa de acreditar antes de todo mundo — costurando uniformes velhos, contando moedas pra inscrição, segurando a barra dos dias em que o filho voltava chorando do treino.",
         "Foi a avó quem o levou pelo primeiro corredor de clube, com aquela determinação silenciosa de quem sabia que ali estava nascendo algo importante.",
         "Um tio meio jogador de pelada, meio professor improvisado, foi quem viu primeiro: 'esse moleque tem coisa diferente, tem que insistir'.",
-        "A família inteira virou comissão técnica — mãe lavando uniforme, irmã filmando jogos com o celular, todo mundo dizendo a mesma coisa: 'você consegue'.",
-        "Em casa, ninguém duvidava: a mãe segurou a fé quando ele duvidou de si mesmo, e isso fez toda a diferença nos momentos em que ele quase desistiu."
+        "O avô, que jogou bola na várzea a vida inteira, foi quem reconheceu primeiro o talento do neto e jurou que aquilo não podia ser desperdiçado.",
+        "A tia que sempre o levou pra escola virou motorista das peneiras também — sem ela, não teria como chegar nos lugares certos na hora certa.",
+        "Quem segurou a barra foi a família estendida: avós, tios e tias se revezando entre transporte, uniforme e ingresso de jogo. Cada um botou um pedaço pra fazer dar certo."
       ],
       "irmao": [
         "O irmão mais velho, esse jogador frustrado que parou no meio do caminho, virou o primeiro mestre — passes errados eram corrigidos no quintal, na base do 'de novo, agora certo'.",

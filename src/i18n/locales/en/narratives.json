@@ -69,10 +69,10 @@
         "colegio": "School team"
       },
       "mentor": {
-        "pai": "My father",
-        "familia": "Mother / grandmother / uncle",
+        "pai": "My father / My mother",
+        "familia": "A relative (grandparent / uncle / aunt)",
         "irmao": "Older brother",
-        "idolo": "A TV idol I watched",
+        "idolo": "A football player I watched on TV",
         "sozinho": "I figured it out alone"
       },
       "spark": {
@@ -144,17 +144,17 @@
     "mentors": {
       "pai": [
         "The first one to believe was his father, who'd leave work early on Wednesdays to drive him to training.",
+        "His mother was his first fan — patching up old kits, counting coins for trial fees, and holding the faith on the days her son came home crying from training.",
         "His father was his first coach, his first fan, and the first person to bet that the skinny kid had something different.",
-        "It was in his father's eyes, shining from the stands at every match, that he found strength on the days when everything seemed too hard.",
-        "His father didn't know much about tactics, but he knew his son — and he made sure every torn pair of sneakers got replaced, whatever it cost.",
+        "His mother didn't know much about tactics, but she knew her son — she was the one who made sure nothing was missing at training time, whatever it cost.",
         "Father and son shared every win — from the first goal on a small pitch to the call that changed everything — always with the same line at the end of the day: 'tomorrow we train more'."
       ],
       "familia": [
-        "His mother carried the job of believing before everyone else — patching up old kits, counting coins for tournament fees, holding things together on the days her son came home crying from training.",
         "It was his grandmother who walked him down a club's first corridor, with the quiet determination of someone who knew something important was being born there.",
         "An uncle, half pickup-game player, half improvised teacher, was the first to see it: 'this kid's got something different — keep pushing him'.",
-        "The whole family became a coaching staff — mother washing kits, sister filming matches on her phone, everyone saying the same thing: 'you can do this'.",
-        "At home, no one ever doubted — his mother held the faith when he doubted himself, and that made all the difference in the moments he almost gave up."
+        "His grandfather, who played sandlot football his whole life, was the first to recognize his grandson's talent and swore it couldn't be wasted.",
+        "The aunt who'd always driven him to school became the trial-day driver too — without her, getting to the right places at the right time wouldn't have been possible.",
+        "It was the extended family who held things together — grandparents, uncles and aunts taking turns on transport, kit, match tickets. Each one chipped in to make it work."
       ],
       "irmao": [
         "His older brother — that frustrated player who quit somewhere along the way — became his first teacher, with bad passes corrected in the backyard, drilled with 'again, this time right'.",
