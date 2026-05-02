@@ -386,6 +386,22 @@ async function persistLeagueMatchDiscipline(supabase: any, matchId: string, cach
   }
 }
 
+// ─── Stat-coordinate canonicalization ─────────────────────────────
+// All persisted stat coords (position_samples, pass/shot/dispute/possession
+// payloads) are stored in a "canonical LTR" frame: the participant's club
+// is always attacking right (x→100). At halftime the engine physically
+// flips the field, so a home player's 2H raw x is mirrored back; an away
+// player's 1H raw x is also mirrored.
+//   home + 1H → keep
+//   home + 2H → mirror
+//   away + 1H → mirror
+//   away + 2H → keep
+function canonForLtr(rawX: number, clubId: string, homeClubId: string, currentHalf: number | null | undefined): number {
+  const isHome = clubId === homeClubId;
+  const isSecondHalf = ((currentHalf ?? 1) as number) >= 2;
+  return (isHome === isSecondHalf) ? 100 - rawX : rawX;
+}
+
 // ─── Per-player per-match stat aggregation ────────────────────────
 // Reads this match's match_event_logs, produces one player_match_stats row
 // per participant, and upserts by (match_id, participant_id). Called on
@@ -465,24 +481,43 @@ async function persistMatchPlayerStats(
       .eq('match_id', matchId);
     const allEvents: any[] = events || [];
 
+    // Halftime boundary — turns logged BEFORE the halftime event are 1H,
+    // those after are 2H. Used to canonicalize each sample to LTR.
+    const { data: halftimeEv } = await supabase
+      .from('match_event_logs')
+      .select('created_at')
+      .eq('match_id', matchId)
+      .eq('event_type', 'halftime')
+      .maybeSingle();
+    const halftimeTs = halftimeEv ? new Date((halftimeEv as any).created_at).getTime() : Number.POSITIVE_INFINITY;
+
     // Position samples for the heatmap — one sample per resolution turn end.
-    // resolution_script.final_positions is keyed by participant_id, so we
-    // aggregate per-participant in a single pass.
+    // Stored canonical-LTR (each player's club always attacks → x=100), so
+    // the client renders without any home/away knowledge.
     const { data: turns } = await supabase
       .from('match_turns')
-      .select('resolution_script')
+      .select('resolution_script, created_at')
       .eq('match_id', matchId)
       .eq('phase', 'resolution')
       .order('turn_number', { ascending: true });
+    const clubByParticipant = new Map<string, string>();
+    for (const p of parts) clubByParticipant.set(p.id, p.club_id);
     const samplesByParticipant = new Map<string, Array<{ x: number; y: number }>>();
     for (const turn of (turns || [])) {
       const fps = (turn as any)?.resolution_script?.final_positions as Record<string, { x: number; y: number }> | undefined;
       if (!fps) continue;
+      const turnTs = new Date((turn as any).created_at).getTime();
+      const isSecondHalf = turnTs >= halftimeTs;
       for (const [pid, pos] of Object.entries(fps)) {
         if (typeof pos?.x !== 'number' || typeof pos?.y !== 'number') continue;
+        const clubId = clubByParticipant.get(pid);
+        if (!clubId) continue;
+        const isHome = clubId === homeClubId;
+        const needsMirror = isHome === isSecondHalf;
+        const canonX = needsMirror ? 100 - pos.x : pos.x;
         let arr = samplesByParticipant.get(pid);
         if (!arr) { arr = []; samplesByParticipant.set(pid, arr); }
-        arr.push({ x: pos.x, y: pos.y });
+        arr.push({ x: canonX, y: pos.y });
       }
     }
 
@@ -503,8 +538,9 @@ async function persistMatchPlayerStats(
       const assists = countBy('goal', 'assister_participant_id', pid);
       const shotsMissed = countBy('shot_missed', 'shooter_participant_id', pid);
       const shotsOnPost = countBy('shot_post', 'shooter_participant_id', pid);
-      const shots_on_target = goals; // only goals have a known shooter attribution today
-      const shots = shotsMissed + goals + shotsOnPost; // post counts as shot total, not on target
+      const shotsSaved = countBy('gk_save', 'shooter_participant_id', pid);
+      const shots_on_target = goals + shotsSaved; // goals + saved are on target; posts are not
+      const shots = shotsMissed + goals + shotsOnPost + shotsSaved;
       const passes_completed = countBy('pass_complete', 'passer_participant_id', pid);
       const passes_failed = countBy('pass_failed', 'passer_participant_id', pid);
       const passes_attempted = passes_completed + passes_failed;
@@ -4188,21 +4224,29 @@ function resolveAction(action: string, _attacker: any, _defender: any, allAction
                 event_type: 'dispute',
                 title: finalWinner === 'attacker' ? '⚔️ Disputa: Ataque venceu!' : '🛡️ Disputa: Defesa venceu!',
                 body: `Disputa ${disputeZone === 'yellow' ? 'aérea' : 'no chão'}${atkIsHeader || defIsHeader ? ' (cabeceio)' : ''}.`,
-                payload: {
-                  attacker_participant_id: attackerCand.participant.id,
-                  attacker_name: (attackerCand.participant as any)?._player_name ?? null,
-                  defender_participant_id: defenderCand.participant.id,
-                  defender_name: (defenderCand.participant as any)?._player_name ?? null,
-                  winner: finalWinner,
-                  zone: disputeZone,
-                  attacker_is_header: !!atkIsHeader,
-                  defender_is_header: !!defIsHeader,
-                  // Defender's position is the ground-truth tackle/dispute location.
-                  defender_x: Number((defenderCand.participant as any)?.pos_x ?? 50),
-                  defender_y: Number((defenderCand.participant as any)?.pos_y ?? 50),
-                  attacker_x: Number((attackerCand.participant as any)?.pos_x ?? 50),
-                  attacker_y: Number((attackerCand.participant as any)?.pos_y ?? 50),
-                },
+                payload: (() => {
+                  const defClubId = (defenderCand.participant as any)?.club_id ?? '';
+                  const atkClubId = (attackerCand.participant as any)?.club_id ?? '';
+                  const homeId = match?.home_club_id ?? '';
+                  const halfNow = match?.current_half;
+                  return {
+                    attacker_participant_id: attackerCand.participant.id,
+                    attacker_name: (attackerCand.participant as any)?._player_name ?? null,
+                    defender_participant_id: defenderCand.participant.id,
+                    defender_name: (defenderCand.participant as any)?._player_name ?? null,
+                    winner: finalWinner,
+                    zone: disputeZone,
+                    attacker_is_header: !!atkIsHeader,
+                    defender_is_header: !!defIsHeader,
+                    // Each coord is canonicalized to its OWN player's attacking
+                    // direction (LTR), so a defender's tackle plot always reads
+                    // as the defender attacking right.
+                    defender_x: canonForLtr(Number((defenderCand.participant as any)?.pos_x ?? 50), defClubId, homeId, halfNow),
+                    defender_y: Number((defenderCand.participant as any)?.pos_y ?? 50),
+                    attacker_x: canonForLtr(Number((attackerCand.participant as any)?.pos_x ?? 50), atkClubId, homeId, halfNow),
+                    attacker_y: Number((attackerCand.participant as any)?.pos_y ?? 50),
+                  };
+                })(),
               });
             }
             if (LOG_VERBOSE) console.log(`[ENGINE] Dispute resolved: ${finalWinner === 'attacker' ? 'ATK' : 'DEF'} goes first (header bonus: atk=${atkIsHeader} def=${defIsHeader})`);
@@ -7566,7 +7610,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 ball_holder_club_id: possClubId,
                 action_type: bhAct,
                 turn_number: match.current_turn_number,
-                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 from_y: Number((ballHolder as any).pos_y ?? 50),
               },
             });
@@ -7579,19 +7623,35 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // Log GK save attempt if there was one
         if (result.gkSaveAttempt) {
           const gka = result.gkSaveAttempt;
+          // Tag the shooter so the public profile can render this shot as
+          // "saved" (blue dot) on the shot map.
+          const shooterCanonX = canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half);
+          const shooterFromY = Number((ballHolder as any).pos_y ?? 50);
           if (gka.saved) {
             eventsToLog.push({
               match_id, event_type: 'gk_save',
               title: `🧤 Goleiro defendeu! (${gka.chance})`,
               body: `Goleiro fez a defesa com ${gka.chance} de chance.`,
-              payload: { gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId, save_chance: gka.chance, result: 'saved' },
+              payload: {
+                gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId,
+                save_chance: gka.chance, result: 'saved',
+                shooter_participant_id: ballHolder.id,
+                shooter_club_id: possClubId,
+                from_x: shooterCanonX, from_y: shooterFromY,
+              },
             });
           } else {
             eventsToLog.push({
               match_id, event_type: 'gk_save_failed',
               title: `🧤 Goleiro tentou defender (${gka.chance}) — não conseguiu!`,
               body: `Goleiro tentou a defesa com ${gka.chance} de chance, mas a bola passou.`,
-              payload: { gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId, save_chance: gka.chance, result: 'failed' },
+              payload: {
+                gk_participant_id: gka.gkParticipantId, gk_club_id: gka.gkClubId,
+                save_chance: gka.chance, result: 'failed',
+                shooter_participant_id: ballHolder.id,
+                shooter_club_id: possClubId,
+                from_x: shooterCanonX, from_y: shooterFromY,
+              },
             });
           }
         }
@@ -7713,7 +7773,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 shooter_participant_id: ballHolder.id,
                 shooter_name: (ballHolder as any)?._player_name ?? null,
                 shooter_club_id: possClubId,
-                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 from_y: Number((ballHolder as any).pos_y ?? 50),
                 outcome: 'post',
                 side: postSide ?? null,
@@ -7775,7 +7835,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 assister_participant_id: assisterId,
                 assister_name: assisterName,
                 goal_type: 'shot',
-                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 from_y: Number((ballHolder as any).pos_y ?? 50),
                 target_y: shotTargetY,
               },
@@ -7796,7 +7856,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 shooter_participant_id: ballHolder.id,
                 shooter_name: (ballHolder as any)?._player_name ?? null,
                 shooter_club_id: possClubId,
-                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 from_y: Number((ballHolder as any).pos_y ?? 50),
                 target_y: shotTargetY,
                 outcome: isOverGoal ? 'over' : 'wide',
@@ -7853,9 +7913,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                   passer_club_id: possClubId,
                   intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                   failure_reason: 'blocked',
-                  from_x: Number((ballHolder as any).pos_x ?? 50),
+                  from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                   from_y: Number((ballHolder as any).pos_y ?? 50),
-                  to_x: Number(ballHolderAction?.target_x ?? 50),
+                  to_x: canonForLtr(Number(ballHolderAction?.target_x ?? 50), possClubId, match.home_club_id, match.current_half),
                   to_y: Number(ballHolderAction?.target_y ?? 50),
                 },
               });
@@ -7887,7 +7947,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               const bhActForCause = ballHolderAction?.action_type;
               const wasPass = bhActForCause && (isPassType(bhActForCause) || isHeaderPassType(bhActForCause));
               resolvedPayload.cause = wasPass ? 'interception' : 'bad_touch';
-              resolvedPayload.recovery_x = Number((newHolder as any)?.pos_x ?? 50);
+              // Recovery is plotted from the new holder's perspective so an
+              // interceptor's stat is shown as them attacking right.
+              const newHolderClub = (newHolder as any)?.club_id ?? '';
+              resolvedPayload.recovery_x = canonForLtr(Number((newHolder as any)?.pos_x ?? 50), newHolderClub, match.home_club_id, match.current_half);
               resolvedPayload.recovery_y = Number((newHolder as any)?.pos_y ?? 50);
             } else {
               // pass_complete
@@ -7896,9 +7959,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               resolvedPayload.passer_club_id = possClubId;
               resolvedPayload.receiver_participant_id = result.newBallHolderId;
               resolvedPayload.receiver_name = (newHolder as any)?._player_name ?? null;
-              resolvedPayload.from_x = Number((ballHolder as any).pos_x ?? 50);
+              resolvedPayload.from_x = canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half);
               resolvedPayload.from_y = Number((ballHolder as any).pos_y ?? 50);
-              resolvedPayload.to_x = Number((newHolder as any)?.pos_x ?? ballHolderAction?.target_x ?? 50);
+              resolvedPayload.to_x = canonForLtr(Number((newHolder as any)?.pos_x ?? ballHolderAction?.target_x ?? 50), possClubId, match.home_club_id, match.current_half);
               resolvedPayload.to_y = Number((newHolder as any)?.pos_y ?? ballHolderAction?.target_y ?? 50);
             }
             eventsToLog.push({
@@ -7928,9 +7991,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                   passer_club_id: possClubId,
                   intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                   failure_reason: failureReason,
-                  from_x: Number((ballHolder as any).pos_x ?? 50),
+                  from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                   from_y: Number((ballHolder as any).pos_y ?? 50),
-                  to_x: Number(ballHolderAction?.target_x ?? 50),
+                  to_x: canonForLtr(Number(ballHolderAction?.target_x ?? 50), possClubId, match.home_club_id, match.current_half),
                   to_y: Number(ballHolderAction?.target_y ?? 50),
                 },
               });
@@ -8165,9 +8228,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 intended_receiver_participant_id: ballHolderAction?.target_participant_id ?? null,
                 failure_reason: 'receive_failed',
                 message_key: 'match_events:bodies.pass_failed_receive',
-                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 from_y: Number((ballHolder as any).pos_y ?? 50),
-                to_x: Number(ballHolderAction?.target_x ?? 50),
+                to_x: canonForLtr(Number(ballHolderAction?.target_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 to_y: Number(ballHolderAction?.target_y ?? 50),
               },
             });
@@ -8249,9 +8312,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
                 intended_receiver_participant_id: receiver.id,
                 failure_reason: 'offside',
                 message_key: 'match_events:bodies.pass_failed_offside',
-                from_x: Number((ballHolder as any).pos_x ?? 50),
+                from_x: canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 from_y: Number((ballHolder as any).pos_y ?? 50),
-                to_x: Number((receiver as any).pos_x ?? 50),
+                to_x: canonForLtr(Number((receiver as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half),
                 to_y: Number((receiver as any).pos_y ?? 50),
               },
             });

@@ -122,9 +122,10 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
     return () => { cancelled = true; };
   }, [playerProfileId]);
 
-  // Lazy-load events the first time a non-movement mode is picked.
+  // Load events as soon as rows are ready — needed for both the alternate
+  // map modes and for season-tile stats (xG/xA, opp-half passes).
   useEffect(() => {
-    if (mode === 'movement' || aggPasses !== null || !rows || rows.length === 0) return;
+    if (aggPasses !== null || !rows || rows.length === 0) return;
     let cancelled = false;
     setEventsLoading(true);
     (async () => {
@@ -138,13 +139,13 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
       }
 
       // PostgREST default cap is 1000 rows; a season with many matches can
-      // easily blow past that across pass/shot/dispute/dribble events.
-      // Bump the limit so the season aggregate doesn't silently truncate.
+      // easily blow past that. Bump the limit. Engine writes canonical
+      // LTR coords already, so no client-side mirror is needed.
       const { data } = await supabase
         .from('match_event_logs')
         .select('match_id, event_type, payload')
         .in('match_id', matchIds)
-        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'dispute', 'possession_change', 'bh_dribble'])
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'gk_save', 'dispute', 'possession_change', 'bh_dribble'])
         .limit(50000);
       if (cancelled) return;
 
@@ -154,53 +155,46 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
       const dribbleList: DribbleDatum[] = [];
       let dribbleTotal = 0;
 
-      const mirrorIfAway = (x: number, isHome: boolean) => isHome ? x : 100 - x;
-
       for (const ev of (data || [])) {
         const meta = participantsByMatch.get((ev as any).match_id);
         if (!meta) continue;
         const p = (ev.payload || {}) as Record<string, any>;
-        const { participantId, isHome } = meta;
+        const { participantId } = meta;
 
         if (ev.event_type === 'pass_complete' || ev.event_type === 'pass_failed') {
           if (p.passer_participant_id !== participantId) continue;
           if (typeof p.from_x !== 'number' || typeof p.to_x !== 'number') continue;
           passesList.push({
-            from: { x: mirrorIfAway(p.from_x, isHome), y: p.from_y },
-            to: { x: mirrorIfAway(p.to_x, isHome), y: p.to_y },
+            from: { x: p.from_x, y: p.from_y },
+            to: { x: p.to_x, y: p.to_y },
             completed: ev.event_type === 'pass_complete',
           });
         } else if (ev.event_type === 'dispute') {
           if (p.defender_participant_id !== participantId) continue;
           if (p.winner !== 'defender') continue;
           if (typeof p.defender_x !== 'number') continue;
-          defList.push({
-            pos: { x: mirrorIfAway(p.defender_x, isHome), y: p.defender_y },
-            kind: 'tackle',
-          });
+          defList.push({ pos: { x: p.defender_x, y: p.defender_y }, kind: 'tackle' });
         } else if (ev.event_type === 'possession_change') {
           if (p.cause !== 'interception') continue;
           if (p.new_ball_holder_participant_id !== participantId) continue;
           if (typeof p.recovery_x !== 'number') continue;
-          defList.push({
-            pos: { x: mirrorIfAway(p.recovery_x, isHome), y: p.recovery_y },
-            kind: 'interception',
-          });
+          defList.push({ pos: { x: p.recovery_x, y: p.recovery_y }, kind: 'interception' });
         } else if (ev.event_type === 'bh_dribble') {
           if (p.ball_holder_participant_id !== participantId) continue;
           dribbleTotal += 1;
           if (typeof p.from_x !== 'number') continue;
-          dribbleList.push({ pos: { x: mirrorIfAway(p.from_x, isHome), y: p.from_y } });
+          dribbleList.push({ pos: { x: p.from_x, y: p.from_y } });
         } else {
-          // Shot family
+          // Shot family — includes gk_save with shooter tagged.
           const shooterId = p.shooter_participant_id ?? p.scorer_participant_id;
           if (shooterId !== participantId) continue;
           if (typeof p.from_x !== 'number') continue;
           let outcome: ShotDatum['outcome'];
           if (ev.event_type === 'goal') outcome = 'goal';
           else if (ev.event_type === 'shot_post') outcome = 'post';
+          else if (ev.event_type === 'gk_save') outcome = 'saved';
           else outcome = p.outcome === 'over' ? 'over' : 'wide';
-          shotsList.push({ from: { x: mirrorIfAway(p.from_x, isHome), y: p.from_y }, outcome });
+          shotsList.push({ from: { x: p.from_x, y: p.from_y }, outcome });
         }
       }
 
@@ -223,10 +217,9 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
     let ratedSum = 0, ratedCount = 0;
     let distanceKm = 0;
     for (const r of rows) {
-      const isHome = r.club_id === r.match.home_club_id;
+      // Engine stores canonical-LTR coords, so just concatenate.
       if (Array.isArray(r.position_samples)) {
-        const mirrored = r.position_samples.map(s => ({ x: isHome ? s.x : 100 - s.x, y: s.y }));
-        samples.push(...mirrored);
+        samples.push(...r.position_samples);
         distanceKm += totalDistanceKm(r.position_samples);
       }
       goals += r.goals;
@@ -330,6 +323,12 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
 
   const seasonXg = totalXg(aggShots ?? []);
   const seasonXa = totalXa(aggPasses ?? []);
+  // Passes whose destination landed in the attacking half (canonical x > 50).
+  const oppHalfPasses = (aggPasses ?? []).filter(p => p.completed && p.to.x > 50).length;
+  const oppHalfPassesAttempted = (aggPasses ?? []).filter(p => p.to.x > 50).length;
+  const oppHalfPct = oppHalfPassesAttempted > 0
+    ? Math.round((oppHalfPasses / oppHalfPassesAttempted) * 100)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -493,6 +492,10 @@ export function PlayerSeasonOverview({ playerProfileId }: { playerProfileId: str
             ? `${Math.round((aggregate.passesCompleted / aggregate.passesAttempted) * 100)}%`
             : '—'
         } icon={<TrendingUp className="h-4 w-4" />} />
+        {oppHalfPct !== null && (
+          <StatCell label={t('stats.season.tile_opp_half_passes')} value={`${oppHalfPct}%`}
+            icon={<TrendingUp className="h-4 w-4" />} />
+        )}
         <StatCell label={t('stats.season.tile_tackles')} value={aggregate.tackles}
           icon={<Footprints className="h-4 w-4" />} />
         <StatCell label={t('stats.season.tile_interceptions')} value={aggregate.interceptions}

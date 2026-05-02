@@ -80,7 +80,7 @@ function useMatchActionEvents(matchId: string, participantId: string) {
         .from('match_event_logs')
         .select('event_type, payload')
         .eq('match_id', matchId)
-        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'dispute', 'possession_change', 'bh_dribble']);
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'gk_save', 'dispute', 'possession_change', 'bh_dribble']);
       if (cancelled) return;
       const passesList: PassDatum[] = [];
       const shotsList: ShotDatum[] = [];
@@ -113,13 +113,14 @@ function useMatchActionEvents(matchId: string, participantId: string) {
           if (typeof p.from_x !== 'number') continue;
           dribbleList.push({ pos: { x: p.from_x, y: p.from_y } });
         } else {
-          // Shot family
+          // Shot family — includes gk_save now that the engine tags the shooter.
           const shooterId = p.shooter_participant_id ?? p.scorer_participant_id;
           if (shooterId !== participantId) continue;
           if (typeof p.from_x !== 'number') continue;
           let outcome: ShotDatum['outcome'];
           if (ev.event_type === 'goal') outcome = 'goal';
           else if (ev.event_type === 'shot_post') outcome = 'post';
+          else if (ev.event_type === 'gk_save') outcome = 'saved';
           else outcome = p.outcome === 'over' ? 'over' : 'wide';
           shotsList.push({ from: { x: p.from_x, y: p.from_y }, outcome });
         }
@@ -145,9 +146,9 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
   const [passFilter, setPassFilter] = useState<PassFilter>('all');
   const { passes, shots, defensive, dribbles, dribbleCount, loading: actionsLoading } = useMatchActionEvents(row.match_id, participantId);
 
-  // attacking direction depends on the half + which side the player's club is on.
-  // Heatmap aggregates the whole match, so just mirror by player's home/away affiliation.
-  const attackingDirection: 'ltr' | 'rtl' = playerIsHome ? 'ltr' : 'rtl';
+  // Engine canonicalizes every persisted coord to LTR (the player's club
+  // always attacks → x=100). Render directly without any home/away mirror.
+  const attackingDirection: 'ltr' | 'rtl' = 'ltr';
 
   // Authoritative counts come from player_match_stats (always populated).
   // For old matches whose events lack from_x/from_y, synthesize fallback

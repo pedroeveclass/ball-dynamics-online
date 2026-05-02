@@ -40,7 +40,7 @@
       "movement": "Movimentação",
       "passes": "Passes",
       "shots": "Finalizações",
-      "defensive": "Desarmes",
+      "defensive": "Ações Defensivas",
       "dribble": "Dribles",
       "running": "Corrida"
     },
@@ -77,7 +77,8 @@
       "tile_xg": "xG",
       "tile_xa": "xA",
       "tile_dribbles": "Dribles",
-      "tile_distance": "Distância (km)"
+      "tile_distance": "Distância (km)",
+      "tile_opp_half_passes": "Passes campo adv."
     },
     "match": {
       "no_matches": "Nenhuma partida de liga registrada ainda.",
