@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { ATTR_LABELS, archetypeLabel, heightLabel } from '@/lib/attributes';
+import { fetchPlayerCosmetics } from '@/lib/cosmetics';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -147,6 +148,8 @@ export default function PlayerProfilePage() {
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   // 1 = home, 2 = away. GK still wears uniform 3 regardless (no away GK kit).
   const [kitVariant, setKitVariant] = useState<1 | 2>(1);
+  // Custom colors picked by the player when buying cosmetic equipment.
+  const [cosmetics, setCosmetics] = useState<{ bootsColor: string | null; gloveColor: string | null }>({ bootsColor: null, gloveColor: null });
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
   const [trainingHistory, setTrainingHistory] = useState<TrainingRecord[]>([]);
@@ -223,6 +226,17 @@ export default function PlayerProfilePage() {
       setAttrs(data);
       setAttrsLoading(false);
     })();
+  }, [p?.id]);
+
+  // ── Fetch cosmetic colors (boots / gloves) for the avatar ──
+  useEffect(() => {
+    if (!p?.id) { setCosmetics({ bootsColor: null, gloveColor: null }); return; }
+    let cancelled = false;
+    (async () => {
+      const c = await fetchPlayerCosmetics(p.id);
+      if (!cancelled) setCosmetics(c);
+    })();
+    return () => { cancelled = true; };
   }, [p?.id]);
 
   // ── Fetch training history (last 10) ──
@@ -628,6 +642,8 @@ export default function PlayerProfilePage() {
                   uniformNumberColor={activeKit?.number_color}
                   isGoalkeeper={isGK}
                   backShirtOnly={isBackView}
+                  bootsColor={cosmetics.bootsColor}
+                  gloveColor={cosmetics.gloveColor}
                   className="w-full h-full"
                   fallbackSeed={p.id}
                 />

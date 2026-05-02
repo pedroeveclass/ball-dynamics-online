@@ -24,6 +24,7 @@ import { ATTR_LABELS } from '@/lib/attributes';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
+import { ItemColorPickerDialog } from '@/components/store/ItemColorPickerDialog';
 
 interface StoreItem {
   id: string;
@@ -116,6 +117,15 @@ export default function StorePage() {
     newName: string;
     newLevel: number | null;
     newPrice: number;
+  }>(null);
+
+  // Color picker dialog. Boots / gloves prompt the buyer for a custom color
+  // *before* the RPC fires; the picked hex is persisted on store_purchases
+  // and consumed by the player avatar to tint cleats and goalkeeper gloves.
+  const [colorPick, setColorPick] = useState<null | {
+    item: StoreItem;
+    buyerType: 'player' | 'club';
+    targetPlayerId?: string;
   }>(null);
 
   const isManager = profile?.role_selected === 'manager';
@@ -216,7 +226,20 @@ export default function StorePage() {
     return purchases.some(p => p.store_item_id === itemId && (p.status === 'active' || p.status === 'inventory' || p.status === 'cancelling'));
   }
 
-  async function handleBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string, confirmReplace = false) {
+  // Equipment categories that require the buyer to pick a custom color
+  // before the purchase RPC runs. The picked hex is persisted alongside the
+  // store_purchases row so the player avatar can tint the visual.
+  function needsColorPick(item: StoreItem): boolean {
+    return item.category === 'boots' || item.category === 'gloves';
+  }
+
+  async function handleBuy(
+    item: StoreItem,
+    buyerType: 'player' | 'club',
+    targetPlayerId?: string,
+    confirmReplace = false,
+    color?: string,
+  ) {
     setBuying(true);
     try {
       const playerId = targetPlayerId || playerProfile?.id;
@@ -227,6 +250,7 @@ export default function StorePage() {
         p_store_item_id: item.id,
         p_buyer_type: buyerType,
         p_confirm_replace: confirmReplace,
+        p_color: color ?? null,
       });
 
       if (error) { toast.error(error.message); return; }
@@ -252,12 +276,23 @@ export default function StorePage() {
       setGiftItem(null);
       setGiftPlayerId('');
       setSwapConflict(null);
+      setColorPick(null);
       await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
       toast.error(e.message || t('errors.purchase_generic'));
     } finally {
       setBuying(false);
     }
+  }
+
+  // Wrapper that gates equipment purchases behind the color picker. Other
+  // categories pass straight through.
+  function startBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string) {
+    if (needsColorPick(item)) {
+      setColorPick({ item, buyerType, targetPlayerId });
+      return;
+    }
+    handleBuy(item, buyerType, targetPlayerId);
   }
 
   async function handleReactivateSubscription(purchaseId: string) {
@@ -385,7 +420,7 @@ export default function StorePage() {
               {!owned && item.category !== 'currency' && (
                 <>
                   {!isManager && (
-                    <Button size="sm" className="h-7 text-xs" disabled={buying} onClick={() => handleBuy(item, 'player')}>
+                    <Button size="sm" className="h-7 text-xs" disabled={buying} onClick={() => startBuy(item, 'player')}>
                       <ShoppingCart className="h-3 w-3 mr-1" />{t('actions.buy')}
                     </Button>
                   )}
@@ -697,12 +732,23 @@ export default function StorePage() {
                 {teamPlayers.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button className="w-full" disabled={!giftPlayerId || buying} onClick={() => giftItem && handleBuy(giftItem, 'club', giftPlayerId)}>
+            <Button className="w-full" disabled={!giftPlayerId || buying} onClick={() => giftItem && startBuy(giftItem, 'club', giftPlayerId)}>
               <Gift className="h-4 w-4 mr-2" />{t('gift.buy_and_give')}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Color picker dialog for boots / gloves */}
+      {colorPick && (
+        <ItemColorPickerDialog
+          open={!!colorPick}
+          onOpenChange={(open) => { if (!open && !buying) setColorPick(null); }}
+          itemName={getStoreItemName(colorPick.item, lang)}
+          busy={buying}
+          onConfirm={(picked) => handleBuy(colorPick.item, colorPick.buyerType, colorPick.targetPlayerId, false, picked)}
+        />
+      )}
     </div>
   );
 

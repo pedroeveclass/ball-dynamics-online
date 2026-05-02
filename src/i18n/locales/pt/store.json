@@ -54,6 +54,13 @@
     "level": "Nível {{value}}",
     "clear": "Limpar"
   },
+  "color_picker": {
+    "title": "Escolha a cor",
+    "subtitle": "Personalize a cor de {{item}} antes de comprar.",
+    "cancel": "Cancelar",
+    "confirm": "Comprar",
+    "confirming": "Comprando..."
+  },
   "swap": {
     "title_trainer": "Trocar Treinador?",
     "title_physio": "Trocar Fisioterapeuta?",

@@ -21,6 +21,7 @@ import { OriginStoryCard } from '@/components/player/OriginStoryCard';
 import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTimeline';
 import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { PlayerMatchesTab } from '@/components/player/PlayerMatchesTab';
+import { fetchPlayerCosmetics } from '@/lib/cosmetics';
 import { PlayerSeasonOverview } from '@/components/player/PlayerSeasonOverview';
 import { PlayerCompareDialog } from '@/components/player/PlayerCompareDialog';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -140,10 +141,23 @@ export default function PublicPlayerPage() {
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   // 1 = home, 2 = away. GK still wears uniform 3 (no away GK kit).
   const [kitVariant, setKitVariant] = useState<1 | 2>(1);
+  // Custom colors picked when buying cosmetic equipment in the store.
+  const [cosmetics, setCosmetics] = useState<{ bootsColor: string | null; gloveColor: string | null }>({ bootsColor: null, gloveColor: null });
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
   const [seasons, setSeasons] = useState<{ id: string; number: number; status: string }[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+
+  // Cosmetic colors (boots / gloves) picked at store-purchase time.
+  useEffect(() => {
+    if (!playerId) { setCosmetics({ bootsColor: null, gloveColor: null }); return; }
+    let cancelled = false;
+    (async () => {
+      const c = await fetchPlayerCosmetics(playerId);
+      if (!cancelled) setCosmetics(c);
+    })();
+    return () => { cancelled = true; };
+  }, [playerId]);
 
   // Load seasons the player has stats for. Only seasons with at least one
   // league match for this player appear in the selector.
@@ -392,6 +406,8 @@ export default function PublicPlayerPage() {
                   uniformNumberColor={activeKit?.number_color}
                   isGoalkeeper={isGK}
                   backShirtOnly={isBackView}
+                  bootsColor={cosmetics.bootsColor}
+                  gloveColor={cosmetics.gloveColor}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />

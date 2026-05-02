@@ -33,6 +33,11 @@ interface PlayerAvatarProps {
   // (torso + name + number + crest), dropping head/arms/legs/shorts/feet so
   // the kit reads as a hanging shirt. Ignored for any other variant.
   backShirtOnly?: boolean;
+  // Cosmetic equipment colors picked by the player at store-purchase time.
+  // bootsColor tints the cleat upper + toe accent; gloveColor replaces the
+  // dark-gray fill of the goalkeeper glove. Null = use default art.
+  bootsColor?: string | null;
+  gloveColor?: string | null;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -115,6 +120,8 @@ export function PlayerAvatar({
   uniformNumberColor,
   isGoalkeeper = false,
   backShirtOnly = false,
+  bootsColor = null,
+  gloveColor = null,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
@@ -206,6 +213,8 @@ export function PlayerAvatar({
                 isGoalkeeper={isGK}
                 clipId={clipId}
                 shirtOnly={shirtOnly}
+                bootsColor={bootsColor}
+                gloveColor={gloveColor}
               />
             ) : (
               <FrontBody
@@ -223,6 +232,8 @@ export function PlayerAvatar({
                 hasBigBeard={isBigBeard(effective.facialHair)}
                 outfit={outfit}
                 isGoalkeeper={isGK}
+                bootsColor={bootsColor}
+                gloveColor={gloveColor}
               />
             )}
           </g>
@@ -370,20 +381,26 @@ function TorsoPaint({
 // ── Compact soccer cleat — roughly 28 wide × 10 tall, centered around x=82.
 // Drawn as the left cleat; mirror horizontally for the right foot.
 // Includes 4 small studs (travas) peeking below the sole for the cleat look.
-function Cleat({ primary, secondary, mirror = false }: { primary: string; secondary: string; mirror?: boolean }) {
+function Cleat({ primary, secondary, mirror = false, bootsColor }: { primary: string; secondary: string; mirror?: boolean; bootsColor?: string | null }) {
+  // bootsColor (when the player has bought a custom cleat color) replaces
+  // both the upper shoe body and the toe accent so the chosen color is the
+  // dominant read. Side stripe stays the kit's secondary so the player still
+  // visibly belongs to their club.
+  const upper = bootsColor || '#222';
+  const toe = bootsColor || primary;
   return (
     <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
       {/* Sole outline */}
       <path d="M 71 388 Q 68 388 68 385 L 68 382 Q 68 378 72 378 L 92 378 Q 96 378 96 381 L 96 385 Q 96 388 93 388 Z" fill="#0a0a0a" />
       {/* Upper shoe */}
-      <path d="M 71 383 Q 71 379 74 379 L 91 379 Q 95 379 95 382 L 95 384 L 71 384 Z" fill="#222" />
+      <path d="M 71 383 Q 71 379 74 379 L 91 379 Q 95 379 95 382 L 95 384 L 71 384 Z" fill={upper} />
       {/* Laces patch */}
       <path d="M 75 380 L 89 380 L 91 383 L 74 383 Z" fill="#2f2f2f" />
       <line x1="76" y1="381" x2="89" y2="381" stroke="#555" strokeWidth="0.5" />
       {/* Side stripe (team secondary) */}
       <path d="M 70 385 L 94 385 L 93 387 L 71 387 Z" fill={secondary} opacity="0.85" />
-      {/* Toe accent (team primary) */}
-      <path d="M 91 379 Q 95 379 96 382 L 95 384 L 91 384 Z" fill={primary} opacity="0.9" />
+      {/* Toe accent (team primary or custom boots color) */}
+      <path d="M 91 379 Q 95 379 96 382 L 95 384 L 91 384 Z" fill={toe} opacity="0.9" />
       {/* Studs (travas) — 4 small bumps under the sole */}
       <ellipse cx="73" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
       <ellipse cx="80" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
@@ -451,7 +468,11 @@ function Arm({ primary, secondary, skin, mirror = false }: { primary: string; se
 // glove always reads as a glove). Shape mirrors the coach blazer sleeve so
 // the silhouette stays coherent.
 const GLOVE_COLOR = '#2a2a2a';
-function GoalkeeperArm({ primary, secondary, mirror = false }: { primary: string; secondary: string; mirror?: boolean }) {
+function GoalkeeperArm({ primary, secondary, mirror = false, gloveColor }: { primary: string; secondary: string; mirror?: boolean; gloveColor?: string | null }) {
+  // When the GK has bought a glove with a custom color, paint the main glove
+  // body with it. The highlight stripe inside the glove stays a fixed
+  // mid-gray so the shape still reads in 3D against any glove color.
+  const glove = gloveColor || GLOVE_COLOR;
   return (
     <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
       {/* Full long sleeve from shoulder (y=114) down to the cuff (y=234) */}
@@ -461,9 +482,9 @@ function GoalkeeperArm({ primary, secondary, mirror = false }: { primary: string
       <path d="M 38 150 L 42 150 L 41 228 L 38 228 Z" fill="#000" opacity="0.18" />
       {/* Cuff band (secondary color trim) */}
       <rect x="39" y="230" width="22" height="3" fill={secondary} opacity="0.9" />
-      {/* Glove — same outline as the regular hand but dark gray, with a thin
-          highlight strip for some texture */}
-      <path d="M 42 236 L 58 236 Q 60 240 58 246 Q 56 252 50 252 Q 44 252 42 246 Q 40 240 42 236 Z" fill={GLOVE_COLOR} />
+      {/* Glove — same outline as the regular hand. Color comes from the
+          player's purchased glove (custom hex) or the default dark gray. */}
+      <path d="M 42 236 L 58 236 Q 60 240 58 246 Q 56 252 50 252 Q 44 252 42 246 Q 40 240 42 236 Z" fill={glove} />
       <path d="M 44 240 L 56 240 Q 56 244 54 246 L 46 246 Q 44 244 44 240 Z" fill="#444" opacity="0.5" />
     </g>
   );
@@ -488,6 +509,8 @@ function FrontBody({
   hasBigBeard,
   outfit,
   isGoalkeeper,
+  bootsColor,
+  gloveColor,
 }: {
   faceDataUri: string;
   primary: string;
@@ -503,6 +526,8 @@ function FrontBody({
   hasBigBeard: boolean;
   outfit: AvatarOutfit;
   isGoalkeeper: boolean;
+  bootsColor: string | null;
+  gloveColor: string | null;
 }) {
   const skin = `#${skinTone}`;
   const isCoach = outfit === 'coach';
@@ -519,8 +544,8 @@ function FrontBody({
         </>
       ) : (
         <>
-          <Cleat primary={primary} secondary={secondary} />
-          <Cleat primary={primary} secondary={secondary} mirror />
+          <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} />
+          <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} mirror />
         </>
       )}
 
@@ -573,8 +598,8 @@ function FrontBody({
         </>
       ) : isGoalkeeper ? (
         <>
-          <GoalkeeperArm primary={primary} secondary={stripe} />
-          <GoalkeeperArm primary={primary} secondary={stripe} mirror />
+          <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} />
+          <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} mirror />
         </>
       ) : (
         <>
@@ -670,6 +695,8 @@ function BackBody({
   isGoalkeeper,
   clipId,
   shirtOnly,
+  bootsColor,
+  gloveColor,
 }: {
   appearance: PlayerAppearance;
   primary: string;
@@ -684,6 +711,8 @@ function BackBody({
   isGoalkeeper: boolean;
   clipId: string;
   shirtOnly: boolean;
+  bootsColor: string | null;
+  gloveColor: string | null;
 }) {
   const skin = `#${appearance.skinTone}`;
   const hair = `#${appearance.hairColor}`;
@@ -716,8 +745,8 @@ function BackBody({
             </>
           ) : (
             <>
-              <Cleat primary={primary} secondary={secondary} mirror />
-              <Cleat primary={primary} secondary={secondary} />
+              <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} mirror />
+              <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} />
             </>
           )}
 
@@ -760,8 +789,8 @@ function BackBody({
             </>
           ) : isGoalkeeper ? (
             <>
-              <GoalkeeperArm primary={primary} secondary={stripe} />
-              <GoalkeeperArm primary={primary} secondary={stripe} mirror />
+              <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} />
+              <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} mirror />
             </>
           ) : (
             <>

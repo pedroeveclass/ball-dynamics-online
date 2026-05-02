@@ -54,6 +54,13 @@
     "level": "Level {{value}}",
     "clear": "Clear"
   },
+  "color_picker": {
+    "title": "Pick a color",
+    "subtitle": "Customize the color of {{item}} before buying.",
+    "cancel": "Cancel",
+    "confirm": "Buy",
+    "confirming": "Buying..."
+  },
   "swap": {
     "title_trainer": "Swap Trainer?",
     "title_physio": "Swap Physio?",
