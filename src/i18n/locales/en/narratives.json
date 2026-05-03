@@ -1,4 +1,12 @@
 {
+  "retirement": {
+    "section": {
+      "title": "Career",
+      "subtitle": "Player career biography",
+      "loading": "Loading biography...",
+      "missing": "The career biography hasn't been written yet."
+    }
+  },
   "matchRecap": {
     "section": {
       "title": "Match Recap",
@@ -44,14 +52,6 @@
       "match_chronicle_open": "Read full chronicle",
       "final_table": "Final Standings",
       "view_hall_of_fame": "Open Hall of Fame"
-    }
-  },
-  "retirement": {
-    "section": {
-      "title": "Career",
-      "subtitle": "Player career biography",
-      "loading": "Loading biography...",
-      "missing": "The career biography hasn't been written yet."
     }
   },
   "weeklyDigest": {
@@ -137,6 +137,292 @@
         "idolo_clube": "Becoming an eternal legend at one club"
       }
     },
+    "scenes": {
+      "varzea": [
+        "{name} grew up kicking a ball barefoot on rough park pitches every Sunday, where the grass was more dirt than turf and every match ended in an argument.",
+        "{name}'s football began where it always begins — on uneven sandlot pitches, in raw kickabouts where the ball rolls over pebbles and tackles come in studs-up.",
+        "Before any academy, it was the sandlot that taught {name} the game — crooked pitch, harsh sun, and older boys who never went easy.",
+        "The sandlot was {name}'s first school: shots into goalposts made of flip-flops, pickup matches that lasted until dark, and the certainty that on that battered field, he was home.",
+        "It was on the dirt sandlots, with dust rising at every kick, that {name} discovered early he played a different game from the rest."
+      ],
+      "escolinha": [
+        "{name} was spotted early at a neighborhood youth academy, the kind that charges symbolic fees and dreams big with every kid who turns up.",
+        "{name}'s football story began at a modest local academy, on a Wednesday training session that felt routine but ended up shaping a calling.",
+        "It was a neighborhood youth academy that opened the first doors for {name} — two sessions a week, a patient coach, and the first pair of boots that were truly his own.",
+        "Before the pressure of pro clubs, {name} learned the fundamentals at a simple academy — rondos, finishing drills, and the repeated lesson that talent without discipline takes nobody anywhere.",
+        "{name} got up early on Saturdays to train at a neighborhood youth academy, and it was there — among plastic cones and half-flat balls — that passion stopped being a game."
+      ],
+      "futsal": [
+        "{name} learned the game on futsal courts, where there's no margin for error and the ball passes between your legs before you even understand what happened.",
+        "{name}'s technical edge comes from way back — years on indoor courts, closed gyms, tight dribbles, and quick low-corner finishes.",
+        "Before the grass, it was futsal that sculpted {name} — slick floors, walls as allies, and the obligation to think three passes ahead.",
+        "{name} started on futsal courts, the kind that fit at the back of any school, but where you learn the hardest art of all — playing with your head up.",
+        "The futsal school shaped everything in {name} — short touches, reading the game, and that good kind of restlessness from growing up playing 40 minutes without a breath."
+      ],
+      "rua": [
+        "{name} started playing in his own street, dribbling between parked cars and celebrating goals before someone shouted 'car!'",
+        "{name}'s street became his first pitch — hot summer asphalt, scraped knees with every fall, and a gang of kids who played until their mothers called them in for dinner.",
+        "Before any club, before any academy, before anything — {name} learned the game in his own backyard, where the wall played centre-back and the gate was the goal.",
+        "{name} played so much football in his own street that the neighbors knew his name from the shouting — crossing, scoring, celebrating, restarting — always the same loop.",
+        "It was on that dead-end street, with the goal drawn in chalk on the wall, that {name} fell in love with football before he even knew what an official pitch looked like."
+      ],
+      "colegio": [
+        "{name} broke through playing for his school team, those modest tournaments where standing out made you the talk of every classroom.",
+        "It was in school tournaments that {name} caught attention for the first time — school uniform, classmates as the crowd, and plays that travelled the whole hallway in the weeks that followed.",
+        "School was {name}'s first stage — recess turned into kickabouts, and finals between classrooms that he treated like cup deciders.",
+        "{name} started out playing for his school, in football improvised with backpacks for goalposts, but it taught him early how important playing under pressure is.",
+        "Before any formal invitation, {name} was already a name in school pickup matches, the kind where winning earned you bragging rights for the entire week."
+      ]
+    },
+    "mentors": {
+      "pai": [
+        "The first one to believe was his father, who'd leave work early on Wednesdays to drive him to training.",
+        "His mother was his first fan — patching up old kits, counting coins for trial fees, and holding the faith on the days her son came home crying from training.",
+        "His father was his first coach, his first fan, and the first person to bet that the skinny kid had something different.",
+        "His mother didn't know much about tactics, but she knew her son — she was the one who made sure nothing was missing at training time, whatever it cost.",
+        "Father and son shared every win — from the first goal on a small pitch to the call that changed everything — always with the same line at the end of the day: 'tomorrow we train more'."
+      ],
+      "familia": [
+        "It was his grandmother who walked him down a club's first corridor, with the quiet determination of someone who knew something important was being born there.",
+        "An uncle, half pickup-game player, half improvised teacher, was the first to see it: 'this kid's got something different — keep pushing him'.",
+        "His grandfather, who played sandlot football his whole life, was the first to recognize his grandson's talent and swore it couldn't be wasted.",
+        "The aunt who'd always driven him to school became the trial-day driver too — without her, getting to the right places at the right time wouldn't have been possible.",
+        "It was the extended family who held things together — grandparents, uncles and aunts taking turns on transport, kit, match tickets. Each one chipped in to make it work."
+      ],
+      "irmao": [
+        "His older brother — that frustrated player who quit somewhere along the way — became his first teacher, with bad passes corrected in the backyard, drilled with 'again, this time right'.",
+        "It was by following his older brother everywhere that he learned the game — tagging along to the older boys' matches, getting bashed around in midfield, coming home bruised but stronger.",
+        "His brother was a hero at home long before any TV idol — every new move he learned came from him, and every compliment from him counted double.",
+        "When his older brother quit football to start working, the younger one quietly promised he'd play for both of them — and never went back on that.",
+        "It was his older brother who first said the line he'd remember forever — 'you play better than I did at your age — don't waste this'."
+      ],
+      "idolo": [
+        "There was no flesh-and-blood mentor around — just a TV idol, plays rewatched on loop, and the kid's wish to do the same on the street pitch.",
+        "The TV idol did the work of inspiring — every goal celebrated at home, every dribble memorized, every roar copied on the small pitches the following week.",
+        "There was no one to teach at home, but there was the TV idol — a shirt number to imitate, a celebration to replicate, a distant model that somehow felt within reach.",
+        "He learned alone watching the greats, with sharp eyes and a brain wired for reading the game — taping the moves, repeating them on the small pitch, missing a lot, hitting some, adjusting again.",
+        "That idol from old YouTube videos became a long-distance teacher, and for every shot drilled at home there was a fragment of memorized play stored in his head."
+      ],
+      "sozinho": [
+        "Without anyone to push him, he discovered football alone — tucking the ball under his arm and looking for whatever pickup match was running on the block.",
+        "It was sheer self-will that opened the road — no coach at home, no encouragement, just him, the ball, and the stubbornness not to quit.",
+        "He never had a real mentor — he discovered the game on his own skin, learned by failing, adjusted by watching, and built every skill like someone who learns to ride a bike with no one holding on behind.",
+        "He had only himself to push him — he was his own coach, his own critic, and his own fan in the empty stands of his imagination.",
+        "It was early in life that he understood no one was going to do it for him — he took his fate into his own hands and went hunting football wherever it could be found."
+      ]
+    },
+    "sparks": {
+      "primeiro_gol": [
+        "The day he understood he could live off this was in a kids' final, when he came on in the closing minutes and scored the winner — got carried home on shoulders and didn't sleep that night.",
+        "Everything changed on an afternoon he'd never forget — ball at his feet, his team losing, and the strike into the top corner that silenced the whole pitch — he walked off knowing this was what he'd do forever.",
+        "The turning point was a routine goal in some random pickup match — the ball went in, the team shouted, and something inside him caught fire and never went out.",
+        "The spark came from a goal no one expected — better opponent, game decided, and him hitting one from distance to watch the ball die in the back of the net while the world spun differently from there on.",
+        "It was scoring his first big goal, in a tournament few would remember later, that he understood — without needing words — what his profession would be for the rest of his life."
+      ],
+      "tv_final": [
+        "It was watching a Cup final at home, with the family gathered and his heart in his mouth, that football stopped being a game and became destiny.",
+        "Football came into his life for good during a World Cup — watched in silence, the anthem sung standing up in the living room, and the childlike certainty that one day he'd be there too.",
+        "That final on TV became a watershed — he walked away from the screen with his head on fire, laced up his beat-up boots, and went to train alone in the backyard until it got dark.",
+        "All it took was a major final on television — the eruption of the crowd, the captain lifting the trophy — for him to know that's where he was heading, even if he didn't yet know the road.",
+        "It was in front of the TV, during a final the whole country stopped to watch, that something shifted — he left the couch in silence and never returned the boots to the box."
+      ],
+      "primeira_chuteira": [
+        "The shift came on the birthday he got his first real pair of boots — those bright yellow plastic studs he didn't even want to take off to sleep.",
+        "The day he received his first own pair of boots — not borrowed, not handed down, not the wrong size — was the day he understood this was the real thing.",
+        "It wasn't a goal or a final — it was a box wrapped in cheap paper, with a pair of boots inside that took the family months of saving, that opened the door to everything.",
+        "The new boots stayed packed for a whole day before debuting, scared of getting them dirty — when he finally laced them up, he silently swore that gift wouldn't be wasted.",
+        "It was the first pair of boots that changed everything — not because of the model, not the brand, but the symbolic weight of knowing someone at home had believed enough to invest."
+      ],
+      "campeao_moleque": [
+        "It was winning a neighborhood tournament, holding up a small trophy with dirty hands, that he felt for the first time what winning meant — and never wanted to lose that feeling.",
+        "The trophy was plastic, the tournament was amateur, but for him that title raised more than silverware — it raised an inner certainty that never came undone.",
+        "His first kid title, in a tournament no one outside his family would remember, became the most important thing in the world — and it was right there he decided to turn passion into a craft.",
+        "When his team won that modest tournament, and he was the name of the campaign, something inside him locked in for good — he discovered the podium was a place that fit him.",
+        "It was lifting a small trophy, on a sandlot, with a crowd made only of the players' parents, that he understood what being the protagonist meant — and never accepted any other role."
+      ],
+      "volta_derrota": [
+        "The spark came inside out — in a heavy defeat that hurt deep, and in the conscious decision, still in the locker room, that the next one he wouldn't lose.",
+        "It was a defeat that captured football for him for real — he walked off the pitch crying, and showed up the next day for training before everyone else, with his heart on fire.",
+        "It wasn't winning that changed everything — it was a humiliating defeat, goals conceded in sequence, and the silence on the bus home that made him promise never to feel that again without reacting.",
+        "The hardest fall came early, and it was that fall that lifted him for real — every training session from then on carried the weight of the last defeat and the wish for it never to repeat.",
+        "The turning point was a humiliation on the pitch — lopsided scoreline, opposing fans laughing, and the silent decision that the kid who played for fun ended right there."
+      ]
+    },
+    "obstacles": {
+      "dinheiro": [
+        "The road demanded sacrifice — old boots, bus rides when there was money, and months when it was choose between school supplies and the trial fee.",
+        "It wasn't easy — money was short for a lot, improvisation made up for almost everything, and the dream kept rolling inside torn sneakers.",
+        "Every cent counted — hand-me-down kits from an older brother, boots that pinched because there was no cash for new ones, and the silent shame he learned to turn into fuel.",
+        "Money was missing at almost every step of the way — but creativity made up for it, and it was in that scarcity that he toughened the parts of him that needed toughening.",
+        "Poverty was at the table, in the commute, in the boots — and it was in learning to turn matches around with little that he became good at turning matches around with little."
+      ],
+      "distancia": [
+        "He lived far from any real club — two buses to get there, two to come back, and impossible hours that anyone with less hunger wouldn't have endured.",
+        "Distance was the invisible opponent — three hours commuting between home and training, every single day, and the constant temptation to just give up.",
+        "The bus became part of the routine before training even started — leaving before dawn, returning in the dark, and using the time in between to study or doze off between bumps.",
+        "Talent alone wasn't enough — to get to training, he had to leave home two hours early, cross the whole city, and still arrive with legs to run.",
+        "Anyone who lives far away knows it — every training session demanded logistics: an uncle's favor with a car, missing fare money, and the daily stubbornness not to quit out of exhaustion."
+      ],
+      "rejeicoes": [
+        "He was rejected at trial after trial — big club, mid-sized club, small club — before someone finally stopped to look more patiently.",
+        "The doors closed several times before one opened — he walked away crying from more trials than he'd care to admit, but he always came back for the next one.",
+        "Every 'thanks, but no' became another brick in the wall he was building — there were so many 'no's that the 'yes' felt more like a dream than reality when it finally came.",
+        "He went through trials like someone collecting defeats — and it was exactly in that pile-up that he learned to step on the pitch with a knife between his teeth, with nothing to lose.",
+        "Rejection rode shotgun for years — and every time it seemed like he'd quit, something inside whispered one more, one more, one more."
+      ],
+      "lesao": [
+        "A serious injury almost ended everything before it began — months without playing, expensive physio, and the silent fear of never being the same.",
+        "His knee gave out early, at a moment he thought he'd already made it — and the long road back from there was paved with patience, pain, and stubbornness.",
+        "The injury came out of nowhere and took everything with it — months immobilized, training watched from a distance, and the vertigo of seeing other players move forward while he stood still.",
+        "When the injury hit, it felt like the end — but it was during that recovery, away from the pitch, that he discovered he loved the game even more than he knew.",
+        "Coming back from a serious injury made him a different player — more aware of his body, more grateful for minutes on the pitch, more mentally ready to value every match."
+      ],
+      "familia_estudo": [
+        "At home, they kept hammering on studies — 'football is a lottery, better get a degree' — and he learned early to balance schoolbooks and boots in the same day.",
+        "The family supported him, but worried — they wanted school, a stable profession, a real plan B — and he had to prove he could handle both at the same time.",
+        "There was pressure at home — finish school, keep grades up, don't bet only on your foot — and that pressure taught him to balance two lives in one routine.",
+        "Convincing the family was a battle of its own — every bad grade became a 'drop that ball and study for good' threat, and every win on the pitch became a counter-argument.",
+        "At home, the dream was viewed with suspicion — 'you can't count on that' — and he had to insist more than play, in the early days, just to keep being allowed to train."
+      ]
+    },
+    "traits": {
+      "raca": [
+        "On the pitch, it's grit before anything else — tackling until the last minute, fighting for 50/50s no one else wants, chest puffed out even down by three.",
+        "Ask anyone who plays alongside him — the trademark is grit. The guy doesn't switch off — when the team sags, he's the one pulling them back up.",
+        "His thing is commitment — there's no match won in advance, no ball lost without a fight, no second half he doesn't run as hard as the first minute.",
+        "He always plays like it's the last game — runs for two, marks for three, drags the team along even on the days everything seems to be going wrong.",
+        "Anyone who faces him learns it fast — there's no magic formula here, just lungs, heart, and stubbornness from someone who refuses to lose without first leaving everything on the pitch."
+      ],
+      "frieza": [
+        "On the pitch, it's coolness above all — ball on the line in the closing minutes, he treats it like training and converts as if he'd already seen the goal happen.",
+        "What separates him from others is the calm — the more the game tightens, the more he lowers his internal pace, and it's in that silence that he decides matches.",
+        "Under pressure, he becomes another person — steady pulse, clear decision, choice made before the opponent even understands what's about to happen.",
+        "Ask anyone who plays with him — the guy has no nerves. Decisive penalty, last-minute free kick, finishing one-on-one with the keeper — his head operates a level above.",
+        "The trademark is coolness in the closing minutes — when others tremble, he reads the match with clarity and resolves it with a simplicity that scares the opponent."
+      ],
+      "tecnica": [
+        "On the pitch, technique comes above all — line-splitting passes, clean reception with his back to goal, finishes placed where the keeper can't reach.",
+        "His thing is elegance — ball glued to his foot, short dribbles that lift defenders off the ground, plays that stay in the crowd's head long after the final whistle.",
+        "Anyone watching catches it fast — every touch has intent, every pass has weight, every move was rehearsed a thousand times to look simple.",
+        "He plays like someone who understood beauty is an argument — flicked passes when he can, dribbles that humiliate when he must, finishes that decorate the frame of the goal.",
+        "The difference is in the detail — where others kick, he places; where others pass, he draws; where others run, he reads the game."
+      ],
+      "lideranca": [
+        "He's the voice of command on the pitch — calls for responsibility, organizes the press, talks to the keeper, argues with the ref when he must.",
+        "A natural leader, with that kind of charisma that makes the team grow together — a gesture to demand more, a word to settle, an example to pull along.",
+        "In the locker room and on the pitch, he's a reference point — younger players look for him, veterans respect him, the coach counts on him for every important moment.",
+        "The shirt weighs differently when he wears it — not because of the number, but because of the role he takes on: organizing the team, motivating when they fall, restraining when they go too far.",
+        "Ask any teammate — the guy is a leader. Firm voice, right gesture, presence that organizes the chaos of the toughest matches."
+      ],
+      "irreverencia": [
+        "On the pitch, it's pure swagger — a smile in the corner of his mouth during the rough match, nutmeg on the older centre-back, a celebration that never repeats.",
+        "He plays like someone who never forgot the pickup matches — cheeky dribble, a risky play when the game asks for balance, and that light touch that's contagious to the whole team.",
+        "His thing is daring — there's no easy play he won't complicate, no complicated play he won't try to simplify, and the crowd loves that unpredictability.",
+        "Anyone who faces him finds out the hard way — the guy doesn't respect the moment. Tied in a final? He pulls a flick. Playing for the trophy? He celebrates laughing. Plays as if the ball were an extension of the game.",
+        "The trademark is joy — he steps onto the pitch with the smile that's survived since the small fields, and that's exactly what makes him so hard to predict."
+      ]
+    },
+    "dreams": {
+      "liga": [
+        "Today, he aims at what he always dreamed of in a low voice — lifting the League with the club he supports, hearing the anthem and watching banners rise from the stands.",
+        "His dream is clear — winning the League wearing the shirt he'd worn since he was a kid, and giving the fans the title so many have waited too long for.",
+        "Deep down, it's always the same scene he projects in his head — trophy raised to the wind, the crowd in delirium, and that specific club's badge around his neck.",
+        "When asked what he wants from football, the answer comes ready — he wants to be League champion for the team he picked before he even knew how to kick straight.",
+        "More than any individual prize, what moves him is a single image — the League trophy rising in his hands, with the shirt he kissed so many times in childhood."
+      ],
+      "selecao": [
+        "And the dream — that one he can describe in a single line: wear the national team shirt one day.",
+        "The target is clear — the national kit, the anthem at the mouth of the tunnel, the chance to represent his country with his chest out.",
+        "When asked what he still wants in football, the answer comes without hesitation — to hear the national anthem standing up, with the national jersey on, before a major decisive match.",
+        "The dream he keeps in silence is the national team — a call-up, even a single minute on the pitch, anything that proves it was all worth it.",
+        "He aims high — wants to hear the anthem with hand on heart, watch the flag rise, and know he represents millions when the ball rolls."
+      ],
+      "familia": [
+        "His dream is small and giant at the same time — to support his family with football, give his mother the house she deserves, return in security what he received in faith.",
+        "At the end of the day, he plays for his own — so his mother doesn't have to work late anymore, so his brother can study wherever he wants, so his father can rest after a lifetime of struggle.",
+        "His engine has a name and an address — the home where he grew up, the people who paid for the boots, the hours no one saw but that he'd never forget.",
+        "When asked why he plays, the answer is familiar — to give back, to take care, to make sure every cent invested in him pays back as peace for those who invested.",
+        "His biggest dream fits in a small gesture — buying his mother a house, and watching her live there, knowing it was football that changed everything."
+      ],
+      "europa": [
+        "His dream crosses the Atlantic — to play in Europe, hear the crowd in another language, wear a traditional club's shirt in a major league.",
+        "He aims at European football with the clarity of someone who grew up watching those finals on TV — wants to be there, wear that shirt, listen to that anthem before the match begins.",
+        "He knows where he wants to go — packed stadium in some European capital, immaculate pitch, broadcast to the whole world, and him on the field, part of it.",
+        "When he closes his eyes, the scenery is specific — Champions League knockouts, and him stepping onto the pitch for a major continental club, wearing the shirt on merit.",
+        "The destination he projects on the horizon is Europe — not as vanity, but as a yardstick — because that's where the best play, and he wants to be measured on that scale."
+      ],
+      "idolo_clube": [
+        "His dream is to become a legend — not stat lines, not a quick stint, but kids' shirts decades later, a photo in the trophy room, a story told from generation to generation.",
+        "He wants to be one of those players whose name the crowd shouts even after he's no longer on the pitch — to become part of the club's history, not just a chapter.",
+        "He aims at longevity where so many aim at passing through — wants one club, one shirt, and the memory of fans turned into a monument over the years.",
+        "His goal is specific — to be the guy the fans remember forever, to earn a statue at the stadium entrance, to have a song sung decades after retirement.",
+        "He doesn't want to be good — he wants to be eternal. Statue, retired number, name on the stand. He wants to become a legend at the club he chooses to wear the shirt for."
+      ]
+    },
+    "closings": [
+      "Now, at {club}, he writes the first page of a story that once seemed impossible to write.",
+      "And it's right at {club} that this whole journey finds its first professional chapter — the rest, from now on, is up to him.",
+      "Today, with the {club} shirt on his chest, he opens the first professional chapter of a journey that's barely begun.",
+      "The path arrives at {club}, and from here on every minute on the pitch counts as real history.",
+      "Everything that came before paved the ground — now, at {club}, what truly matters begins.",
+      "He puts on the {club} shirt for the first time knowing this is where his name starts being written for real.",
+      "The road to {club} was long; the road from {club} on, he promises, will be unforgettable.",
+      "He arrived at {club} with the humility of someone who knows where he came from, and the hunger of someone who knows where he wants to go.",
+      "At {club}, he finds the stage where everything he trained for can finally turn into results — and the time to prove it starts now.",
+      "His professional journey begins at {club}, with a backpack full of past and a head fully turned toward the next step.",
+      "It's at {club} that he debuts as a pro — and every training session, from here on, counts as a brick of the career he's about to build.",
+      "He steps onto the {club} pitch knowing the kid from the small fields and the pro stepping in now are the same person, only more whole.",
+      "Today he wears {club} for the first time — and what comes after this moment depends only on him and the ball.",
+      "{club} is the first professional club, but for him it's more than that — it's the chance that took its time to come, and one he doesn't intend to let slip.",
+      "He lands at {club} carrying everyone who believed in him — and ready to turn each of those bets into goals, matches, memories.",
+      "The era when he stops promising and starts delivering begins at {club} — everything else from here on will be an answer to what he proves now.",
+      "{club} is the first name on his professional road — and he silently guarantees it won't be the last important chapter of this story.",
+      "He steps into {club} convinced that every scar from the road here will turn into argument inside the four lines.",
+      "Now is the time — the official debut comes with the {club} shirt, and the kid from the small fields can finally be called a pro.",
+      "He puts on the {club} shirt with the familiar feeling of having lived this a thousand times in his imagination — only this time it's real.",
+      "At {club}, he opens the door that so often stayed shut at other trials — and he's ready to walk through running.",
+      "He steps onto the {club} pitch knowing this is where the promise phase ends and the answer phase begins.",
+      "His first paycheck will come from {club} — but for him, what really weighs is the chance to finally play for real.",
+      "The professional story begins now, at {club}, and he steps on the pitch like someone who knows exactly why he's there.",
+      "He debuts as a pro for {club}, with the calm certainty that every minute on the pitch is an answer to someone who doubted.",
+      "He arrives at {club} with no time to waste — not because time is short, but because every minute outside it was preparation in excess.",
+      "At {club}, he finally finds the place where his will can turn into an official record.",
+      "{club} is the stage of his pro debut — from here on, every match enters the stat line that will tell the rest of his life.",
+      "He steps into {club} knowing that everything he dreamed depends now only on him and what he shows between the four lines.",
+      "The stage where every training matters, every match counts, every minute becomes history — that begins at {club}.",
+      "The {club} shirt marks the start — and he knows this start needs to be a good one, because the next steps depend on this first.",
+      "At {club}, the first page is finally turned — and the whole book depends on what he writes from today.",
+      "{club} is just the beginning — and he steps on the pitch determined to make sure this beginning is unforgettable.",
+      "Today, at {club}, he steps onto a professional pitch for the first time — and carries with him everyone who bet this day would come.",
+      "Official debut at {club}, and the feeling is mixed — gratitude for having arrived, hunger to go far beyond.",
+      "He arrives at {club} without giving an interview — he prefers to talk with his foot, show with gestures, let every match speak for him.",
+      "At {club}, the kid from the small fields becomes a pro — and only now does the story begin to be written by the world's eyes.",
+      "The journey arrives at {club}, and from here on every play becomes material for the biography someone will one day want to tell.",
+      "{club} is the first level — and he didn't get this far to stop, he got here to climb higher.",
+      "He debuts at {club} with new boots, a ready mind, and the entire story of his past turning into fuel for the immediate future.",
+      "At {club}, finally, what was once a bedside dream becomes a contract on the desk — and the pro is born for real.",
+      "He arrives at {club} with the calm of someone who understood the road — and the urgency of someone who won't waste the time he earned.",
+      "He wears {club} aware that everything that came before was school; everything coming now is the test.",
+      "The first professional shirt is {club}'s, and he'll wear it like a tattoo — conviction on the chest, identity here to stay.",
+      "At {club}, the chance is finally in his hands — and he hasn't come this far to waste anything now.",
+      "He steps on the {club} pitch carrying a single certainty — the hard part is over, and the truly hard part is yet to come, but he's ready.",
+      "{club} is the debut, but he treats it as a prologue — because the real story, he swears, will be much bigger.",
+      "He arrives at {club} carrying the past as ID and the future as daily duty.",
+      "Today, with the {club} shirt, he steps into the pro world to write a story no one yet knows how to tell — only him.",
+      "At {club}, the chapter that matters begins — the rest, from here on, is up to him."
+    ],
+    "closings_free_agent": [
+      "He now takes his first steps as a professional free agent, about to find the club that will mark his story.",
+      "The professional journey starts now, without a club yet — and every trial, every showcase, is a brick of the next chapter.",
+      "He debuts as a pro free agent, with the confidence of someone who knows the next step is just choosing where to land.",
+      "He steps onto the professional market knowing the road here was hard — and that the next club will reap the rewards.",
+      "He enters the professional career without a fixed club, but with the certainty that whoever bets on him next won't regret it.",
+      "The start is as a free agent — door open, future still blank, and the will intact to turn it all into history.",
+      "No club yet, but with the first page of the story ready to be written — all that's needed is the right invitation.",
+      "Now it's the pro part of the journey, and he treats the market like he treated everything before it — ready to prove his worth to whoever shows up.",
+      "He officially debuts in pro football as a free agent, and he knows it — it's only a matter of time before the next chapter begins.",
+      "His professional career begins wide open, no fixed shirt, but with the entire story of his past serving as fuel for whatever comes next."
+    ],
     "retirement_templates": {
       "tpl_1": "{name} closes a career at {age} after {career_matches} professional matches, {career_goals} goals scored, {career_assists} assists, and a path crossing {clubs_count} club(s). Predominantly wearing the {primary_club} shirt, {trait_phrase} was the trademark no one will forget. {achievements_phrase} {moments_phrase} Leaves the pitch making football richer than they found it — numbers, memories, and the kind of story fans keep telling long after the final whistle.",
       "tpl_2": "At {age}, {name} hung up the boots with the calm of someone who did what needed to be done. {career_matches} matches played, {career_goals} goals to the count, {career_assists} assists distributed to teammates. {primary_club} was the main stage of a career that mixed consistency, technical quality, and high moments when the crowd needed them most. {achievements_phrase} {moments_phrase} {trait_phrase} stays as identity trait — an attribute only those who watched fully understand.",
