@@ -628,23 +628,25 @@ function BicepsBand({ color, side, wearGloves }: { color: string | null; side: '
 }
 
 // ── Shin guards (Caneleira): a square pad strapped over each shin, in the
-// chosen color. Drawn BEFORE socks so the sock top still covers the lower
-// edge of the pad like a real guard. Positioned just above the sock band.
+// chosen color. Sized so the leg skin shows on both sides and the pad
+// doesn't crowd the knee — top sits well below mid-leg, bottom rests just
+// above the sock band.
 function ShinGuards({ color, isCoach }: { color: string | null; isCoach: boolean }) {
   if (!color || isCoach) return null;
-  // Front-of-leg coordinates: legs span x=72..92 (left) and 108..128 (right).
-  // Sock top sits at y=360. Pad goes from y=320 to y=358 (38 tall, 16 wide).
+  // Front-of-leg coordinates: legs span x=72..92 (left) and 108..128 (right),
+  // sock top sits at y=360. The pad is 12 wide × 28 tall on a 20-wide leg
+  // (4 px of skin shows on each side) and runs y=330 → 358.
   return (
     <>
       {/* Left shin pad */}
-      <rect x="74" y="320" width="16" height="38" fill={color} rx="2" />
+      <rect x="76" y="330" width="12" height="28" fill={color} rx="2" />
       {/* Strap shadow at top + bottom for a "buckled" look */}
-      <rect x="74" y="322" width="16" height="2" fill="#000" opacity="0.18" />
-      <rect x="74" y="354" width="16" height="2" fill="#000" opacity="0.18" />
+      <rect x="76" y="332" width="12" height="2" fill="#000" opacity="0.18" />
+      <rect x="76" y="354" width="12" height="2" fill="#000" opacity="0.18" />
       {/* Right shin pad (mirrored across x=100) */}
-      <rect x="110" y="320" width="16" height="38" fill={color} rx="2" />
-      <rect x="110" y="322" width="16" height="2" fill="#000" opacity="0.18" />
-      <rect x="110" y="354" width="16" height="2" fill="#000" opacity="0.18" />
+      <rect x="112" y="330" width="12" height="28" fill={color} rx="2" />
+      <rect x="112" y="332" width="12" height="2" fill="#000" opacity="0.18" />
+      <rect x="112" y="354" width="12" height="2" fill="#000" opacity="0.18" />
     </>
   );
 }
@@ -764,11 +766,11 @@ function FrontBody({
           BEFORE the shin guard so the guard still sits visibly on top. ── */}
       {!isCoach && hasLongSocks && (
         <>
-          <rect x="73" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
-          <rect x="109" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <rect x="73" y="330" width="18" height="30" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <rect x="109" y="330" width="18" height="30" fill={secondary} stroke={primary} strokeWidth="1.5" />
           {/* Subtle horizontal stitch line at the top of the long sock */}
-          <line x1="73" y1="324" x2="91" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
-          <line x1="109" y1="324" x2="127" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
+          <line x1="73" y1="334" x2="91" y2="334" stroke={primary} strokeWidth="1" opacity="0.5" />
+          <line x1="109" y1="334" x2="127" y2="334" stroke={primary} strokeWidth="1" opacity="0.5" />
         </>
       )}
 
@@ -1004,10 +1006,10 @@ function BackBody({
           {/* Long-sock extension on the back too */}
           {!isCoach && hasLongSocks && (
             <>
-              <rect x="73" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
-              <rect x="109" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
-              <line x1="73" y1="324" x2="91" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
-              <line x1="109" y1="324" x2="127" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
+              <rect x="73" y="330" width="18" height="30" fill={secondary} stroke={primary} strokeWidth="1.5" />
+              <rect x="109" y="330" width="18" height="30" fill={secondary} stroke={primary} strokeWidth="1.5" />
+              <line x1="73" y1="334" x2="91" y2="334" stroke={primary} strokeWidth="1" opacity="0.5" />
+              <line x1="109" y1="334" x2="127" y2="334" stroke={primary} strokeWidth="1" opacity="0.5" />
             </>
           )}
 
