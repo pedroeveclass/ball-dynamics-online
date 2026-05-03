@@ -226,11 +226,18 @@ export default function StorePage() {
     return purchases.some(p => p.store_item_id === itemId && (p.status === 'active' || p.status === 'inventory' || p.status === 'cancelling'));
   }
 
-  // Equipment categories that require the buyer to pick a custom color
-  // before the purchase RPC runs. The picked hex is persisted alongside the
-  // store_purchases row so the player avatar can tint the visual.
+  // Items that require the buyer to pick a custom color before the purchase
+  // RPC runs. Boots / GK gloves always do; cosmetics that the avatar
+  // actually renders (currently just "Luva de Inverno") opt in by name so
+  // future cosmetic visuals can be added one at a time without flagging
+  // every cosmetic at once.
+  const COLOR_PICK_COSMETICS = new Set(['Luva de Inverno', 'Winter Gloves']);
   function needsColorPick(item: StoreItem): boolean {
-    return item.category === 'boots' || item.category === 'gloves';
+    if (item.category === 'boots' || item.category === 'gloves') return true;
+    if (item.category !== 'cosmetic') return false;
+    return COLOR_PICK_COSMETICS.has(item.name)
+      || (item.name_pt != null && COLOR_PICK_COSMETICS.has(item.name_pt))
+      || (item.name_en != null && COLOR_PICK_COSMETICS.has(item.name_en));
   }
 
   async function handleBuy(

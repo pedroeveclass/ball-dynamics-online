@@ -38,6 +38,10 @@ interface PlayerAvatarProps {
   // dark-gray fill of the goalkeeper glove. Null = use default art.
   bootsColor?: string | null;
   gloveColor?: string | null;
+  // When true, the avatar renders the GK-style long-sleeve + glove arm even
+  // for outfield players. Driven by the "Luva de Inverno" cosmetic. For GKs
+  // it makes no visual difference since they already render gloves.
+  hasWinterGlove?: boolean;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -122,11 +126,16 @@ export function PlayerAvatar({
   backShirtOnly = false,
   bootsColor = null,
   gloveColor = null,
+  hasWinterGlove = false,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
   // Coach outfit overrides any GK rendering — coaches are never goalkeepers.
   const isGK = !isCoach && isGoalkeeper;
+  // Whether the avatar should show the GK-style long-sleeve + glove arm.
+  // GKs always do; outfielders only when they bought the winter-glove
+  // cosmetic. Coaches never (their blazer arm is its own treatment).
+  const wearGloves = !isCoach && (isGK || hasWinterGlove);
   // Coach outfit is hardcoded black regardless of the club the coach manages,
   // so ignore the incoming club colors for clothing purposes.
   const primary = isCoach ? COACH_SHIRT : (clubPrimaryColor || DEFAULT_PRIMARY);
@@ -210,7 +219,7 @@ export function PlayerAvatar({
                 jerseyNumber={jerseyNumber}
                 crestUrl={clubCrestUrl}
                 outfit={outfit}
-                isGoalkeeper={isGK}
+                wearGloves={wearGloves}
                 clipId={clipId}
                 shirtOnly={shirtOnly}
                 bootsColor={bootsColor}
@@ -231,7 +240,7 @@ export function PlayerAvatar({
                 hasLongHair={isLongHair(effective.hair)}
                 hasBigBeard={isBigBeard(effective.facialHair)}
                 outfit={outfit}
-                isGoalkeeper={isGK}
+                wearGloves={wearGloves}
                 bootsColor={bootsColor}
                 gloveColor={gloveColor}
               />
@@ -512,7 +521,7 @@ function FrontBody({
   hasLongHair,
   hasBigBeard,
   outfit,
-  isGoalkeeper,
+  wearGloves,
   bootsColor,
   gloveColor,
 }: {
@@ -529,7 +538,7 @@ function FrontBody({
   hasLongHair: boolean;
   hasBigBeard: boolean;
   outfit: AvatarOutfit;
-  isGoalkeeper: boolean;
+  wearGloves: boolean;
   bootsColor: string | null;
   gloveColor: string | null;
 }) {
@@ -600,7 +609,7 @@ function FrontBody({
           <CoachArm skin={skin} />
           <CoachArm skin={skin} mirror />
         </>
-      ) : isGoalkeeper ? (
+      ) : wearGloves ? (
         <>
           <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} />
           <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} mirror />
@@ -696,7 +705,7 @@ function BackBody({
   jerseyNumber,
   crestUrl,
   outfit,
-  isGoalkeeper,
+  wearGloves,
   clipId,
   shirtOnly,
   bootsColor,
@@ -712,7 +721,7 @@ function BackBody({
   jerseyNumber: number | null | undefined;
   crestUrl: string | null | undefined;
   outfit: AvatarOutfit;
-  isGoalkeeper: boolean;
+  wearGloves: boolean;
   clipId: string;
   shirtOnly: boolean;
   bootsColor: string | null;
@@ -791,7 +800,7 @@ function BackBody({
               <CoachArm skin={skin} />
               <CoachArm skin={skin} mirror />
             </>
-          ) : isGoalkeeper ? (
+          ) : wearGloves ? (
             <>
               <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} />
               <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} mirror />

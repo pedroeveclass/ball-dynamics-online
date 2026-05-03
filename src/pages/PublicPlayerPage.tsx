@@ -143,7 +143,7 @@ export default function PublicPlayerPage() {
   // 1 = home, 2 = away. GK still wears uniform 3 (no away GK kit).
   const [kitVariant, setKitVariant] = useState<1 | 2>(1);
   // Custom colors picked when buying cosmetic equipment in the store.
-  const [cosmetics, setCosmetics] = useState<{ bootsColor: string | null; gloveColor: string | null }>({ bootsColor: null, gloveColor: null });
+  const [cosmetics, setCosmetics] = useState<{ bootsColor: string | null; gloveColor: string | null; hasWinterGlove: boolean }>({ bootsColor: null, gloveColor: null, hasWinterGlove: false });
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
   const [seasons, setSeasons] = useState<{ id: string; number: number; status: string }[]>([]);
@@ -151,7 +151,7 @@ export default function PublicPlayerPage() {
 
   // Cosmetic colors (boots / gloves) picked at store-purchase time.
   useEffect(() => {
-    if (!playerId) { setCosmetics({ bootsColor: null, gloveColor: null }); return; }
+    if (!playerId) { setCosmetics({ bootsColor: null, gloveColor: null, hasWinterGlove: false }); return; }
     let cancelled = false;
     (async () => {
       const c = await fetchPlayerCosmetics(playerId);
@@ -409,6 +409,7 @@ export default function PublicPlayerPage() {
                   backShirtOnly={isBackView}
                   bootsColor={cosmetics.bootsColor}
                   gloveColor={cosmetics.gloveColor}
+                  hasWinterGlove={cosmetics.hasWinterGlove}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />
