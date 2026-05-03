@@ -155,6 +155,7 @@ export default function PublicPlayerPage() {
     bicepsBandColor: null,
     bicepsBandSide: null,
     shinGuardColor: null,
+    hasLongSocks: false,
   });
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -170,6 +171,7 @@ export default function PublicPlayerPage() {
         wristbandColor: null, wristbandSide: null,
         bicepsBandColor: null, bicepsBandSide: null,
         shinGuardColor: null,
+        hasLongSocks: false,
       });
       return;
     }
@@ -439,6 +441,7 @@ export default function PublicPlayerPage() {
                   bicepsBandColor={cosmetics.bicepsBandColor}
                   bicepsBandSide={cosmetics.bicepsBandSide}
                   shinGuardColor={cosmetics.shinGuardColor}
+                  hasLongSocks={cosmetics.hasLongSocks}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />

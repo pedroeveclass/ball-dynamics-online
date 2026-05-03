@@ -61,6 +61,10 @@ interface PlayerAvatarProps {
   bicepsBandSide?: 'left' | 'right' | null;
   // Caneleira (shin guards) — square pad on each shin.
   shinGuardColor?: string | null;
+  // Long-socks toggle (Meião Comprido). When true, the avatar swaps the
+  // short ankle sock for a tall sock that reaches up to the top of the
+  // shin guard. Color stays the kit's secondary — no picker.
+  hasLongSocks?: boolean;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -154,6 +158,7 @@ export function PlayerAvatar({
   bicepsBandColor = null,
   bicepsBandSide = null,
   shinGuardColor = null,
+  hasLongSocks = false,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
@@ -262,6 +267,7 @@ export function PlayerAvatar({
                 bicepsBandColor={bicepsBandColor}
                 bicepsBandSide={bicepsBandSide}
                 shinGuardColor={shinGuardColor}
+                hasLongSocks={hasLongSocks}
               />
             ) : (
               <FrontBody
@@ -289,6 +295,7 @@ export function PlayerAvatar({
                 bicepsBandColor={bicepsBandColor}
                 bicepsBandSide={bicepsBandSide}
                 shinGuardColor={shinGuardColor}
+                hasLongSocks={hasLongSocks}
               />
             )}
           </g>
@@ -671,6 +678,7 @@ function FrontBody({
   bicepsBandColor,
   bicepsBandSide,
   shinGuardColor,
+  hasLongSocks,
 }: {
   faceDataUri: string;
   primary: string;
@@ -696,6 +704,7 @@ function FrontBody({
   bicepsBandColor: string | null;
   bicepsBandSide: 'left' | 'right' | null;
   shinGuardColor: string | null;
+  hasLongSocks: boolean;
 }) {
   const skin = `#${skinTone}`;
   const isCoach = outfit === 'coach';
@@ -749,9 +758,24 @@ function FrontBody({
         </>
       )}
 
-      {/* ── Shin guards (Caneleira) — sit on top of the leg skin, above the
-          sock band, with strap shadows for a buckled look. Drawn here so
-          shorts (next) cover any visual artifact at the top edge. ── */}
+      {/* ── Long-sock extension (Meião Comprido) — covers the lower leg
+          from the ankle band up to where the shin guard sits. Rendered
+          AFTER legs so the kit-color sock paints over the skin, and
+          BEFORE the shin guard so the guard still sits visibly on top. ── */}
+      {!isCoach && hasLongSocks && (
+        <>
+          <rect x="73" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          <rect x="109" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
+          {/* Subtle horizontal stitch line at the top of the long sock */}
+          <line x1="73" y1="324" x2="91" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
+          <line x1="109" y1="324" x2="127" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
+        </>
+      )}
+
+      {/* ── Shin guards (Caneleira) — sit on top of the leg skin (or the
+          long sock when equipped), above the ankle band, with strap shadows
+          for a buckled look. Drawn here so shorts (next) cover any visual
+          artifact at the top edge. ── */}
       <ShinGuards color={shinGuardColor} isCoach={isCoach} />
 
       {/* ── Shorts — player only (coach wears trousers above) ── */}
@@ -893,6 +917,7 @@ function BackBody({
   bicepsBandColor,
   bicepsBandSide,
   shinGuardColor,
+  hasLongSocks,
 }: {
   appearance: PlayerAppearance;
   primary: string;
@@ -973,6 +998,16 @@ function BackBody({
             <>
               <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={skin} />
               <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={skin} />
+            </>
+          )}
+
+          {/* Long-sock extension on the back too */}
+          {!isCoach && hasLongSocks && (
+            <>
+              <rect x="73" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
+              <rect x="109" y="320" width="18" height="40" fill={secondary} stroke={primary} strokeWidth="1.5" />
+              <line x1="73" y1="324" x2="91" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
+              <line x1="109" y1="324" x2="127" y2="324" stroke={primary} strokeWidth="1" opacity="0.5" />
             </>
           )}
 

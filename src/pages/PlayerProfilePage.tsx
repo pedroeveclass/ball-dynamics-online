@@ -163,6 +163,7 @@ export default function PlayerProfilePage() {
     bicepsBandColor: null,
     bicepsBandSide: null,
     shinGuardColor: null,
+    hasLongSocks: false,
   });
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
@@ -251,6 +252,7 @@ export default function PlayerProfilePage() {
         wristbandColor: null, wristbandSide: null,
         bicepsBandColor: null, bicepsBandSide: null,
         shinGuardColor: null,
+        hasLongSocks: false,
       });
       return;
     }
@@ -692,6 +694,7 @@ export default function PlayerProfilePage() {
                   bicepsBandColor={cosmetics.bicepsBandColor}
                   bicepsBandSide={cosmetics.bicepsBandSide}
                   shinGuardColor={cosmetics.shinGuardColor}
+                  hasLongSocks={cosmetics.hasLongSocks}
                   className="w-full h-full"
                   fallbackSeed={p.id}
                 />

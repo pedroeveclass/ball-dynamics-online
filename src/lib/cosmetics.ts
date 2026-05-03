@@ -32,6 +32,10 @@ export interface PlayerCosmetics {
   bicepsBandSide: CosmeticSide | null;
   // Caneleira (shin guards) — both legs, no side choice.
   shinGuardColor: string | null;
+  // Long-socks cosmetic. No color (kit secondary stays as fill); just a
+  // toggle that swaps the short ankle band for a tall sock that reaches up
+  // to where the shin guard ends.
+  hasLongSocks: boolean;
 }
 
 const EMPTY: PlayerCosmetics = {
@@ -46,6 +50,7 @@ const EMPTY: PlayerCosmetics = {
   bicepsBandColor: null,
   bicepsBandSide: null,
   shinGuardColor: null,
+  hasLongSocks: false,
 };
 
 // Cosmetic items whose color we treat as a "winter glove": same visual
@@ -55,6 +60,7 @@ const WINTER_GLOVE_NAMES = new Set(['Luva de Inverno', 'Winter Gloves']);
 const WRISTBAND_NAMES = new Set(['Munhequeira', 'Wristband']);
 const BICEPS_BAND_NAMES = new Set(['Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
 const SHIN_GUARD_NAMES = new Set(['Caneleira Personalizada', 'Custom Shin Guards']);
+const LONG_SOCKS_NAMES = new Set(['Meião Comprido', 'Long Socks']);
 
 function matchesAny(item: any, set: Set<string>): boolean {
   return set.has(item.name) || (item.name_pt != null && set.has(item.name_pt)) || (item.name_en != null && set.has(item.name_en));
@@ -110,10 +116,17 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let bicepsBandColor: string | null = null;
   let bicepsBandSide: CosmeticSide | null = null;
   let shinGuardColor: string | null = null;
+  let hasLongSocks = false;
 
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
-    if (!it || !p.color) continue;
+    if (!it) continue;
+    // Long socks toggle has no color — short-circuit before the color guard.
+    if (it.category === 'cosmetic' && matchesAny(it, LONG_SOCKS_NAMES)) {
+      hasLongSocks = true;
+      continue;
+    }
+    if (!p.color) continue;
     if (it.category === 'boots') {
       if (!bootsColor) {
         bootsColor = p.color;
@@ -154,5 +167,6 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     bicepsBandColor,
     bicepsBandSide,
     shinGuardColor,
+    hasLongSocks,
   };
 }
