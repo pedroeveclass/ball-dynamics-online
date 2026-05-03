@@ -36,6 +36,11 @@ export interface PlayerCosmetics {
   // toggle that swaps the short ankle band for a tall sock that reaches up
   // to where the shin guard ends.
   hasLongSocks: boolean;
+  // Second-skin (compression) layers — paint the visible skin of the arms
+  // / legs with the picked color so it reads as a tight underlayer. Hand
+  // stays bare for the top, foot stays bare for the tights.
+  secondSkinShirtColor: string | null;
+  secondSkinPantsColor: string | null;
 }
 
 const EMPTY: PlayerCosmetics = {
@@ -51,6 +56,8 @@ const EMPTY: PlayerCosmetics = {
   bicepsBandSide: null,
   shinGuardColor: null,
   hasLongSocks: false,
+  secondSkinShirtColor: null,
+  secondSkinPantsColor: null,
 };
 
 // Cosmetic items whose color we treat as a "winter glove": same visual
@@ -61,6 +68,8 @@ const WRISTBAND_NAMES = new Set(['Munhequeira', 'Wristband']);
 const BICEPS_BAND_NAMES = new Set(['Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
 const SHIN_GUARD_NAMES = new Set(['Caneleira Personalizada', 'Custom Shin Guards']);
 const LONG_SOCKS_NAMES = new Set(['Meião Comprido', 'Long Socks']);
+const SECOND_SKIN_SHIRT_NAMES = new Set(['Camiseta Segunda Pele', 'Compression Top']);
+const SECOND_SKIN_PANTS_NAMES = new Set(['Calça Segunda Pele', 'Compression Tights']);
 
 function matchesAny(item: any, set: Set<string>): boolean {
   return set.has(item.name) || (item.name_pt != null && set.has(item.name_pt)) || (item.name_en != null && set.has(item.name_en));
@@ -117,6 +126,8 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let bicepsBandSide: CosmeticSide | null = null;
   let shinGuardColor: string | null = null;
   let hasLongSocks = false;
+  let secondSkinShirtColor: string | null = null;
+  let secondSkinPantsColor: string | null = null;
 
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
@@ -152,6 +163,10 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
       bicepsBandSide = normalizeSide(p.side);
     } else if (matchesAny(it, SHIN_GUARD_NAMES) && !shinGuardColor) {
       shinGuardColor = p.color;
+    } else if (matchesAny(it, SECOND_SKIN_SHIRT_NAMES) && !secondSkinShirtColor) {
+      secondSkinShirtColor = p.color;
+    } else if (matchesAny(it, SECOND_SKIN_PANTS_NAMES) && !secondSkinPantsColor) {
+      secondSkinPantsColor = p.color;
     }
   }
 
@@ -168,5 +183,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     bicepsBandSide,
     shinGuardColor,
     hasLongSocks,
+    secondSkinShirtColor,
+    secondSkinPantsColor,
   };
 }

@@ -253,6 +253,8 @@ export default function StorePage() {
     'Munhequeira', 'Wristband',
     'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps',
     'Caneleira Personalizada', 'Custom Shin Guards',
+    'Camiseta Segunda Pele', 'Compression Top',
+    'Calça Segunda Pele', 'Compression Tights',
   ]);
   function needsColorPick(item: StoreItem): boolean {
     if (item.category === 'boots' || item.category === 'gloves') return true;
