@@ -38,10 +38,15 @@ interface PlayerAvatarProps {
   // dark-gray fill of the goalkeeper glove. Null = use default art.
   bootsColor?: string | null;
   gloveColor?: string | null;
-  // When true, the avatar renders the GK-style long-sleeve + glove arm even
-  // for outfield players. Driven by the "Luva de Inverno" cosmetic. For GKs
-  // it makes no visual difference since they already render gloves.
+  // When true, the avatar renders gloves on the arm even for outfielders.
+  // Driven by the "Luva de Inverno" cosmetic. For GKs it just unlocks the
+  // alternate color + sleeve choice.
   hasWinterGlove?: boolean;
+  // Sleeve length picked at equip time for the winter glove.
+  // 'long' = full sleeve from shoulder to glove (default GK look).
+  // 'short' = bare arm + just the glove on the hand.
+  // Null falls back to 'long' for back-compat.
+  winterGloveSleeve?: 'long' | 'short' | null;
   // Wristband (Munhequeira) — single-arm cosmetic. side picks which.
   wristbandColor?: string | null;
   wristbandSide?: 'left' | 'right' | null;
@@ -135,6 +140,7 @@ export function PlayerAvatar({
   bootsColor = null,
   gloveColor = null,
   hasWinterGlove = false,
+  winterGloveSleeve = null,
   wristbandColor = null,
   wristbandSide = null,
   bicepsBandColor = null,
@@ -145,10 +151,13 @@ export function PlayerAvatar({
   const isCoach = outfit === 'coach';
   // Coach outfit overrides any GK rendering — coaches are never goalkeepers.
   const isGK = !isCoach && isGoalkeeper;
-  // Whether the avatar should show the GK-style long-sleeve + glove arm.
+  // Whether the avatar should show a gloved arm at all (long or short).
   // GKs always do; outfielders only when they bought the winter-glove
   // cosmetic. Coaches never (their blazer arm is its own treatment).
   const wearGloves = !isCoach && (isGK || hasWinterGlove);
+  // True when the winter-glove cosmetic was equipped with the short-sleeve
+  // option. Bare arm + glove only — wins over the long-sleeve render path.
+  const shortSleeveGlove = !isCoach && hasWinterGlove && winterGloveSleeve === 'short';
   // Coach outfit is hardcoded black regardless of the club the coach manages,
   // so ignore the incoming club colors for clothing purposes.
   const primary = isCoach ? COACH_SHIRT : (clubPrimaryColor || DEFAULT_PRIMARY);
@@ -233,6 +242,7 @@ export function PlayerAvatar({
                 crestUrl={clubCrestUrl}
                 outfit={outfit}
                 wearGloves={wearGloves}
+                shortSleeveGlove={shortSleeveGlove}
                 clipId={clipId}
                 shirtOnly={shirtOnly}
                 bootsColor={bootsColor}
@@ -259,6 +269,7 @@ export function PlayerAvatar({
                 hasBigBeard={isBigBeard(effective.facialHair)}
                 outfit={outfit}
                 wearGloves={wearGloves}
+                shortSleeveGlove={shortSleeveGlove}
                 bootsColor={bootsColor}
                 gloveColor={gloveColor}
                 wristbandColor={wristbandColor}
@@ -526,6 +537,33 @@ function GoalkeeperArm({ primary, secondary, mirror = false, gloveColor }: { pri
   );
 }
 
+// ── Short-sleeve glove arm: the regular bare-skin Arm but the hand is
+// painted as a glove (chosen color) with a small cuff line denoting where
+// the glove begins. Used by the winter-glove cosmetic when the player
+// picked "manga curta" — gives the goalie-glove look without the long
+// sleeve so it reads as a fashion accessory rather than a kit.
+function ShortSleeveGloveArm({ primary, secondary, skin, gloveColor, mirror = false }: { primary: string; secondary: string; skin: string; gloveColor: string | null; mirror?: boolean }) {
+  const glove = gloveColor || GLOVE_COLOR;
+  return (
+    <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
+      {/* Shoulder cap (kit color) */}
+      <path d="M 40 118 Q 36 124 36 136 L 40 158 L 60 158 L 60 124 Q 60 116 52 114 Q 44 114 40 118 Z" fill={primary} />
+      {/* Sleeve hem (secondary trim) */}
+      <line x1="37" y1="158" x2="60" y2="158" stroke={secondary} strokeWidth="1" opacity="0.85" />
+      {/* Bicep + forearm (bare skin) */}
+      <path d="M 40 158 L 60 158 L 60 198 Q 60 200 54 200 L 44 200 Q 40 200 40 198 Z" fill={skin} />
+      <path d="M 42 200 L 56 200 L 56 234 Q 56 236 52 236 L 48 236 Q 44 236 44 234 Z" fill={skin} />
+      {/* Glove cuff strip — sells the "the glove starts here" boundary so it
+          doesn't look like dyed skin */}
+      <rect x="42" y="234" width="14" height="2.5" fill={glove} />
+      {/* Hand replaced by glove */}
+      <path d="M 44 236 L 56 236 Q 58 239 57 244 Q 55 250 50 250 Q 45 250 43 244 Q 42 239 44 236 Z" fill={glove} />
+      {/* Glove highlight for shape */}
+      <path d="M 46 240 L 54 240 Q 54 243 52 244 L 48 244 Q 46 243 46 240 Z" fill="#fff" opacity="0.18" />
+    </g>
+  );
+}
+
 // ── Wristband (Munhequeira): a thick band around the wrist on one arm.
 // Coordinates match the Arm/GoalkeeperArm geometry — left arm by default,
 // `mirror` flips to the right. Drawn AFTER arms so it sits on top of the
@@ -603,6 +641,7 @@ function FrontBody({
   hasBigBeard,
   outfit,
   wearGloves,
+  shortSleeveGlove,
   bootsColor,
   gloveColor,
   wristbandColor,
@@ -625,6 +664,7 @@ function FrontBody({
   hasBigBeard: boolean;
   outfit: AvatarOutfit;
   wearGloves: boolean;
+  shortSleeveGlove: boolean;
   bootsColor: string | null;
   gloveColor: string | null;
   wristbandColor: string | null;
@@ -705,6 +745,11 @@ function FrontBody({
           <CoachArm skin={skin} />
           <CoachArm skin={skin} mirror />
         </>
+      ) : shortSleeveGlove ? (
+        <>
+          <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} />
+          <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} mirror />
+        </>
       ) : wearGloves ? (
         <>
           <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} />
@@ -722,8 +767,8 @@ function FrontBody({
           formal blazer look. ── */}
       {!isCoach && (
         <>
-          <Wristband color={wristbandColor} side={wristbandSide} wearGloves={wearGloves} />
-          <BicepsBand color={bicepsBandColor} side={bicepsBandSide} wearGloves={wearGloves} />
+          <Wristband color={wristbandColor} side={wristbandSide} wearGloves={wearGloves && !shortSleeveGlove} />
+          <BicepsBand color={bicepsBandColor} side={bicepsBandSide} wearGloves={wearGloves && !shortSleeveGlove} />
         </>
       )}
 
@@ -812,6 +857,7 @@ function BackBody({
   crestUrl,
   outfit,
   wearGloves,
+  shortSleeveGlove,
   clipId,
   shirtOnly,
   bootsColor,
@@ -833,6 +879,7 @@ function BackBody({
   crestUrl: string | null | undefined;
   outfit: AvatarOutfit;
   wearGloves: boolean;
+  shortSleeveGlove: boolean;
   clipId: string;
   shirtOnly: boolean;
   wristbandColor: string | null;
@@ -919,6 +966,11 @@ function BackBody({
               <CoachArm skin={skin} />
               <CoachArm skin={skin} mirror />
             </>
+          ) : shortSleeveGlove ? (
+            <>
+              <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} />
+              <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} mirror />
+            </>
           ) : wearGloves ? (
             <>
               <GoalkeeperArm primary={primary} secondary={stripe} gloveColor={gloveColor} />
@@ -934,8 +986,8 @@ function BackBody({
           {/* Single-arm cosmetics on the back as well */}
           {!isCoach && (
             <>
-              <Wristband color={wristbandColor} side={wristbandSide} wearGloves={wearGloves} />
-              <BicepsBand color={bicepsBandColor} side={bicepsBandSide} wearGloves={wearGloves} />
+              <Wristband color={wristbandColor} side={wristbandSide} wearGloves={wearGloves && !shortSleeveGlove} />
+              <BicepsBand color={bicepsBandColor} side={bicepsBandSide} wearGloves={wearGloves && !shortSleeveGlove} />
             </>
           )}
         </>

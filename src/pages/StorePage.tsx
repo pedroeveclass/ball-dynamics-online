@@ -25,7 +25,7 @@ import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
 import { ItemColorPickerDialog } from '@/components/store/ItemColorPickerDialog';
-import { EquipSideDialog, EquipSide } from '@/components/store/EquipSideDialog';
+import { EquipSideDialog, EquipChoice, EquipChoiceKind } from '@/components/store/EquipSideDialog';
 
 interface StoreItem {
   id: string;
@@ -129,11 +129,10 @@ export default function StorePage() {
     targetPlayerId?: string;
   }>(null);
 
-  // Side picker dialog. Triggered at equip time for cosmetics that the
-  // avatar renders on a single arm (wristband, biceps band). The user
-  // re-picks the side every time they equip, so changing arm doesn't
-  // require re-buying the item.
-  const [sidePick, setSidePick] = useState<null | { purchaseId: string; itemName: string }>(null);
+  // Equip-time choice dialog. Wristband / biceps band ask which arm; winter
+  // glove asks long-vs-short sleeve. The user re-picks every time they
+  // equip so changing variant doesn't require re-buying the item.
+  const [sidePick, setSidePick] = useState<null | { purchaseId: string; itemName: string; kind: EquipChoiceKind }>(null);
 
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
@@ -234,11 +233,15 @@ export default function StorePage() {
   }
 
   // Items that require the buyer to pick a custom color before the purchase
-  // RPC runs. Boots / GK gloves always do; cosmetics that the avatar
-  // actually renders (currently just "Luva de Inverno") opt in by name so
-  // future cosmetic visuals can be added one at a time without flagging
-  // every cosmetic at once.
-  const COLOR_PICK_COSMETICS = new Set(['Luva de Inverno', 'Winter Gloves']);
+  // RPC runs. Boots / GK gloves always do; cosmetics opt in by name for the
+  // visuals the avatar actually renders today. Cosmetics not in this list
+  // (e.g. items without a visual) skip the picker and auto-purchase.
+  const COLOR_PICK_COSMETICS = new Set([
+    'Luva de Inverno', 'Winter Gloves',
+    'Munhequeira', 'Wristband',
+    'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps',
+    'Caneleira Personalizada', 'Custom Shin Guards',
+  ]);
   function needsColorPick(item: StoreItem): boolean {
     if (item.category === 'boots' || item.category === 'gloves') return true;
     if (item.category !== 'cosmetic') return false;
@@ -309,15 +312,20 @@ export default function StorePage() {
     handleBuy(item, buyerType, targetPlayerId);
   }
 
-  // Cosmetic items the avatar renders on a single arm — equipping these
-  // opens the side picker. Caneleira / Luva de Inverno are symmetric and
-  // skip the picker.
+  // Cosmetics that take a left/right arm choice when equipping.
   const SIDE_AWARE_COSMETICS = new Set(['Munhequeira', 'Wristband', 'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
-  function needsSidePick(item: StoreItem | undefined): boolean {
-    if (!item || item.category !== 'cosmetic') return false;
-    return SIDE_AWARE_COSMETICS.has(item.name)
-      || (item.name_pt != null && SIDE_AWARE_COSMETICS.has(item.name_pt))
-      || (item.name_en != null && SIDE_AWARE_COSMETICS.has(item.name_en));
+  // Cosmetics that take a long/short sleeve choice instead (winter glove).
+  const SLEEVE_AWARE_COSMETICS = new Set(['Luva de Inverno', 'Winter Gloves']);
+  function matchesName(item: StoreItem, set: Set<string>): boolean {
+    return set.has(item.name)
+      || (item.name_pt != null && set.has(item.name_pt))
+      || (item.name_en != null && set.has(item.name_en));
+  }
+  function equipChoiceKind(item: StoreItem | undefined): EquipChoiceKind | null {
+    if (!item || item.category !== 'cosmetic') return null;
+    if (matchesName(item, SIDE_AWARE_COSMETICS)) return 'arm';
+    if (matchesName(item, SLEEVE_AWARE_COSMETICS)) return 'sleeve';
+    return null;
   }
 
   async function handleReactivateSubscription(purchaseId: string) {
@@ -336,12 +344,12 @@ export default function StorePage() {
     }
   }
 
-  async function handleEquip(purchaseId: string, side: EquipSide | null = null) {
+  async function handleEquip(purchaseId: string, choice: EquipChoice | null = null) {
     setActing(true);
     try {
       const { data, error } = await (supabase as any).rpc('equip_store_item', {
         p_purchase_id: purchaseId,
-        p_side: side ?? null,
+        p_side: choice ?? null,
       });
       if (error) { toast.error(error.message); return; }
       const result = data as any;
@@ -356,10 +364,11 @@ export default function StorePage() {
     }
   }
 
-  // Wrapper that gates side-aware cosmetics behind the side picker.
+  // Wrapper that gates cosmetics with equip-time choices behind the dialog.
   function startEquip(purchaseId: string, item: StoreItem | undefined) {
-    if (needsSidePick(item) && item) {
-      setSidePick({ purchaseId, itemName: getStoreItemName(item, lang) });
+    const kind = equipChoiceKind(item);
+    if (kind && item) {
+      setSidePick({ purchaseId, itemName: getStoreItemName(item, lang), kind });
       return;
     }
     handleEquip(purchaseId, null);
@@ -788,12 +797,13 @@ export default function StorePage() {
         />
       )}
 
-      {/* Side picker dialog for arm-bound cosmetics at equip time */}
+      {/* Equip-time choice dialog (arm side or sleeve length) */}
       {sidePick && (
         <EquipSideDialog
           open={!!sidePick}
           onOpenChange={(open) => { if (!open && !acting) setSidePick(null); }}
           itemName={sidePick.itemName}
+          kind={sidePick.kind}
           busy={acting}
           onConfirm={(picked) => handleEquip(sidePick.purchaseId, picked)}
         />

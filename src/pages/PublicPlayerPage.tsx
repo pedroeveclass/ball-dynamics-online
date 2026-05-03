@@ -147,6 +147,7 @@ export default function PublicPlayerPage() {
     bootsColor: null,
     gloveColor: null,
     hasWinterGlove: false,
+    winterGloveSleeve: null,
     wristbandColor: null,
     wristbandSide: null,
     bicepsBandColor: null,
@@ -162,7 +163,7 @@ export default function PublicPlayerPage() {
   useEffect(() => {
     if (!playerId) {
       setCosmetics({
-        bootsColor: null, gloveColor: null, hasWinterGlove: false,
+        bootsColor: null, gloveColor: null, hasWinterGlove: false, winterGloveSleeve: null,
         wristbandColor: null, wristbandSide: null,
         bicepsBandColor: null, bicepsBandSide: null,
         shinGuardColor: null,
@@ -427,6 +428,7 @@ export default function PublicPlayerPage() {
                   bootsColor={cosmetics.bootsColor}
                   gloveColor={cosmetics.gloveColor}
                   hasWinterGlove={cosmetics.hasWinterGlove}
+                  winterGloveSleeve={cosmetics.winterGloveSleeve}
                   wristbandColor={cosmetics.wristbandColor}
                   wristbandSide={cosmetics.wristbandSide}
                   bicepsBandColor={cosmetics.bicepsBandColor}

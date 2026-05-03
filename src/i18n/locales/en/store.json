@@ -72,6 +72,14 @@
     "equip": "Equip",
     "equipping": "Equipping..."
   },
+  "equip_sleeve": {
+    "title": "Long or short sleeve?",
+    "subtitle": "Pick the style for {{item}}.",
+    "long": "Long sleeve",
+    "long_hint": "Full sleeve down to the wrist with the glove",
+    "short": "Short sleeve",
+    "short_hint": "Just the glove, no sleeve"
+  },
   "swap": {
     "title_trainer": "Swap Trainer?",
     "title_physio": "Swap Physio?",

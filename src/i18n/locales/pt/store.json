@@ -72,6 +72,14 @@
     "equip": "Equipar",
     "equipping": "Equipando..."
   },
+  "equip_sleeve": {
+    "title": "Manga curta ou comprida?",
+    "subtitle": "Escolha o estilo de {{item}}.",
+    "long": "Manga comprida",
+    "long_hint": "Mangas longas até o punho com a luva",
+    "short": "Manga curta",
+    "short_hint": "Só a luva, sem a manga"
+  },
   "swap": {
     "title_trainer": "Trocar Treinador?",
     "title_physio": "Trocar Fisioterapeuta?",

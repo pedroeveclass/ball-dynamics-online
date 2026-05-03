@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export type CosmeticSide = 'left' | 'right';
+export type WinterGloveSleeve = 'long' | 'short';
 
 export interface PlayerCosmetics {
   // Hex (#rgb / #rrggbb) of the actively-equipped boots, if any.
@@ -11,10 +12,15 @@ export interface PlayerCosmetics {
   // — the GK can override their kit glove with a winter-glove pick).
   gloveColor: string | null;
   // True when the player has the "Luva de Inverno" cosmetic active. Forces
-  // the avatar to render the GK-style sleeved arm + glove on outfielders;
-  // for goalkeepers this just unlocks the alternate color.
+  // the avatar to render gloves on outfielders; for goalkeepers it just
+  // unlocks the alternate color and sleeve choice.
   hasWinterGlove: boolean;
-  // Wristband (Munhequeira) — single arm only, side picked at purchase.
+  // Sleeve length picked at equip time for the winter glove. 'long' draws
+  // the full GK-style sleeve; 'short' shows a bare arm with the glove on
+  // the hand only. Null = treat as 'long' for back-compat with rows
+  // equipped before this picker existed.
+  winterGloveSleeve: WinterGloveSleeve | null;
+  // Wristband (Munhequeira) — single arm only, side picked at equip.
   wristbandColor: string | null;
   wristbandSide: CosmeticSide | null;
   // Biceps band — same per-arm pattern.
@@ -28,6 +34,7 @@ const EMPTY: PlayerCosmetics = {
   bootsColor: null,
   gloveColor: null,
   hasWinterGlove: false,
+  winterGloveSleeve: null,
   wristbandColor: null,
   wristbandSide: null,
   bicepsBandColor: null,
@@ -49,6 +56,10 @@ function matchesAny(item: any, set: Set<string>): boolean {
 
 function normalizeSide(s: any): CosmeticSide | null {
   return s === 'left' || s === 'right' ? s : null;
+}
+
+function normalizeSleeve(s: any): WinterGloveSleeve | null {
+  return s === 'long' || s === 'short' ? s : null;
 }
 
 // Reads the active equipment + cosmetic purchase rows for a player and
@@ -85,6 +96,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let bootsColor: string | null = null;
   let gkGloveColor: string | null = null;
   let winterGloveColor: string | null = null;
+  let winterGloveSleeve: WinterGloveSleeve | null = null;
   let wristbandColor: string | null = null;
   let wristbandSide: CosmeticSide | null = null;
   let bicepsBandColor: string | null = null;
@@ -106,6 +118,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
 
     if (matchesAny(it, WINTER_GLOVE_NAMES) && !winterGloveColor) {
       winterGloveColor = p.color;
+      winterGloveSleeve = normalizeSleeve(p.side);
     } else if (matchesAny(it, WRISTBAND_NAMES) && !wristbandColor) {
       wristbandColor = p.color;
       wristbandSide = normalizeSide(p.side);
@@ -121,6 +134,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     bootsColor,
     gloveColor: winterGloveColor || gkGloveColor,
     hasWinterGlove: winterGloveColor != null,
+    winterGloveSleeve,
     wristbandColor,
     wristbandSide,
     bicepsBandColor,
