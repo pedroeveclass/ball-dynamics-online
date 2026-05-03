@@ -4,17 +4,23 @@
 // human "Reportar" review is the second layer for anything that gets
 // past it.
 //
-// Model load is lazy (~5 MB) and cached for the rest of the session.
+// nsfwjs + @tensorflow/tfjs together weigh several hundred KB, so we
+// import them dynamically inside loadModel() — that way the lib goes to
+// its own chunk and is only fetched when a user actually opens the
+// background picker. Model weights load lazily on top of that.
 
-import * as nsfwjs from 'nsfwjs';
+type NsfwModel = { classify: (img: HTMLImageElement) => Promise<{ className: string; probability: number }[]> };
 
-let modelPromise: Promise<nsfwjs.NSFWJS> | null = null;
+let modelPromise: Promise<NsfwModel> | null = null;
 
-function loadModel() {
+function loadModel(): Promise<NsfwModel> {
   if (!modelPromise) {
-    // The default model URL bundled with nsfwjs is the MobileNet v2 224
-    // variant — small + fast and good enough for porn/sexy detection.
-    modelPromise = nsfwjs.load();
+    modelPromise = (async () => {
+      const nsfwjs = await import('nsfwjs');
+      // The default model URL bundled with nsfwjs is the MobileNet v2 224
+      // variant — small + fast and good enough for porn/sexy detection.
+      return nsfwjs.load();
+    })();
   }
   return modelPromise;
 }

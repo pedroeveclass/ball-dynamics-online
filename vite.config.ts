@@ -16,6 +16,19 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // nsfwjs ships an `import { Buffer } from 'buffer'` that Vite would
+      // otherwise treat as externalized (Node built-in) and break the
+      // production bundle. Aliasing to the npm `buffer` polyfill makes
+      // it work transparently in the browser.
+      buffer: "buffer",
     },
+  },
+  define: {
+    // Some browser polyfills (including `buffer`) expect a `global`
+    // identifier — Vite's default browser bundle doesn't define one.
+    global: "globalThis",
+  },
+  optimizeDeps: {
+    include: ["buffer"],
   },
 }));
