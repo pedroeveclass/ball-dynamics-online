@@ -564,29 +564,33 @@ function ShortSleeveGloveArm({ primary, secondary, skin, gloveColor, mirror = fa
   );
 }
 
-// ── Wristband (Munhequeira): a thick band around the wrist on one arm.
-// Coordinates match the Arm/GoalkeeperArm geometry — left arm by default,
-// `mirror` flips to the right. Drawn AFTER arms so it sits on top of the
-// sleeve / cuff without being covered.
+// ── Wristband (Munhequeira): a thin band hugging the wrist on one arm.
+// `side` is FROM THE PLAYER'S PERSPECTIVE — 'left' means the player's left
+// arm, which renders on the viewer's right (so we mirror). 'right' means
+// the player's right arm, which is the natural unmirrored render.
+// Drawn AFTER arms so it sits on top of the sleeve / cuff without being
+// covered.
 function Wristband({ color, side, wearGloves }: { color: string | null; side: 'left' | 'right' | null; wearGloves: boolean }) {
   if (!color || !side) return null;
-  const mirror = side === 'right';
+  const mirror = side === 'left';
   // GK / winter-glove sleeves end at y=234 (cuff sits y=230-233). Bare arm
-  // ends at the wrist around y=234. A 6-unit-tall band sitting at y=228
-  // covers both layouts cleanly.
-  const y = wearGloves ? 226 : 228;
+  // ends at the wrist around y=234. The band sits at y=229-234 right above
+  // the cuff/wrist line. Width 16 + x=42 hugs the forearm bottom (which
+  // ends at x=42..56) so it reads as wrapping the wrist, not a sleeve.
+  const y = wearGloves ? 228 : 229;
   return (
     <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
-      <rect x="40" y={y} width="22" height="7" fill={color} rx="1.5" />
-      <rect x="40" y={y + 1} width="22" height="1.5" fill="#fff" opacity="0.25" />
+      <rect x="42" y={y} width="16" height="5" fill={color} rx="1" />
+      <rect x="42" y={y + 0.8} width="16" height="1" fill="#fff" opacity="0.25" />
     </g>
   );
 }
 
 // ── Biceps band: a thinner strap higher on the arm, around the bicep.
+// `side` follows the same player-perspective convention as Wristband.
 function BicepsBand({ color, side, wearGloves }: { color: string | null; side: 'left' | 'right' | null; wearGloves: boolean }) {
   if (!color || !side) return null;
-  const mirror = side === 'right';
+  const mirror = side === 'left';
   // Sleeve hem of the regular Arm sits at y=158 (skin starts there). Bicep
   // is roughly y=160-200. The band sits just below the sleeve at y=164.
   // For wearGloves arms (long sleeve from shoulder), the band overlays the
