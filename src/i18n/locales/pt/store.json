@@ -34,7 +34,8 @@
     "active": "Ativo",
     "not_renewing": "Não renova",
     "inventory": "Inventário",
-    "owned": "Adquirido"
+    "owned": "Adquirido",
+    "colors": "Cores"
   },
   "actions": {
     "buy": "Comprar",

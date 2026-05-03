@@ -57,6 +57,13 @@ interface Purchase {
   created_at: string;
   last_used_at: string | null;
   expires_at: string | null;
+  // Cosmetic customizations picked at purchase / equip time. Cleats use all
+  // three; everything else uses just `color` (or none for items like the
+  // long-sock toggle that have no color of their own).
+  color: string | null;
+  color2: string | null;
+  color3: string | null;
+  side: string | null;
 }
 
 const DISPLAY_CATEGORIES: Record<string, string> = {
@@ -618,6 +625,35 @@ export default function StorePage() {
                         </CardHeader>
                         <CardContent className="space-y-2 pb-3">
                           {(() => { const d = getStoreItemDescription(item, lang); return d ? <p className="text-xs text-muted-foreground leading-relaxed">{d}</p> : null; })()}
+                          {/* Color swatches — shows at a glance which hex(es) the
+                              player picked. Cleats render up to 3 (upper / contour
+                              / studs); everything else just one. */}
+                          {(p.color || p.color2 || p.color3) && (
+                            <div className="flex items-center gap-1.5" aria-label={t('badges.colors')}>
+                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('badges.colors')}:</span>
+                              {p.color && (
+                                <span
+                                  title={p.color}
+                                  className="h-4 w-4 rounded border border-border shrink-0"
+                                  style={{ backgroundColor: p.color }}
+                                />
+                              )}
+                              {p.color2 && (
+                                <span
+                                  title={p.color2}
+                                  className="h-4 w-4 rounded border border-border shrink-0"
+                                  style={{ backgroundColor: p.color2 }}
+                                />
+                              )}
+                              {p.color3 && (
+                                <span
+                                  title={p.color3}
+                                  className="h-4 w-4 rounded border border-border shrink-0"
+                                  style={{ backgroundColor: p.color3 }}
+                                />
+                              )}
+                            </div>
+                          )}
                           {item.bonus_type && item.bonus_value != null && (
                             <Badge variant="secondary" className="text-[10px]">+{item.bonus_value} {ATTR_LABELS[item.bonus_type] || item.bonus_type}</Badge>
                           )}

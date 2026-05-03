@@ -34,7 +34,8 @@
     "active": "Active",
     "not_renewing": "Not renewing",
     "inventory": "Inventory",
-    "owned": "Owned"
+    "owned": "Owned",
+    "colors": "Colors"
   },
   "actions": {
     "buy": "Buy",
