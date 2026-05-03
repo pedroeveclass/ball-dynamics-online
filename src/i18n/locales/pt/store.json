@@ -96,7 +96,7 @@
     "replace_image": "Trocar imagem",
     "uploading": "Enviando...",
     "upload_first": "Envie uma imagem antes de confirmar",
-    "image_hint": "PNG, JPG ou WEBP até 5 MB. Tamanho recomendado: 600×900 px (proporção 2:3 retrato).",
+    "image_hint": "PNG, JPG ou WEBP até 5 MB. Tamanho recomendado: 1200×600 px (proporção 2:1 horizontal).",
     "file_too_big": "Arquivo muito grande (máx. 5 MB)",
     "bad_type": "Formato inválido — use PNG, JPG ou WEBP"
   },

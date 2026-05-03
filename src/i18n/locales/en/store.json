@@ -96,7 +96,7 @@
     "replace_image": "Replace image",
     "uploading": "Uploading...",
     "upload_first": "Upload an image before confirming",
-    "image_hint": "PNG, JPG or WEBP up to 5 MB. Recommended size: 600×900 px (2:3 portrait ratio).",
+    "image_hint": "PNG, JPG or WEBP up to 5 MB. Recommended size: 1200×600 px (2:1 landscape ratio).",
     "file_too_big": "File too large (max 5 MB)",
     "bad_type": "Invalid format — use PNG, JPG or WEBP"
   },

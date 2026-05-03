@@ -301,7 +301,7 @@ export function BackgroundPickerDialog({ open, onOpenChange, itemName, onConfirm
           <div>
             <p className="text-xs font-display font-semibold text-muted-foreground mb-2">{t('background.preview')}</p>
             <div
-              className="rounded-lg border border-border w-full aspect-[2/3] flex items-end justify-center p-2"
+              className="rounded-lg border border-border w-full aspect-[2/1] flex items-end justify-center p-2"
               style={previewStyle(variant, previewA, previewB, imageUrl)}
             >
               <span className="text-[10px] bg-black/40 text-white px-2 py-0.5 rounded">{t(`background.variant_${variant}`)}</span>
