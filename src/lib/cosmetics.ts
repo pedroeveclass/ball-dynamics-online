@@ -135,24 +135,26 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   // the item is in use until the renewal date passes (mirrors the bonus
   // reader). 'inventory' explicitly does not, so unequipped equipment never
   // affects the avatar.
-  const { data: purchases } = await (supabase as any)
-    .from('store_purchases')
-    .select('store_item_id, color, color2, color3, side, status, bg_variant, bg_image_url')
-    .eq('player_profile_id', playerProfileId)
-    .in('status', ['active', 'cancelling']);
+  // Going through the SECURITY DEFINER RPC instead of direct table reads
+  // because the base RLS only allows the row owner + the player's club
+  // manager to SELECT store_purchases. Public-page viewers (other users,
+  // anon) would get zero rows and the avatar would render bare.
+  const { data: rows } = await (supabase as any).rpc('get_player_cosmetics_public', {
+    p_player_profile_id: playerProfileId,
+  });
 
-  if (!purchases || purchases.length === 0) return EMPTY;
+  if (!rows || rows.length === 0) return EMPTY;
 
-  const itemIds = [...new Set((purchases as any[]).map(p => p.store_item_id))];
-  const { data: items } = await (supabase as any)
-    .from('store_items')
-    .select('id, name, name_pt, name_en, category')
-    .in('id', itemIds)
-    .in('category', ['boots', 'gloves', 'cosmetic']);
-
-  if (!items || items.length === 0) return EMPTY;
-
-  const itemById = new Map((items as any[]).map(i => [i.id, i]));
+  // Re-shape into the same structure the rest of the loop expects:
+  // an array of "purchase" rows + an item lookup keyed by store_item_id.
+  const purchases = rows as any[];
+  const itemById = new Map(purchases.map((r: any) => [r.store_item_id, {
+    id: r.store_item_id,
+    name: r.item_name,
+    name_pt: r.item_name_pt,
+    name_en: r.item_name_en,
+    category: r.item_category,
+  }]));
 
   let bootsColor: string | null = null;
   let bootsColorSecondary: string | null = null;
