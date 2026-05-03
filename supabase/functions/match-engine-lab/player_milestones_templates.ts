@@ -43,36 +43,36 @@ interface TemplateSet { pt: string; en: string; }
 
 const T: Record<MilestoneType, TemplateSet> = {
   first_goal: {
-    pt: "Primeiro gol da carreira de {player_name}: marcou hoje contra {opponent_name} numa partida que ficará pra sempre na história pessoal do jogador. Pra qualquer atacante, é o gol que abre as portas — depois dele, vem todo o resto.",
-    en: "First career goal for {player_name}: scored today against {opponent_name} in a match that will stay forever in the player's personal history. For any striker, it's the goal that opens the doors — everything else follows.",
+    pt: "Primeiro gol da carreira de {player_name}: marcou hoje contra {opponent_name} numa partida que ficará pra sempre na história pessoal do jogador. Pra qualquer atleta que chega ao profissional, é o gol que abre as portas — depois dele, vem todo o resto.",
+    en: "First career goal for {player_name}: scored today against {opponent_name} in a match that will stay forever in the player's personal history. For any pro athlete, it's the goal that opens the doors — everything else follows.",
   },
   goals_10: {
-    pt: "{player_name} chegou aos 10 gols na carreira profissional. Marca importante pra um atacante em construção, e o jogador mostra que tem capacidade de se firmar entre os goleadores do clube.",
-    en: "{player_name} reached 10 career professional goals. An important mark for a developing striker, showing capacity to establish himself among the club's goalscorers.",
+    pt: "{player_name} chegou aos 10 gols na carreira profissional. Marca importante pra um jogador em construção, e mostra capacidade de se firmar entre os goleadores do clube — independente da posição em que atua.",
+    en: "{player_name} reached 10 career professional goals. An important mark for a developing player, showing capacity to establish themself among the club's goalscorers — regardless of position.",
   },
   goals_25: {
-    pt: "Passou dos 25 gols na carreira: {player_name} continua somando números importantes, gol após gol. Marca que coloca o atacante em rota de longevidade entre os finalizadores do clube.",
-    en: "Past 25 career goals: {player_name} keeps adding important numbers, goal after goal. A mark that puts the striker on a longevity track among the club's finishers.",
+    pt: "Passou dos 25 gols na carreira: {player_name} continua somando números importantes, gol após gol. Marca que coloca o jogador em rota de longevidade entre os goleadores do clube.",
+    en: "Past 25 career goals: {player_name} keeps adding important numbers, goal after goal. A mark that puts the player on a longevity track among the club's scorers.",
   },
   goals_50: {
-    pt: "Marca dos 50 gols alcançada: {player_name} entra para um clube seleto de finalizadores históricos do clube. Cada gol carrega uma história, e a coleção dele cresce semana a semana.",
-    en: "50-goal mark reached: {player_name} enters a select club of historic finishers at the club. Every goal carries a story, and his collection grows week by week.",
+    pt: "Marca dos 50 gols alcançada: {player_name} entra para um clube seleto de goleadores históricos do clube. Cada gol carrega uma história, e a coleção dele cresce semana a semana.",
+    en: "50-goal mark reached: {player_name} enters a select club of historic scorers at the club. Every goal carries a story, and his collection grows week by week.",
   },
   goals_100: {
-    pt: "Centenária: {player_name} chegou aos 100 gols na carreira profissional. Marca que coloca o atacante entre os maiores artilheiros da história recente, e que será lembrada por décadas pelos torcedores do clube.",
-    en: "Centenary: {player_name} reached 100 career professional goals. A mark placing the striker among the greatest goalscorers of recent history, one that will be remembered by club fans for decades.",
+    pt: "Centenária: {player_name} chegou aos 100 gols na carreira profissional. Marca que coloca o jogador entre os maiores goleadores da história recente, e que será lembrada por décadas pelos torcedores do clube.",
+    en: "Centenary: {player_name} reached 100 career professional goals. A mark placing the player among the greatest goalscorers of recent history, one that will be remembered by club fans for decades.",
   },
   goals_200: {
     pt: "Histórico: {player_name} chega à marca dos 200 gols na carreira profissional. Atinge patamar de jogador lendário, com nome cravado em qualquer relatório histórico do clube. Esses números só não impressionam quem nunca jogou bola.",
     en: "Historic: {player_name} reaches 200 career professional goals. Achieves legendary-player tier, name carved into any historical record of the club. These numbers only fail to impress those who've never played football.",
   },
   first_hat_trick: {
-    pt: "Primeiro hat-trick da carreira: {player_name} marcou três gols na partida contra {opponent_name}. Atuação que entra direto pra galeria pessoal do jogador, e que sinaliza um atacante em forma máxima.",
-    en: "First career hat-trick: {player_name} scored three goals in the match against {opponent_name}. A performance that goes straight into the player's personal gallery and signals a striker at peak form.",
+    pt: "Primeiro hat-trick da carreira: {player_name} marcou três gols na partida contra {opponent_name}. Atuação que entra direto pra galeria pessoal do jogador, e que sinaliza um atleta em forma máxima — pouco importa a posição em que joga.",
+    en: "First career hat-trick: {player_name} scored three goals in the match against {opponent_name}. A performance that goes straight into the player's personal gallery and signals an athlete at peak form — regardless of position.",
   },
   first_poker: {
-    pt: "Quatro gols num jogo só! {player_name} fez um poker contra {opponent_name} numa noite mágica que dificilmente se repete na carreira de qualquer atacante. Atuação histórica.",
-    en: "Four goals in a single match! {player_name} scored a poker against {opponent_name} on a magical night that rarely repeats in any striker's career. A historic display.",
+    pt: "Quatro gols num jogo só! {player_name} fez um poker contra {opponent_name} numa noite mágica que dificilmente se repete na carreira de qualquer jogador. Atuação histórica.",
+    en: "Four goals in a single match! {player_name} scored a poker against {opponent_name} on a magical night that rarely repeats in any player's career. A historic display.",
   },
   first_handful: {
     pt: "Cinco gols ou mais! {player_name} fez uma exibição quase impossível contra {opponent_name}, atingindo a mão cheia que poucos jogadores na história alcançaram. Noite pra contar pros netos.",
@@ -83,12 +83,12 @@ const T: Record<MilestoneType, TemplateSet> = {
     en: "{player_name} scored his 5th goal of the season — starting to settle among the championship's offensive standouts, showing regularity in finishing.",
   },
   season_10_goals: {
-    pt: "Marca dos 10 gols na temporada atingida por {player_name}. Atacante entra em cogitação pra prêmios da temporada e segue numa fase produtiva impressionante.",
-    en: "10-goal season mark reached by {player_name}. The striker enters the conversation for season awards and continues in an impressive productive phase.",
+    pt: "Marca dos 10 gols na temporada atingida por {player_name}. O jogador entra em cogitação pra prêmios da temporada e segue numa fase produtiva impressionante — independente da posição em que atua.",
+    en: "10-goal season mark reached by {player_name}. The player enters the conversation for season awards and continues in an impressive productive phase — regardless of position.",
   },
   season_20_goals: {
-    pt: "{player_name} chega aos 20 gols na temporada — número que coloca o atacante na disputa pela chuteira de ouro do campeonato e firma seu lugar entre os melhores finalizadores do ano.",
-    en: "{player_name} reaches 20 goals in the season — a number that puts the striker in the golden boot race and cements his place among the year's best finishers.",
+    pt: "{player_name} chega aos 20 gols na temporada — número que coloca o jogador na disputa pela chuteira de ouro do campeonato e firma seu lugar entre os melhores goleadores do ano.",
+    en: "{player_name} reaches 20 goals in the season — a number that puts the player in the golden boot race and cements his place among the year's best scorers.",
   },
   season_30_goals: {
     pt: "30 gols na temporada! {player_name} entra para a história do campeonato com uma marca que poucos atingem: passar dos 30 gols numa só edição é feito de jogador absolutamente inspirado.",
