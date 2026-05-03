@@ -382,30 +382,34 @@ function TorsoPaint({
 // Drawn as the left cleat; mirror horizontally for the right foot.
 // Includes 4 small studs (travas) peeking below the sole for the cleat look.
 function Cleat({ primary, secondary, mirror = false, bootsColor }: { primary: string; secondary: string; mirror?: boolean; bootsColor?: string | null }) {
-  // bootsColor (when the player has bought a custom cleat color) replaces
-  // both the upper shoe body and the toe accent so the chosen color is the
-  // dominant read. Side stripe stays the kit's secondary so the player still
-  // visibly belongs to their club.
-  const upper = bootsColor || '#222';
+  // When the player has bought a custom cleat color, the chosen hex paints
+  // every part of the boot EXCEPT the laces — upper, sole/contour, toe and
+  // studs all share it so the silhouette reads as a single uniform color.
+  // Laces stay black on purpose to preserve the cleat's "shoe" identity
+  // against any color the player picks. Side stripe keeps the kit's
+  // secondary so the player still visibly belongs to their club.
+  const body = bootsColor || '#222';
+  const sole = bootsColor || '#0a0a0a';
   const toe = bootsColor || primary;
+  const stud = bootsColor || '#000';
   return (
     <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
       {/* Sole outline */}
-      <path d="M 71 388 Q 68 388 68 385 L 68 382 Q 68 378 72 378 L 92 378 Q 96 378 96 381 L 96 385 Q 96 388 93 388 Z" fill="#0a0a0a" />
+      <path d="M 71 388 Q 68 388 68 385 L 68 382 Q 68 378 72 378 L 92 378 Q 96 378 96 381 L 96 385 Q 96 388 93 388 Z" fill={sole} />
       {/* Upper shoe */}
-      <path d="M 71 383 Q 71 379 74 379 L 91 379 Q 95 379 95 382 L 95 384 L 71 384 Z" fill={upper} />
-      {/* Laces patch */}
-      <path d="M 75 380 L 89 380 L 91 383 L 74 383 Z" fill="#2f2f2f" />
-      <line x1="76" y1="381" x2="89" y2="381" stroke="#555" strokeWidth="0.5" />
+      <path d="M 71 383 Q 71 379 74 379 L 91 379 Q 95 379 95 382 L 95 384 L 71 384 Z" fill={body} />
+      {/* Laces patch (always black for contrast) */}
+      <path d="M 75 380 L 89 380 L 91 383 L 74 383 Z" fill="#000" />
+      <line x1="76" y1="381" x2="89" y2="381" stroke="#000" strokeWidth="0.5" />
       {/* Side stripe (team secondary) */}
       <path d="M 70 385 L 94 385 L 93 387 L 71 387 Z" fill={secondary} opacity="0.85" />
       {/* Toe accent (team primary or custom boots color) */}
       <path d="M 91 379 Q 95 379 96 382 L 95 384 L 91 384 Z" fill={toe} opacity="0.9" />
       {/* Studs (travas) — 4 small bumps under the sole */}
-      <ellipse cx="73" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
-      <ellipse cx="80" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
-      <ellipse cx="87" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
-      <ellipse cx="93" cy="389.5" rx="1.6" ry="1.4" fill="#000" />
+      <ellipse cx="73" cy="389.5" rx="1.6" ry="1.4" fill={stud} />
+      <ellipse cx="80" cy="389.5" rx="1.6" ry="1.4" fill={stud} />
+      <ellipse cx="87" cy="389.5" rx="1.6" ry="1.4" fill={stud} />
+      <ellipse cx="93" cy="389.5" rx="1.6" ry="1.4" fill={stud} />
     </g>
   );
 }
