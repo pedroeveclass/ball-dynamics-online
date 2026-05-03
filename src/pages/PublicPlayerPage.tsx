@@ -157,7 +157,9 @@ export default function PublicPlayerPage() {
     shinGuardColor: null,
     hasLongSocks: false,
     secondSkinShirtColor: null,
+    secondSkinShirtSide: null,
     secondSkinPantsColor: null,
+    secondSkinPantsSide: null,
   });
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -175,7 +177,9 @@ export default function PublicPlayerPage() {
         shinGuardColor: null,
         hasLongSocks: false,
         secondSkinShirtColor: null,
+        secondSkinShirtSide: null,
         secondSkinPantsColor: null,
+        secondSkinPantsSide: null,
       });
       return;
     }
@@ -447,7 +451,9 @@ export default function PublicPlayerPage() {
                   shinGuardColor={cosmetics.shinGuardColor}
                   hasLongSocks={cosmetics.hasLongSocks}
                   secondSkinShirtColor={cosmetics.secondSkinShirtColor}
+                  secondSkinShirtSide={cosmetics.secondSkinShirtSide}
                   secondSkinPantsColor={cosmetics.secondSkinPantsColor}
+                  secondSkinPantsSide={cosmetics.secondSkinPantsSide}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />

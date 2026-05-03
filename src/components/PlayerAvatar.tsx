@@ -67,9 +67,12 @@ interface PlayerAvatarProps {
   hasLongSocks?: boolean;
   // Second-skin (compression) layers — paint the bare-skin areas of the
   // arms / legs with the picked color so it reads as a tight underlayer.
-  // Hand and foot stay bare so the silhouette is unchanged.
+  // Hand and foot stay bare so the silhouette is unchanged. Side picks
+  // which limb(s) the layer applies to: 'both' / 'left' / 'right'.
   secondSkinShirtColor?: string | null;
+  secondSkinShirtSide?: 'left' | 'right' | 'both' | null;
   secondSkinPantsColor?: string | null;
+  secondSkinPantsSide?: 'left' | 'right' | 'both' | null;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -165,7 +168,9 @@ export function PlayerAvatar({
   shinGuardColor = null,
   hasLongSocks = false,
   secondSkinShirtColor = null,
+  secondSkinShirtSide = null,
   secondSkinPantsColor = null,
+  secondSkinPantsSide = null,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
@@ -178,6 +183,17 @@ export function PlayerAvatar({
   // True when the winter-glove cosmetic was equipped with the short-sleeve
   // option. Bare arm + glove only — wins over the long-sleeve render path.
   const shortSleeveGlove = !isCoach && hasWinterGlove && winterGloveSleeve === 'short';
+
+  // Per-limb second-skin colors. The avatar draws a "right" arm/leg with
+  // mirror=false (visually on the screen-left) and a "left" arm/leg with
+  // mirror=true (screen-right). Side='both' or null applies to both. Null
+  // color means no override and the natural skin shows through.
+  const wantsBothShirt = !secondSkinShirtSide || secondSkinShirtSide === 'both';
+  const shirtColorRight = secondSkinShirtColor && (wantsBothShirt || secondSkinShirtSide === 'right') ? secondSkinShirtColor : null;
+  const shirtColorLeft  = secondSkinShirtColor && (wantsBothShirt || secondSkinShirtSide === 'left')  ? secondSkinShirtColor : null;
+  const wantsBothPants = !secondSkinPantsSide || secondSkinPantsSide === 'both';
+  const pantsColorRight = secondSkinPantsColor && (wantsBothPants || secondSkinPantsSide === 'right') ? secondSkinPantsColor : null;
+  const pantsColorLeft  = secondSkinPantsColor && (wantsBothPants || secondSkinPantsSide === 'left')  ? secondSkinPantsColor : null;
   // Coach outfit is hardcoded black regardless of the club the coach manages,
   // so ignore the incoming club colors for clothing purposes.
   const primary = isCoach ? COACH_SHIRT : (clubPrimaryColor || DEFAULT_PRIMARY);
@@ -275,8 +291,10 @@ export function PlayerAvatar({
                 bicepsBandSide={bicepsBandSide}
                 shinGuardColor={shinGuardColor}
                 hasLongSocks={hasLongSocks}
-                secondSkinShirtColor={secondSkinShirtColor}
-                secondSkinPantsColor={secondSkinPantsColor}
+                shirtColorRight={shirtColorRight}
+                shirtColorLeft={shirtColorLeft}
+                pantsColorRight={pantsColorRight}
+                pantsColorLeft={pantsColorLeft}
               />
             ) : (
               <FrontBody
@@ -305,8 +323,10 @@ export function PlayerAvatar({
                 bicepsBandSide={bicepsBandSide}
                 shinGuardColor={shinGuardColor}
                 hasLongSocks={hasLongSocks}
-                secondSkinShirtColor={secondSkinShirtColor}
-                secondSkinPantsColor={secondSkinPantsColor}
+                shirtColorRight={shirtColorRight}
+                shirtColorLeft={shirtColorLeft}
+                pantsColorRight={pantsColorRight}
+                pantsColorLeft={pantsColorLeft}
               />
             )}
           </g>
@@ -656,13 +676,14 @@ function ShinGuards({ color, isCoach }: { color: string | null; isCoach: boolean
   // pad sits low on the calf (y=334 → 358) so it doesn't crowd the knee.
   return (
     <>
-      {/* Left shin pad */}
-      <rect x="76" y="334" width="12" height="24" fill={color} rx="2" />
+      {/* Left shin pad — thin black outline so the guard always pops, even
+          when its color is close to the long-sock secondary or the leg skin */}
+      <rect x="76" y="334" width="12" height="24" fill={color} stroke="#000" strokeWidth="0.6" rx="2" />
       {/* Strap shadow at top + bottom for a "buckled" look */}
       <rect x="76" y="336" width="12" height="2" fill="#000" opacity="0.18" />
       <rect x="76" y="354" width="12" height="2" fill="#000" opacity="0.18" />
       {/* Right shin pad */}
-      <rect x="112" y="334" width="12" height="24" fill={color} rx="2" />
+      <rect x="112" y="334" width="12" height="24" fill={color} stroke="#000" strokeWidth="0.6" rx="2" />
       <rect x="112" y="336" width="12" height="2" fill="#000" opacity="0.18" />
       <rect x="112" y="354" width="12" height="2" fill="#000" opacity="0.18" />
     </>
@@ -699,8 +720,10 @@ function FrontBody({
   bicepsBandSide,
   shinGuardColor,
   hasLongSocks,
-  secondSkinShirtColor,
-  secondSkinPantsColor,
+  shirtColorRight,
+  shirtColorLeft,
+  pantsColorRight,
+  pantsColorLeft,
 }: {
   faceDataUri: string;
   primary: string;
@@ -727,8 +750,10 @@ function FrontBody({
   bicepsBandSide: 'left' | 'right' | null;
   shinGuardColor: string | null;
   hasLongSocks: boolean;
-  secondSkinShirtColor: string | null;
-  secondSkinPantsColor: string | null;
+  shirtColorRight: string | null;
+  shirtColorLeft: string | null;
+  pantsColorRight: string | null;
+  pantsColorLeft: string | null;
 }) {
   const skin = `#${skinTone}`;
   const isCoach = outfit === 'coach';
@@ -773,19 +798,18 @@ function FrontBody({
           <path d="M 71 240 L 74 240 L 73 380 L 72 380 Z" fill="#333" opacity="0.4" />
           <path d="M 126 240 L 129 240 L 128 380 L 127 380 Z" fill="#333" opacity="0.4" />
         </>
-      ) : (() => {
-        // Compression-tights cosmetic paints the visible leg skin in the
-        // chosen color. Foot stays bare (covered by sock + cleat anyway).
-        const legSkin = secondSkinPantsColor || skin;
-        return (
-          <>
-            <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={legSkin} />
-            <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={legSkin} />
-            <ellipse cx="82" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
-            <ellipse cx="118" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
-          </>
-        );
-      })()}
+      ) : (
+        <>
+          {/* Player's right leg (screen-left, x=72-92) takes pantsColorRight
+              when active, otherwise the natural skin tone. Player's left
+              leg (screen-right, x=108-128) takes pantsColorLeft. Foot is
+              hidden under the sock + cleat. */}
+          <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={pantsColorRight || skin} />
+          <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={pantsColorLeft || skin} />
+          <ellipse cx="82" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
+          <ellipse cx="118" cy="325" rx="8" ry="2.5" fill="#000" opacity="0.08" />
+        </>
+      )}
 
       {/* ── Long-sock extension (Meião Comprido) — covers the lower leg
           from the ankle band up to where the shin guard sits. Rendered
@@ -824,8 +848,10 @@ function FrontBody({
         </>
       ) : shortSleeveGlove ? (
         <>
-          <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={secondSkinShirtColor} />
-          <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={secondSkinShirtColor} mirror />
+          {/* Right arm = unmirrored (screen-left), uses shirtColorRight */}
+          <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={shirtColorRight} />
+          {/* Left arm = mirrored, uses shirtColorLeft */}
+          <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={shirtColorLeft} mirror />
         </>
       ) : wearGloves ? (
         <>
@@ -834,8 +860,8 @@ function FrontBody({
         </>
       ) : (
         <>
-          <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={secondSkinShirtColor} />
-          <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={secondSkinShirtColor} mirror />
+          <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={shirtColorRight} />
+          <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={shirtColorLeft} mirror />
         </>
       )}
 
@@ -947,8 +973,10 @@ function BackBody({
   bicepsBandSide,
   shinGuardColor,
   hasLongSocks,
-  secondSkinShirtColor,
-  secondSkinPantsColor,
+  shirtColorRight,
+  shirtColorLeft,
+  pantsColorRight,
+  pantsColorLeft,
 }: {
   appearance: PlayerAppearance;
   primary: string;
@@ -1025,15 +1053,12 @@ function BackBody({
               <path d="M 105 235 L 130 235 L 128 384 L 107 384 Z" fill={COACH_PANTS} />
               <line x1="100" y1="235" x2="100" y2="380" stroke="#000" strokeWidth="1" opacity="0.55" />
             </>
-          ) : (() => {
-            const legSkin = secondSkinPantsColor || skin;
-            return (
-              <>
-                <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={legSkin} />
-                <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={legSkin} />
-              </>
-            );
-          })()}
+          ) : (
+            <>
+              <path d="M 72 285 L 92 285 L 91 359 L 73 359 Z" fill={pantsColorRight || skin} />
+              <path d="M 108 286 L 128 285 L 127 359 L 109 359 Z" fill={pantsColorLeft || skin} />
+            </>
+          )}
 
           {/* Long-sock extension on the back too */}
           {!isCoach && hasLongSocks && (
@@ -1065,8 +1090,8 @@ function BackBody({
             </>
           ) : shortSleeveGlove ? (
             <>
-              <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={secondSkinShirtColor} />
-              <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={secondSkinShirtColor} mirror />
+              <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={shirtColorRight} />
+              <ShortSleeveGloveArm primary={primary} secondary={secondary} skin={skin} gloveColor={gloveColor} secondSkinShirtColor={shirtColorLeft} mirror />
             </>
           ) : wearGloves ? (
             <>
@@ -1075,8 +1100,8 @@ function BackBody({
             </>
           ) : (
             <>
-              <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={secondSkinShirtColor} />
-              <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={secondSkinShirtColor} mirror />
+              <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={shirtColorRight} />
+              <Arm primary={primary} secondary={secondary} skin={skin} secondSkinShirtColor={shirtColorLeft} mirror />
             </>
           )}
 

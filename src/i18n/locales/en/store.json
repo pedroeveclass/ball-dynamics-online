@@ -97,6 +97,26 @@
     "short": "Short sleeve",
     "short_hint": "Just the glove, no sleeve"
   },
+  "equip_limb_arms": {
+    "title": "Which arms?",
+    "subtitle": "Where to apply {{item}}?",
+    "both": "Both",
+    "both_hint": "Right and left",
+    "right": "Right",
+    "right_hint": "Right only",
+    "left": "Left",
+    "left_hint": "Left only"
+  },
+  "equip_limb_legs": {
+    "title": "Which legs?",
+    "subtitle": "Where to apply {{item}}?",
+    "both": "Both",
+    "both_hint": "Right and left",
+    "right": "Right",
+    "right_hint": "Right only",
+    "left": "Left",
+    "left_hint": "Left only"
+  },
   "swap": {
     "title_trainer": "Swap Trainer?",
     "title_physio": "Swap Physio?",

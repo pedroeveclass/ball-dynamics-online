@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export type CosmeticSide = 'left' | 'right';
+export type CosmeticLimbSide = CosmeticSide | 'both';
 export type WinterGloveSleeve = 'long' | 'short';
 
 export interface PlayerCosmetics {
@@ -38,9 +39,12 @@ export interface PlayerCosmetics {
   hasLongSocks: boolean;
   // Second-skin (compression) layers — paint the visible skin of the arms
   // / legs with the picked color so it reads as a tight underlayer. Hand
-  // stays bare for the top, foot stays bare for the tights.
+  // stays bare for the top, foot stays bare for the tights. Side picks
+  // which limb(s) the layer applies to: 'both' / 'left' / 'right'.
   secondSkinShirtColor: string | null;
+  secondSkinShirtSide: CosmeticLimbSide | null;
   secondSkinPantsColor: string | null;
+  secondSkinPantsSide: CosmeticLimbSide | null;
 }
 
 const EMPTY: PlayerCosmetics = {
@@ -57,7 +61,9 @@ const EMPTY: PlayerCosmetics = {
   shinGuardColor: null,
   hasLongSocks: false,
   secondSkinShirtColor: null,
+  secondSkinShirtSide: null,
   secondSkinPantsColor: null,
+  secondSkinPantsSide: null,
 };
 
 // Cosmetic items whose color we treat as a "winter glove": same visual
@@ -81,6 +87,10 @@ function normalizeSide(s: any): CosmeticSide | null {
 
 function normalizeSleeve(s: any): WinterGloveSleeve | null {
   return s === 'long' || s === 'short' ? s : null;
+}
+
+function normalizeLimbSide(s: any): CosmeticLimbSide | null {
+  return s === 'left' || s === 'right' || s === 'both' ? s : null;
 }
 
 // Reads the active equipment + cosmetic purchase rows for a player and
@@ -127,7 +137,9 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let shinGuardColor: string | null = null;
   let hasLongSocks = false;
   let secondSkinShirtColor: string | null = null;
+  let secondSkinShirtSide: CosmeticLimbSide | null = null;
   let secondSkinPantsColor: string | null = null;
+  let secondSkinPantsSide: CosmeticLimbSide | null = null;
 
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
@@ -165,8 +177,10 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
       shinGuardColor = p.color;
     } else if (matchesAny(it, SECOND_SKIN_SHIRT_NAMES) && !secondSkinShirtColor) {
       secondSkinShirtColor = p.color;
+      secondSkinShirtSide = normalizeLimbSide(p.side);
     } else if (matchesAny(it, SECOND_SKIN_PANTS_NAMES) && !secondSkinPantsColor) {
       secondSkinPantsColor = p.color;
+      secondSkinPantsSide = normalizeLimbSide(p.side);
     }
   }
 

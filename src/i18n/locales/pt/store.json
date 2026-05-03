@@ -97,6 +97,26 @@
     "short": "Manga curta",
     "short_hint": "Só a luva, sem a manga"
   },
+  "equip_limb_arms": {
+    "title": "Em quais braços?",
+    "subtitle": "Onde aplicar {{item}}?",
+    "both": "Ambos",
+    "both_hint": "Direito e esquerdo",
+    "right": "Direito",
+    "right_hint": "Só o direito",
+    "left": "Esquerdo",
+    "left_hint": "Só o esquerdo"
+  },
+  "equip_limb_legs": {
+    "title": "Em quais pernas?",
+    "subtitle": "Onde aplicar {{item}}?",
+    "both": "Ambas",
+    "both_hint": "Direita e esquerda",
+    "right": "Direita",
+    "right_hint": "Só a direita",
+    "left": "Esquerda",
+    "left_hint": "Só a esquerda"
+  },
   "swap": {
     "title_trainer": "Trocar Treinador?",
     "title_physio": "Trocar Fisioterapeuta?",

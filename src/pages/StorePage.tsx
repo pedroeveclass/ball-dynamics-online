@@ -334,6 +334,9 @@ export default function StorePage() {
   const SIDE_AWARE_COSMETICS = new Set(['Munhequeira', 'Wristband', 'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
   // Cosmetics that take a long/short sleeve choice instead (winter glove).
   const SLEEVE_AWARE_COSMETICS = new Set(['Luva de Inverno', 'Winter Gloves']);
+  // Compression top / tights pick "both / right / left" at equip time.
+  const LIMB_ARMS_COSMETICS = new Set(['Camiseta Segunda Pele', 'Compression Top']);
+  const LIMB_LEGS_COSMETICS = new Set(['Calça Segunda Pele', 'Compression Tights']);
   function matchesName(item: StoreItem, set: Set<string>): boolean {
     return set.has(item.name)
       || (item.name_pt != null && set.has(item.name_pt))
@@ -343,6 +346,8 @@ export default function StorePage() {
     if (!item || item.category !== 'cosmetic') return null;
     if (matchesName(item, SIDE_AWARE_COSMETICS)) return 'arm';
     if (matchesName(item, SLEEVE_AWARE_COSMETICS)) return 'sleeve';
+    if (matchesName(item, LIMB_ARMS_COSMETICS)) return 'limbArms';
+    if (matchesName(item, LIMB_LEGS_COSMETICS)) return 'limbLegs';
     return null;
   }
 
