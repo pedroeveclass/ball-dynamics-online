@@ -7,6 +7,7 @@ import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
+import { PlayerAvatarV2 } from '@/components/PlayerAvatarV2';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -676,40 +677,69 @@ export default function PlayerProfilePage() {
               </div>
             )}
             <div className="flex justify-center py-2 rounded-md overflow-hidden" style={avatarBackgroundStyle(cosmetics)}>
-              <div className={isBackView ? 'h-52 w-40' : 'h-80 w-40'}>
-                <PlayerAvatar
-                  appearance={(p as any).appearance}
-                  variant={bodyVariant}
-                  height={p.height}
-                  clubPrimaryColor={activeKit?.shirt_color ?? clubColors?.primary}
-                  clubSecondaryColor={activeKit?.stripe_color ?? clubColors?.secondary}
-                  clubCrestUrl={clubColors?.crestUrl}
-                  playerName={p.full_name}
-                  jerseyNumber={(p as any).jersey_number}
-                  uniformPattern={activeKit?.pattern}
-                  uniformStripeColor={activeKit?.stripe_color}
-                  uniformNumberColor={activeKit?.number_color}
-                  isGoalkeeper={isGK}
-                  backShirtOnly={isBackView}
-                  bootsColor={cosmetics.bootsColor}
-                  bootsColorSecondary={cosmetics.bootsColorSecondary}
-                  bootsColorStuds={cosmetics.bootsColorStuds}
-                  gloveColor={cosmetics.gloveColor}
-                  hasWinterGlove={cosmetics.hasWinterGlove}
-                  winterGloveSleeve={cosmetics.winterGloveSleeve}
-                  wristbandColor={cosmetics.wristbandColor}
-                  wristbandSide={cosmetics.wristbandSide}
-                  bicepsBandColor={cosmetics.bicepsBandColor}
-                  bicepsBandSide={cosmetics.bicepsBandSide}
-                  shinGuardColor={cosmetics.shinGuardColor}
-                  hasLongSocks={cosmetics.hasLongSocks}
-                  secondSkinShirtColor={cosmetics.secondSkinShirtColor}
-                  secondSkinShirtSide={cosmetics.secondSkinShirtSide}
-                  secondSkinPantsColor={cosmetics.secondSkinPantsColor}
-                  secondSkinPantsSide={cosmetics.secondSkinPantsSide}
-                  className="w-full h-full"
-                  fallbackSeed={p.id}
-                />
+              <div className={isBackView ? 'h-52 w-40' : 'h-80 w-56'}>
+                {bodyVariant === 'full-front' ? (
+                  <PlayerAvatarV2
+                    appearance={(p as any).appearance}
+                    variant="full-front"
+                    clubPrimaryColor={activeKit?.shirt_color ?? clubColors?.primary}
+                    clubSecondaryColor={activeKit?.stripe_color ?? clubColors?.secondary}
+                    clubCrestUrl={clubColors?.crestUrl}
+                    jerseyNumber={(p as any).jersey_number}
+                    position={p.primary_position}
+                    isCaptain={(p as any).is_captain}
+                    sockHeight={cosmetics.hasLongSocks ? 'alto' : 'baixo'}
+                    hasShinGuard={!!cosmetics.shinGuardColor}
+                    shinGuardColor={cosmetics.shinGuardColor ?? undefined}
+                    cleatColor={cosmetics.bootsColor}
+                    gloveColor={cosmetics.gloveColor}
+                    hasWinterGlove={cosmetics.hasWinterGlove}
+                    bicepsBandColor={cosmetics.bicepsBandColor}
+                    bicepsBandSide={cosmetics.bicepsBandSide ?? 'left'}
+                    wristbandColor={cosmetics.wristbandColor}
+                    wristbandSide={cosmetics.wristbandSide ?? 'left'}
+                    secondSkinShirtColor={cosmetics.secondSkinShirtColor}
+                    secondSkinShirtSide={cosmetics.secondSkinShirtSide ?? 'both'}
+                    secondSkinPantsColor={cosmetics.secondSkinPantsColor}
+                    secondSkinPantsSide={cosmetics.secondSkinPantsSide ?? 'both'}
+                    fallbackSeed={p.id}
+                    className="w-full h-full"
+                  />
+                ) : (
+                  <PlayerAvatar
+                    appearance={(p as any).appearance}
+                    variant={bodyVariant}
+                    height={p.height}
+                    clubPrimaryColor={activeKit?.shirt_color ?? clubColors?.primary}
+                    clubSecondaryColor={activeKit?.stripe_color ?? clubColors?.secondary}
+                    clubCrestUrl={clubColors?.crestUrl}
+                    playerName={p.full_name}
+                    jerseyNumber={(p as any).jersey_number}
+                    uniformPattern={activeKit?.pattern}
+                    uniformStripeColor={activeKit?.stripe_color}
+                    uniformNumberColor={activeKit?.number_color}
+                    isGoalkeeper={isGK}
+                    backShirtOnly={isBackView}
+                    bootsColor={cosmetics.bootsColor}
+                    bootsColorSecondary={cosmetics.bootsColorSecondary}
+                    bootsColorStuds={cosmetics.bootsColorStuds}
+                    gloveColor={cosmetics.gloveColor}
+                    hasWinterGlove={cosmetics.hasWinterGlove}
+                    winterGloveSleeve={cosmetics.winterGloveSleeve}
+                    wristbandColor={cosmetics.wristbandColor}
+                    wristbandSide={cosmetics.wristbandSide}
+                    bicepsBandColor={cosmetics.bicepsBandColor}
+                    bicepsBandSide={cosmetics.bicepsBandSide}
+                    shinGuardColor={cosmetics.shinGuardColor}
+                    hasLongSocks={cosmetics.hasLongSocks}
+                    secondSkinShirtColor={cosmetics.secondSkinShirtColor}
+                    secondSkinShirtSide={cosmetics.secondSkinShirtSide}
+                    secondSkinPantsColor={cosmetics.secondSkinPantsColor}
+                    secondSkinPantsSide={cosmetics.secondSkinPantsSide}
+                    className="w-full h-full"
+                    fallbackSeed={p.id}
+                  />
+                )}
               </div>
             </div>
           </div>

@@ -9,6 +9,7 @@ import { ProtectedRoute, PlayerRoute, ManagerRoute, ManagerOrAssistantRoute, Adm
 
 // Critical pages — static imports (landing, auth, 404)
 import LandingPage from "./pages/LandingPage";
+import AvatarPreviewPage from "./pages/AvatarPreviewPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import NotFound from "./pages/NotFound";
@@ -108,6 +109,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            {/* TEMP — V2 avatar sandbox, remove after V2 ships */}
+            <Route path="/avatar-preview" element={<AvatarPreviewPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/onboarding/player" element={<ProtectedRoute><OnboardingPlayerPage /></ProtectedRoute>} />
             <Route path="/onboarding/manager" element={<ProtectedRoute><OnboardingManagerPage /></ProtectedRoute>} />
