@@ -119,5 +119,17 @@
       "row_xg": "xG",
       "row_xa": "xA"
     }
+  },
+  "report": {
+    "button_title": "Report image",
+    "title": "Report inappropriate image",
+    "subtitle": "Let our team know if {{name}}'s background image violates the rules (porn, hate, illegal content, etc.).",
+    "reason_placeholder": "Tell us what's wrong (optional)...",
+    "note": "Your identity is not revealed to the player. False reports may be penalized.",
+    "cancel": "Cancel",
+    "send": "Report",
+    "sending": "Sending...",
+    "success": "Report sent.",
+    "error": "Could not send the report."
   }
 }

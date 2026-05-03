@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, Upload } from 'lucide-react';
 import type { BackgroundVariant } from '@/lib/cosmetics';
+import { checkNsfw } from '@/lib/nsfwCheck';
 
 const PRESETS = [
   '#000000', '#ffffff', '#ef4444', '#f97316',
@@ -162,6 +163,21 @@ export function BackgroundPickerDialog({ open, onOpenChange, itemName, onConfirm
     }
     setUploading(true);
     try {
+      // Run the NSFW classifier locally first. If it flags the image, we
+      // never upload it — the user just sees a toast and picks another.
+      // Reviewers can still flag false negatives via the Report button on
+      // the public page later.
+      try {
+        const result = await checkNsfw(file);
+        if (!result.ok) {
+          toast.error(t('background.nsfw_blocked'));
+          return;
+        }
+      } catch (e) {
+        // Loading the model can fail offline / on slow connections. We
+        // log and move on — the report flow is the safety net.
+        console.warn('NSFW check skipped:', e);
+      }
       // Path is `<user_id>/<unique>.<ext>` so the storage RLS policy passes
       // (first folder segment must equal auth.uid()). Unique suffix prevents
       // overwriting older purchases when the user re-buys.

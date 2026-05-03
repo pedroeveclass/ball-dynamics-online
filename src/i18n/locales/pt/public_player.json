@@ -119,5 +119,17 @@
       "row_xg": "xG",
       "row_xa": "xA"
     }
+  },
+  "report": {
+    "button_title": "Reportar imagem",
+    "title": "Reportar imagem inadequada",
+    "subtitle": "Avise nosso time se a imagem de fundo de {{name}} viola as regras (pornografia, ódio, conteúdo ilegal etc).",
+    "reason_placeholder": "Conta o que tem de errado (opcional)...",
+    "note": "Sua identidade não é revelada ao jogador. Reportes falsos podem resultar em punição.",
+    "cancel": "Cancelar",
+    "send": "Reportar",
+    "sending": "Enviando...",
+    "success": "Reporte enviado.",
+    "error": "Não foi possível enviar o reporte."
   }
 }

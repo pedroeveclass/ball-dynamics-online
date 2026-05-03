@@ -13,8 +13,10 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   User, Star, Footprints, Ruler, Dumbbell, Brain, Crosshair,
-  ShieldAlert, Goal, Loader2, ArrowLeft, UserPlus, Copy,
+  ShieldAlert, Goal, Loader2, ArrowLeft, UserPlus, Copy, Flag,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { CareerStatsBlock } from '@/components/player/CareerStatsBlock';
 import { OriginStoryCard } from '@/components/player/OriginStoryCard';
@@ -125,7 +127,7 @@ function Layout({ children }: { children: ReactNode }) {
 export default function PublicPlayerPage() {
   const { playerId } = useParams<{ playerId: string }>();
   const navigate = useNavigate();
-  const { managerProfile, club } = useAuth();
+  const { managerProfile, club, user } = useAuth();
   const { current: lang } = useAppLanguage();
   const { t } = useTranslation('public_player');
   const [player, setPlayer] = useState<any>(null);
@@ -163,6 +165,10 @@ export default function PublicPlayerPage() {
   });
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
+  // Image-report dialog: viewer flags an inappropriate uploaded background.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reporting, setReporting] = useState(false);
   const [seasons, setSeasons] = useState<{ id: string; number: number; status: string }[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
 
@@ -278,6 +284,27 @@ export default function PublicPlayerPage() {
       toast.success(t('header.copy_link_success'));
     } catch {
       toast.info(url);
+    }
+  };
+
+  const handleSubmitReport = async () => {
+    if (!playerId) return;
+    setReporting(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('report_player_background', {
+        p_player_profile_id: playerId,
+        p_reason: reportReason.trim() || null,
+      });
+      if (error) { toast.error(error.message); return; }
+      const result = data as any;
+      if (result?.error) { toast.error(result.error); return; }
+      toast.success(result?.message || t('report.success'));
+      setReportOpen(false);
+      setReportReason('');
+    } catch (e: any) {
+      toast.error(e?.message || t('report.error'));
+    } finally {
+      setReporting(false);
     }
   };
 
@@ -422,10 +449,11 @@ export default function PublicPlayerPage() {
                 </div>
               </div>
             )}
-            <div className="flex justify-center py-2 rounded-md overflow-hidden" style={avatarBackgroundStyle(cosmetics)}>
-              <div className={isBackView ? 'h-52 w-40' : 'h-80 w-40'}>
-                <PlayerAvatar
-                  appearance={(player as any).appearance}
+            <div className="relative">
+              <div className="flex justify-center py-2 rounded-md overflow-hidden" style={avatarBackgroundStyle(cosmetics)}>
+                <div className={isBackView ? 'h-52 w-40' : 'h-80 w-40'}>
+                  <PlayerAvatar
+                    appearance={(player as any).appearance}
                   variant={bodyVariant}
                   height={player.height}
                   clubPrimaryColor={activeKit?.shirt_color ?? clubInfo?.primary}
@@ -459,6 +487,22 @@ export default function PublicPlayerPage() {
                 />
               </div>
             </div>
+            {/* Flag button to report inappropriate background image. Only
+                shows for authenticated viewers when the player has an
+                actual uploaded image (not solid/gradient/pattern), and the
+                viewer isn't the player's owner. */}
+            {!!user && cosmetics.backgroundVariant === 'image' && cosmetics.backgroundImageUrl && player.user_id !== user.id && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setReportOpen(true)}
+                title={t('report.button_title')}
+                className="absolute top-1 right-1 h-7 w-7 bg-black/40 hover:bg-black/60 text-white rounded-full"
+              >
+                <Flag className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
           </div>
         )}
 
@@ -528,6 +572,37 @@ export default function PublicPlayerPage() {
         basePlayerId={player.id}
         basePlayerName={player.full_name}
       />
+
+      {/* Image-report dialog */}
+      <Dialog open={reportOpen} onOpenChange={(open) => { if (!reporting) setReportOpen(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="h-5 w-5 text-destructive" />
+              {t('report.title')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('report.subtitle', { name: player.full_name })}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reportReason}
+            onChange={e => setReportReason(e.target.value.slice(0, 500))}
+            placeholder={t('report.reason_placeholder')}
+            rows={3}
+          />
+          <p className="text-[11px] text-muted-foreground">{t('report.note')}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)} disabled={reporting}>
+              {t('report.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleSubmitReport} disabled={reporting}>
+              <Flag className="h-4 w-4 mr-1" />
+              {reporting ? t('report.sending') : t('report.send')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
