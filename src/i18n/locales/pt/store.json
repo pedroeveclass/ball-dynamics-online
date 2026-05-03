@@ -46,7 +46,13 @@
     "reactivate": "Reativar renovação",
     "confirm_swap": "Confirmar troca",
     "cancel": "Cancelar",
+    "delete": "Excluir",
     "processing": "Processando..."
+  },
+  "delete": {
+    "title": "Excluir item?",
+    "body": "Tem certeza que quer excluir {{item}}? Esta ação não pode ser desfeita e o valor pago não será reembolsado. Você poderá comprar uma nova versão depois.",
+    "confirm": "Excluir item"
   },
   "filters": {
     "all_levels": "Todos os Níveis",
@@ -55,11 +61,21 @@
     "clear": "Limpar"
   },
   "color_picker": {
-    "title": "Escolha a cor",
+    "title": "Escolha as cores",
     "subtitle": "Personalize a cor de {{item}} antes de comprar.",
+    "subtitle_multi": "Personalize as cores de {{item}} antes de comprar.",
+    "default_label": "Cor",
     "cancel": "Cancelar",
     "confirm": "Comprar",
     "confirming": "Comprando..."
+  },
+  "boots_colors": {
+    "primary": "Cor principal",
+    "primary_hint": "Corpo da chuteira",
+    "secondary": "Cor secundária",
+    "secondary_hint": "Sola e contorno",
+    "studs": "Cor das travas",
+    "studs_hint": "Pinos sob a sola"
   },
   "equip_side": {
     "title": "Em qual braço?",

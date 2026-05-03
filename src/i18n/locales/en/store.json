@@ -46,7 +46,13 @@
     "reactivate": "Reactivate renewal",
     "confirm_swap": "Confirm swap",
     "cancel": "Cancel",
+    "delete": "Discard",
     "processing": "Processing..."
+  },
+  "delete": {
+    "title": "Discard item?",
+    "body": "Are you sure you want to discard {{item}}? This can't be undone and the price paid won't be refunded. You can buy a new version afterwards.",
+    "confirm": "Discard item"
   },
   "filters": {
     "all_levels": "All Levels",
@@ -55,11 +61,21 @@
     "clear": "Clear"
   },
   "color_picker": {
-    "title": "Pick a color",
+    "title": "Pick the colors",
     "subtitle": "Customize the color of {{item}} before buying.",
+    "subtitle_multi": "Customize the colors of {{item}} before buying.",
+    "default_label": "Color",
     "cancel": "Cancel",
     "confirm": "Buy",
     "confirming": "Buying..."
+  },
+  "boots_colors": {
+    "primary": "Main color",
+    "primary_hint": "Cleat upper / body",
+    "secondary": "Secondary color",
+    "secondary_hint": "Sole and contour",
+    "studs": "Studs color",
+    "studs_hint": "Pins under the sole"
   },
   "equip_side": {
     "title": "Which arm?",

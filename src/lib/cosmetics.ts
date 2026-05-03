@@ -4,8 +4,12 @@ export type CosmeticSide = 'left' | 'right';
 export type WinterGloveSleeve = 'long' | 'short';
 
 export interface PlayerCosmetics {
-  // Hex (#rgb / #rrggbb) of the actively-equipped boots, if any.
+  // Hex of the actively-equipped boots' main body / upper, if any.
   bootsColor: string | null;
+  // Sole + contour color of the active boots.
+  bootsColorSecondary: string | null;
+  // Studs (travas) color of the active boots.
+  bootsColorStuds: string | null;
   // Final color the avatar should paint on the glove. Winter-glove cosmetic
   // wins over the gloves-category equipment when both are active so the
   // player sees the cosmetic they just bought (matches "pro goleiro também"
@@ -32,6 +36,8 @@ export interface PlayerCosmetics {
 
 const EMPTY: PlayerCosmetics = {
   bootsColor: null,
+  bootsColorSecondary: null,
+  bootsColorStuds: null,
   gloveColor: null,
   hasWinterGlove: false,
   winterGloveSleeve: null,
@@ -76,7 +82,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   // affects the avatar.
   const { data: purchases } = await (supabase as any)
     .from('store_purchases')
-    .select('store_item_id, color, side, status')
+    .select('store_item_id, color, color2, color3, side, status')
     .eq('player_profile_id', playerProfileId)
     .in('status', ['active', 'cancelling']);
 
@@ -94,6 +100,8 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   const itemById = new Map((items as any[]).map(i => [i.id, i]));
 
   let bootsColor: string | null = null;
+  let bootsColorSecondary: string | null = null;
+  let bootsColorStuds: string | null = null;
   let gkGloveColor: string | null = null;
   let winterGloveColor: string | null = null;
   let winterGloveSleeve: WinterGloveSleeve | null = null;
@@ -107,7 +115,11 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     const it = itemById.get(p.store_item_id);
     if (!it || !p.color) continue;
     if (it.category === 'boots') {
-      if (!bootsColor) bootsColor = p.color;
+      if (!bootsColor) {
+        bootsColor = p.color;
+        bootsColorSecondary = p.color2 ?? null;
+        bootsColorStuds = p.color3 ?? null;
+      }
       continue;
     }
     if (it.category === 'gloves') {
@@ -132,6 +144,8 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
 
   return {
     bootsColor,
+    bootsColorSecondary,
+    bootsColorStuds,
     gloveColor: winterGloveColor || gkGloveColor,
     hasWinterGlove: winterGloveColor != null,
     winterGloveSleeve,

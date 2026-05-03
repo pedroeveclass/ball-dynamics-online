@@ -153,6 +153,8 @@ export default function PlayerProfilePage() {
   // cosmetic equipment. Mirrors the PlayerCosmetics shape from lib/cosmetics.
   const [cosmetics, setCosmetics] = useState<import('@/lib/cosmetics').PlayerCosmetics>({
     bootsColor: null,
+    bootsColorSecondary: null,
+    bootsColorStuds: null,
     gloveColor: null,
     hasWinterGlove: false,
     winterGloveSleeve: null,
@@ -244,7 +246,8 @@ export default function PlayerProfilePage() {
   useEffect(() => {
     if (!p?.id) {
       setCosmetics({
-        bootsColor: null, gloveColor: null, hasWinterGlove: false, winterGloveSleeve: null,
+        bootsColor: null, bootsColorSecondary: null, bootsColorStuds: null,
+        gloveColor: null, hasWinterGlove: false, winterGloveSleeve: null,
         wristbandColor: null, wristbandSide: null,
         bicepsBandColor: null, bicepsBandSide: null,
         shinGuardColor: null,
@@ -679,6 +682,8 @@ export default function PlayerProfilePage() {
                   isGoalkeeper={isGK}
                   backShirtOnly={isBackView}
                   bootsColor={cosmetics.bootsColor}
+                  bootsColorSecondary={cosmetics.bootsColorSecondary}
+                  bootsColorStuds={cosmetics.bootsColorStuds}
                   gloveColor={cosmetics.gloveColor}
                   hasWinterGlove={cosmetics.hasWinterGlove}
                   winterGloveSleeve={cosmetics.winterGloveSleeve}

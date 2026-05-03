@@ -145,6 +145,8 @@ export default function PublicPlayerPage() {
   // Custom colors / sides for cosmetic equipment. Mirrors PlayerCosmetics.
   const [cosmetics, setCosmetics] = useState<import('@/lib/cosmetics').PlayerCosmetics>({
     bootsColor: null,
+    bootsColorSecondary: null,
+    bootsColorStuds: null,
     gloveColor: null,
     hasWinterGlove: false,
     winterGloveSleeve: null,
@@ -163,7 +165,8 @@ export default function PublicPlayerPage() {
   useEffect(() => {
     if (!playerId) {
       setCosmetics({
-        bootsColor: null, gloveColor: null, hasWinterGlove: false, winterGloveSleeve: null,
+        bootsColor: null, bootsColorSecondary: null, bootsColorStuds: null,
+        gloveColor: null, hasWinterGlove: false, winterGloveSleeve: null,
         wristbandColor: null, wristbandSide: null,
         bicepsBandColor: null, bicepsBandSide: null,
         shinGuardColor: null,
@@ -426,6 +429,8 @@ export default function PublicPlayerPage() {
                   isGoalkeeper={isGK}
                   backShirtOnly={isBackView}
                   bootsColor={cosmetics.bootsColor}
+                  bootsColorSecondary={cosmetics.bootsColorSecondary}
+                  bootsColorStuds={cosmetics.bootsColorStuds}
                   gloveColor={cosmetics.gloveColor}
                   hasWinterGlove={cosmetics.hasWinterGlove}
                   winterGloveSleeve={cosmetics.winterGloveSleeve}

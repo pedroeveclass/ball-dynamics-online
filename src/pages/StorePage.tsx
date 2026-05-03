@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import {
   Store, ShoppingBag, Footprints, Zap, Shield, GraduationCap,
   Heart, Gift, CreditCard, Check, ShoppingCart, Package, XCircle, BatteryCharging,
-  AlertTriangle, RefreshCw, TrendingUp, TrendingDown, Wallet, Landmark,
+  AlertTriangle, RefreshCw, TrendingUp, TrendingDown, Wallet, Landmark, Trash2,
 } from 'lucide-react';
 import { formatBRL } from '@/lib/formatting';
 import { getStoreItemName, getStoreItemDescription } from '@/lib/storeItemLabel';
@@ -24,7 +24,7 @@ import { ATTR_LABELS } from '@/lib/attributes';
 import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
-import { ItemColorPickerDialog } from '@/components/store/ItemColorPickerDialog';
+import { ItemColorPickerDialog, ColorSlot, ColorValues } from '@/components/store/ItemColorPickerDialog';
 import { EquipSideDialog, EquipChoice, EquipChoiceKind } from '@/components/store/EquipSideDialog';
 
 interface StoreItem {
@@ -133,6 +133,11 @@ export default function StorePage() {
   // glove asks long-vs-short sleeve. The user re-picks every time they
   // equip so changing variant doesn't require re-buying the item.
   const [sidePick, setSidePick] = useState<null | { purchaseId: string; itemName: string; kind: EquipChoiceKind }>(null);
+
+  // Delete-confirmation dialog. Letting the player permanently throw away
+  // an owned item so they can re-buy it (e.g. swap a black wristband for
+  // a white one). No refund — discarding is intentional.
+  const [deleteTarget, setDeleteTarget] = useState<null | { purchaseId: string; itemName: string }>(null);
 
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
@@ -255,19 +260,23 @@ export default function StorePage() {
     buyerType: 'player' | 'club',
     targetPlayerId?: string,
     confirmReplace = false,
-    color?: string,
+    colors?: ColorValues,
   ) {
     setBuying(true);
     try {
       const playerId = targetPlayerId || playerProfile?.id;
       if (!playerId) { toast.error(t('errors.no_player')); return; }
 
+      // Multi-color items (boots) ship 3 hexes; single-color items use just
+      // the first slot. Slot ids match the keys we pass to the RPC.
       const { data, error } = await (supabase as any).rpc('purchase_store_item', {
         p_player_profile_id: playerId,
         p_store_item_id: item.id,
         p_buyer_type: buyerType,
         p_confirm_replace: confirmReplace,
-        p_color: color ?? null,
+        p_color: colors?.color ?? null,
+        p_color2: colors?.color2 ?? null,
+        p_color3: colors?.color3 ?? null,
       });
 
       if (error) { toast.error(error.message); return; }
@@ -401,6 +410,23 @@ export default function StorePage() {
       await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
       toast.error(e.message || t('errors.energetico_error'));
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function handleDelete(purchaseId: string) {
+    setActing(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('delete_store_purchase', { p_purchase_id: purchaseId });
+      if (error) { toast.error(error.message); return; }
+      const result = data as any;
+      if (result?.error) { toast.error(result.error); return; }
+      toast.success(result?.message || t('errors.delete_success'));
+      setDeleteTarget(null);
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.message || t('errors.delete_error'));
     } finally {
       setActing(false);
     }
@@ -612,6 +638,13 @@ export default function StorePage() {
                                 <XCircle className="h-3 w-3 mr-1" />{t('actions.unequip')}
                               </Button>
                             )}
+                            {/* Discard a boots / gloves / cosmetic so the player can buy a different color. */}
+                            {isEquipment && (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" disabled={acting}
+                                onClick={() => setDeleteTarget({ purchaseId: p.id, itemName: getStoreItemName(item, lang) })}>
+                                <Trash2 className="h-3 w-3 mr-1" />{t('actions.delete')}
+                              </Button>
+                            )}
                             {/* Consumable: use */}
                             {isConsumable && (
                               <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700" disabled={acting}
@@ -786,16 +819,28 @@ export default function StorePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Color picker dialog for boots / gloves / visual cosmetics */}
-      {colorPick && (
-        <ItemColorPickerDialog
-          open={!!colorPick}
-          onOpenChange={(open) => { if (!open && !buying) setColorPick(null); }}
-          itemName={getStoreItemName(colorPick.item, lang)}
-          busy={buying}
-          onConfirm={(picked) => handleBuy(colorPick.item, colorPick.buyerType, colorPick.targetPlayerId, false, picked)}
-        />
-      )}
+      {/* Color picker dialog for boots / gloves / visual cosmetics. Boots
+          render 3 slots (upper, sole/contour, studs); everything else uses
+          the default single-slot layout. */}
+      {colorPick && (() => {
+        const slots: ColorSlot[] | undefined = colorPick.item.category === 'boots'
+          ? [
+              { id: 'color', label: t('boots_colors.primary'), hint: t('boots_colors.primary_hint'), defaultValue: '#ef4444' },
+              { id: 'color2', label: t('boots_colors.secondary'), hint: t('boots_colors.secondary_hint'), defaultValue: '#0a0a0a' },
+              { id: 'color3', label: t('boots_colors.studs'), hint: t('boots_colors.studs_hint'), defaultValue: '#000000' },
+            ]
+          : undefined;
+        return (
+          <ItemColorPickerDialog
+            open={!!colorPick}
+            onOpenChange={(open) => { if (!open && !buying) setColorPick(null); }}
+            itemName={getStoreItemName(colorPick.item, lang)}
+            slots={slots}
+            busy={buying}
+            onConfirm={(picked) => handleBuy(colorPick.item, colorPick.buyerType, colorPick.targetPlayerId, false, picked)}
+          />
+        );
+      })()}
 
       {/* Equip-time choice dialog (arm side or sleeve length) */}
       {sidePick && (
@@ -808,6 +853,32 @@ export default function StorePage() {
           onConfirm={(picked) => handleEquip(sidePick.purchaseId, picked)}
         />
       )}
+
+      {/* Delete confirmation — discards an owned item so the player can re-buy. */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !acting) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              {t('delete.title')}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('delete.body', { item: deleteTarget?.itemName ?? '' })}
+          </p>
+          <div className="flex gap-2 mt-4">
+            <Button variant="outline" className="flex-1" disabled={acting}
+              onClick={() => setDeleteTarget(null)}>
+              {t('actions.cancel')}
+            </Button>
+            <Button variant="destructive" className="flex-1" disabled={acting}
+              onClick={() => deleteTarget && handleDelete(deleteTarget.purchaseId)}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              {acting ? t('actions.processing') : t('delete.confirm')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

@@ -34,9 +34,15 @@ interface PlayerAvatarProps {
   // the kit reads as a hanging shirt. Ignored for any other variant.
   backShirtOnly?: boolean;
   // Cosmetic equipment colors picked by the player at store-purchase time.
-  // bootsColor tints the cleat upper + toe accent; gloveColor replaces the
-  // dark-gray fill of the goalkeeper glove. Null = use default art.
+  // Boots take three independent colors:
+  //   bootsColor          = main upper / body
+  //   bootsColorSecondary = sole + outline
+  //   bootsColorStuds     = pins under the sole
+  // Each falls back independently to the cleat's default art when null.
+  // gloveColor replaces the dark-gray fill of the goalkeeper glove.
   bootsColor?: string | null;
+  bootsColorSecondary?: string | null;
+  bootsColorStuds?: string | null;
   gloveColor?: string | null;
   // When true, the avatar renders gloves on the arm even for outfielders.
   // Driven by the "Luva de Inverno" cosmetic. For GKs it just unlocks the
@@ -138,6 +144,8 @@ export function PlayerAvatar({
   isGoalkeeper = false,
   backShirtOnly = false,
   bootsColor = null,
+  bootsColorSecondary = null,
+  bootsColorStuds = null,
   gloveColor = null,
   hasWinterGlove = false,
   winterGloveSleeve = null,
@@ -246,6 +254,8 @@ export function PlayerAvatar({
                 clipId={clipId}
                 shirtOnly={shirtOnly}
                 bootsColor={bootsColor}
+                bootsColorSecondary={bootsColorSecondary}
+                bootsColorStuds={bootsColorStuds}
                 gloveColor={gloveColor}
                 wristbandColor={wristbandColor}
                 wristbandSide={wristbandSide}
@@ -271,6 +281,8 @@ export function PlayerAvatar({
                 wearGloves={wearGloves}
                 shortSleeveGlove={shortSleeveGlove}
                 bootsColor={bootsColor}
+                bootsColorSecondary={bootsColorSecondary}
+                bootsColorStuds={bootsColorStuds}
                 gloveColor={gloveColor}
                 wristbandColor={wristbandColor}
                 wristbandSide={wristbandSide}
@@ -424,17 +436,21 @@ function TorsoPaint({
 // ── Compact soccer cleat — roughly 28 wide × 10 tall, centered around x=82.
 // Drawn as the left cleat; mirror horizontally for the right foot.
 // Includes 4 small studs (travas) peeking below the sole for the cleat look.
-function Cleat({ primary, secondary, mirror = false, bootsColor }: { primary: string; secondary: string; mirror?: boolean; bootsColor?: string | null }) {
-  // When the player has bought a custom cleat color, the chosen hex paints
-  // every part of the boot EXCEPT the laces — upper, sole/contour, toe and
-  // studs all share it so the silhouette reads as a single uniform color.
-  // Laces stay black on purpose to preserve the cleat's "shoe" identity
-  // against any color the player picks. Side stripe keeps the kit's
-  // secondary so the player still visibly belongs to their club.
+function Cleat({
+  primary, secondary, mirror = false,
+  bootsColor, bootsColorSecondary, bootsColorStuds,
+}: {
+  primary: string; secondary: string; mirror?: boolean;
+  bootsColor?: string | null; bootsColorSecondary?: string | null; bootsColorStuds?: string | null;
+}) {
+  // Cleats now take three independent custom colors. Each falls back
+  // independently — picking only the upper still leaves the sole / studs
+  // on their default art. The kit-side stripe stays the club secondary so
+  // the player still visibly belongs to their club regardless of choice.
   const body = bootsColor || '#222';
-  const sole = bootsColor || '#0a0a0a';
+  const sole = bootsColorSecondary || '#0a0a0a';
   const toe = bootsColor || primary;
-  const stud = bootsColor || '#000';
+  const stud = bootsColorStuds || '#000';
   return (
     <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
       {/* Sole outline */}
@@ -647,6 +663,8 @@ function FrontBody({
   wearGloves,
   shortSleeveGlove,
   bootsColor,
+  bootsColorSecondary,
+  bootsColorStuds,
   gloveColor,
   wristbandColor,
   wristbandSide,
@@ -670,6 +688,8 @@ function FrontBody({
   wearGloves: boolean;
   shortSleeveGlove: boolean;
   bootsColor: string | null;
+  bootsColorSecondary: string | null;
+  bootsColorStuds: string | null;
   gloveColor: string | null;
   wristbandColor: string | null;
   wristbandSide: 'left' | 'right' | null;
@@ -692,8 +712,8 @@ function FrontBody({
         </>
       ) : (
         <>
-          <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} />
-          <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} mirror />
+          <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} bootsColorSecondary={bootsColorSecondary} bootsColorStuds={bootsColorStuds} />
+          <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} bootsColorSecondary={bootsColorSecondary} bootsColorStuds={bootsColorStuds} mirror />
         </>
       )}
 
@@ -865,6 +885,8 @@ function BackBody({
   clipId,
   shirtOnly,
   bootsColor,
+  bootsColorSecondary,
+  bootsColorStuds,
   gloveColor,
   wristbandColor,
   wristbandSide,
@@ -892,6 +914,8 @@ function BackBody({
   bicepsBandSide: 'left' | 'right' | null;
   shinGuardColor: string | null;
   bootsColor: string | null;
+  bootsColorSecondary: string | null;
+  bootsColorStuds: string | null;
   gloveColor: string | null;
 }) {
   const skin = `#${appearance.skinTone}`;
@@ -925,8 +949,8 @@ function BackBody({
             </>
           ) : (
             <>
-              <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} mirror />
-              <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} />
+              <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} bootsColorSecondary={bootsColorSecondary} bootsColorStuds={bootsColorStuds} mirror />
+              <Cleat primary={primary} secondary={secondary} bootsColor={bootsColor} bootsColorSecondary={bootsColorSecondary} bootsColorStuds={bootsColorStuds} />
             </>
           )}
 
