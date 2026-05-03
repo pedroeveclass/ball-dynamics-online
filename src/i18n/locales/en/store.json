@@ -61,6 +61,17 @@
     "confirm": "Buy",
     "confirming": "Buying..."
   },
+  "equip_side": {
+    "title": "Which arm?",
+    "subtitle": "Pick the arm to wear {{item}} on.",
+    "left": "Left arm",
+    "left_hint": "Player's left side",
+    "right": "Right arm",
+    "right_hint": "Player's right side",
+    "cancel": "Cancel",
+    "equip": "Equip",
+    "equipping": "Equipping..."
+  },
   "swap": {
     "title_trainer": "Swap Trainer?",
     "title_physio": "Swap Physio?",

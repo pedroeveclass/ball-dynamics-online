@@ -25,6 +25,7 @@ import { formatDate as formatDateI18n } from '@/lib/formatDate';
 import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
 import { ItemColorPickerDialog } from '@/components/store/ItemColorPickerDialog';
+import { EquipSideDialog, EquipSide } from '@/components/store/EquipSideDialog';
 
 interface StoreItem {
   id: string;
@@ -119,14 +120,20 @@ export default function StorePage() {
     newPrice: number;
   }>(null);
 
-  // Color picker dialog. Boots / gloves prompt the buyer for a custom color
-  // *before* the RPC fires; the picked hex is persisted on store_purchases
-  // and consumed by the player avatar to tint cleats and goalkeeper gloves.
+  // Color picker dialog. Boots / gloves / visual cosmetics prompt the buyer
+  // for a custom color before the RPC fires; the picked hex is persisted on
+  // store_purchases and consumed by the player avatar.
   const [colorPick, setColorPick] = useState<null | {
     item: StoreItem;
     buyerType: 'player' | 'club';
     targetPlayerId?: string;
   }>(null);
+
+  // Side picker dialog. Triggered at equip time for cosmetics that the
+  // avatar renders on a single arm (wristband, biceps band). The user
+  // re-picks the side every time they equip, so changing arm doesn't
+  // require re-buying the item.
+  const [sidePick, setSidePick] = useState<null | { purchaseId: string; itemName: string }>(null);
 
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
@@ -302,6 +309,17 @@ export default function StorePage() {
     handleBuy(item, buyerType, targetPlayerId);
   }
 
+  // Cosmetic items the avatar renders on a single arm — equipping these
+  // opens the side picker. Caneleira / Luva de Inverno are symmetric and
+  // skip the picker.
+  const SIDE_AWARE_COSMETICS = new Set(['Munhequeira', 'Wristband', 'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
+  function needsSidePick(item: StoreItem | undefined): boolean {
+    if (!item || item.category !== 'cosmetic') return false;
+    return SIDE_AWARE_COSMETICS.has(item.name)
+      || (item.name_pt != null && SIDE_AWARE_COSMETICS.has(item.name_pt))
+      || (item.name_en != null && SIDE_AWARE_COSMETICS.has(item.name_en));
+  }
+
   async function handleReactivateSubscription(purchaseId: string) {
     setActing(true);
     try {
@@ -318,20 +336,33 @@ export default function StorePage() {
     }
   }
 
-  async function handleEquip(purchaseId: string) {
+  async function handleEquip(purchaseId: string, side: EquipSide | null = null) {
     setActing(true);
     try {
-      const { data, error } = await (supabase as any).rpc('equip_store_item', { p_purchase_id: purchaseId });
+      const { data, error } = await (supabase as any).rpc('equip_store_item', {
+        p_purchase_id: purchaseId,
+        p_side: side ?? null,
+      });
       if (error) { toast.error(error.message); return; }
       const result = data as any;
       if (result?.error) { toast.error(result.error); return; }
       toast.success(result?.message || t('errors.equip_success'));
+      setSidePick(null);
       fetchData();
     } catch (e: any) {
       toast.error(e.message || t('errors.equip_error'));
     } finally {
       setActing(false);
     }
+  }
+
+  // Wrapper that gates side-aware cosmetics behind the side picker.
+  function startEquip(purchaseId: string, item: StoreItem | undefined) {
+    if (needsSidePick(item) && item) {
+      setSidePick({ purchaseId, itemName: getStoreItemName(item, lang) });
+      return;
+    }
+    handleEquip(purchaseId, null);
   }
 
   async function handleUnequip(purchaseId: string) {
@@ -527,7 +558,7 @@ export default function StorePage() {
                   {playerPurchases.map(p => {
                     const item = p.item;
                     if (!item) return null;
-                    const isEquipment = item.category === 'boots' || item.category === 'gloves';
+                    const isEquipment = item.category === 'boots' || item.category === 'gloves' || item.category === 'cosmetic';
                     const isConsumable = item.category === 'consumable' && item.bonus_type === 'energy';
                     const isMonthly = item.duration === 'monthly';
                     const isActive = p.status === 'active';
@@ -562,7 +593,7 @@ export default function StorePage() {
                             {/* Equipment: equip/unequip */}
                             {isEquipment && isInventory && (
                               <Button size="sm" className="h-7 text-xs" disabled={acting}
-                                onClick={() => handleEquip(p.id)}>
+                                onClick={() => startEquip(p.id, item)}>
                                 <Check className="h-3 w-3 mr-1" />{t('actions.equip')}
                               </Button>
                             )}
@@ -746,7 +777,7 @@ export default function StorePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Color picker dialog for boots / gloves */}
+      {/* Color picker dialog for boots / gloves / visual cosmetics */}
       {colorPick && (
         <ItemColorPickerDialog
           open={!!colorPick}
@@ -754,6 +785,17 @@ export default function StorePage() {
           itemName={getStoreItemName(colorPick.item, lang)}
           busy={buying}
           onConfirm={(picked) => handleBuy(colorPick.item, colorPick.buyerType, colorPick.targetPlayerId, false, picked)}
+        />
+      )}
+
+      {/* Side picker dialog for arm-bound cosmetics at equip time */}
+      {sidePick && (
+        <EquipSideDialog
+          open={!!sidePick}
+          onOpenChange={(open) => { if (!open && !acting) setSidePick(null); }}
+          itemName={sidePick.itemName}
+          busy={acting}
+          onConfirm={(picked) => handleEquip(sidePick.purchaseId, picked)}
         />
       )}
     </div>

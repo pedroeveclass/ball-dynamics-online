@@ -149,8 +149,18 @@ export default function PlayerProfilePage() {
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   // 1 = home, 2 = away. GK still wears uniform 3 regardless (no away GK kit).
   const [kitVariant, setKitVariant] = useState<1 | 2>(1);
-  // Custom colors picked by the player when buying cosmetic equipment.
-  const [cosmetics, setCosmetics] = useState<{ bootsColor: string | null; gloveColor: string | null; hasWinterGlove: boolean }>({ bootsColor: null, gloveColor: null, hasWinterGlove: false });
+  // Custom colors / sides picked by the player when buying & equipping
+  // cosmetic equipment. Mirrors the PlayerCosmetics shape from lib/cosmetics.
+  const [cosmetics, setCosmetics] = useState<import('@/lib/cosmetics').PlayerCosmetics>({
+    bootsColor: null,
+    gloveColor: null,
+    hasWinterGlove: false,
+    wristbandColor: null,
+    wristbandSide: null,
+    bicepsBandColor: null,
+    bicepsBandSide: null,
+    shinGuardColor: null,
+  });
   const [attrs, setAttrs] = useState<any>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
   const [trainingHistory, setTrainingHistory] = useState<TrainingRecord[]>([]);
@@ -231,7 +241,15 @@ export default function PlayerProfilePage() {
 
   // ── Fetch cosmetic colors (boots / gloves) for the avatar ──
   useEffect(() => {
-    if (!p?.id) { setCosmetics({ bootsColor: null, gloveColor: null, hasWinterGlove: false }); return; }
+    if (!p?.id) {
+      setCosmetics({
+        bootsColor: null, gloveColor: null, hasWinterGlove: false,
+        wristbandColor: null, wristbandSide: null,
+        bicepsBandColor: null, bicepsBandSide: null,
+        shinGuardColor: null,
+      });
+      return;
+    }
     let cancelled = false;
     (async () => {
       const c = await fetchPlayerCosmetics(p.id);
@@ -662,6 +680,11 @@ export default function PlayerProfilePage() {
                   bootsColor={cosmetics.bootsColor}
                   gloveColor={cosmetics.gloveColor}
                   hasWinterGlove={cosmetics.hasWinterGlove}
+                  wristbandColor={cosmetics.wristbandColor}
+                  wristbandSide={cosmetics.wristbandSide}
+                  bicepsBandColor={cosmetics.bicepsBandColor}
+                  bicepsBandSide={cosmetics.bicepsBandSide}
+                  shinGuardColor={cosmetics.shinGuardColor}
                   className="w-full h-full"
                   fallbackSeed={p.id}
                 />

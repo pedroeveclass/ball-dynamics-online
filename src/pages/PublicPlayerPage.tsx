@@ -142,8 +142,17 @@ export default function PublicPlayerPage() {
   const [bodyVariant, setBodyVariant] = useState<'full-front' | 'full-back'>('full-front');
   // 1 = home, 2 = away. GK still wears uniform 3 (no away GK kit).
   const [kitVariant, setKitVariant] = useState<1 | 2>(1);
-  // Custom colors picked when buying cosmetic equipment in the store.
-  const [cosmetics, setCosmetics] = useState<{ bootsColor: string | null; gloveColor: string | null; hasWinterGlove: boolean }>({ bootsColor: null, gloveColor: null, hasWinterGlove: false });
+  // Custom colors / sides for cosmetic equipment. Mirrors PlayerCosmetics.
+  const [cosmetics, setCosmetics] = useState<import('@/lib/cosmetics').PlayerCosmetics>({
+    bootsColor: null,
+    gloveColor: null,
+    hasWinterGlove: false,
+    wristbandColor: null,
+    wristbandSide: null,
+    bicepsBandColor: null,
+    bicepsBandSide: null,
+    shinGuardColor: null,
+  });
   const [loading, setLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
   const [seasons, setSeasons] = useState<{ id: string; number: number; status: string }[]>([]);
@@ -151,7 +160,15 @@ export default function PublicPlayerPage() {
 
   // Cosmetic colors (boots / gloves) picked at store-purchase time.
   useEffect(() => {
-    if (!playerId) { setCosmetics({ bootsColor: null, gloveColor: null, hasWinterGlove: false }); return; }
+    if (!playerId) {
+      setCosmetics({
+        bootsColor: null, gloveColor: null, hasWinterGlove: false,
+        wristbandColor: null, wristbandSide: null,
+        bicepsBandColor: null, bicepsBandSide: null,
+        shinGuardColor: null,
+      });
+      return;
+    }
     let cancelled = false;
     (async () => {
       const c = await fetchPlayerCosmetics(playerId);
@@ -410,6 +427,11 @@ export default function PublicPlayerPage() {
                   bootsColor={cosmetics.bootsColor}
                   gloveColor={cosmetics.gloveColor}
                   hasWinterGlove={cosmetics.hasWinterGlove}
+                  wristbandColor={cosmetics.wristbandColor}
+                  wristbandSide={cosmetics.wristbandSide}
+                  bicepsBandColor={cosmetics.bicepsBandColor}
+                  bicepsBandSide={cosmetics.bicepsBandSide}
+                  shinGuardColor={cosmetics.shinGuardColor}
                   className="w-full h-full"
                   fallbackSeed={player.id}
                 />

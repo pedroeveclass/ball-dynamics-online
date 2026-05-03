@@ -1,5 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
+export type CosmeticSide = 'left' | 'right';
+
 export interface PlayerCosmetics {
   // Hex (#rgb / #rrggbb) of the actively-equipped boots, if any.
   bootsColor: string | null;
@@ -12,14 +14,42 @@ export interface PlayerCosmetics {
   // the avatar to render the GK-style sleeved arm + glove on outfielders;
   // for goalkeepers this just unlocks the alternate color.
   hasWinterGlove: boolean;
+  // Wristband (Munhequeira) — single arm only, side picked at purchase.
+  wristbandColor: string | null;
+  wristbandSide: CosmeticSide | null;
+  // Biceps band — same per-arm pattern.
+  bicepsBandColor: string | null;
+  bicepsBandSide: CosmeticSide | null;
+  // Caneleira (shin guards) — both legs, no side choice.
+  shinGuardColor: string | null;
 }
 
-const EMPTY: PlayerCosmetics = { bootsColor: null, gloveColor: null, hasWinterGlove: false };
+const EMPTY: PlayerCosmetics = {
+  bootsColor: null,
+  gloveColor: null,
+  hasWinterGlove: false,
+  wristbandColor: null,
+  wristbandSide: null,
+  bicepsBandColor: null,
+  bicepsBandSide: null,
+  shinGuardColor: null,
+};
 
 // Cosmetic items whose color we treat as a "winter glove": same visual
 // treatment as the GK glove arm. Matched by the canonical seed name so we
 // don't depend on environment-specific UUIDs.
 const WINTER_GLOVE_NAMES = new Set(['Luva de Inverno', 'Winter Gloves']);
+const WRISTBAND_NAMES = new Set(['Munhequeira', 'Wristband']);
+const BICEPS_BAND_NAMES = new Set(['Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
+const SHIN_GUARD_NAMES = new Set(['Caneleira Personalizada', 'Custom Shin Guards']);
+
+function matchesAny(item: any, set: Set<string>): boolean {
+  return set.has(item.name) || (item.name_pt != null && set.has(item.name_pt)) || (item.name_en != null && set.has(item.name_en));
+}
+
+function normalizeSide(s: any): CosmeticSide | null {
+  return s === 'left' || s === 'right' ? s : null;
+}
 
 // Reads the active equipment + cosmetic purchase rows for a player and
 // returns the colors the player picked at buy time. Used by the player
@@ -35,7 +65,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   // affects the avatar.
   const { data: purchases } = await (supabase as any)
     .from('store_purchases')
-    .select('store_item_id, color, status')
+    .select('store_item_id, color, side, status')
     .eq('player_profile_id', playerProfileId)
     .in('status', ['active', 'cancelling']);
 
@@ -55,15 +85,35 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let bootsColor: string | null = null;
   let gkGloveColor: string | null = null;
   let winterGloveColor: string | null = null;
+  let wristbandColor: string | null = null;
+  let wristbandSide: CosmeticSide | null = null;
+  let bicepsBandColor: string | null = null;
+  let bicepsBandSide: CosmeticSide | null = null;
+  let shinGuardColor: string | null = null;
 
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
     if (!it || !p.color) continue;
-    if (it.category === 'boots' && !bootsColor) bootsColor = p.color;
-    else if (it.category === 'gloves' && !gkGloveColor) gkGloveColor = p.color;
-    else if (it.category === 'cosmetic' && !winterGloveColor) {
-      const isWinter = WINTER_GLOVE_NAMES.has(it.name) || WINTER_GLOVE_NAMES.has(it.name_pt) || WINTER_GLOVE_NAMES.has(it.name_en);
-      if (isWinter) winterGloveColor = p.color;
+    if (it.category === 'boots') {
+      if (!bootsColor) bootsColor = p.color;
+      continue;
+    }
+    if (it.category === 'gloves') {
+      if (!gkGloveColor) gkGloveColor = p.color;
+      continue;
+    }
+    if (it.category !== 'cosmetic') continue;
+
+    if (matchesAny(it, WINTER_GLOVE_NAMES) && !winterGloveColor) {
+      winterGloveColor = p.color;
+    } else if (matchesAny(it, WRISTBAND_NAMES) && !wristbandColor) {
+      wristbandColor = p.color;
+      wristbandSide = normalizeSide(p.side);
+    } else if (matchesAny(it, BICEPS_BAND_NAMES) && !bicepsBandColor) {
+      bicepsBandColor = p.color;
+      bicepsBandSide = normalizeSide(p.side);
+    } else if (matchesAny(it, SHIN_GUARD_NAMES) && !shinGuardColor) {
+      shinGuardColor = p.color;
     }
   }
 
@@ -71,5 +121,10 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     bootsColor,
     gloveColor: winterGloveColor || gkGloveColor,
     hasWinterGlove: winterGloveColor != null,
+    wristbandColor,
+    wristbandSide,
+    bicepsBandColor,
+    bicepsBandSide,
+    shinGuardColor,
   };
 }

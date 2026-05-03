@@ -42,6 +42,14 @@ interface PlayerAvatarProps {
   // for outfield players. Driven by the "Luva de Inverno" cosmetic. For GKs
   // it makes no visual difference since they already render gloves.
   hasWinterGlove?: boolean;
+  // Wristband (Munhequeira) — single-arm cosmetic. side picks which.
+  wristbandColor?: string | null;
+  wristbandSide?: 'left' | 'right' | null;
+  // Biceps band — single-arm cosmetic, same model as wristband.
+  bicepsBandColor?: string | null;
+  bicepsBandSide?: 'left' | 'right' | null;
+  // Caneleira (shin guards) — square pad on each shin.
+  shinGuardColor?: string | null;
 }
 
 const DEFAULT_PRIMARY = '#2a5a8a';
@@ -127,6 +135,11 @@ export function PlayerAvatar({
   bootsColor = null,
   gloveColor = null,
   hasWinterGlove = false,
+  wristbandColor = null,
+  wristbandSide = null,
+  bicepsBandColor = null,
+  bicepsBandSide = null,
+  shinGuardColor = null,
 }: PlayerAvatarProps) {
   const effective = appearance ?? DEFAULT_APPEARANCE;
   const isCoach = outfit === 'coach';
@@ -224,6 +237,11 @@ export function PlayerAvatar({
                 shirtOnly={shirtOnly}
                 bootsColor={bootsColor}
                 gloveColor={gloveColor}
+                wristbandColor={wristbandColor}
+                wristbandSide={wristbandSide}
+                bicepsBandColor={bicepsBandColor}
+                bicepsBandSide={bicepsBandSide}
+                shinGuardColor={shinGuardColor}
               />
             ) : (
               <FrontBody
@@ -243,6 +261,11 @@ export function PlayerAvatar({
                 wearGloves={wearGloves}
                 bootsColor={bootsColor}
                 gloveColor={gloveColor}
+                wristbandColor={wristbandColor}
+                wristbandSide={wristbandSide}
+                bicepsBandColor={bicepsBandColor}
+                bicepsBandSide={bicepsBandSide}
+                shinGuardColor={shinGuardColor}
               />
             )}
           </g>
@@ -503,6 +526,64 @@ function GoalkeeperArm({ primary, secondary, mirror = false, gloveColor }: { pri
   );
 }
 
+// ── Wristband (Munhequeira): a thick band around the wrist on one arm.
+// Coordinates match the Arm/GoalkeeperArm geometry — left arm by default,
+// `mirror` flips to the right. Drawn AFTER arms so it sits on top of the
+// sleeve / cuff without being covered.
+function Wristband({ color, side, wearGloves }: { color: string | null; side: 'left' | 'right' | null; wearGloves: boolean }) {
+  if (!color || !side) return null;
+  const mirror = side === 'right';
+  // GK / winter-glove sleeves end at y=234 (cuff sits y=230-233). Bare arm
+  // ends at the wrist around y=234. A 6-unit-tall band sitting at y=228
+  // covers both layouts cleanly.
+  const y = wearGloves ? 226 : 228;
+  return (
+    <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
+      <rect x="40" y={y} width="22" height="7" fill={color} rx="1.5" />
+      <rect x="40" y={y + 1} width="22" height="1.5" fill="#fff" opacity="0.25" />
+    </g>
+  );
+}
+
+// ── Biceps band: a thinner strap higher on the arm, around the bicep.
+function BicepsBand({ color, side, wearGloves }: { color: string | null; side: 'left' | 'right' | null; wearGloves: boolean }) {
+  if (!color || !side) return null;
+  const mirror = side === 'right';
+  // Sleeve hem of the regular Arm sits at y=158 (skin starts there). Bicep
+  // is roughly y=160-200. The band sits just below the sleeve at y=164.
+  // For wearGloves arms (long sleeve from shoulder), the band overlays the
+  // sleeve — still reads correctly because it's a different color.
+  const y = wearGloves ? 164 : 162;
+  return (
+    <g transform={mirror ? 'translate(200 0) scale(-1 1)' : undefined}>
+      <rect x="38" y={y} width="24" height="6" fill={color} rx="1" />
+      <rect x="38" y={y + 1} width="24" height="1.2" fill="#fff" opacity="0.22" />
+    </g>
+  );
+}
+
+// ── Shin guards (Caneleira): a square pad strapped over each shin, in the
+// chosen color. Drawn BEFORE socks so the sock top still covers the lower
+// edge of the pad like a real guard. Positioned just above the sock band.
+function ShinGuards({ color, isCoach }: { color: string | null; isCoach: boolean }) {
+  if (!color || isCoach) return null;
+  // Front-of-leg coordinates: legs span x=72..92 (left) and 108..128 (right).
+  // Sock top sits at y=360. Pad goes from y=320 to y=358 (38 tall, 16 wide).
+  return (
+    <>
+      {/* Left shin pad */}
+      <rect x="74" y="320" width="16" height="38" fill={color} rx="2" />
+      {/* Strap shadow at top + bottom for a "buckled" look */}
+      <rect x="74" y="322" width="16" height="2" fill="#000" opacity="0.18" />
+      <rect x="74" y="354" width="16" height="2" fill="#000" opacity="0.18" />
+      {/* Right shin pad (mirrored across x=100) */}
+      <rect x="110" y="320" width="16" height="38" fill={color} rx="2" />
+      <rect x="110" y="322" width="16" height="2" fill="#000" opacity="0.18" />
+      <rect x="110" y="354" width="16" height="2" fill="#000" opacity="0.18" />
+    </>
+  );
+}
+
 // ── Front body: DiceBear portrait scaled small and CLIPPED at the collar
 // so only head + neck + collar top survive. Everything from the collar
 // downward (shoulders, torso, arms, body) is drawn by us for full control
@@ -524,6 +605,11 @@ function FrontBody({
   wearGloves,
   bootsColor,
   gloveColor,
+  wristbandColor,
+  wristbandSide,
+  bicepsBandColor,
+  bicepsBandSide,
+  shinGuardColor,
 }: {
   faceDataUri: string;
   primary: string;
@@ -541,6 +627,11 @@ function FrontBody({
   wearGloves: boolean;
   bootsColor: string | null;
   gloveColor: string | null;
+  wristbandColor: string | null;
+  wristbandSide: 'left' | 'right' | null;
+  bicepsBandColor: string | null;
+  bicepsBandSide: 'left' | 'right' | null;
+  shinGuardColor: string | null;
 }) {
   const skin = `#${skinTone}`;
   const isCoach = outfit === 'coach';
@@ -594,6 +685,11 @@ function FrontBody({
         </>
       )}
 
+      {/* ── Shin guards (Caneleira) — sit on top of the leg skin, above the
+          sock band, with strap shadows for a buckled look. Drawn here so
+          shorts (next) cover any visual artifact at the top edge. ── */}
+      <ShinGuards color={shinGuardColor} isCoach={isCoach} />
+
       {/* ── Shorts — player only (coach wears trousers above) ── */}
       {!isCoach && (
         <>
@@ -618,6 +714,16 @@ function FrontBody({
         <>
           <Arm primary={primary} secondary={secondary} skin={skin} />
           <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+        </>
+      )}
+
+      {/* ── Single-arm cosmetics drawn after arms so they sit on top of the
+          sleeve / cuff. Coaches skip these — accessories don't apply to the
+          formal blazer look. ── */}
+      {!isCoach && (
+        <>
+          <Wristband color={wristbandColor} side={wristbandSide} wearGloves={wearGloves} />
+          <BicepsBand color={bicepsBandColor} side={bicepsBandSide} wearGloves={wearGloves} />
         </>
       )}
 
@@ -710,6 +816,11 @@ function BackBody({
   shirtOnly,
   bootsColor,
   gloveColor,
+  wristbandColor,
+  wristbandSide,
+  bicepsBandColor,
+  bicepsBandSide,
+  shinGuardColor,
 }: {
   appearance: PlayerAppearance;
   primary: string;
@@ -724,6 +835,11 @@ function BackBody({
   wearGloves: boolean;
   clipId: string;
   shirtOnly: boolean;
+  wristbandColor: string | null;
+  wristbandSide: 'left' | 'right' | null;
+  bicepsBandColor: string | null;
+  bicepsBandSide: 'left' | 'right' | null;
+  shinGuardColor: string | null;
   bootsColor: string | null;
   gloveColor: string | null;
 }) {
@@ -785,6 +901,9 @@ function BackBody({
             </>
           )}
 
+          {/* Shin guards visible on the back of the leg too */}
+          <ShinGuards color={shinGuardColor} isCoach={isCoach} />
+
           {/* ── Shorts — player only ── */}
           {!isCoach && (
             <>
@@ -809,6 +928,14 @@ function BackBody({
             <>
               <Arm primary={primary} secondary={secondary} skin={skin} />
               <Arm primary={primary} secondary={secondary} skin={skin} mirror />
+            </>
+          )}
+
+          {/* Single-arm cosmetics on the back as well */}
+          {!isCoach && (
+            <>
+              <Wristband color={wristbandColor} side={wristbandSide} wearGloves={wearGloves} />
+              <BicepsBand color={bicepsBandColor} side={bicepsBandSide} wearGloves={wearGloves} />
             </>
           )}
         </>

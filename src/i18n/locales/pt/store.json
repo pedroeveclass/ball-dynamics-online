@@ -61,6 +61,17 @@
     "confirm": "Comprar",
     "confirming": "Comprando..."
   },
+  "equip_side": {
+    "title": "Em qual braço?",
+    "subtitle": "Escolha em qual braço {{item}} será usado.",
+    "left": "Braço esquerdo",
+    "left_hint": "Lado esquerdo do jogador",
+    "right": "Braço direito",
+    "right_hint": "Lado direito do jogador",
+    "cancel": "Cancelar",
+    "equip": "Equipar",
+    "equipping": "Equipando..."
+  },
   "swap": {
     "title_trainer": "Trocar Treinador?",
     "title_physio": "Trocar Fisioterapeuta?",
