@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export type CosmeticSide = 'left' | 'right';
@@ -45,7 +46,21 @@ export interface PlayerCosmetics {
   secondSkinShirtSide: CosmeticLimbSide | null;
   secondSkinPantsColor: string | null;
   secondSkinPantsSide: CosmeticLimbSide | null;
+  // Visual background — paints the area behind the avatar in the profile /
+  // public-page Visual section. Driven by the "Fundo do Visual" cosmetic.
+  // backgroundVariant chooses how to compose color1 + color2 (or the
+  // uploaded image). Re-buy is required to change variant or photo.
+  backgroundVariant: BackgroundVariant | null;
+  backgroundColor: string | null;
+  backgroundColor2: string | null;
+  backgroundImageUrl: string | null;
 }
+
+export type BackgroundVariant =
+  | 'solid'
+  | 'gradient_vertical' | 'gradient_horizontal' | 'gradient_diagonal'
+  | 'stripes_vertical' | 'stripes_horizontal' | 'stripes_diagonal'
+  | 'checker' | 'dots' | 'image';
 
 const EMPTY: PlayerCosmetics = {
   bootsColor: null,
@@ -64,6 +79,10 @@ const EMPTY: PlayerCosmetics = {
   secondSkinShirtSide: null,
   secondSkinPantsColor: null,
   secondSkinPantsSide: null,
+  backgroundVariant: null,
+  backgroundColor: null,
+  backgroundColor2: null,
+  backgroundImageUrl: null,
 };
 
 // Cosmetic items whose color we treat as a "winter glove": same visual
@@ -76,6 +95,17 @@ const SHIN_GUARD_NAMES = new Set(['Caneleira Personalizada', 'Custom Shin Guards
 const LONG_SOCKS_NAMES = new Set(['Meião Comprido', 'Long Socks']);
 const SECOND_SKIN_SHIRT_NAMES = new Set(['Camiseta Segunda Pele', 'Compression Top']);
 const SECOND_SKIN_PANTS_NAMES = new Set(['Calça Segunda Pele', 'Compression Tights']);
+const VISUAL_BG_NAMES = new Set(['Fundo do Visual', 'Visual Background']);
+
+const VALID_BG_VARIANTS = new Set<BackgroundVariant>([
+  'solid', 'gradient_vertical', 'gradient_horizontal', 'gradient_diagonal',
+  'stripes_vertical', 'stripes_horizontal', 'stripes_diagonal',
+  'checker', 'dots', 'image',
+]);
+
+function normalizeBgVariant(s: any): BackgroundVariant | null {
+  return typeof s === 'string' && VALID_BG_VARIANTS.has(s as BackgroundVariant) ? (s as BackgroundVariant) : null;
+}
 
 function matchesAny(item: any, set: Set<string>): boolean {
   return set.has(item.name) || (item.name_pt != null && set.has(item.name_pt)) || (item.name_en != null && set.has(item.name_en));
@@ -107,7 +137,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   // affects the avatar.
   const { data: purchases } = await (supabase as any)
     .from('store_purchases')
-    .select('store_item_id, color, color2, color3, side, status')
+    .select('store_item_id, color, color2, color3, side, status, bg_variant, bg_image_url')
     .eq('player_profile_id', playerProfileId)
     .in('status', ['active', 'cancelling']);
 
@@ -140,6 +170,10 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let secondSkinShirtSide: CosmeticLimbSide | null = null;
   let secondSkinPantsColor: string | null = null;
   let secondSkinPantsSide: CosmeticLimbSide | null = null;
+  let backgroundVariant: BackgroundVariant | null = null;
+  let backgroundColor: string | null = null;
+  let backgroundColor2: string | null = null;
+  let backgroundImageUrl: string | null = null;
 
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
@@ -147,6 +181,15 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     // Long socks toggle has no color — short-circuit before the color guard.
     if (it.category === 'cosmetic' && matchesAny(it, LONG_SOCKS_NAMES)) {
       hasLongSocks = true;
+      continue;
+    }
+    // Visual background — image variant has no color of its own; the URL
+    // is the carrier. Read those fields before the color-required guard.
+    if (it.category === 'cosmetic' && matchesAny(it, VISUAL_BG_NAMES) && !backgroundVariant) {
+      backgroundVariant = normalizeBgVariant(p.bg_variant);
+      backgroundColor = p.color ?? null;
+      backgroundColor2 = p.color2 ?? null;
+      backgroundImageUrl = p.bg_image_url ?? null;
       continue;
     }
     if (!p.color) continue;
@@ -198,6 +241,63 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     shinGuardColor,
     hasLongSocks,
     secondSkinShirtColor,
+    secondSkinShirtSide,
     secondSkinPantsColor,
+    secondSkinPantsSide,
+    backgroundVariant,
+    backgroundColor,
+    backgroundColor2,
+    backgroundImageUrl,
   };
+}
+
+// Maps the background cosmetic state to the inline-style object the visual
+// container should receive. Used by both the player profile and the public
+// player page so the rendered look is identical.
+export function avatarBackgroundStyle(c: PlayerCosmetics): CSSProperties {
+  const v = c.backgroundVariant;
+  if (!v) return {};
+  const a = c.backgroundColor || '#ffffff';
+  const b = c.backgroundColor2 || a;
+  switch (v) {
+    case 'solid':
+      return { backgroundColor: a };
+    case 'gradient_vertical':
+      return { backgroundImage: `linear-gradient(to bottom, ${a}, ${b})` };
+    case 'gradient_horizontal':
+      return { backgroundImage: `linear-gradient(to right, ${a}, ${b})` };
+    case 'gradient_diagonal':
+      return { backgroundImage: `linear-gradient(135deg, ${a}, ${b})` };
+    case 'stripes_vertical':
+      return { backgroundImage: `repeating-linear-gradient(to right, ${a} 0 14px, ${b} 14px 28px)` };
+    case 'stripes_horizontal':
+      return { backgroundImage: `repeating-linear-gradient(to bottom, ${a} 0 14px, ${b} 14px 28px)` };
+    case 'stripes_diagonal':
+      return { backgroundImage: `repeating-linear-gradient(45deg, ${a} 0 14px, ${b} 14px 28px)` };
+    case 'checker':
+      return {
+        backgroundColor: a,
+        backgroundImage:
+          `linear-gradient(45deg, ${b} 25%, transparent 25%), ` +
+          `linear-gradient(-45deg, ${b} 25%, transparent 25%), ` +
+          `linear-gradient(45deg, transparent 75%, ${b} 75%), ` +
+          `linear-gradient(-45deg, transparent 75%, ${b} 75%)`,
+        backgroundSize: '24px 24px',
+        backgroundPosition: '0 0, 0 12px, 12px -12px, -12px 0',
+      };
+    case 'dots':
+      return {
+        backgroundColor: a,
+        backgroundImage: `radial-gradient(circle, ${b} 2.5px, transparent 2.5px)`,
+        backgroundSize: '18px 18px',
+      };
+    case 'image':
+      return c.backgroundImageUrl ? {
+        backgroundImage: `url(${c.backgroundImageUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      } : {};
+    default:
+      return {};
+  }
 }

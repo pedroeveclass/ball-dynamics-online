@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { ATTR_LABELS, archetypeLabel, heightLabel } from '@/lib/attributes';
-import { fetchPlayerCosmetics } from '@/lib/cosmetics';
+import { fetchPlayerCosmetics, avatarBackgroundStyle } from '@/lib/cosmetics';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -675,7 +675,7 @@ export default function PlayerProfilePage() {
                 </div>
               </div>
             )}
-            <div className="flex justify-center py-2">
+            <div className="flex justify-center py-2 rounded-md overflow-hidden" style={avatarBackgroundStyle(cosmetics)}>
               <div className={isBackView ? 'h-52 w-40' : 'h-80 w-40'}>
                 <PlayerAvatar
                   appearance={(p as any).appearance}

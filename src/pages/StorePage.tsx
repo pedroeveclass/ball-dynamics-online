@@ -26,6 +26,8 @@ import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
 import { ItemColorPickerDialog, ColorSlot, ColorValues } from '@/components/store/ItemColorPickerDialog';
 import { EquipSideDialog, EquipChoice, EquipChoiceKind } from '@/components/store/EquipSideDialog';
+import { BackgroundPickerDialog } from '@/components/store/BackgroundPickerDialog';
+import type { BackgroundVariant } from '@/lib/cosmetics';
 
 interface StoreItem {
   id: string;
@@ -146,6 +148,10 @@ export default function StorePage() {
   // a white one). No refund — discarding is intentional.
   const [deleteTarget, setDeleteTarget] = useState<null | { purchaseId: string; itemName: string }>(null);
 
+  // Background-picker dialog (visual background cosmetic). Tabbed UI for
+  // solid / gradient / pattern / image instead of the simpler color picker.
+  const [bgPick, setBgPick] = useState<null | { item: StoreItem; buyerType: 'player' | 'club'; targetPlayerId?: string }>(null);
+
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
   // Club balance for the manager view — comes from club_finances and is
@@ -256,6 +262,16 @@ export default function StorePage() {
     'Camiseta Segunda Pele', 'Compression Top',
     'Calça Segunda Pele', 'Compression Tights',
   ]);
+  // Cosmetics that route to the dedicated background picker instead of the
+  // generic color picker (tabbed UI for solid / gradient / pattern / image).
+  const BACKGROUND_COSMETICS = new Set(['Fundo do Visual', 'Visual Background']);
+  function isBackgroundItem(item: StoreItem): boolean {
+    return item.category === 'cosmetic' && (
+      BACKGROUND_COSMETICS.has(item.name)
+      || (item.name_pt != null && BACKGROUND_COSMETICS.has(item.name_pt))
+      || (item.name_en != null && BACKGROUND_COSMETICS.has(item.name_en))
+    );
+  }
   function needsColorPick(item: StoreItem): boolean {
     if (item.category === 'boots' || item.category === 'gloves') return true;
     if (item.category !== 'cosmetic') return false;
@@ -270,6 +286,7 @@ export default function StorePage() {
     targetPlayerId?: string,
     confirmReplace = false,
     colors?: ColorValues,
+    bg?: { variant: BackgroundVariant; imageUrl: string | null },
   ) {
     setBuying(true);
     try {
@@ -277,7 +294,8 @@ export default function StorePage() {
       if (!playerId) { toast.error(t('errors.no_player')); return; }
 
       // Multi-color items (boots) ship 3 hexes; single-color items use just
-      // the first slot. Slot ids match the keys we pass to the RPC.
+      // the first slot. Background cosmetic also rides on this RPC with
+      // bg_variant + bg_image_url so we don't need a separate one.
       const { data, error } = await (supabase as any).rpc('purchase_store_item', {
         p_player_profile_id: playerId,
         p_store_item_id: item.id,
@@ -286,6 +304,8 @@ export default function StorePage() {
         p_color: colors?.color ?? null,
         p_color2: colors?.color2 ?? null,
         p_color3: colors?.color3 ?? null,
+        p_bg_variant: bg?.variant ?? null,
+        p_bg_image_url: bg?.imageUrl ?? null,
       });
 
       if (error) { toast.error(error.message); return; }
@@ -312,6 +332,7 @@ export default function StorePage() {
       setGiftPlayerId('');
       setSwapConflict(null);
       setColorPick(null);
+      setBgPick(null);
       await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
       toast.error(e.message || t('errors.purchase_generic'));
@@ -320,9 +341,15 @@ export default function StorePage() {
     }
   }
 
-  // Wrapper that gates equipment purchases behind the color picker. Other
-  // categories pass straight through.
+  // Wrapper that routes purchases to the right pre-buy dialog:
+  //   - Visual background → tabbed BackgroundPickerDialog (mode + assets)
+  //   - Boots / gloves / cosmetics with color → ItemColorPickerDialog
+  //   - Everything else → straight to the RPC
   function startBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string) {
+    if (isBackgroundItem(item)) {
+      setBgPick({ item, buyerType, targetPlayerId });
+      return;
+    }
     if (needsColorPick(item)) {
       setColorPick({ item, buyerType, targetPlayerId });
       return;
@@ -894,6 +921,21 @@ export default function StorePage() {
           kind={sidePick.kind}
           busy={acting}
           onConfirm={(picked) => handleEquip(sidePick.purchaseId, picked)}
+        />
+      )}
+
+      {/* Visual-background picker for the "Fundo do Visual" cosmetic */}
+      {bgPick && (
+        <BackgroundPickerDialog
+          open={!!bgPick}
+          onOpenChange={(open) => { if (!open && !buying) setBgPick(null); }}
+          itemName={getStoreItemName(bgPick.item, lang)}
+          busy={buying}
+          onConfirm={(payload) => handleBuy(
+            bgPick.item, bgPick.buyerType, bgPick.targetPlayerId, false,
+            { color: payload.color ?? '', color2: payload.color2 ?? '', color3: '' },
+            { variant: payload.variant, imageUrl: payload.imageUrl },
+          )}
         />
       )}
 

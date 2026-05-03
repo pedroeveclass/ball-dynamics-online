@@ -22,7 +22,7 @@ import { PlayerMilestonesTimeline } from '@/components/player/PlayerMilestonesTi
 import { RetirementBioCard } from '@/components/player/RetirementBioCard';
 import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { PlayerMatchesTab } from '@/components/player/PlayerMatchesTab';
-import { fetchPlayerCosmetics } from '@/lib/cosmetics';
+import { fetchPlayerCosmetics, avatarBackgroundStyle } from '@/lib/cosmetics';
 import { PlayerSeasonOverview } from '@/components/player/PlayerSeasonOverview';
 import { PlayerCompareDialog } from '@/components/player/PlayerCompareDialog';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -422,7 +422,7 @@ export default function PublicPlayerPage() {
                 </div>
               </div>
             )}
-            <div className="flex justify-center py-2">
+            <div className="flex justify-center py-2 rounded-md overflow-hidden" style={avatarBackgroundStyle(cosmetics)}>
               <div className={isBackView ? 'h-52 w-40' : 'h-80 w-40'}>
                 <PlayerAvatar
                   appearance={(player as any).appearance}
