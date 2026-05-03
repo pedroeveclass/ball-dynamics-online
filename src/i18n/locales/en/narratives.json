@@ -1,4 +1,9 @@
 {
+  "preMatch": {
+    "title": "Pre-match",
+    "h2h": "Recent meetings",
+    "h2h_empty": "First meeting between the clubs."
+  },
   "retirement": {
     "section": {
       "title": "Career",

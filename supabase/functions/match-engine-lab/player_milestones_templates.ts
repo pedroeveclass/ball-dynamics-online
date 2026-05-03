@@ -267,7 +267,7 @@ async function persistMilestone(
   trigger: MilestoneTrigger,
 ): Promise<void> {
   const { body_pt, body_en } = buildBodies(trigger);
-  await supabase.from('narratives').insert({
+  const { error: insertErr } = await supabase.from('narratives').insert({
     entity_type: 'player',
     entity_id: playerProfileId,
     scope: 'milestone',
@@ -278,7 +278,78 @@ async function persistMilestone(
   });
   // Conflicts (already exists) are silently ignored — partial UNIQUE
   // index on (entity_type, entity_id, milestone_type) does the dedup.
+  // Only emit a notification when this is a fresh insert (no conflict)
+  // and the player is human-controlled. Bots have no user_id and no
+  // notifications inbox; backfills also reuse this path so duplicate
+  // notifications would otherwise spam every iteration.
+  if (insertErr) return;
+
+  const { data: profile } = await supabase
+    .from('player_profiles')
+    .select('user_id')
+    .eq('id', playerProfileId)
+    .maybeSingle();
+  const userId = profile?.user_id;
+  if (!userId) return;
+
+  const label = MILESTONE_NOTIF_LABELS_PT[trigger.type] ?? trigger.type;
+  await supabase.from('notifications').insert({
+    user_id: userId,
+    player_profile_id: playerProfileId,
+    type: 'milestone',
+    title: '🎉 Marco desbloqueado',
+    body: label,
+    link: `/player/${playerProfileId}`,
+    read: false,
+  });
 }
+
+// Notification labels — short PT phrases for the inbox bell. Keep these
+// concise; the full narrative text already lives on the timeline card.
+const MILESTONE_NOTIF_LABELS_PT: Record<string, string> = {
+  first_goal: 'Primeiro gol da carreira',
+  goals_10: '10 gols na carreira',
+  goals_25: '25 gols na carreira',
+  goals_50: '50 gols na carreira',
+  goals_100: '100 gols na carreira',
+  goals_200: '200 gols na carreira',
+  first_hat_trick: 'Primeiro hat-trick',
+  first_poker: 'Primeiro poker (4 gols)',
+  first_handful: '5+ gols num jogo',
+  season_5_goals: '5 gols na temporada',
+  season_10_goals: '10 gols na temporada',
+  season_20_goals: '20 gols na temporada',
+  season_30_goals: '30 gols na temporada',
+  season_top_scorer: '🏆 Artilheiro da temporada',
+  first_assist: 'Primeira assistência',
+  assists_25: '25 assistências',
+  assists_50: '50 assistências',
+  assists_100: '100 assistências',
+  season_10_assists: '10 assistências na temporada',
+  season_20_assists: '20 assistências na temporada',
+  first_clean_sheet: 'Primeiro jogo sem sofrer gols',
+  clean_sheets_10: '10 clean sheets',
+  clean_sheets_25: '25 clean sheets',
+  clean_sheets_50: '50 clean sheets',
+  clean_sheets_100: '100 clean sheets',
+  first_penalty_save: 'Primeira defesa de pênalti',
+  tackles_50: '50 desarmes',
+  tackles_100: '100 desarmes',
+  tackles_250: '250 desarmes',
+  first_match: 'Estreia profissional',
+  matches_10: '10 jogos na carreira',
+  matches_50: '50 jogos na carreira',
+  matches_100: '100 jogos na carreira',
+  matches_200: '200 jogos na carreira',
+  matches_300: '300 jogos na carreira',
+  first_red_card: 'Primeiro cartão vermelho',
+  yellows_100: '100 cartões amarelos',
+  first_title: '🏆 Primeiro título',
+  second_title: '🏆 Bicampeão',
+  third_title: '🏆 Tricampeão',
+  first_runner_up: '🥈 Vice-campeão',
+  first_relegation: '🔻 Rebaixamento',
+};
 
 interface CareerStats {
   goals: number;

@@ -12,6 +12,7 @@ import { ClubCrest } from '@/components/ClubCrest';
 import { CountryFlag } from '@/components/CountryFlag';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { ClubAwardsHistory } from '@/components/league/ClubAwardsHistory';
+import { ClubHistoryView } from '@/components/league/ClubHistoryView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -702,6 +703,9 @@ export default function PublicClubPage() {
 
         {/* ── Club Awards history ── */}
         <ClubAwardsHistory clubId={clubId!} />
+
+        {/* ── Club history (trophies, records, idols, all-time scorers) ── */}
+        <ClubHistoryView clubId={clubId!} />
 
         {/* ── Squad table ── */}
         <div className="stat-card space-y-3">

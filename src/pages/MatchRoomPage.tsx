@@ -13,6 +13,7 @@ import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantL
 import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
 import { MatchSidebar } from './match/MatchSidebar';
+import { PreMatchPreviewCard } from '@/components/match/PreMatchPreviewCard';
 import { MatchEndStats } from './match/MatchEndStats';
 import { HelpModal } from '@/components/HelpModal';
 import { MatchActionMenu } from './match/MatchActionMenu';
@@ -5141,6 +5142,18 @@ export default function MatchRoomPage() {
         leagueRoundNumber={leagueRoundNumber}
         events={events}
       />
+
+      {/* ── Pre-match preview (only before kickoff) ── */}
+      {match.status === 'scheduled' && (
+        <div className="px-3 pt-2 pb-1">
+          <PreMatchPreviewCard
+            matchId={match.id}
+            homeClubId={match.home_club_id}
+            awayClubId={match.away_club_id}
+            seasonId={(match as any).season_id ?? null}
+          />
+        </div>
+      )}
 
       {/* ── Main layout ── */}
       <div className="flex flex-1 overflow-hidden">

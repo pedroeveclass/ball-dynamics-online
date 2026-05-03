@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Trophy, Medal, Award, Calendar, BarChart3, Newspaper, Loader2, Sparkles } from 'lucide-react';
+import { Trophy, Medal, Award, Calendar, BarChart3, Newspaper, Loader2, Sparkles, Eye } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { SeasonAwardsCard } from '@/components/league/SeasonAwardsCard';
@@ -99,6 +99,9 @@ export function SeasonRecapView({ seasonId, seasonNumber }: { seasonId: string; 
           color="border-tactical/40 bg-tactical/5"
         />
       </div>
+
+      {/* ── Per-club lens (data only — narrative templates v2 deferred) ── */}
+      <PerClubLens facts={f} seasonId={seasonId} />
 
       {/* ── Existing SeasonAwardsCard (auto-awards + MVP poll) ── */}
       <SeasonAwardsCard seasonId={seasonId} seasonNumber={num as number} />
@@ -200,6 +203,122 @@ export function SeasonRecapView({ seasonId, seasonNumber }: { seasonId: string; 
           {t('seasonRecap.section.view_hall_of_fame')} →
         </Link>
       </div>
+    </div>
+  );
+}
+
+// ── Per-club lens ──
+// Lets the viewer reread the season "from the perspective of" a specific
+// club: their final standing, record, top moments involving them, top
+// rated players from their squad. Pure data view in v1 — templated
+// narrative paragraphs ('A campanha do {club}') deferred to v2.
+function PerClubLens({ facts, seasonId }: { facts: any; seasonId: string }) {
+  const { t } = useTranslation('narratives');
+  const standings = (facts?.standings ?? []) as { clubId: string; name: string; points: number; played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }[];
+  const [selectedClubId, setSelectedClubId] = useState<string>('');
+  const [topPlayers, setTopPlayers] = useState<{ name: string; rating: number; matches: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const clubInStandings = useMemo(() => standings.find(s => s.clubId === selectedClubId) ?? null, [standings, selectedClubId]);
+
+  useEffect(() => {
+    if (!selectedClubId) { setTopPlayers([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('player_match_stats')
+        .select('player_profile_id, rating')
+        .eq('season_id', seasonId)
+        .eq('club_id', selectedClubId);
+      if (cancelled) return;
+      const byPlayer = new Map<string, { sum: number; count: number }>();
+      for (const r of (data ?? []) as any[]) {
+        if (!r.player_profile_id || r.rating == null) continue;
+        const cur = byPlayer.get(r.player_profile_id) ?? { sum: 0, count: 0 };
+        cur.sum += Number(r.rating);
+        cur.count += 1;
+        byPlayer.set(r.player_profile_id, cur);
+      }
+      const candidates = Array.from(byPlayer.entries())
+        .filter(([, v]) => v.count >= 3)
+        .map(([id, v]) => ({ id, avg: v.sum / v.count, matches: v.count }))
+        .sort((a, b) => b.avg - a.avg)
+        .slice(0, 3);
+      if (candidates.length === 0) { setTopPlayers([]); setLoading(false); return; }
+      const { data: profiles } = await supabase
+        .from('player_profiles')
+        .select('id, full_name')
+        .in('id', candidates.map(c => c.id));
+      if (cancelled) return;
+      const nameById = new Map<string, string>();
+      for (const p of profiles ?? []) nameById.set(p.id, p.full_name);
+      setTopPlayers(candidates.map(c => ({ name: nameById.get(c.id) ?? '', rating: Number(c.avg.toFixed(2)), matches: c.matches })));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedClubId, seasonId]);
+
+  if (standings.length === 0) return null;
+
+  return (
+    <div className="stat-card space-y-3">
+      <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+        <Eye className="h-4 w-4 text-tactical" /> {t('seasonRecap.section.per_club_lens', { defaultValue: 'Pelo lado do clube' })}
+      </h3>
+      <select
+        value={selectedClubId}
+        onChange={(e) => setSelectedClubId(e.target.value)}
+        className="w-full sm:w-1/2 bg-muted/30 rounded px-2 py-1.5 text-sm border border-border"
+      >
+        <option value="">{t('seasonRecap.section.per_club_select', { defaultValue: 'Selecionar clube...' })}</option>
+        {standings.map(s => (
+          <option key={s.clubId} value={s.clubId}>{s.name}</option>
+        ))}
+      </select>
+
+      {selectedClubId && clubInStandings && (
+        <div className="space-y-2">
+          {/* Final position + record */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <div className="bg-muted/30 rounded p-2">
+              <p className="text-[11px] text-muted-foreground">{t('seasonRecap.section.position', { defaultValue: 'Posição final' })}</p>
+              <p className="font-display font-bold text-xl">{(standings.findIndex(s => s.clubId === selectedClubId) + 1) || '?'}º</p>
+            </div>
+            <div className="bg-muted/30 rounded p-2">
+              <p className="text-[11px] text-muted-foreground">{t('seasonRecap.section.points', { defaultValue: 'Pontos' })}</p>
+              <p className="font-display font-bold text-xl">{clubInStandings.points}</p>
+            </div>
+            <div className="bg-muted/30 rounded p-2">
+              <p className="text-[11px] text-muted-foreground">V / E / D</p>
+              <p className="font-display font-bold text-sm">{clubInStandings.won}/{clubInStandings.drawn}/{clubInStandings.lost}</p>
+            </div>
+            <div className="bg-muted/30 rounded p-2">
+              <p className="text-[11px] text-muted-foreground">{t('seasonRecap.section.goal_balance', { defaultValue: 'Saldo' })}</p>
+              <p className="font-display font-bold text-sm">{clubInStandings.goalsFor}-{clubInStandings.goalsAgainst}</p>
+            </div>
+          </div>
+
+          {/* Top rated players from this club */}
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">{t('seasonRecap.section.top_rated_players', { defaultValue: 'Top jogadores por nota média' })}</p>
+            {loading ? (
+              <div className="flex items-center justify-center py-2"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+            ) : topPlayers.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">—</p>
+            ) : (
+              <ol className="space-y-1">
+                {topPlayers.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between bg-muted/30 rounded px-2 py-1.5 text-sm">
+                    <span className="font-display font-semibold truncate">{i + 1}. {p.name}</span>
+                    <span className="font-mono text-pitch">{p.rating.toFixed(1)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

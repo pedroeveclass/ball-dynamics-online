@@ -1,4 +1,9 @@
 {
+  "preMatch": {
+    "title": "Pré-jogo",
+    "h2h": "Últimos confrontos",
+    "h2h_empty": "Primeiro encontro entre os clubes."
+  },
   "retirement": {
     "section": {
       "title": "Carreira",
