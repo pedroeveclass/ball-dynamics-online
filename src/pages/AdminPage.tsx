@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Flag, Loader2, Trash2, X } from 'lucide-react';
 
 // ─── Types ───
 interface Club { id: string; name: string; short_name: string; primary_color: string; secondary_color: string; city: string; league_id: string | null; is_bot_managed: boolean; manager_profile_id: string; }
@@ -66,12 +68,13 @@ export default function AdminPage() {
       <h1 className="text-3xl font-bold font-display mb-6">{t('title')}</h1>
 
       <Tabs defaultValue="liga" className="space-y-4">
-        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+        <TabsList className="grid grid-cols-6 w-full max-w-3xl">
           <TabsTrigger value="liga">{t('tabs.league')}</TabsTrigger>
           <TabsTrigger value="times">{t('tabs.clubs')}</TabsTrigger>
           <TabsTrigger value="financas">{t('tabs.finances')}</TabsTrigger>
           <TabsTrigger value="partidas">{t('tabs.matches')}</TabsTrigger>
           <TabsTrigger value="jogadores">{t('tabs.players')}</TabsTrigger>
+          <TabsTrigger value="reportes">{t('tabs.reports', { defaultValue: 'Reportes' })}</TabsTrigger>
         </TabsList>
 
         {/* ═══ LIGA TAB ═══ */}
@@ -97,6 +100,11 @@ export default function AdminPage() {
         {/* ═══ JOGADORES TAB ═══ */}
         <TabsContent value="jogadores">
           <JogadoresTab clubs={clubs} />
+        </TabsContent>
+
+        {/* ═══ REPORTES TAB ═══ */}
+        <TabsContent value="reportes">
+          <ReportsTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -936,5 +944,263 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// REPORTES TAB — image-report queue moderation
+// ═══════════════════════════════════════════════════
+
+interface ReportRow {
+  id: string;
+  reporter_user_id: string;
+  reported_player_profile_id: string;
+  reported_purchase_id: string | null;
+  reason: string | null;
+  status: string;
+  created_at: string;
+  player_name: string;
+  player_user_id: string | null;
+  reporter_email: string | null;
+  bg_image_url: string | null;
+  bg_variant: string | null;
+}
+
+function ReportsTab() {
+  const { t } = useTranslation('admin');
+  const { current: lang } = useAppLanguage();
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'all'>('pending');
+  const [actionTarget, setActionTarget] = useState<{ id: string; action: 'remove' | 'dismiss'; playerName: string; imageUrl: string | null } | null>(null);
+  const [reviewerNote, setReviewerNote] = useState('');
+
+  useEffect(() => { loadReports(); }, [statusFilter]);
+
+  async function loadReports() {
+    setLoading(true);
+    try {
+      // Direct table query — admin RLS policy on image_reports allows full
+      // read. We then resolve player names + reporter emails via secondary
+      // queries since the report only carries IDs.
+      let query = (supabase as any).from('image_reports').select('*').order('created_at', { ascending: false });
+      if (statusFilter === 'pending') query = query.eq('status', 'pending');
+      const { data: rows, error } = await query.limit(100);
+      if (error) { toast.error(error.message); return; }
+      const list = (rows || []) as any[];
+      if (list.length === 0) { setReports([]); return; }
+
+      const playerIds = [...new Set(list.map(r => r.reported_player_profile_id))];
+      const reporterIds = [...new Set(list.map(r => r.reporter_user_id))];
+      const purchaseIds = [...new Set(list.map(r => r.reported_purchase_id).filter(Boolean))];
+
+      const [playersRes, reportersRes, purchasesRes] = await Promise.all([
+        (supabase as any).from('player_profiles').select('id, full_name, user_id').in('id', playerIds),
+        (supabase as any).from('profiles').select('id, email').in('id', reporterIds),
+        purchaseIds.length
+          ? (supabase as any).from('store_purchases').select('id, bg_image_url, bg_variant').in('id', purchaseIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const playerById = new Map((playersRes.data || []).map((p: any) => [p.id, p]));
+      const reporterById = new Map((reportersRes.data || []).map((r: any) => [r.id, r]));
+      const purchaseById = new Map((purchasesRes.data || []).map((p: any) => [p.id, p]));
+
+      setReports(list.map(r => {
+        const player = playerById.get(r.reported_player_profile_id) as any;
+        const reporter = reporterById.get(r.reporter_user_id) as any;
+        const purchase = r.reported_purchase_id ? purchaseById.get(r.reported_purchase_id) as any : null;
+        return {
+          id: r.id,
+          reporter_user_id: r.reporter_user_id,
+          reported_player_profile_id: r.reported_player_profile_id,
+          reported_purchase_id: r.reported_purchase_id,
+          reason: r.reason,
+          status: r.status,
+          created_at: r.created_at,
+          player_name: player?.full_name || r.reported_player_profile_id.slice(0, 8),
+          player_user_id: player?.user_id ?? null,
+          reporter_email: reporter?.email ?? null,
+          bg_image_url: purchase?.bg_image_url ?? null,
+          bg_variant: purchase?.bg_variant ?? null,
+        };
+      }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openAction(report: ReportRow, action: 'remove' | 'dismiss') {
+    setActionTarget({ id: report.id, action, playerName: report.player_name, imageUrl: report.bg_image_url });
+    setReviewerNote('');
+  }
+
+  async function confirmAction() {
+    if (!actionTarget) return;
+    setActing(true);
+    try {
+      const { data, error } = await (supabase as any).rpc('admin_action_image_report', {
+        p_report_id: actionTarget.id,
+        p_action: actionTarget.action,
+        p_note: reviewerNote.trim() || null,
+      });
+      if (error) { toast.error(error.message); return; }
+      const result = data as any;
+      if (result?.error) { toast.error(result.error); return; }
+
+      // For 'remove' actions also delete the underlying file from storage
+      // so the inappropriate content is purged. Admin storage RLS policy
+      // (added in the same migration) grants delete on this bucket.
+      if (actionTarget.action === 'remove' && actionTarget.imageUrl) {
+        const path = extractStoragePath(actionTarget.imageUrl);
+        if (path) {
+          const { error: rmErr } = await supabase.storage.from('player-backgrounds').remove([path]);
+          if (rmErr) console.warn('Storage delete failed:', rmErr.message);
+        }
+      }
+
+      toast.success(result?.message || 'OK');
+      setActionTarget(null);
+      loadReports();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro');
+    } finally {
+      setActing(false);
+    }
+  }
+
+  // Pulls the storage object path out of a public URL like
+  //   https://<ref>.supabase.co/storage/v1/object/public/player-backgrounds/<uid>/<file>.png
+  // returning '<uid>/<file>.png'.
+  function extractStoragePath(publicUrl: string): string | null {
+    const marker = '/player-backgrounds/';
+    const i = publicUrl.indexOf(marker);
+    return i === -1 ? null : publicUrl.slice(i + marker.length);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Flag className="h-5 w-5" />
+          {t('reports.title', { defaultValue: 'Reportes de imagem' })}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">{t('reports.filter_pending', { defaultValue: 'Pendentes' })}</SelectItem>
+              <SelectItem value="all">{t('reports.filter_all', { defaultValue: 'Todos' })}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={loadReports} disabled={loading}>
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : t('reports.refresh', { defaultValue: 'Atualizar' })}
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : reports.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            {t('reports.empty', { defaultValue: 'Nenhum reporte encontrado.' })}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {reports.map(r => (
+              <div key={r.id} className="border border-border rounded-lg p-3 space-y-2">
+                <div className="flex items-start gap-3">
+                  {r.bg_image_url ? (
+                    <img
+                      src={r.bg_image_url}
+                      alt="background"
+                      className="w-32 h-20 object-cover rounded border border-border shrink-0"
+                    />
+                  ) : (
+                    <div className="w-32 h-20 bg-muted rounded border border-border shrink-0 flex items-center justify-center text-[10px] text-muted-foreground">
+                      {t('reports.no_image', { defaultValue: 'Sem imagem' })}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-display font-bold text-sm">{r.player_name}</p>
+                      <Badge variant={r.status === 'pending' ? 'destructive' : 'outline'} className="text-[10px]">
+                        {r.status}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {t('reports.reported_by', { defaultValue: 'Reportado por' })}: {r.reporter_email || r.reporter_user_id.slice(0, 8)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatDate(r.created_at, lang, 'datetime_short')}
+                    </p>
+                    {r.reason && (
+                      <p className="text-xs mt-1 italic text-muted-foreground bg-muted/40 p-1.5 rounded">
+                        "{r.reason}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {r.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="destructive" onClick={() => openAction(r, 'remove')}>
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      {t('reports.remove', { defaultValue: 'Remover imagem' })}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => openAction(r, 'dismiss')}>
+                      <X className="h-3 w-3 mr-1" />
+                      {t('reports.dismiss', { defaultValue: 'Descartar reporte' })}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      {/* Action confirmation dialog */}
+      <Dialog open={!!actionTarget} onOpenChange={(open) => { if (!acting && !open) setActionTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {actionTarget?.action === 'remove'
+                ? t('reports.confirm_remove_title', { defaultValue: 'Remover imagem?' })
+                : t('reports.confirm_dismiss_title', { defaultValue: 'Descartar reporte?' })}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {actionTarget?.action === 'remove'
+              ? t('reports.confirm_remove_body', { defaultValue: 'A imagem de fundo de {{name}} será desativada e o arquivo removido permanentemente. Reportes pendentes do mesmo jogador serão fechados automaticamente.', name: actionTarget?.playerName ?? '' })
+              : t('reports.confirm_dismiss_body', { defaultValue: 'Marca o reporte como descartado sem afetar o jogador.' })}
+          </p>
+          <Textarea
+            value={reviewerNote}
+            onChange={e => setReviewerNote(e.target.value.slice(0, 500))}
+            placeholder={t('reports.note_placeholder', { defaultValue: 'Nota interna (opcional)...' })}
+            rows={2}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActionTarget(null)} disabled={acting}>
+              {t('reports.cancel', { defaultValue: 'Cancelar' })}
+            </Button>
+            <Button
+              variant={actionTarget?.action === 'remove' ? 'destructive' : 'default'}
+              onClick={confirmAction}
+              disabled={acting}
+            >
+              {acting ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+              {actionTarget?.action === 'remove'
+                ? t('reports.confirm_remove', { defaultValue: 'Remover' })
+                : t('reports.confirm_dismiss', { defaultValue: 'Descartar' })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
