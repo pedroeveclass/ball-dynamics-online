@@ -56,7 +56,15 @@
       "top_moments": "Top 5 Moments",
       "match_chronicle_open": "Read full chronicle",
       "final_table": "Final Standings",
-      "view_hall_of_fame": "Open Hall of Fame"
+      "view_hall_of_fame": "Open Hall of Fame",
+      "moment_type": {
+        "rout": "Rout",
+        "comeback": "Comeback",
+        "late_winner": "Late winner",
+        "jogao": "Thriller",
+        "red_card_decided": "Card-decided",
+        "penalty_decided": "Penalty-decided"
+      }
     }
   },
   "weeklyDigest": {

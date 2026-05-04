@@ -118,7 +118,9 @@ export function SeasonRecapView({ seasonId, seasonNumber }: { seasonId: string; 
               <li key={i} className="text-sm">
                 <span className="text-xs text-muted-foreground mr-1">{t('seasonRecap.section.round_label', { n: m.roundNumber })}:</span>
                 <span className="font-display font-semibold">{m.homeName} {m.homeGoals}-{m.awayGoals} {m.awayName}</span>
-                <span className="text-xs text-muted-foreground ml-2">[{m.type}]</span>
+                <span className="text-[10px] uppercase tracking-wide bg-tactical/15 text-tactical px-1.5 py-0.5 rounded ml-2">
+                  {t(`seasonRecap.section.moment_type.${m.type}`, { defaultValue: m.type })}
+                </span>
                 <Link to={`/match/${m.matchId}/replay`} className="text-xs text-pitch hover:underline ml-2">
                   {t('seasonRecap.section.match_chronicle_open')}
                 </Link>

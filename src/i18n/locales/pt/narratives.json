@@ -56,7 +56,15 @@
       "top_moments": "Top 5 Momentos",
       "match_chronicle_open": "Ler crônica completa",
       "final_table": "Classificação Final",
-      "view_hall_of_fame": "Ver Hall da Fama"
+      "view_hall_of_fame": "Ver Hall da Fama",
+      "moment_type": {
+        "rout": "Goleada",
+        "comeback": "Virada",
+        "late_winner": "Gol salvador",
+        "jogao": "Jogão",
+        "red_card_decided": "Decidido no cartão",
+        "penalty_decided": "Decidido nos pênaltis"
+      }
     }
   },
   "weeklyDigest": {
