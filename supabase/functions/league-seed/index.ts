@@ -747,6 +747,25 @@ Deno.serve(async (req) => {
         roundFixtures.get(f.round)!.push({ home: f.home, away: f.away });
       }
 
+      // Mirror the schedule of any sibling league running the same game year
+      // so divisions kick off on the same dates. Falls back to a from-scratch
+      // Wed/Sun schedule when this is the first league for the year.
+      const { data: siblingRounds } = await supabase
+        .from('league_rounds')
+        .select('round_number, scheduled_at, season_id, league_seasons!inner(season_number, league_id)')
+        .eq('league_seasons.season_number', gameYear)
+        .neq('league_seasons.league_id', leagueId)
+        .order('round_number', { ascending: true });
+
+      const siblingDateByRound = new Map<number, string>();
+      for (const sr of (siblingRounds ?? [])) {
+        if (!siblingDateByRound.has((sr as any).round_number)) {
+          siblingDateByRound.set((sr as any).round_number, (sr as any).scheduled_at);
+        }
+      }
+
+      // Fallback schedule if there's no sibling: snap to next Wed at 21h BRT
+      // and alternate Wed/Sun.
       const startDate = new Date(body.start_date || Date.now());
       const dow = startDate.getUTCDay();
       const daysUntilWed = (3 - dow + 7) % 7 || 7;
@@ -756,15 +775,22 @@ Deno.serve(async (req) => {
 
       let currentWed = new Date(firstWednesday);
       for (let roundNum = 1; roundNum <= roundFixtures.size; roundNum++) {
-        const isOdd = roundNum % 2 === 1;
-        const roundDate = new Date(currentWed);
-        if (!isOdd) roundDate.setUTCDate(roundDate.getUTCDate() + 4);
-        if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7);
+        let roundDateIso: string;
+        const sibling = siblingDateByRound.get(roundNum);
+        if (sibling) {
+          roundDateIso = sibling;
+        } else {
+          const isOdd = roundNum % 2 === 1;
+          const fallbackDate = new Date(currentWed);
+          if (!isOdd) fallbackDate.setUTCDate(fallbackDate.getUTCDate() + 4);
+          if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7);
+          roundDateIso = fallbackDate.toISOString();
+        }
 
         const { data: round } = await supabase.from('league_rounds').insert({
           season_id: season.id,
           round_number: roundNum,
-          scheduled_at: roundDate.toISOString(),
+          scheduled_at: roundDateIso,
           status: 'scheduled',
         }).select('id').single();
         if (!round) continue;
@@ -779,7 +805,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      console.log(`[SEED] Created Liga Brasileira - Série B with ${botClubIds.length} bot clubs`);
+      console.log(`[SEED] Created Liga Brasileira - Série B with ${botClubIds.length} bot clubs (game year ${gameYear})`);
 
       return new Response(JSON.stringify({
         status: 'created',
@@ -885,7 +911,24 @@ Deno.serve(async (req) => {
         roundFixtures.get(f.round)!.push({ home: f.home, away: f.away });
       }
 
-      // Schedule: round 1 at nextStartAt (snapped to next Wed at 21h BRT),
+      // If a sibling league is already on the same game year (N+1), mirror
+      // its round dates so divisions stay synchronized. Otherwise compute
+      // a fresh Wed/Sun schedule starting at nextStartAt.
+      const { data: siblingRounds } = await supabase
+        .from('league_rounds')
+        .select('round_number, scheduled_at, season_id, league_seasons!inner(season_number, league_id)')
+        .eq('league_seasons.season_number', nextSeasonNumber)
+        .neq('league_seasons.league_id', leagueId)
+        .order('round_number', { ascending: true });
+
+      const siblingDateByRound = new Map<number, string>();
+      for (const sr of (siblingRounds ?? [])) {
+        if (!siblingDateByRound.has((sr as any).round_number)) {
+          siblingDateByRound.set((sr as any).round_number, (sr as any).scheduled_at);
+        }
+      }
+
+      // Fallback: round 1 at nextStartAt (snapped to next Wed at 21h BRT),
       // alternating Wed/Sun (Sun = Wed + 4d).
       const startWed = new Date(nextStartAt);
       const dow = startWed.getUTCDay();
@@ -896,17 +939,24 @@ Deno.serve(async (req) => {
 
       let currentWed = new Date(startWed);
       for (let roundNum = 1; roundNum <= roundFixtures.size; roundNum++) {
-        const isOdd = roundNum % 2 === 1;
-        const roundDate = new Date(currentWed);
-        if (!isOdd) roundDate.setUTCDate(roundDate.getUTCDate() + 4); // Sun
-        if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7); // advance after Sun
+        let roundDateIso: string;
+        const sibling = siblingDateByRound.get(roundNum);
+        if (sibling) {
+          roundDateIso = sibling;
+        } else {
+          const isOdd = roundNum % 2 === 1;
+          const fallbackDate = new Date(currentWed);
+          if (!isOdd) fallbackDate.setUTCDate(fallbackDate.getUTCDate() + 4); // Sun
+          if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7); // advance after Sun
+          roundDateIso = fallbackDate.toISOString();
+        }
 
         const { data: round } = await supabase
           .from('league_rounds')
           .insert({
             season_id: newSeason.id,
             round_number: roundNum,
-            scheduled_at: roundDate.toISOString(),
+            scheduled_at: roundDateIso,
             status: 'scheduled',
           })
           .select('id')

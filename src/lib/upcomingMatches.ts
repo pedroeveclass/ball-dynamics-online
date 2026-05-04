@@ -44,12 +44,16 @@ export async function getNextClubMatch(clubId: string): Promise<NextClubMatch | 
       match_id,
       home_club_id,
       away_club_id,
-      league_rounds!inner(round_number, scheduled_at),
+      league_rounds!inner(round_number, scheduled_at, status),
       home_club:clubs!league_matches_home_club_id_fkey(id, name, short_name, primary_color, secondary_color, crest_url),
       away_club:clubs!league_matches_away_club_id_fkey(id, name, short_name, primary_color, secondary_color, crest_url)
     `)
     .or(`home_club_id.eq.${clubId},away_club_id.eq.${clubId}`)
     .gte('league_rounds.scheduled_at', nowIso)
+    // Skip rounds whose season was force-finished (manual / test flows leave
+    // future-dated rounds with status='finished' that would otherwise still
+    // pass the scheduled_at filter and be picked as the "next" match).
+    .eq('league_rounds.status', 'scheduled')
     .order('scheduled_at', { foreignTable: 'league_rounds', ascending: true })
     .limit(5);
 

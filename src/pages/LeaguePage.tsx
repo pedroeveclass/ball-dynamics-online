@@ -791,27 +791,29 @@ export default function LeaguePage() {
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-tactical" />
             {allLeagues.length > 1 ? (
-              <select
-                value={leagueId ?? ''}
-                onChange={(e) => {
-                  const next = new URLSearchParams(searchParams);
-                  if (e.target.value) next.set('league', e.target.value);
-                  else next.delete('league');
-                  // Reset season + tab when switching league — they belong to the previous one.
-                  next.delete('season');
-                  next.delete('tab');
-                  next.delete('round');
-                  setSearchParams(next, { replace: false });
-                }}
-                className="font-display text-2xl font-bold bg-transparent border-none cursor-pointer hover:text-tactical transition-colors focus:outline-none"
-                title={t('league_picker_label', { defaultValue: 'Trocar de liga' })}
-              >
-                {allLeagues.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {formatLeagueName(l.name)}
-                  </option>
-                ))}
-              </select>
+              <div className="relative inline-flex items-center">
+                <select
+                  value={leagueId ?? ''}
+                  onChange={(e) => {
+                    const next = new URLSearchParams(searchParams);
+                    if (e.target.value) next.set('league', e.target.value);
+                    else next.delete('league');
+                    next.delete('season');
+                    next.delete('tab');
+                    next.delete('round');
+                    setSearchParams(next, { replace: false });
+                  }}
+                  className="appearance-none pr-7 pl-0 font-display text-2xl font-bold bg-transparent border-none cursor-pointer hover:text-tactical transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-tactical/40 rounded"
+                  title={t('league_picker_label', { defaultValue: 'Trocar de liga' })}
+                >
+                  {allLeagues.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {formatLeagueName(l.name)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="h-4 w-4 text-muted-foreground pointer-events-none absolute right-1" />
+              </div>
             ) : (
               <h1 className="font-display text-2xl font-bold">{leagueName ? formatLeagueName(leagueName) : t('title_fallback')}</h1>
             )}
@@ -822,30 +824,31 @@ export default function LeaguePage() {
               {t('hallOfFame.title')}
             </Link>
             {allSeasons.length > 1 ? (
-              <select
-                value={seasonId ?? ''}
-                onChange={(e) => {
-                  const next = new URLSearchParams(searchParams);
-                  if (e.target.value) {
-                    next.set('season', e.target.value);
-                  } else {
-                    next.delete('season');
-                  }
-                  // Clear tab so the season change re-applies the default
-                  // (recap if finished, standings otherwise).
-                  next.delete('tab');
-                  setSearchParams(next, { replace: false });
-                }}
-                className="text-sm bg-muted/40 border border-border rounded px-2 py-1 font-display font-semibold cursor-pointer hover:bg-muted/60 transition-colors"
-                title={t('season_picker_label', { defaultValue: 'Trocar de temporada' })}
-              >
-                {allSeasons.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {t('season', { n: s.season_number })}
-                    {s.status === 'finished' ? ' ✓' : s.status === 'scheduled' ? ' ⏳' : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="relative inline-flex items-center">
+                <select
+                  value={seasonId ?? ''}
+                  onChange={(e) => {
+                    const next = new URLSearchParams(searchParams);
+                    if (e.target.value) {
+                      next.set('season', e.target.value);
+                    } else {
+                      next.delete('season');
+                    }
+                    next.delete('tab');
+                    setSearchParams(next, { replace: false });
+                  }}
+                  className="appearance-none text-sm bg-muted/40 border border-border rounded px-2 pr-7 py-1 font-display font-semibold cursor-pointer hover:bg-muted/60 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-tactical/40"
+                  title={t('season_picker_label', { defaultValue: 'Trocar de temporada' })}
+                >
+                  {allSeasons.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {t('season', { n: s.season_number })}
+                      {s.status === 'finished' ? ' ✓' : s.status === 'scheduled' ? ' ⏳' : ''}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground pointer-events-none absolute right-1.5" />
+              </div>
             ) : (
               <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
             )}
