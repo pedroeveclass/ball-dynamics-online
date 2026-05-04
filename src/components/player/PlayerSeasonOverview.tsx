@@ -399,7 +399,7 @@ export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProf
 
         {mode === 'movement' && (
           <>
-            <PitchHeatmap samples={aggregate.samples} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+            <PitchHeatmap samples={aggregate.samples} attackingDirection="ltr" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
             <p className="text-[10px] text-muted-foreground mt-1">
               {t('stats.match.samples_season_summary', { count: aggregate.samples.length, matches: aggregate.gp })}
             </p>
@@ -424,7 +424,7 @@ export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProf
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerPassMap passes={filteredPasses} attackingDirection="ltr" filter="all" className="rounded-md overflow-hidden" />
+              <PlayerPassMap passes={filteredPasses} attackingDirection="ltr" filter="all" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
             )}
             <p className="text-[10px] text-muted-foreground mt-1">
               {t('stats.match.pass_legend')}
@@ -438,7 +438,7 @@ export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProf
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerShotMap shots={shotsToRender} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+              <PlayerShotMap shots={shotsToRender} attackingDirection="ltr" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
             )}
             <ShotMapLegend />
             {hasSynthetic.shots && (
@@ -452,7 +452,7 @@ export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProf
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerDefensiveMap events={defensiveToRender} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+              <PlayerDefensiveMap events={defensiveToRender} attackingDirection="ltr" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
             )}
             <DefensiveMapLegend />
             {hasSynthetic.defensive && (
@@ -466,7 +466,7 @@ export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProf
             {eventsLoading ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <PlayerDribbleMap dribbles={dribblesToRender} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+              <PlayerDribbleMap dribbles={dribblesToRender} attackingDirection="ltr" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
             )}
             {hasSynthetic.dribble && (
               <p className="text-[10px] text-muted-foreground mt-1">{t('stats.match.synthetic_note_season')}</p>
@@ -476,7 +476,7 @@ export function PlayerSeasonOverview({ playerProfileId, seasonId }: { playerProf
 
         {mode === 'running' && (
           <>
-            <PlayerRunMap samples={aggregate.samples} attackingDirection="ltr" className="rounded-md overflow-hidden" />
+            <PlayerRunMap samples={aggregate.samples} attackingDirection="ltr" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
             <p className="text-[10px] text-muted-foreground mt-1">
               {t('stats.match.running_summary', { distance: aggregate.distanceKm.toFixed(2) })}
             </p>
