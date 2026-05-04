@@ -129,7 +129,6 @@ export function PlayerAwardsBlock({ playerProfileId, variant = 'full', className
                           className="text-[9px] uppercase tracking-wide font-display font-bold text-muted-foreground bg-muted rounded px-1.5 py-0.5"
                         >
                           {t('trophyRoom.round_group', {
-                            count: g.rounds.length,
                             season: g.season,
                             rounds: g.rounds.join(', '),
                           })}
