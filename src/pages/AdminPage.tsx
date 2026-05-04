@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Flag, Loader2, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 // ─── Types ───
 interface Club { id: string; name: string; short_name: string; primary_color: string; secondary_color: string; city: string; league_id: string | null; is_bot_managed: boolean; manager_profile_id: string; }
@@ -1143,11 +1144,19 @@ function ReportsTab() {
               <div key={r.id} className="border border-border rounded-lg p-3 space-y-2">
                 <div className="flex items-start gap-3">
                   {r.bg_image_url ? (
-                    <img
-                      src={r.bg_image_url}
-                      alt="background"
-                      className="w-32 h-20 object-cover rounded border border-border shrink-0"
-                    />
+                    <a
+                      href={r.bg_image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 hover:opacity-80 transition-opacity"
+                      title="Abrir em tamanho real"
+                    >
+                      <img
+                        src={r.bg_image_url}
+                        alt="background"
+                        className="w-32 h-20 object-cover rounded border border-border"
+                      />
+                    </a>
                   ) : (
                     <div className="w-32 h-20 bg-muted rounded border border-border shrink-0 flex items-center justify-center text-[10px] text-muted-foreground">
                       {t('reports.no_image', { defaultValue: 'Sem imagem' })}
@@ -1155,7 +1164,14 @@ function ReportsTab() {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-display font-bold text-sm">{r.player_name}</p>
+                      <Link
+                        to={`/player/${r.reported_player_profile_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-display font-bold text-sm hover:underline hover:text-tactical transition-colors"
+                      >
+                        {r.player_name} ↗
+                      </Link>
                       <Badge variant={r.status === 'pending' ? 'destructive' : 'outline'} className="text-[10px]">
                         {r.status}
                       </Badge>
