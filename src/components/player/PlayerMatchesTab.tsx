@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Loader2, ChevronDown, ChevronRight,
+  Goal, TrendingUp, Shield, ShieldAlert, Footprints, Crosshair,
+} from 'lucide-react';
 import { ClubCrest } from '@/components/ClubCrest';
 import { RatingChip } from './RatingChip';
 import { PitchHeatmap } from './PitchHeatmap';
@@ -13,6 +16,7 @@ import {
   type PassDatum, type ShotDatum, type DefensiveDatum, type DribbleDatum,
 } from './PlayerActionMap';
 import { isLongPass, isKeyPass, totalDistanceKm } from './statsHelpers';
+import { extrasForPosition, type PositionExtra } from '@/lib/playerStats';
 
 interface MatchStatRow {
   id: string;
@@ -29,9 +33,11 @@ interface MatchStatRow {
   tackles: number;
   interceptions: number;
   fouls_committed: number;
+  offsides: number;
   yellow_cards: number;
   red_cards: number;
   gk_saves: number;
+  gk_penalties_saved: number;
   goals_conceded: number;
   clean_sheet: boolean;
   position_samples: Array<{ x: number; y: number }> | null;
@@ -182,6 +188,78 @@ function useMatchActionEvents(matchId: string, participantId: string) {
 }
 
 type PassFilter = 'all' | 'completed' | 'failed' | 'key' | 'long';
+
+function StatCell({ label, value, icon, color }: { label: string; value: string | number; icon?: React.ReactNode; color?: string }) {
+  return (
+    <div className="bg-muted/30 rounded-lg p-2.5 text-center space-y-0.5">
+      <div className="flex items-center justify-center gap-1 text-muted-foreground">
+        {icon}
+        <span className="text-[9px] uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={`font-display text-xl font-extrabold ${color || ''}`}>{value}</p>
+    </div>
+  );
+}
+
+function formatAccuracy(completed: number, attempted: number): string {
+  if (attempted <= 0) return '—';
+  return `${Math.round((completed / attempted) * 100)}%`;
+}
+
+function MatchStatsGrid({ row }: { row: MatchStatRow }) {
+  const { t: tCareer } = useTranslation('career_stats');
+  const extras = extrasForPosition(row.position);
+
+  const renderExtra = (key: PositionExtra) => {
+    const label = tCareer(`extras.${key}`);
+    switch (key) {
+      case 'clean_sheets':
+        return <StatCell key={key} label={label} value={row.clean_sheet ? 1 : 0} icon={<Shield className="h-3.5 w-3.5" />} color="text-pitch" />;
+      case 'goals_conceded':
+        return <StatCell key={key} label={label} value={row.goals_conceded} icon={<ShieldAlert className="h-3.5 w-3.5" />} color="text-destructive" />;
+      case 'gk_saves':
+        return <StatCell key={key} label={label} value={row.gk_saves} icon={<Shield className="h-3.5 w-3.5" />} />;
+      case 'gk_penalties_saved':
+        return <StatCell key={key} label={label} value={row.gk_penalties_saved} icon={<Shield className="h-3.5 w-3.5" />} />;
+      case 'tackles':
+        return <StatCell key={key} label={label} value={row.tackles} icon={<Footprints className="h-3.5 w-3.5" />} />;
+      case 'interceptions':
+        return <StatCell key={key} label={label} value={row.interceptions} icon={<ShieldAlert className="h-3.5 w-3.5" />} />;
+      case 'passes_completed':
+        return <StatCell key={key} label={label} value={row.passes_completed} icon={<TrendingUp className="h-3.5 w-3.5" />} />;
+      case 'pass_accuracy':
+        return <StatCell key={key} label={label} value={formatAccuracy(row.passes_completed, row.passes_attempted)} icon={<TrendingUp className="h-3.5 w-3.5" />} />;
+      case 'big_chances_created':
+        return <StatCell key={key} label={label} value={row.assists} icon={<TrendingUp className="h-3.5 w-3.5" />} color="text-blue-400" />;
+      case 'shots':
+        return <StatCell key={key} label={label} value={row.shots} icon={<Crosshair className="h-3.5 w-3.5" />} />;
+      case 'shots_on_target':
+        return <StatCell key={key} label={label} value={row.shots_on_target} icon={<Crosshair className="h-3.5 w-3.5" />} />;
+      case 'shot_accuracy':
+        return <StatCell key={key} label={label} value={formatAccuracy(row.shots_on_target, row.shots)} icon={<Crosshair className="h-3.5 w-3.5" />} />;
+      case 'offsides':
+        return <StatCell key={key} label={label} value={row.offsides} icon={<Footprints className="h-3.5 w-3.5" />} color="text-yellow-500" />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-3 pt-1">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <StatCell label={tCareer('common.goals')} value={row.goals} icon={<Goal className="h-3.5 w-3.5" />} color="text-pitch" />
+        <StatCell label={tCareer('common.assists')} value={row.assists} icon={<TrendingUp className="h-3.5 w-3.5" />} color="text-blue-400" />
+        <StatCell label={tCareer('common.yellow_cards')} value={row.yellow_cards} icon={<div className="w-2.5 h-3.5 rounded-sm bg-yellow-400" />} color="text-yellow-500" />
+        <StatCell label={tCareer('common.red_cards')} value={row.red_cards} icon={<div className="w-2.5 h-3.5 rounded-sm bg-red-500" />} color="text-destructive" />
+      </div>
+      {extras.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-border/50">
+          {extras.map(renderExtra)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: MatchDetailPanelProps) {
   const { t } = useTranslation('public_player');
@@ -338,6 +416,8 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           </p>
         </>
       )}
+
+      <MatchStatsGrid row={row} />
     </div>
   );
 }
@@ -355,8 +435,8 @@ export function PlayerMatchesTab({ playerProfileId, seasonId }: { playerProfileI
         .from('player_match_stats')
         .select(`
           id, match_id, participant_id, club_id, rating, position, goals, assists, shots, shots_on_target,
-          passes_completed, passes_attempted, tackles, interceptions, fouls_committed,
-          yellow_cards, red_cards, gk_saves, goals_conceded, clean_sheet, position_samples
+          passes_completed, passes_attempted, tackles, interceptions, fouls_committed, offsides,
+          yellow_cards, red_cards, gk_saves, gk_penalties_saved, goals_conceded, clean_sheet, position_samples
         `)
         .eq('player_profile_id', playerProfileId);
       if (seasonId) q = q.eq('season_id', seasonId);
