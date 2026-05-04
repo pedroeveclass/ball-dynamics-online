@@ -209,10 +209,14 @@ export function tintJersey(
   const s = normalizeHex(secondary);
   const shadow = darken(p, 0.09);
   const usePattern = pattern && pattern !== 'solid';
+  // When a pattern is active, extend the pattern to BOTH sleeves and
+  // shadow paths so the secondary/shadow color doesn't leak through
+  // as a darker stripe alongside the new pattern. Solid kits keep
+  // the original look (sleeves = secondary, shadow = darken(primary)).
   const tinted = rawSvg
     .replace(/#D5D5D5/gi, usePattern ? 'url(#kitPattern)' : p)
-    .replace(/#ADADAE/gi, s)
-    .replace(/#BEBDBC/gi, shadow);
+    .replace(/#ADADAE/gi, usePattern ? 'url(#kitPattern)' : s)
+    .replace(/#BEBDBC/gi, usePattern ? 'url(#kitPattern)' : shadow);
   if (!usePattern) return tinted;
   return `<defs>${buildKitPatternDefs(pattern!, p, s)}</defs>${tinted}`;
 }
@@ -301,10 +305,10 @@ function buildKitPatternDefs(pattern: string, primary: string, stripe: string): 
     case 'stripe_horizontal_unique':
       return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY}" x2="${BX}" y2="${BY + BH}">
         <stop offset="0" stop-color="${primary}"/>
-        <stop offset="0.45" stop-color="${primary}"/>
-        <stop offset="0.45" stop-color="${stripe}"/>
-        <stop offset="0.55" stop-color="${stripe}"/>
-        <stop offset="0.55" stop-color="${primary}"/>
+        <stop offset="0.50" stop-color="${primary}"/>
+        <stop offset="0.50" stop-color="${stripe}"/>
+        <stop offset="0.60" stop-color="${stripe}"/>
+        <stop offset="0.60" stop-color="${primary}"/>
         <stop offset="1" stop-color="${primary}"/>
       </linearGradient>`;
     case 'stripe_diagonal_unique':
@@ -587,10 +591,10 @@ function captainBandSvg(): string {
 // same coordinates so the position is visible while iterating.
 function crestAndNumberSvg(opts: ComposeOptions): string {
   const crestX    = 430;
-  const crestY    = 505;
+  const crestY    = 460;
   const crestSize = 80;
   const numberX    = 564;
-  const numberY    = 565;
+  const numberY    = 520;
   const numberSize = 50;
 
   const parts: string[] = [];
