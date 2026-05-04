@@ -194,14 +194,132 @@ function filterPathsBySide(svg: string, side: 'left' | 'right' | 'both'): string
 // Jersey (camiseta): #D5D5D5 (body) → primary, #ADADAE (sleeve
 // panel + side) → secondary, #BEBDBC (seam shadow) → derived
 // from primary so it always reads as a darker variant.
-export function tintJersey(rawSvg: string, primary: string, secondary: string): string {
+//
+// When `pattern` is non-solid, the body fill is swapped for a
+// `url(#kitPattern)` reference and the matching <defs> with a
+// <pattern> or <linearGradient> is prepended. Sleeves and shadow
+// stay solid so the team's secondary color reads cleanly.
+export function tintJersey(
+  rawSvg: string,
+  primary: string,
+  secondary: string,
+  pattern: string | null = 'solid',
+): string {
   const p = normalizeHex(primary);
   const s = normalizeHex(secondary);
   const shadow = darken(p, 0.09);
-  return rawSvg
-    .replace(/#D5D5D5/gi, p)
+  const usePattern = pattern && pattern !== 'solid';
+  const tinted = rawSvg
+    .replace(/#D5D5D5/gi, usePattern ? 'url(#kitPattern)' : p)
     .replace(/#ADADAE/gi, s)
     .replace(/#BEBDBC/gi, shadow);
+  if (!usePattern) return tinted;
+  return `<defs>${buildKitPatternDefs(pattern!, p, s)}</defs>${tinted}`;
+}
+
+// Pattern / gradient definition for a non-solid jersey. Coordinates
+// chosen so that *single-cycle* patterns (bicolor_*) cover the body
+// bbox once (X≈300-720, Y≈380-790 in the 1024×1536 viewBox), while
+// repeating stripes use small tiles that read clearly at typical
+// avatar render sizes.
+function buildKitPatternDefs(pattern: string, primary: string, stripe: string): string {
+  // Body bounding box (camiseta torso). Used by bicolor gradients.
+  const BX = 300, BY = 380, BW = 420, BH = 410;
+  switch (pattern) {
+    case 'bicolor_horizontal':
+      // Top half = primary, bottom half = stripe.
+      return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY}" x2="${BX}" y2="${BY + BH}">
+        <stop offset="0.5" stop-color="${primary}"/>
+        <stop offset="0.5" stop-color="${stripe}"/>
+      </linearGradient>`;
+    case 'bicolor_vertical':
+      return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY}" x2="${BX + BW}" y2="${BY}">
+        <stop offset="0.5" stop-color="${primary}"/>
+        <stop offset="0.5" stop-color="${stripe}"/>
+      </linearGradient>`;
+    case 'bicolor_diagonal':
+      return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY + BH}" x2="${BX + BW}" y2="${BY}">
+        <stop offset="0.5" stop-color="${primary}"/>
+        <stop offset="0.5" stop-color="${stripe}"/>
+      </linearGradient>`;
+    // Repeating vertical stripes — tile size scaled up ~5× from V1.
+    case 'stripe_vertical_single':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="100" height="500" x="${BX}" y="${BY}">
+        <rect width="50" height="500" fill="${primary}"/><rect x="50" width="50" height="500" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_vertical_double':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="120" height="500" x="${BX}" y="${BY}">
+        <rect width="40" height="500" fill="${primary}"/><rect x="40" width="20" height="500" fill="${stripe}"/>
+        <rect x="60" width="40" height="500" fill="${primary}"/><rect x="100" width="20" height="500" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_vertical_triple':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="90" height="500" x="${BX}" y="${BY}">
+        <rect width="20" height="500" fill="${primary}"/><rect x="20" width="10" height="500" fill="${stripe}"/>
+        <rect x="30" width="20" height="500" fill="${primary}"/><rect x="50" width="10" height="500" fill="${stripe}"/>
+        <rect x="60" width="20" height="500" fill="${primary}"/><rect x="80" width="10" height="500" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_horizontal_single':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="500" height="100" x="${BX}" y="${BY}">
+        <rect width="500" height="50" fill="${primary}"/><rect y="50" width="500" height="50" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_horizontal_double':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="500" height="120" x="${BX}" y="${BY}">
+        <rect width="500" height="40" fill="${primary}"/><rect y="40" width="500" height="20" fill="${stripe}"/>
+        <rect y="60" width="500" height="40" fill="${primary}"/><rect y="100" width="500" height="20" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_horizontal_triple':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="500" height="90" x="${BX}" y="${BY}">
+        <rect width="500" height="20" fill="${primary}"/><rect y="20" width="500" height="10" fill="${stripe}"/>
+        <rect y="30" width="500" height="20" fill="${primary}"/><rect y="50" width="500" height="10" fill="${stripe}"/>
+        <rect y="60" width="500" height="20" fill="${primary}"/><rect y="80" width="500" height="10" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_diagonal_single':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="70" height="70" patternTransform="rotate(45)" x="${BX}" y="${BY}">
+        <rect width="35" height="70" fill="${primary}"/><rect x="35" width="35" height="70" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_diagonal_double':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="90" height="90" patternTransform="rotate(45)" x="${BX}" y="${BY}">
+        <rect width="30" height="90" fill="${primary}"/><rect x="30" width="15" height="90" fill="${stripe}"/>
+        <rect x="45" width="30" height="90" fill="${primary}"/><rect x="75" width="15" height="90" fill="${stripe}"/>
+      </pattern>`;
+    case 'stripe_diagonal_triple':
+      return `<pattern id="kitPattern" patternUnits="userSpaceOnUse" width="90" height="90" patternTransform="rotate(45)" x="${BX}" y="${BY}">
+        <rect width="15" height="90" fill="${primary}"/><rect x="15" width="15" height="90" fill="${stripe}"/>
+        <rect x="30" width="15" height="90" fill="${primary}"/><rect x="45" width="15" height="90" fill="${stripe}"/>
+        <rect x="60" width="15" height="90" fill="${primary}"/><rect x="75" width="15" height="90" fill="${stripe}"/>
+      </pattern>`;
+    // Single thick band centered on the body.
+    case 'stripe_vertical_unique':
+      return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY}" x2="${BX + BW}" y2="${BY}">
+        <stop offset="0" stop-color="${primary}"/>
+        <stop offset="0.42" stop-color="${primary}"/>
+        <stop offset="0.42" stop-color="${stripe}"/>
+        <stop offset="0.58" stop-color="${stripe}"/>
+        <stop offset="0.58" stop-color="${primary}"/>
+        <stop offset="1" stop-color="${primary}"/>
+      </linearGradient>`;
+    case 'stripe_horizontal_unique':
+      return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY}" x2="${BX}" y2="${BY + BH}">
+        <stop offset="0" stop-color="${primary}"/>
+        <stop offset="0.45" stop-color="${primary}"/>
+        <stop offset="0.45" stop-color="${stripe}"/>
+        <stop offset="0.55" stop-color="${stripe}"/>
+        <stop offset="0.55" stop-color="${primary}"/>
+        <stop offset="1" stop-color="${primary}"/>
+      </linearGradient>`;
+    case 'stripe_diagonal_unique':
+      return `<linearGradient id="kitPattern" gradientUnits="userSpaceOnUse" x1="${BX}" y1="${BY + BH}" x2="${BX + BW}" y2="${BY}">
+        <stop offset="0" stop-color="${primary}"/>
+        <stop offset="0.45" stop-color="${primary}"/>
+        <stop offset="0.45" stop-color="${stripe}"/>
+        <stop offset="0.55" stop-color="${stripe}"/>
+        <stop offset="0.55" stop-color="${primary}"/>
+        <stop offset="1" stop-color="${primary}"/>
+      </linearGradient>`;
+    default:
+      // Fallback — solid primary if pattern key is unrecognized.
+      return `<linearGradient id="kitPattern"><stop stop-color="${primary}"/></linearGradient>`;
+  }
 }
 
 // Shorts (bermuda): #323232 (body) → primary, #262626 (seam
@@ -332,7 +450,24 @@ export interface ComposeOptions {
   // without the shirt covering it. The crest + number layer is also
   // suppressed because they belong on the shirt.
   hideShirt?: boolean;
+  // 'coach' overrides the kit colors with a hardcoded black coach look,
+  // hides jersey number + crest + captain band + shin guard, and never
+  // renders the GK shirt regardless of position.
+  outfit?: 'player' | 'coach';
+  // Jersey pattern — drives a <pattern>/<linearGradient> overlay on the
+  // camiseta body. Sleeves and shadow detail stay solid. Falls back to
+  // 'solid' (no pattern) when null/undefined.
+  // Recognized values: 'solid', 'bicolor_horizontal' | '_vertical' |
+  // '_diagonal', 'stripe_vertical_single' | '_double' | '_triple',
+  // 'stripe_horizontal_*', 'stripe_diagonal_*', 'stripe_*_unique'.
+  jerseyPattern?: string | null;
 }
+
+// Coach kit (matches V1's COACH_SHIRT / COACH_SHIRT_DETAIL constants
+// so faces stay consistent between V1 back-view and V2 front).
+const COACH_SHIRT_PRIMARY   = '#0A0A0A';
+const COACH_SHIRT_SECONDARY = '#1A1A1A';
+const COACH_PANTS           = '#0D0D0D';
 
 // ─── Head position knobs ─────────────────────────────────────────
 // The face SVG (head/headv2.svg) lives in its own 280×280 viewBox.
@@ -480,8 +615,16 @@ function crestAndNumberSvg(opts: ComposeOptions): string {
 }
 
 export function composePlayerSvg(opts: ComposeOptions): string {
-  const isGK = opts.position === 'GOL';
+  const isCoach = opts.outfit === 'coach';
+  // GK shirt and captain band don't apply to coaches.
+  const isGK = !isCoach && opts.position === 'GOL';
   const sockSrc = opts.sockHeight === 'baixo' ? innerMeiaoBaixo : innerMeiaoAlto;
+  // Coach overrides team colors. Pattern is forced solid because the
+  // formal coach kit doesn't follow the player jersey rules.
+  const kitPrimary   = isCoach ? COACH_SHIRT_PRIMARY   : opts.primaryColor;
+  const kitSecondary = isCoach ? COACH_SHIRT_SECONDARY : opts.secondaryColor;
+  const kitPattern   = isCoach ? 'solid'              : (opts.jerseyPattern ?? 'solid');
+  const shortsColor  = isCoach ? COACH_PANTS          : opts.primaryColor;
 
   // Goalkeeper shirt: tint grays first (→ team colors), then run
   // tintSkin to repaint the V-neck torso patches with the player's
@@ -502,7 +645,7 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     ? `<g transform="translate(${gkPivotX} ${gkPivotY + gkOffsetY}) scale(${gkScaleX} ${gkScaleY}) translate(${-gkPivotX} ${-gkPivotY})">${
         tintSkin(tintGoalkeeperShirt(innerCamisaGoleiro, opts.primaryColor, opts.secondaryColor), opts.skinTone)
       }</g>`
-    : tintJersey(innerCamiseta, opts.primaryColor, opts.secondaryColor);
+    : tintJersey(innerCamiseta, kitPrimary, kitSecondary, kitPattern);
 
   // Z-order (back→front): perna → bracos → caneleira → meião →
   // chuteira → bermuda → camiseta → cabeça → overlays. The
@@ -583,12 +726,12 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     caneleira,
     tintSocks(sockSrc, opts.primaryColor, opts.secondaryColor),
     tintCleats(innerChuteira, opts.cleatColor ?? null),
-    tintShorts(innerBermuda, opts.primaryColor),
+    tintShorts(innerBermuda, shortsColor),
     // Bare torso swap: replaces both the camiseta and the bracos
     // when hideShirt is on. Skin-tinted from the same skinTone so
     // it matches the head + legs.
     opts.hideShirt ? tintSkin(innerTronco, opts.skinTone) : torso,
-    opts.hideShirt ? '' : crestAndNumberSvg(opts),
+    (opts.hideShirt || isCoach) ? '' : crestAndNumberSvg(opts),
     // Head FRONT layer (just facialHair) renders AFTER the camiseta
     // so big beards drape naturally over the collar. Empty when the
     // player has no beard selected.
@@ -650,7 +793,7 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   if (opts.wristbandColor) {
     layers.push(wristbandSvg(opts.wristbandColor, opts.wristbandSide ?? 'left'));
   }
-  if (opts.isCaptain) {
+  if (opts.isCaptain && !isCoach) {
     layers.push(captainBandSvg());
   }
 

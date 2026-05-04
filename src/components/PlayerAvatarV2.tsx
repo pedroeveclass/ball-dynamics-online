@@ -38,6 +38,8 @@ interface PlayerAvatarV2Props {
   secondSkinPantsSide?: 'left' | 'right' | 'both';
   fallbackSeed?: string;
   hideShirt?: boolean;
+  outfit?: 'player' | 'coach';
+  jerseyPattern?: string | null;
   className?: string;
 }
 
@@ -69,6 +71,8 @@ export function PlayerAvatarV2({
   secondSkinPantsSide = 'both',
   fallbackSeed,
   hideShirt,
+  outfit = 'player',
+  jerseyPattern,
   className,
 }: PlayerAvatarV2Props) {
   const a = appearance ?? DEFAULT_APPEARANCE;
@@ -103,6 +107,8 @@ export function PlayerAvatarV2({
       crestUrl: clubCrestUrl,
       numberColor,
       hideShirt,
+      outfit,
+      jerseyPattern,
     };
     return composePlayerSvg(opts);
   }, [
@@ -111,7 +117,7 @@ export function PlayerAvatarV2({
     bicepsBandColor, bicepsBandSide, wristbandColor, wristbandSide,
     secondSkinShirtColor, secondSkinShirtSide,
     secondSkinPantsColor, secondSkinPantsSide,
-    jerseyNumber, clubCrestUrl, numberColor, hideShirt,
+    jerseyNumber, clubCrestUrl, numberColor, hideShirt, outfit, jerseyPattern,
   ]);
 
   // Face variant: clip the composed SVG to the head region only.

@@ -189,6 +189,8 @@ export function PlayerAvatar({
         secondSkinShirtSide={sideOrBoth(secondSkinShirtSide)}
         secondSkinPantsColor={secondSkinPantsColor}
         secondSkinPantsSide={sideOrBoth(secondSkinPantsSide)}
+        outfit={outfit}
+        jerseyPattern={uniformPattern}
         fallbackSeed={seed}
         className={className}
       />

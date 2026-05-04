@@ -50,6 +50,8 @@ export default function AvatarPreviewPage() {
   const [secondSkinPantsColor, setSecondSkinPantsColor] = useState<string>('#1A1A1A');
   const [secondSkinPantsSide, setSecondSkinPantsSide] = useState<'left' | 'right' | 'both'>('both');
   const [hideShirt, setHideShirt] = useState(false);
+  const [outfit, setOutfit] = useState<'player' | 'coach'>('player');
+  const [jerseyPattern, setJerseyPattern] = useState<string>('solid');
 
   // Face state — drives every selectable slot of the DiceBear-style head.
   const [hair, setHair] = useState<string>(DEFAULT_APPEARANCE.hair);
@@ -113,6 +115,44 @@ export default function AvatarPreviewPage() {
               {KITS.map((k, i) => (
                 <option key={k.name} value={i}>{k.name}</option>
               ))}
+            </select>
+          </Field>
+
+          <Field label="Quem">
+            <label style={{ marginRight: 12 }}>
+              <input type="radio" checked={outfit === 'player'} onChange={() => setOutfit('player')} /> Jogador
+            </label>
+            <label>
+              <input type="radio" checked={outfit === 'coach'} onChange={() => setOutfit('coach')} /> Treinador
+            </label>
+          </Field>
+
+          <Field label="Padrão da camisa">
+            <select value={jerseyPattern} onChange={(e) => setJerseyPattern(e.target.value)} style={{ width: '100%' }} disabled={outfit === 'coach'}>
+              <option value="solid">Solid (sem padrão)</option>
+              <optgroup label="Bicolor (metade/metade)">
+                <option value="bicolor_horizontal">Horizontal</option>
+                <option value="bicolor_vertical">Vertical</option>
+                <option value="bicolor_diagonal">Diagonal</option>
+              </optgroup>
+              <optgroup label="Listras verticais">
+                <option value="stripe_vertical_single">Single (Botafogo)</option>
+                <option value="stripe_vertical_double">Double</option>
+                <option value="stripe_vertical_triple">Triple</option>
+                <option value="stripe_vertical_unique">Faixa única central</option>
+              </optgroup>
+              <optgroup label="Listras horizontais">
+                <option value="stripe_horizontal_single">Single (São Paulo)</option>
+                <option value="stripe_horizontal_double">Double</option>
+                <option value="stripe_horizontal_triple">Triple (Atlético-MG)</option>
+                <option value="stripe_horizontal_unique">Faixa única horizontal</option>
+              </optgroup>
+              <optgroup label="Listras diagonais">
+                <option value="stripe_diagonal_single">Single</option>
+                <option value="stripe_diagonal_double">Double</option>
+                <option value="stripe_diagonal_triple">Triple</option>
+                <option value="stripe_diagonal_unique">Faixa única (Vasco)</option>
+              </optgroup>
             </select>
           </Field>
 
@@ -315,6 +355,8 @@ export default function AvatarPreviewPage() {
               secondSkinPantsColor={hasSecondSkinPants ? secondSkinPantsColor : null}
               secondSkinPantsSide={secondSkinPantsSide}
               hideShirt={hideShirt}
+              outfit={outfit}
+              jerseyPattern={jerseyPattern}
               className="w-full h-full"
             />
           </div>

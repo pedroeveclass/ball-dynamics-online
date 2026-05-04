@@ -477,6 +477,7 @@ export default function PublicPlayerPage() {
                       secondSkinShirtSide={cosmetics.secondSkinShirtSide ?? 'both'}
                       secondSkinPantsColor={cosmetics.secondSkinPantsColor}
                       secondSkinPantsSide={cosmetics.secondSkinPantsSide ?? 'both'}
+                      jerseyPattern={activeKit?.pattern}
                       fallbackSeed={player.id}
                       className="w-full h-full"
                     />
