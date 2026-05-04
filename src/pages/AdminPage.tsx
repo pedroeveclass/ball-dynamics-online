@@ -1372,6 +1372,9 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
         </CardContent>
       </Card>
 
+      {/* Mudar horário das rodadas */}
+      <ChangeRoundTimeCard leagues={leagues} seasons={seasons} fire={fire} busy={busy} />
+
       {/* Cascade rounds → finished */}
       <Card>
         <CardHeader><CardTitle>Cascade rodadas → finished</CardTitle></CardHeader>
@@ -1487,6 +1490,103 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
   );
 }
 
+// ─── ChangeRoundTimeCard — bulk-set BRT time on rounds ───
+function ChangeRoundTimeCard({ leagues, seasons, fire, busy }: {
+  leagues: League[]; seasons: LeagueSeason[];
+  fire: (label: string, fn: () => Promise<any>, confirmMsg?: string) => Promise<void>;
+  busy: string | null;
+}) {
+  const [leagueId, setLeagueId] = useState('');
+  const [roundId, setRoundId] = useState('all');
+  const [time, setTime] = useState('21:00');
+  const [rounds, setRounds] = useState<Array<{ id: string; round_number: number; scheduled_at: string; season_number: number }>>([]);
+
+  useEffect(() => {
+    if (!leagueId) { setRounds([]); return; }
+    let cancelled = false;
+    (async () => {
+      const seasonIds = seasons.filter(s => s.league_id === leagueId).map(s => s.id);
+      if (seasonIds.length === 0) { setRounds([]); return; }
+      const { data } = await supabase
+        .from('league_rounds')
+        .select('id, round_number, scheduled_at, season_id')
+        .in('season_id', seasonIds)
+        .eq('status', 'scheduled')
+        .gte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true })
+        .limit(40);
+      if (cancelled) return;
+      const seasonMap = new Map(seasons.map(s => [s.id, s.season_number]));
+      setRounds((data ?? []).map((r: any) => ({
+        id: r.id,
+        round_number: r.round_number,
+        scheduled_at: r.scheduled_at,
+        season_number: seasonMap.get(r.season_id) ?? 0,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [leagueId, seasons]);
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Mudar horário das rodadas</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-[11px] text-muted-foreground">
+          Mantém a data, troca só a hora (BRT). Útil pra remarcar uma rodada inteira sem mexer no calendário.
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <Label className="text-xs">Liga</Label>
+            <Select value={leagueId} onValueChange={(v) => { setLeagueId(v); setRoundId('all'); }}>
+              <SelectTrigger><SelectValue placeholder="Escolha a liga" /></SelectTrigger>
+              <SelectContent>
+                {leagues.map(lg => (
+                  <SelectItem key={lg.id} value={lg.id}>{lg.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Rodada</Label>
+            <Select value={roundId} onValueChange={setRoundId} disabled={!leagueId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as futuras ({rounds.length})</SelectItem>
+                {rounds.map(r => (
+                  <SelectItem key={r.id} value={r.id}>
+                    Temp {r.season_number} · Rodada {r.round_number} · {new Date(r.scheduled_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Novo horário (BRT)</Label>
+            <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
+          </div>
+        </div>
+        <Button
+          disabled={!leagueId || !time || busy === 'set-time'}
+          onClick={() => fire(
+            'Mudar horário',
+            async () => await supabase.rpc('admin_set_round_time', {
+              p_league_id: leagueId,
+              p_round_id: roundId === 'all' ? null : roundId,
+              p_brt_time: time + ':00',
+            }),
+            roundId === 'all'
+              ? `Aplicar ${time} BRT em ${rounds.length} rodadas futuras dessa liga?`
+              : `Mudar essa rodada pra ${time} BRT?`,
+          )}
+        >
+          {busy === 'set-time' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+          Aplicar horário
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── LeaguesCard — list + create new division ───
 function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
   leagues: League[]; clubs: Club[]; seasons: LeagueSeason[];
@@ -1496,10 +1596,25 @@ function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
 }) {
   const [createDialog, setCreateDialog] = useState(false);
   const [country, setCountry] = useState('BR');
-  const [leagueName, setLeagueName] = useState('');
+  const [familyName, setFamilyName] = useState('Liga Brasileira');
+  const [divisionName, setDivisionName] = useState('');
   const [division, setDivision] = useState('');
   const [clubsCount, setClubsCount] = useState('20');
   const [creating, setCreating] = useState(false);
+
+  // Country dropdown — maps display name → ISO 2-letter code + default family name.
+  const COUNTRIES = [
+    { code: 'BR', name: 'Brasil', family: 'Liga Brasileira' },
+    { code: 'EN', name: 'Inglaterra', family: 'Liga Inglesa' },
+    { code: 'ES', name: 'Espanha', family: 'Liga Espanhola' },
+    { code: 'IT', name: 'Itália', family: 'Liga Italiana' },
+    { code: 'DE', name: 'Alemanha', family: 'Liga Alemã' },
+    { code: 'FR', name: 'França', family: 'Liga Francesa' },
+    { code: 'PT', name: 'Portugal', family: 'Liga Portuguesa' },
+    { code: 'AR', name: 'Argentina', family: 'Liga Argentina' },
+    { code: 'NL', name: 'Holanda', family: 'Liga Holandesa' },
+    { code: 'US', name: 'EUA', family: 'Liga Americana' },
+  ];
 
   // Sort leagues by country then division for the listing.
   const sorted = [...leagues].sort((a, b) => {
@@ -1522,11 +1637,12 @@ function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
   async function handleCreate() {
     setCreating(true);
     try {
+      const fullName = `${familyName.trim()} - ${divisionName.trim()}`;
       const res = await supabase.functions.invoke('league-seed', {
         body: {
           action: 'seed_division',
           country: country.toUpperCase(),
-          league_name: leagueName.trim(),
+          league_name: fullName,
           division: parseInt(division),
           clubs: parseInt(clubsCount),
         },
@@ -1537,7 +1653,7 @@ function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
       if (data?.status === 'skipped') { toast.error(`${data.reason} ${data.existing_name ? `(${data.existing_name})` : ''}`); return; }
       toast.success(`Liga criada: ${data.league_name} · div ${data.division} · ${data.clubs} clubes`);
       setCreateDialog(false);
-      setLeagueName('');
+      setDivisionName('');
       setDivision('');
       onReload();
     } finally {
@@ -1551,7 +1667,7 @@ function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
         <CardTitle className="flex items-center justify-between">
           <span>Ligas</span>
           <Button size="sm" onClick={() => {
-            setLeagueName('');
+            setDivisionName('');
             setDivision(suggestedDivision?.toString() ?? '');
             setClubsCount('20');
             setCreateDialog(true);
@@ -1596,12 +1712,28 @@ function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
           <div className="space-y-3">
             <div>
               <Label className="text-xs">País</Label>
-              <Input value={country} onChange={e => setCountry(e.target.value.toUpperCase().slice(0, 2))} placeholder="BR" maxLength={2} />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Código ISO de 2 letras (BR, EN, ES…)</p>
+              <Select
+                value={country}
+                onValueChange={(v) => {
+                  setCountry(v);
+                  const c = COUNTRIES.find(x => x.code === v);
+                  if (c) setFamilyName(c.family);
+                }}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {COUNTRIES.map(c => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.name} ({c.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label className="text-xs">Nome da divisão</Label>
-              <Input value={leagueName} onChange={e => setLeagueName(e.target.value)} placeholder="Liga Brasileira - Série C" />
+              <Label className="text-xs">Nome da Liga (família)</Label>
+              <Input value={familyName} onChange={e => setFamilyName(e.target.value)} placeholder="Liga Brasileira" />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Nome do "campeonato" do país. Ex: Liga Brasileira / Liga Alemã / Premier League.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -1615,25 +1747,35 @@ function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
                   placeholder={suggestedDivision?.toString() ?? '3'}
                 />
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  1 = Série A · 2 = B · 3 = C…  Atual sugerido: {suggestedDivision ?? '—'}
+                  Sugerido: {suggestedDivision ?? '—'}
                 </p>
               </div>
               <div>
-                <Label className="text-xs">Número de clubes</Label>
-                <Input type="number" min={4} max={30} value={clubsCount} onChange={e => setClubsCount(e.target.value)} />
+                <Label className="text-xs">Nome da divisão</Label>
+                <Input value={divisionName} onChange={e => setDivisionName(e.target.value)} placeholder="Série C / Bundesliga / 2. Liga" />
               </div>
             </div>
+            <div>
+              <Label className="text-xs">Número de clubes</Label>
+              <Input type="number" min={4} max={30} value={clubsCount} onChange={e => setClubsCount(e.target.value)} />
+            </div>
+            {familyName.trim() && divisionName.trim() && (
+              <div className="rounded border bg-muted/30 p-2 text-[11px]">
+                <span className="text-muted-foreground">Nome final:</span>{' '}
+                <span className="font-display font-semibold">{familyName.trim()} - {divisionName.trim()}</span>
+              </div>
+            )}
             <p className="text-[11px] text-muted-foreground">
-              Bots novos com overall {division ? [50, 45, 40, 35, 30][Math.min(4, parseInt(division) - 1)] ?? 30 : '?'} e saldo
+              Bots overall {division ? [50, 45, 40, 35, 30][Math.min(4, parseInt(division) - 1)] ?? 30 : '?'} · saldo
               R$ {division ? ([200000, 150000, 100000, 75000, 50000][Math.min(4, parseInt(division) - 1)] ?? 50000).toLocaleString() : '?'}.
-              Datas das rodadas espelham as da divisão irmã no mesmo game year.
+              Datas espelham irmã no mesmo game year.
             </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialog(false)} disabled={creating}>Cancelar</Button>
             <Button
               onClick={handleCreate}
-              disabled={creating || !leagueName.trim() || !division || !clubsCount}
+              disabled={creating || !familyName.trim() || !divisionName.trim() || !division || !clubsCount}
             >
               {creating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
               Criar
