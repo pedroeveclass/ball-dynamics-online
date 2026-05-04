@@ -9,7 +9,7 @@
     "positioning_attack": "Posicionar ⚽",
     "positioning_defense": "Posicionar 🛡️",
     "positioning": "Posicionar",
-    "open_play": "Jogada"
+    "open_play": "Movimentação Geral"
   },
   "phase_short": {
     "ball_holder": "Portador",
@@ -19,7 +19,7 @@
     "positioning_attack": "ATK",
     "positioning_defense": "DEF",
     "positioning": "Posicionar",
-    "open_play": "Jogada"
+    "open_play": "Movimentação"
   },
   "actions": {
     "move": "MOVER",

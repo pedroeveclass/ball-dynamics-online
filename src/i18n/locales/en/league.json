@@ -168,6 +168,8 @@
     "total_other": "{{count}} trophies",
     "round_label": "R{{round}}/S{{season}}",
     "season_label": "S{{season}}",
+    "round_group_one": "S{{season}} · R{{rounds}}",
+    "round_group_other": "S{{season}} · R{{rounds}}",
     "empty": "No trophies yet."
   },
   "hallOfFame": {
@@ -196,7 +198,8 @@
       "season_top_tackles": "Most Tackles",
       "season_golden_glove": "Golden Glove",
       "season_fair_play": "Fair Play",
-      "season_mvp": "Season MVP"
+      "season_mvp": "Season MVP",
+      "round_mvp": "Round MVP"
     },
     "metric": {
       "goals_one": "{{count}} goal",

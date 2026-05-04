@@ -168,6 +168,8 @@
     "total_other": "{{count}} troféus",
     "round_label": "R{{round}}/T{{season}}",
     "season_label": "T{{season}}",
+    "round_group_one": "T{{season}} · R{{rounds}}",
+    "round_group_other": "T{{season}} · R{{rounds}}",
     "empty": "Nenhum troféu ainda."
   },
   "hallOfFame": {
@@ -196,7 +198,8 @@
       "season_top_tackles": "Mais Desarmes",
       "season_golden_glove": "Luva de Ouro",
       "season_fair_play": "Fair Play",
-      "season_mvp": "MVP da Temporada"
+      "season_mvp": "MVP da Temporada",
+      "round_mvp": "MVP da Rodada"
     },
     "metric": {
       "goals_one": "{{count}} gol",

@@ -19,7 +19,7 @@
     "positioning_attack": "ATK",
     "positioning_defense": "DEF",
     "positioning": "Position",
-    "open_play": "Play"
+    "open_play": "Open Play"
   },
   "actions": {
     "move": "MOVE",
