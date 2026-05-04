@@ -2225,10 +2225,11 @@ function pickBestPassTarget(
   opponents: any[],
   allParticipants?: any[],
   possClubId?: string | null,
-  match?: { home_club_id: string; away_club_id: string; current_half?: number },
+  match?: { home_club_id: string; away_club_id: string; current_half?: number; home_goals?: number; away_goals?: number; current_turn_number?: number },
   setPieceType?: string | null,
   tickCache?: TickCache,
-): { target: any; actionType: string } | null {
+  recentPasserId?: string | null,
+): { target: any; actionType: string; aimX?: number; aimY?: number } | null {
   // Attacking style intelligence: when the team picks "central" the bot
   // prefers passes ending closer to the field's central column; "wide" prefers
   // the flanks; "balanced" applies no extra bias. Lookup is best-effort —
@@ -2288,6 +2289,21 @@ function pickBestPassTarget(
     }
     const freedom = Math.min(closestOppDist / 15, 1); // 0-1 how free the target is
 
+    // ── Through-pass detection: if teammate is making a deep run, AIM the pass
+    // to space ahead of them (4u beyond current pos in attacking direction).
+    // Caller will use aimX/aimY rather than target's static pos when set.
+    const tRoleForRun = getPositionRole((t._slot_position || t.slot_position || '').toUpperCase());
+    const deepRun = isForwardRole(tRoleForRun) && isMakingDeepRun(t, teammates, isHome);
+    const aimX = deepRun ? Math.max(2, Math.min(98, tx + forwardDir * 4)) : tx;
+    const aimY = ty;
+
+    // ── Trajectory risk: penalise lanes blocked by defenders.
+    // Computed against the AIM point (so through-pass risk is measured along the
+    // through-line, not toward the receiver's static pos which often sits inside
+    // a defender). Sample ignores the receiver's own marker (handled by `freedom`).
+    const trajectoryRisk = computeTrajectoryRisk({ x: bx, y: by }, { x: aimX, y: aimY }, opponents);
+    const trajectoryPenalty = trajectoryRisk * 25; // up to -25 score for fully blocked lanes
+
     const tRole = getPositionRole((t._slot_position || t.slot_position || '').toUpperCase());
     let rolePreference = 0;
 
@@ -2330,6 +2346,17 @@ function pickBestPassTarget(
     if (humanPriority.directHumanIds.has(t.id)) humanBonus = humanBias.direct;
     else if (humanPriority.progressionBotIds.has(t.id)) humanBonus = humanBias.progression;
 
+    // One-two / tabela: if t is the player who passed to us last turn AND they
+    // moved further upfield since, give a meaningful bonus to "give it back".
+    let oneTwoBonus = 0;
+    if (recentPasserId && t.id === recentPasserId && forwardGain > 0) {
+      oneTwoBonus = 20;
+    }
+
+    // Through-pass bonus: if this is a deep-run candidate and the lane is clean
+    // enough, reward it heavily — these are the chance-creating balls.
+    const throughPassBonus = (deepRun && trajectoryRisk < 0.3) ? 18 : 0;
+
     // Pedro's heuristic: prefer LONGEST forward pass, avoid backward when forward exists.
     //   - forwardGain * 1.0 rewards advancing the ball up the attacking axis
     //   - dist * 0.4 rewards length (so among forward options, pick the longest)
@@ -2363,19 +2390,241 @@ function pickBestPassTarget(
       + humanBonus
       + forwardness * 0.1
       + styleBias
+      + oneTwoBonus
+      + throughPassBonus
+      - trajectoryPenalty
       - backwardPenalty;
-    return { ...t, score, dist, freedom, forwardGain };
+    return { ...t, score, dist, freedom, forwardGain, trajectoryRisk, aimX, aimY };
   }).sort((a: any, b: any) => b.score - a.score);
 
   const best = scored[0];
   if (!best) return null;
 
-  // Choose action type based on distance
+  // Choose action type based on distance AND trajectory risk.
+  // High risk → prefer pass_high (lifts ball over markers); low risk + short → pass_low.
   let actionType = 'pass_low';
-  if (best.dist > 40) actionType = 'pass_launch';
-  else if (best.dist > 25) actionType = Math.random() < 0.6 ? 'pass_high' : 'pass_low';
+  if (best.dist > 40) {
+    actionType = 'pass_launch';
+  } else if (best.dist > 25) {
+    actionType = best.trajectoryRisk > 0.3 ? 'pass_high' : (Math.random() < 0.5 ? 'pass_high' : 'pass_low');
+  } else if (best.trajectoryRisk > 0.5) {
+    // Short-range but blocked → loft over markers
+    actionType = 'pass_high';
+  }
 
-  return { target: best, actionType };
+  return { target: best, actionType, aimX: best.aimX, aimY: best.aimY };
+}
+
+// ─── Bot AI helpers (2026-05-04 — Fase global IA) ─────────────────
+// These helpers replace the role-by-role hardcoded if/else random thresholds
+// that drove BH decisions, shot targeting, crossing, and dribble vectors.
+// They live above generateBotActions because they're consumed across multiple
+// role branches; previously each role re-implemented the same primitive.
+
+/**
+ * Pick a shot target Y aimed at the corner OPPOSITE the opposing GK.
+ * Replaces `goalY = GOAL_Y_MIN + Math.random() * 18` (random across goal mouth).
+ * - Detects opposing GK from participants (by slot position).
+ * - Higher shot skill → tighter margin from post; lower skill → safer margin.
+ * - Returns the corner FAR from the GK so deviation lateral can still go either way.
+ */
+function pickShotTarget(
+  isHome: boolean,
+  participants: any[],
+  oppClubId: string,
+  shotSkill: number,
+): { x: number; y: number } {
+  const goalX = isHome ? 100 : 0;
+  const gk = participants.find((p: any) =>
+    p.club_id === oppClubId && p.role_type === 'player' && !p.is_sent_off &&
+    isGKPosition((p._slot_position || p.slot_position || '').toUpperCase())
+  );
+  const gkY = gk ? Number(gk.pos_y ?? 50) : 50;
+  // Aim at the corner OPPOSITE the GK
+  const aimTopCorner = gkY > 50;
+  const corner = aimTopCorner ? GOAL_Y_MIN : GOAL_Y_MAX;
+  // Skill-based margin from the post (low skill → wider margin to avoid wide miss)
+  const margin = 1.5 + (1 - shotSkill) * 4.5; // 1.5..6 inside the post
+  const targetY = aimTopCorner ? corner + margin : corner - margin;
+  return { x: goalX, y: targetY };
+}
+
+/**
+ * Probability that a bot in this role takes a shot, scaled by distance, freedom and skill.
+ * Replaces the hardcoded role chances (striker 100% if <45, winger 65% if <35, etc).
+ */
+function getShootChance(
+  role: TacticalRole,
+  distToGoal: number,
+  freedom: number,
+  shotSkill: number,
+  aggressivenessMod: number,
+): number {
+  if (distToGoal > 50) return 0;
+  const baseByRole: Record<string, number> = {
+    striker: 0.85,
+    winger: 0.55,
+    attackingMid: 0.45,
+    wideMid: 0.40,
+    centralMid: 0.30,
+    defensiveMid: 0.18,
+    fullBack: 0.05,
+    centerBack: 0.0,
+    goalkeeper: 0.0,
+  };
+  const base = baseByRole[role] ?? 0.2;
+  const distFactor = Math.max(0, Math.min(1, (45 - distToGoal) / 30));
+  const skillFactor = 0.5 + shotSkill * 0.7;
+  return base * distFactor * (0.4 + freedom * 0.6) * skillFactor * aggressivenessMod;
+}
+
+/**
+ * Pick the best teammate to cross to: striker/winger/AM inside opposing penalty area,
+ * weighted by freedom from defenders. Replaces fixed-target crosses to (85+rand,35+rand*30).
+ */
+function pickCrossTarget(
+  teammates: any[],
+  isHome: boolean,
+  opponents: any[],
+): any | null {
+  const inBoxAttackers = teammates.filter((t: any) => {
+    if (t.is_sent_off) return false;
+    const tx = Number(t.pos_x ?? 50);
+    const tRole = getPositionRole((t._slot_position || t.slot_position || '').toUpperCase());
+    const inBox = isHome ? tx > 80 : tx < 20;
+    const isAttacker = tRole === 'striker' || tRole === 'winger' || tRole === 'attackingMid';
+    return inBox && isAttacker;
+  });
+  if (inBoxAttackers.length === 0) return null;
+  let best: any = null;
+  let bestFreedom = -1;
+  for (const t of inBoxAttackers) {
+    const tx = Number(t.pos_x ?? 50);
+    const ty = Number(t.pos_y ?? 50);
+    let nearestOppDist = 999;
+    for (const opp of opponents) {
+      const d = Math.sqrt((tx - Number(opp.pos_x ?? 50)) ** 2 + (ty - Number(opp.pos_y ?? 50)) ** 2);
+      if (d < nearestOppDist) nearestOppDist = d;
+    }
+    if (nearestOppDist > bestFreedom) { bestFreedom = nearestOppDist; best = t; }
+  }
+  return best;
+}
+
+/**
+ * Compute a dribble move vector that progresses toward the goal AND repels from the
+ * nearest close opponent. Replaces "move +10 forward + jitter" which walked into defenders.
+ * dribleSkill 0..1 weights the repel strength (better dribbler bends more sharply away).
+ */
+function pickDribbleVector(
+  posX: number,
+  posY: number,
+  isHome: boolean,
+  nearestOppPos: { x: number; y: number } | null,
+  dribleSkill: number,
+  maxRange: number,
+): { x: number; y: number } {
+  const baseGoalX = isHome ? 100 : 0;
+  let dirX = (baseGoalX - posX);
+  let dirY = (50 - posY) * 0.3; // mild central pull, same as legacy behavior
+  if (nearestOppPos) {
+    const oppDX = nearestOppPos.x - posX;
+    const oppDY = nearestOppPos.y - posY;
+    const oppDist = Math.sqrt(oppDX * oppDX + oppDY * oppDY);
+    if (oppDist < 10) {
+      // Vector AWAY from opponent, weighted by proximity and skill
+      const repelStrength = (1 - oppDist / 10) * (0.8 + dribleSkill * 0.6) * 30;
+      dirX += -oppDX * repelStrength / Math.max(oppDist, 0.1);
+      dirY += -oppDY * repelStrength / Math.max(oppDist, 0.1);
+    }
+  }
+  const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+  if (dirLen < 0.1) {
+    return { x: Math.max(2, Math.min(98, posX + (isHome ? maxRange : -maxRange))), y: posY };
+  }
+  const ndx = dirX / dirLen;
+  const ndy = dirY / dirLen;
+  const step = maxRange * 0.92;
+  return {
+    x: Math.max(2, Math.min(98, posX + ndx * step)),
+    y: Math.max(2, Math.min(98, posY + ndy * step)),
+  };
+}
+
+/**
+ * Estimate how blocked a passing line is. Returns 0..1 (0=clean, 1=heavy traffic).
+ * Samples 5 points along the trajectory; counts opponents within 3u of any sample.
+ * Used by pickBestPassTarget to penalise risky lanes and pick pass_high when blocked.
+ */
+function computeTrajectoryRisk(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  opponents: any[],
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1) return 0;
+  const samples = 5;
+  const RADIUS = 3.0;
+  let blocking = 0;
+  for (let i = 1; i <= samples; i++) {
+    const t = i / (samples + 1);
+    const sx = start.x + dx * t;
+    const sy = start.y + dy * t;
+    for (const opp of opponents) {
+      const ox = Number(opp.pos_x ?? 50);
+      const oy = Number(opp.pos_y ?? 50);
+      if ((sx - ox) ** 2 + (sy - oy) ** 2 < RADIUS * RADIUS) { blocking++; break; }
+    }
+  }
+  return blocking / samples;
+}
+
+/**
+ * Aggressiveness multiplier based on scoreline + remaining time.
+ * Behind → bolder; ahead late → conservative; even → neutral.
+ */
+function getAggressivenessMod(match: any, clubId: string): number {
+  if (!match) return 1.0;
+  const homeGoals = Number(match.home_goals ?? 0);
+  const awayGoals = Number(match.away_goals ?? 0);
+  const isHome = clubId === match.home_club_id;
+  const diff = (isHome ? homeGoals : awayGoals) - (isHome ? awayGoals : homeGoals);
+  const turn = Number(match.current_turn_number ?? 0);
+  const lateGame = turn > 100;
+  if (diff < 0) return lateGame ? 1.30 : 1.15;
+  if (diff > 0 && lateGame) return 0.78;
+  return 1.0;
+}
+
+/**
+ * Detect a teammate making a deep run (significantly ahead of average teammate X).
+ * Used by pickBestPassTarget to enable through-pass into space ahead of the runner.
+ */
+function isMakingDeepRun(t: any, teammates: any[], isHome: boolean): boolean {
+  const tx = Number(t.pos_x ?? 50);
+  const fwdSign = isHome ? 1 : -1;
+  let sum = 0, count = 0;
+  for (const tm of teammates) {
+    if (tm.id === t.id) continue;
+    const slot = (tm._slot_position || tm.slot_position || '').toUpperCase();
+    if (isGKPosition(slot)) continue;
+    sum += Number(tm.pos_x ?? 50);
+    count++;
+  }
+  if (count === 0) return false;
+  const avgX = sum / count;
+  return ((tx - avgX) * fwdSign) > 12;
+}
+
+/**
+ * Tactical role proximity score (used by deep-run detection and through-pass).
+ * Bigger when teammate is in a forward role (ST/W/AM) — only those benefit
+ * from a through-pass; defenders/midfielders fed in space create handling errors.
+ */
+function isForwardRole(role: TacticalRole): boolean {
+  return role === 'striker' || role === 'winger' || role === 'attackingMid';
 }
 
 // ─── Bot AI: generate smart fallback actions ─────────────────
@@ -2662,6 +2911,45 @@ async function generateBotActions(
     nearestOppMap.set(bot.id, best);
   }
 
+  // ── Tactical context maps (added 2026-05-04) ──
+  // Aggressiveness modifier per club (score+time aware): scales bot shot/dribble bias.
+  const aggressivenessByClub = new Map<string, number>();
+  for (const cId of clubIds) aggressivenessByClub.set(cId, getAggressivenessMod(match, cId));
+
+  // recentPasserBy: for each participant, who passed/headed to them last turn?
+  // Drives the one-two bonus inside pickBestPassTarget so a bot that just received
+  // can give it back to the original passer when they made a forward run.
+  const recentPasserBy = new Map<string, string>();
+  if ((match?.current_turn_number ?? 1) > 1) {
+    try {
+      const { data: prevTurnRows } = await supabase
+        .from('match_turns').select('id').eq('match_id', matchId)
+        .eq('turn_number', (match?.current_turn_number ?? 1) - 1);
+      const prevTurnIds = (prevTurnRows || []).map((t: any) => t.id);
+      if (prevTurnIds.length > 0) {
+        const { data: prevPasses } = await supabase
+          .from('match_actions')
+          .select('participant_id, target_participant_id, action_type')
+          .in('match_turn_id', prevTurnIds)
+          .in('action_type', ['pass_low', 'pass_high', 'pass_launch', 'header_low', 'header_high']);
+        for (const pp of (prevPasses || [])) {
+          if (pp.target_participant_id) recentPasserBy.set(pp.target_participant_id, pp.participant_id);
+        }
+      }
+    } catch { /* one-two bonus is best-effort */ }
+  }
+
+  // Opposing GK by club — used by shot targeting to aim at the corner opposite GK.
+  const oppGkByClub = new Map<string, any>();
+  for (const cId of clubIds) {
+    const opps = opponentsByClub.get(cId) || [];
+    const gk = opps.find((o: any) =>
+      o.role_type === 'player' && !o.is_sent_off &&
+      isGKPosition((o._slot_position || o.slot_position || '').toUpperCase())
+    );
+    oppGkByClub.set(cId, gk || null);
+  }
+
   for (const bot of botsToAct) {
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
@@ -2693,203 +2981,164 @@ async function generateBotActions(
     const teammates = allClubPlayers.filter((p: any) => p.id !== bot.id);
     const opponents = opponentsByClub.get(bot.club_id) || [];
 
-    // ── Ball Holder Decision ──
+    // ── Ball Holder Decision (rewrite 2026-05-04) ──
+    // Replaces the legacy role-by-role hardcoded thresholds. Decisions now flow
+    // from helpers: getShootChance (role+dist+freedom+skill), pickShotTarget
+    // (aim opposite GK), pickCrossTarget (real attacker in box), pickDribbleVector
+    // (avoid nearest marker), pickBestPassTarget (trajectory-aware + through-pass +
+    // one-two via recentPasserBy). Aggressiveness scales with scoreline.
     if (isBH && phase === 'ball_holder') {
       const goalX = isHome ? 100 : 0;
-      const goalY = GOAL_Y_MIN + Math.random() * (GOAL_Y_MAX - GOAL_Y_MIN);
       const distToGoal = Math.sqrt((posX - goalX) ** 2 + (posY - 50) ** 2);
+      const aggMod = aggressivenessByClub.get(bot.club_id) ?? 1.0;
+      const oppClubId = isHomeRaw ? match?.away_club_id : match?.home_club_id;
+      const recentPasser = recentPasserBy.get(bot.id) ?? null;
+      const nearestOpp = nearestOppMap.get(bot.id);
+      const oppDist = nearestOpp?.dist ?? 999;
+      const freedom = Math.min(oppDist / 12, 1);
+      const shotSkill = (normalizeAttr(Number(botRawAttrs?.acuracia_chute ?? 40)) + normalizeAttr(Number(botRawAttrs?.forca_chute ?? 40))) / 2;
+      const dribleSkill = normalizeAttr(Number(botRawAttrs?.drible ?? 40));
+      const energyPct = Number(bot.match_energy ?? 100) / 100;
+      const inBox = isHome ? posX > 82 : posX < 18;
 
-      // ── Dead ball (kickoff, free kick, etc): BH MUST pass, never move ──
-      if (setPieceType) {
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
+      // Tactical actions (closures share BH context)
+      const pushShoot = () => {
+        const shotTarget = pickShotTarget(isHome, participants, oppClubId!, shotSkill);
+        const shootType = inBox ? 'shoot_power' : 'shoot_controlled';
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: shootType,
+          target_x: shotTarget.x, target_y: shotTarget.y, status: 'pending',
+        });
+      };
+      const pushPass = (allowFallback: boolean): boolean => {
+        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache, recentPasser);
         if (passResult) {
+          const tx = passResult.aimX != null ? passResult.aimX : Number(passResult.target.pos_x ?? 50);
+          const ty = passResult.aimY != null ? passResult.aimY : Number(passResult.target.pos_y ?? 50);
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: passResult.actionType,
-            target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
+            target_x: tx, target_y: ty,
             target_participant_id: passResult.target.id, status: 'pending',
           });
-        } else {
-          // Fallback: short pass forward
+          return true;
+        }
+        if (allowFallback) {
           const fwdX = isHome ? Math.min(98, posX + 15) : Math.max(2, posX - 15);
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: 'pass_low',
             target_x: fwdX, target_y: 40 + Math.random() * 20, status: 'pending',
           });
+          return true;
         }
-        continue; // Skip the rest of BH logic
-      }
+        return false;
+      };
+      const pushDribble = () => {
+        const oppPos = nearestOpp ? { x: Number(nearestOpp.opp.pos_x ?? 50), y: Number(nearestOpp.opp.pos_y ?? 50) } : null;
+        const target = pickDribbleVector(posX, posY, isHome, oppPos, dribleSkill, maxMoveRange);
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: target.x, target_y: target.y, status: 'pending',
+        });
+      };
+      const pushCross = (): boolean => {
+        const crossTarget = pickCrossTarget(teammates, isHome, opponents);
+        if (!crossTarget) return false;
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'pass_high',
+          target_x: Number(crossTarget.pos_x ?? 50), target_y: Number(crossTarget.pos_y ?? 50),
+          target_participant_id: crossTarget.id, status: 'pending',
+        });
+        return true;
+      };
+
+      // ── Dead ball: BH must pass ──
+      if (setPieceType) { pushPass(true); continue; }
 
       if (isGK) {
-        // GK: always pass to nearest free defender/midfielder, never shoot or dribble
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-        if (passResult) {
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: passResult.actionType,
-            target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-            target_participant_id: passResult.target.id, status: 'pending',
+        // GK distribuição contextual: under pressure → launch to free flank attacker;
+        // otherwise short pass to free CB/FB/DM via pickBestPassTarget.
+        const underPressure = oppDist < 12;
+        if (underPressure) {
+          const flankCandidates = teammates.filter((t: any) => {
+            if (t.is_sent_off) return false;
+            const tRole = getPositionRole((t._slot_position || t.slot_position || '').toUpperCase());
+            return tRole === 'winger' || tRole === 'striker' || tRole === 'wideMid';
           });
+          // Pick the most distant one (longest punt) on the freer flank
+          let chosen: any = null; let chosenScore = -Infinity;
+          for (const fa of flankCandidates) {
+            const fx = Number(fa.pos_x ?? 50);
+            const fy = Number(fa.pos_y ?? 50);
+            let nearestOppDist = 999;
+            for (const opp of opponents) {
+              const d = Math.sqrt((fx - Number(opp.pos_x ?? 50)) ** 2 + (fy - Number(opp.pos_y ?? 50)) ** 2);
+              if (d < nearestOppDist) nearestOppDist = d;
+            }
+            const score = nearestOppDist + (Math.abs((fx - posX)) * 0.3); // freedom + length
+            if (score > chosenScore) { chosenScore = score; chosen = fa; }
+          }
+          if (chosen) {
+            actions.push({
+              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+              controlled_by_type: 'bot', action_type: 'pass_launch',
+              target_x: Number(chosen.pos_x ?? 50), target_y: Number(chosen.pos_y ?? 50),
+              target_participant_id: chosen.id, status: 'pending',
+            });
+          } else {
+            // No flank candidate — fallback long punt
+            const puntX = isHome ? 95 : 5;
+            actions.push({
+              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+              controlled_by_type: 'bot', action_type: 'pass_launch',
+              target_x: puntX, target_y: 40 + Math.random() * 20, status: 'pending',
+            });
+          }
         } else {
-          // No target: punt forward
-          const puntX = isHome ? Math.min(98, posX + 30) : Math.max(2, posX - 30);
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: 'pass_launch',
-            target_x: puntX, target_y: 40 + Math.random() * 20, status: 'pending',
-          });
+          pushPass(true);
         }
       } else if (role === 'centerBack') {
-        // CB: always pass, never dribble. Short pass to midfielder/fullback
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-        if (passResult) {
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: passResult.actionType,
-            target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-            target_participant_id: passResult.target.id, status: 'pending',
-          });
-        } else {
-          const clearX = isHome ? Math.min(98, posX + 20) : Math.max(2, posX - 20);
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: 'pass_high',
-            target_x: clearX, target_y: 30 + Math.random() * 40, status: 'pending',
-          });
-        }
+        // CB: never shoot/dribble. Pass only.
+        pushPass(true);
       } else if (role === 'fullBack') {
-        // Fullback: pass or cross if advanced
-        const isAdvanced = isHome ? posX > 55 : posX < 45;
-        if (isAdvanced && Math.random() < 0.4) {
-          // Cross into the box
-          const crossX = isHome ? 85 + Math.random() * 10 : 5 + Math.random() * 10;
-          const crossY = 35 + Math.random() * 30;
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: 'pass_high',
-            target_x: crossX, target_y: crossY, status: 'pending',
-          });
+        // FB: cross from advanced position, otherwise pass
+        const isAdvanced = isHome ? posX > 60 : posX < 40;
+        if (isAdvanced && Math.random() < 0.45 * aggMod && pushCross()) {
+          // crossed
         } else {
-          const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-          if (passResult) {
-            actions.push({
-              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: passResult.actionType,
-              target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-              target_participant_id: passResult.target.id, status: 'pending',
-            });
-          } else {
-            const moveX = isHome ? Math.min(98, posX + 5) : Math.max(2, posX - 5);
-            actions.push({
-              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'move',
-              target_x: moveX, target_y: posY + (Math.random() - 0.5) * 4, status: 'pending',
-            });
-          }
-        }
-      } else if (role === 'defensiveMid') {
-        // CDM: aggressive — shoot if close, dribble forward, pass to attackers
-        const inBox = isHome ? posX > 82 : posX < 18;
-        if (distToGoal < 30 && Math.random() < 0.35) {
-          const shootType = inBox ? 'shoot_power' : 'shoot_controlled';
-          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
-        } else {
-          const nearestOpp = nearestOppMap.get(bot.id);
-          if (nearestOpp && nearestOpp.dist > 6 && Math.random() < 0.45) {
-            const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
-            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
-          } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-            if (passResult) {
-              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
-            } else {
-              const moveX = isHome ? Math.min(98, posX + 8) : Math.max(2, posX - 8);
-              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 5, status: 'pending' });
-            }
-          }
-        }
-      } else if (role === 'centralMid' || role === 'attackingMid' || role === 'wideMid') {
-        // Midfielders: AGGRESSIVE — always looking for goal, dribble through, pass forward
-        const inBox = isHome ? posX > 82 : posX < 18;
-        if (distToGoal < 40 && Math.random() < 0.60) {
-          const shootType = inBox ? 'shoot_power' : 'shoot_controlled';
-          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
-        } else {
-          const nearestOpp = nearestOppMap.get(bot.id);
-          if (nearestOpp && nearestOpp.dist > 5 && Math.random() < 0.55) {
-            // Dribble aggressively toward goal
-            const moveX = isHome ? Math.min(98, posX + 10 + Math.random() * 5) : Math.max(2, posX - 10 - Math.random() * 5);
-            const moveY = posY + (50 - posY) * 0.3 + (Math.random() - 0.5) * 6;
-            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
-          } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-            if (passResult) {
-              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
-            } else {
-              const moveX = isHome ? Math.min(98, posX + 10) : Math.max(2, posX - 10);
-              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 5, status: 'pending' });
-            }
-          }
-        }
-      } else if (role === 'winger') {
-        // Winger: VERY AGGRESSIVE — shoot, cut inside, cross to strikers
-        const inBox = isHome ? posX > 82 : posX < 18;
-        if (distToGoal < 35 && Math.random() < 0.65) {
-          const shootType = inBox ? 'shoot_power' : 'shoot_controlled';
-          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
-        } else if (distToGoal < 45 && Math.random() < 0.40) {
-          // Cross into the box for strikers
-          const strikers = teammates.filter(t => { const tRole = getPositionRole((t._slot_position || '').toUpperCase()); return tRole === 'striker'; });
-          if (strikers.length > 0) {
-            const st = strikers[Math.floor(Math.random() * strikers.length)];
-            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'pass_high', target_x: Number(st.pos_x ?? 50), target_y: Number(st.pos_y ?? 50), target_participant_id: st.id, status: 'pending' });
-          } else {
-            const moveX = isHome ? Math.min(98, posX + 12) : Math.max(2, posX - 12);
-            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 8, status: 'pending' });
-          }
-        } else {
-          // Dribble aggressively — cut inside or go down the line
-          const moveX = isHome ? Math.min(98, posX + 12 + Math.random() * 5) : Math.max(2, posX - 12 - Math.random() * 5);
-          const cutInside = Math.random() < 0.5;
-          const moveY = cutInside ? posY + (posY < 50 ? 12 : -12) : posY + (Math.random() - 0.5) * 6;
-          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
-        }
-      } else if (role === 'striker') {
-        // Striker: MOST AGGRESSIVE — always looking to score, shoot from anywhere in attack half
-        const inBox = isHome ? posX > 82 : posX < 18;
-        if (distToGoal < 45) {
-          // In range — SHOOT (power inside box, controlled outside)
-          const shootType = inBox ? 'shoot_power' : 'shoot_controlled';
-          actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: shootType, target_x: goalX, target_y: goalY, status: 'pending' });
-        } else {
-          // Far from goal — dribble hard toward goal, pass only as last resort
-          const nearestOpp = nearestOppMap.get(bot.id);
-          if (Math.random() < 0.70) {
-            // Dribble aggressively regardless of opponent distance
-            const moveX = isHome ? Math.min(98, posX + 12 + Math.random() * 5) : Math.max(2, posX - 12 - Math.random() * 5);
-            const moveY = posY + (50 - posY) * 0.3 + (Math.random() - 0.5) * 6;
-            actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: Math.max(2, Math.min(98, moveY)), status: 'pending' });
-          } else {
-            const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-            if (passResult) {
-              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: passResult.actionType, target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50), target_participant_id: passResult.target.id, status: 'pending' });
-            } else {
-              const moveX = isHome ? Math.min(98, posX + 12) : Math.max(2, posX - 12);
-              actions.push({ match_id: matchId, match_turn_id: turnId, participant_id: bot.id, controlled_by_type: 'bot', action_type: 'move', target_x: moveX, target_y: posY + (Math.random() - 0.5) * 6, status: 'pending' });
-            }
-          }
+          pushPass(true);
         }
       } else {
-        // Fallback: pass forward
-        const passResult = pickBestPassTarget(bot, role, teammates, isHome, ballPos, opponents, participants, possClubId, match, setPieceType, tickCache);
-        if (passResult) {
-          actions.push({
-            match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-            controlled_by_type: 'bot', action_type: passResult.actionType,
-            target_x: Number(passResult.target.pos_x ?? 50), target_y: Number(passResult.target.pos_y ?? 50),
-            target_participant_id: passResult.target.id, status: 'pending',
-          });
+        // DM/CM/AM/WideMid/Winger/Striker — unified scored decision
+        // Cross probability: only when in attacking third on flank-ish role
+        const flankRole = role === 'winger' || role === 'wideMid';
+        const advanced = isHome ? posX > 60 : posX < 40;
+        const pCross = (flankRole && advanced && distToGoal > 18 && distToGoal < 45) ? 0.32 * aggMod : 0;
+        // Shoot probability
+        const pShoot = getShootChance(role, distToGoal, freedom, shotSkill, aggMod);
+        // Dribble probability — scales with drible skill, freedom, energy
+        const baseDribble = (oppDist > 5 ? 0.45 : 0.20) * (0.6 + dribleSkill * 0.7) * (0.7 + 0.3 * energyPct) * aggMod;
+        const pDribble = role === 'striker' ? baseDribble * 1.2 : baseDribble;
+        // Roulette wheel — fall back to pass when none triggered
+        const total = pShoot + pCross + pDribble;
+        const draw = Math.random();
+        if (draw < pShoot) {
+          pushShoot();
+        } else if (draw < pShoot + pCross) {
+          if (!pushCross()) {
+            if (!pushPass(false)) pushDribble();
+          }
+        } else if (draw < pShoot + pCross + pDribble) {
+          pushDribble();
+        } else if (draw < Math.max(total + 0.05, 0.999)) {
+          // Default lane: try pass; if no target, dribble
+          if (!pushPass(false)) pushDribble();
+        } else {
+          pushDribble();
         }
       }
       continue;
@@ -3097,7 +3346,7 @@ async function generateBotActions(
           const botInterceptAction = isBhShooting ? 'block' : 'receive';
           const botInterceptZones = getInterceptableRanges(bhActionType || 'pass_low', botInterceptAction);
           const isInInterceptZone = botInterceptZones.some(([lo, hi]) => t >= lo && t <= hi);
-          if (isBhShooting && canReachTraj && isInInterceptZone && passInterceptorCount < 2) {
+          if (isBhShooting && canReachTraj && isInInterceptZone && passInterceptorCount < 3) {
             // Can reach shot trajectory in valid zone — block
             passInterceptorCount++;
             actions.push({
@@ -3105,7 +3354,7 @@ async function generateBotActions(
               controlled_by_type: 'bot', action_type: 'block',
               target_x: closestX, target_y: closestY, status: 'pending',
             });
-          } else if (isBhPassing && passDestination && canReachTraj && isInInterceptZone && passInterceptorCount < 2) {
+          } else if (isBhPassing && passDestination && canReachTraj && isInInterceptZone && passInterceptorCount < 3) {
             // Can reach pass trajectory in valid zone — intercept
             passInterceptorCount++;
             actions.push({
@@ -3202,14 +3451,14 @@ async function generateBotActions(
           const midInterceptZones = getInterceptableRanges(bhActionType || 'pass_low', midInterceptAction);
           const midInZone = midInterceptZones.some(([lo, hi]) => mt >= lo && mt <= hi);
 
-          if (isBhShooting && canReachTraj && midInZone && passInterceptorCount < 2) {
+          if (isBhShooting && canReachTraj && midInZone && passInterceptorCount < 3) {
             passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'block',
               target_x: closestX, target_y: closestY, status: 'pending',
             });
-          } else if (isBhPassing && canReachTraj && midInZone && passInterceptorCount < 2) {
+          } else if (isBhPassing && canReachTraj && midInZone && passInterceptorCount < 3) {
             passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -3253,7 +3502,31 @@ async function generateBotActions(
               status: 'pending',
             });
           } else {
-            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
+            // ── DM/CM man-marking (added 2026-05-04) ──
+            // Mark the opposition midfielder closest to the ball — gives the
+            // engine someone to actually fight in midfield instead of every DM/CM
+            // drifting back to the situational shape and leaving channels open.
+            // Uses attractOverride so the situational layout still drives the
+            // baseline shape; marking only nudges the target toward the marker.
+            const oppMids = opponents.filter((opp: any) => {
+              const oppRole = getPositionRole((opp._slot_position || '').toUpperCase());
+              return oppRole === 'centralMid' || oppRole === 'attackingMid' ||
+                     oppRole === 'defensiveMid' || oppRole === 'wideMid';
+            });
+            let markTarget: any = null;
+            if (oppMids.length > 0) {
+              let bestDist = Infinity;
+              for (const m of oppMids) {
+                const d = Math.sqrt((ballPos.x - Number(m.pos_x ?? 50)) ** 2 + (ballPos.y - Number(m.pos_y ?? 50)) ** 2);
+                if (d < bestDist) { bestDist = d; markTarget = m; }
+              }
+            }
+            const ownGoalX = isHome ? 0 : 100;
+            const attract = markTarget ? {
+              x: Number(markTarget.pos_x ?? 50) + (ownGoalX - Number(markTarget.pos_x ?? 50)) * 0.20,
+              y: Number(markTarget.pos_y ?? 50) + (50 - Number(markTarget.pos_y ?? 50)) * 0.10,
+            } : undefined;
+            const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, attract, tickCache, currentHalfBot);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
               controlled_by_type: 'bot', action_type: 'move',
@@ -3261,17 +3534,86 @@ async function generateBotActions(
             });
           }
         } else {
-          // ── Attackers defending: occasional press ──
-          if (bhDist <= maxMoveRange && Math.random() < 0.35) {
-            const pressX = posX + (ballPos.x - posX) * 0.35;
-            const pressY = posY + (ballPos.y - posY) * 0.35;
+          // ── Attackers defending (rewrite 2026-05-04): trajectory-aware reactive defense ──
+          // Pedro's request: bots from ANY role should react to opponent passes/shots/dribbles
+          // and try to dominate the ball. Mirror the same intercept math used by defenders/
+          // midfielders, with two safety gates so the shape doesn't collapse:
+          // (1) attackers only join when there's still budget (passInterceptorCount<3) AND
+          // they're very close to the trajectory (distToTraj < 8); (2) press fallback is
+          // reserved for when no intercept lane exists.
+          const isBhPassing = bhActionType && (bhActionType === 'pass_low' || bhActionType === 'pass_high' || bhActionType === 'pass_launch' || bhActionType === 'header_low' || bhActionType === 'header_high');
+          const isBhShooting = bhActionType && (isShootType(bhActionType) || isHeaderShootType(bhActionType));
+          const isBhDribbling = !isBhPassing && !isBhShooting;
+          const trajStart = ballPos;
+          const trajEnd = passDestination || (bhTargetX != null && bhTargetY != null ? { x: bhTargetX, y: bhTargetY } : ballPos);
+          const atdx = trajEnd.x - trajStart.x;
+          const atdy = trajEnd.y - trajStart.y;
+          const atlen2 = atdx * atdx + atdy * atdy;
+          const at = atlen2 > 0 ? Math.max(0, Math.min(1, ((posX - trajStart.x) * atdx + (posY - trajStart.y) * atdy) / atlen2)) : 0;
+          const aClosestX = trajStart.x + atdx * at;
+          const aClosestY = trajStart.y + atdy * at;
+          const aDistToTraj = Math.sqrt((posX - aClosestX) ** 2 + (posY - aClosestY) ** 2);
+          const aAdjRange = maxMoveRange * bhBallSpeedFactor;
+          const aTimingRange = aAdjRange * at;
+          const aCanReachTraj = aDistToTraj <= aTimingRange + 0.5;
+          // Attackers only join the intercept pool when very close to the lane (distToTraj<8)
+          const aCloseEnough = aDistToTraj < 8;
+          const aInterceptAction = isBhShooting ? 'block' : 'receive';
+          const aZones = getInterceptableRanges(bhActionType || 'pass_low', aInterceptAction);
+          const aInZone = aZones.some(([lo, hi]) => at >= lo && at <= hi);
+
+          if (isBhShooting && aCanReachTraj && aInZone && aCloseEnough && passInterceptorCount < 3) {
+            passInterceptorCount++;
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
-              controlled_by_type: 'bot', action_type: 'move',
-              target_x: Math.max(2, Math.min(98, pressX)), target_y: Math.max(2, Math.min(98, pressY)),
-              status: 'pending',
+              controlled_by_type: 'bot', action_type: 'block',
+              target_x: aClosestX, target_y: aClosestY, status: 'pending',
             });
+          } else if (isBhPassing && passDestination && aCanReachTraj && aInZone && aCloseEnough && passInterceptorCount < 3) {
+            passInterceptorCount++;
+            actions.push({
+              match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+              controlled_by_type: 'bot', action_type: 'receive',
+              target_x: aClosestX, target_y: aClosestY, status: 'pending',
+            });
+          } else if (isBhDribbling) {
+            // Tackle on dribble trajectory — only if very close to the BH (gegenpress style)
+            const dribTrajEnd = bhTargetX != null && bhTargetY != null ? { x: bhTargetX, y: bhTargetY } : ballPos;
+            const adtdx = dribTrajEnd.x - ballPos.x;
+            const adtdy = dribTrajEnd.y - ballPos.y;
+            const adtlen2 = adtdx * adtdx + adtdy * adtdy;
+            const adt = adtlen2 > 0 ? Math.max(0, Math.min(1, ((posX - ballPos.x) * adtdx + (posY - ballPos.y) * adtdy) / adtlen2)) : 0;
+            const aTackleX = ballPos.x + adtdx * adt;
+            const aTackleY = ballPos.y + adtdy * adt;
+            const aDistToTackle = Math.sqrt((posX - aTackleX) ** 2 + (posY - aTackleY) ** 2);
+            const aTackleTimingRange = maxMoveRange * adt;
+            const aCanTackle = aDistToTackle <= aTackleTimingRange + 0.5;
+            if (aCanTackle && bhDist < 14) {
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'receive',
+                target_x: aTackleX, target_y: aTackleY, status: 'pending',
+              });
+            } else if (bhDist <= maxMoveRange && Math.random() < 0.50) {
+              // Aggressive press toward ball — bumped 0.35→0.50 (Pedro: more reactive)
+              const pressX = posX + (ballPos.x - posX) * 0.45;
+              const pressY = posY + (ballPos.y - posY) * 0.45;
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'move',
+                target_x: Math.max(2, Math.min(98, pressX)), target_y: Math.max(2, Math.min(98, pressY)),
+                status: 'pending',
+              });
+            } else {
+              const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
+              actions.push({
+                match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+                controlled_by_type: 'bot', action_type: 'move',
+                target_x: target.x, target_y: target.y, status: 'pending',
+              });
+            }
           } else {
+            // No intercept lane reachable AND BH is passing/shooting — track back to situational shape
             const target = computeTacticalTarget(bot, role, ballPos, isHome, false, true, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
             actions.push({
               match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
@@ -3321,8 +3663,50 @@ async function generateBotActions(
           });
         }
       } else {
-        // Move to tactical position with attacking push
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache, currentHalfBot);
+        // ── Off-ball runs (added 2026-05-04) ──
+        // Forward roles (ST / Winger / AM) occasionally make a deep run BEHIND the
+        // opposing defensive line to create through-pass options. Crucially, this
+        // does NOT replace the situational target — it modulates the situational
+        // result by nudging it forward so the formation shape still drives the
+        // baseline. Without this nudge, attackers always sit at the situational
+        // anchor and pickBestPassTarget never sees a runner to feed.
+        let target = computeTacticalTarget(bot, role, ballPos, isHome, true, false, formation, slotIndex, undefined, undefined, tickCache, currentHalfBot);
+        const aggModForRun = aggressivenessByClub.get(bot.club_id) ?? 1.0;
+        const isForward = role === 'striker' || role === 'winger' || role === 'attackingMid';
+        const energyPctForRun = Number(bot.match_energy ?? 100) / 100;
+        const runChance = isForward ? 0.30 * aggModForRun * (0.5 + 0.5 * energyPctForRun) : 0;
+        if (runChance > 0 && Math.random() < runChance) {
+          const fwdSign = isHome ? 1 : -1;
+          let deepestX = isHome ? -Infinity : Infinity;
+          for (const opp of opponents) {
+            const ox = Number(opp.pos_x ?? 50);
+            const oppRole = getPositionRole((opp._slot_position || '').toUpperCase());
+            if (oppRole === 'goalkeeper') continue;
+            if (isHome ? ox > deepestX : ox < deepestX) deepestX = ox;
+          }
+          if (Number.isFinite(deepestX)) {
+            const runX = deepestX + fwdSign * 4;
+            // Blend situational X with the run X — keep Y from situational so
+            // lateral positioning still respects the editor layout.
+            const blended = { x: target.x * 0.4 + runX * 0.6, y: target.y };
+            const dx = blended.x - posX;
+            const dy = blended.y - posY;
+            const dist = getMovementDistance(dx, dy);
+            const baseRange = computeMaxMoveRange(botMoveAttrs, turnNumber);
+            if (dist > baseRange) {
+              const scale = baseRange / dist;
+              target = {
+                x: Math.max(2, Math.min(98, posX + dx * scale)),
+                y: Math.max(2, Math.min(98, posY + dy * scale)),
+              };
+            } else {
+              target = {
+                x: Math.max(2, Math.min(98, blended.x)),
+                y: Math.max(2, Math.min(98, blended.y)),
+              };
+            }
+          }
+        }
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',

@@ -1412,11 +1412,65 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
           <Button
             variant="destructive"
             disabled={openSeasons.length === 0 || busy === 'finish'}
-            onClick={() => fire(
-              'Forçar fim de temporada',
-              async () => await supabase.rpc('admin_force_finish_current_season'),
-              `Vai encerrar ${openSeasons.length} season(s) abertas. Confirma?`,
-            )}
+            onClick={async () => {
+              if (!confirm(`Vai encerrar ${openSeasons.length} season(s) abertas + gerar recap + criar N+1 pra todas as ligas. Confirma?`)) return;
+              setBusy('finish');
+              try {
+                // Step 1: flip status — triggers fire awards + MVP poll per league
+                const { data: finRes, error: finErr } = await supabase.rpc('admin_force_finish_current_season');
+                if (finErr) { toast.error(finErr.message); return; }
+                const finishedYear = (finRes as any)?.game_year ?? currentYear;
+
+                // Step 2: gather every season just finished at this game year
+                const { data: justFinished } = await supabase
+                  .from('league_seasons')
+                  .select('id, league_id')
+                  .eq('season_number', finishedYear)
+                  .eq('status', 'finished');
+                const finishedSeasonIds = (justFinished ?? []).map((s: any) => s.id);
+                const finishedLeagueIds = Array.from(new Set((justFinished ?? []).map((s: any) => s.league_id)));
+
+                // Step 3: aging once globally — idempotent per season_id
+                if (finishedSeasonIds[0]) {
+                  await supabase.rpc('admin_run_aging', { p_season_id: finishedSeasonIds[0] });
+                }
+
+                // Step 4: recap for every finished season
+                // backfill-season-recaps takes its inputs as query params,
+                // so go through fetch directly instead of supabase.functions.invoke.
+                const supabaseUrl = (supabase as any).supabaseUrl as string;
+                const anonKey = (supabase as any).supabaseKey as string;
+                let recapsOk = 0;
+                for (const sid of finishedSeasonIds) {
+                  try {
+                    const url = `${supabaseUrl}/functions/v1/backfill-season-recaps?season_id=${sid}&force=1`;
+                    const res = await fetch(url, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${anonKey}`, apikey: anonKey },
+                    });
+                    if (res.ok) recapsOk++;
+                  } catch (e) {
+                    console.error('recap failed for', sid, e);
+                  }
+                }
+
+                // Step 5: create Season N+1 for every active league
+                let nextSeasonsOk = 0;
+                for (const lid of finishedLeagueIds) {
+                  const seedRes = await supabase.functions.invoke('league-seed', {
+                    body: { action: 'start_next_season', league_id: lid },
+                  });
+                  if (!seedRes.error && (seedRes.data as any)?.status === 'created') nextSeasonsOk++;
+                }
+
+                toast.success(`Game Year ${finishedYear} encerrado · ${finishedSeasonIds.length} seasons · ${recapsOk} recap(s) · ${nextSeasonsOk} season(s) N+1`);
+                onReload();
+              } catch (e: any) {
+                toast.error(e?.message || String(e));
+              } finally {
+                setBusy(null);
+              }
+            }}
           >
             {busy === 'finish' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
             Forçar fim do Game Year {currentYear}
