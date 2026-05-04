@@ -906,7 +906,13 @@ export default function LeaguePage() {
               let n = 3;
               if (isManagerWithoutClub || isPlayerFreeAgent) n += 1;
               if (seasonStatus === 'finished' && seasonId) n += 1;
-              return `grid-cols-${n}`;
+              // Static class strings so Tailwind JIT picks them up at build time
+              const map: Record<number, string> = {
+                3: 'grid-cols-3',
+                4: 'grid-cols-4',
+                5: 'grid-cols-5',
+              };
+              return map[n] ?? 'grid-cols-3';
             })()
           } max-w-2xl`}>
             {seasonStatus === 'finished' && seasonId && (

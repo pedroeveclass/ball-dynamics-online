@@ -110,7 +110,7 @@ export default function AdminPage() {
 
         {/* ═══ PRÊMIOS TAB ═══ */}
         <TabsContent value="awards">
-          <AwardsTab seasons={seasons} rounds={rounds} onReload={loadAll} />
+          <AwardsTab seasons={seasons} rounds={rounds} leagues={leagues} onReload={loadAll} />
         </TabsContent>
 
         {/* ═══ TIMES TAB ═══ */}
@@ -1536,7 +1536,7 @@ interface AwardPoll {
   candidates_n: number;
 }
 
-function AwardsTab({ seasons, rounds, onReload }: { seasons: LeagueSeason[]; rounds: LeagueRound[]; onReload: () => void }) {
+function AwardsTab({ seasons, rounds, leagues, onReload }: { seasons: LeagueSeason[]; rounds: LeagueRound[]; leagues: League[]; onReload: () => void }) {
   const { t } = useTranslation('admin');
   const [polls, setPolls] = useState<AwardPoll[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -1627,11 +1627,15 @@ function AwardsTab({ seasons, rounds, onReload }: { seasons: LeagueSeason[]; rou
                 .filter(r => r.status === 'finished')
                 .sort((a, b) => b.round_number - a.round_number)
                 .slice(0, 50)
-                .map(r => (
-                  <SelectItem key={r.id} value={r.id}>
-                    Rodada {r.round_number} · {r.status}
-                  </SelectItem>
-                ))}
+                .map(r => {
+                  const season = seasons.find(s => s.id === r.season_id);
+                  const lg = season ? leagues.find(l => l.id === season.league_id) : null;
+                  return (
+                    <SelectItem key={r.id} value={r.id}>
+                      {lg?.name || 'Liga'} · Temp {season?.season_number ?? '?'} · Rodada {r.round_number}
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
           <Button
@@ -1653,11 +1657,14 @@ function AwardsTab({ seasons, rounds, onReload }: { seasons: LeagueSeason[]; rou
           <Select value={selSeason} onValueChange={setSelSeason}>
             <SelectTrigger><SelectValue placeholder="Escolha a season" /></SelectTrigger>
             <SelectContent>
-              {seasons.map(s => (
-                <SelectItem key={s.id} value={s.id}>
-                  Temp {s.season_number} · {s.status}
-                </SelectItem>
-              ))}
+              {seasons.map(s => {
+                const lg = leagues.find(l => l.id === s.league_id);
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    {lg?.name || 'Liga'} · Temp {s.season_number} · {s.status}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           <Button
@@ -1683,11 +1690,14 @@ function AwardsTab({ seasons, rounds, onReload }: { seasons: LeagueSeason[]; rou
           <Select value={selSeason} onValueChange={setSelSeason}>
             <SelectTrigger><SelectValue placeholder="Escolha a season" /></SelectTrigger>
             <SelectContent>
-              {seasons.map(s => (
-                <SelectItem key={s.id} value={s.id}>
-                  Temp {s.season_number} · {s.status}
-                </SelectItem>
-              ))}
+              {seasons.map(s => {
+                const lg = leagues.find(l => l.id === s.league_id);
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    {lg?.name || 'Liga'} · Temp {s.season_number} · {s.status}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           <Button
