@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { DEFAULT_FORMATION, getFormationPositions } from '@/lib/formations';
 import type { MatchData, ClubInfo, Participant, MatchTurn, EventLog, MatchAction, ClubUniform, PendingInterceptChoice, PlayerProfileSummary, LineupSlotSummary, TurnMeta, DrawingState, ResolutionScript } from './match/types';
-import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, GOAL_Y_MIN, GOAL_Y_MAX, SET_PIECE_EXCLUSION_RADIUS, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor, isPositioningPhase, isOpenPlayPhase, attackersActInPhase, defendersActInPhase } from './match/constants';
+import { PHASE_LABELS, ACTION_LABELS, PHASE_DURATION, OPEN_PLAY_DURATION, POSITIONING_PHASE_DURATION, RESOLUTION_PHASE_DURATION, PRE_MATCH_COUNTDOWN_SECONDS, PRE_MATCH_COUNTDOWN_MS, LIVE_EVENT_LIMIT, TURN_ACTION_RECONCILE_DELAY_MS, CLIENT_MATCH_PROCESSOR_RETRY_MS, ENABLE_CLIENT_MATCH_PROCESSOR_FALLBACK, INTERCEPT_RADIUS, GOAL_LINE_OVERFLOW_PCT, GOAL_Y_MIN, GOAL_Y_MAX, SET_PIECE_EXCLUSION_RADIUS, ACTION_PHASE_ORDER, FIELD_W, FIELD_H, PAD, INNER_W, INNER_H, clamp, normalizeAttr, pointToSegmentDistance, isShootAction, isPassAction, isHeaderAction, isAnyShootAction, isAnyPassAction, formatScheduledDate, getBallZoneAtProgress, canReachTrajectoryPoint, getBallSpeedFactor, isPositioningPhase, isOpenPlayPhase, attackersActInPhase, defendersActInPhase } from './match/constants';
 import { filterEffectiveTurnActions, dedupeAndSortTurnActions, buildParticipantLayout, buildParticipantAttrsMap } from './match/utils';
 import { positionalMultiplier } from '@/lib/positions';
 import { MatchScoreboard } from './match/MatchScoreboard';
@@ -1461,7 +1461,9 @@ export default function MatchRoomPage() {
       if (timerBarRef.current) {
         const phase = activeTurnRef.current?.phase;
         const dur = phase === 'resolution' ? RESOLUTION_PHASE_DURATION
-          : isPositioningPhase(phase) ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
+          : isPositioningPhase(phase) ? POSITIONING_PHASE_DURATION
+          : phase === 'open_play' ? OPEN_PLAY_DURATION
+          : PHASE_DURATION;
         const pct = dur > 0 ? (seconds / dur) * 100 : 0;
         timerBarRef.current.style.width = `${pct}%`;
         timerBarRef.current.style.background = seconds <= 2
@@ -3841,10 +3843,21 @@ export default function MatchRoomPage() {
               delete newDirections[p.id];
               continue;
             }
+            // no_action moves are submitted as `move` with payload.no_action=true
+            // (see feedback memory). They should NOT contribute to prev-direction
+            // tracking — otherwise the rearview arrow + next-turn directional
+            // multiplier picks up a "stayed still" move as if it were a real
+            // direction, locking the player out of their actual prior heading.
+            // Also prefer actions with status==='used' over 'overridden': the
+            // overridden no_action move and the actual ball action share the
+            // same turn, and find() should pick the action that actually
+            // happened.
             const moveAction = latestActions.find(a =>
               a.participant_id === p.id
               && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block')
               && a.target_x != null && a.target_y != null
+              && !((a.payload as any)?.no_action === true)
+              && a.status !== 'overridden'
             );
             const ddx = moveAction
               ? Number(moveAction.target_x) - sp.x
@@ -4955,7 +4968,9 @@ export default function MatchRoomPage() {
   };
 
   const currentPhaseDuration = activeTurn?.phase === 'resolution' ? RESOLUTION_PHASE_DURATION
-    : isPositioningTurn ? POSITIONING_PHASE_DURATION : PHASE_DURATION;
+    : isPositioningTurn ? POSITIONING_PHASE_DURATION
+    : activeTurn?.phase === 'open_play' ? OPEN_PLAY_DURATION
+    : PHASE_DURATION;
   const phaseProgress = phaseTimeLeft > 0 ? phaseTimeLeft / currentPhaseDuration : 0;
 
 

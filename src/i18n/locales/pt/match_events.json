@@ -13,6 +13,7 @@
     "shot_post": "A bola bateu na trave e voltou pro campo.",
     "loose_ball": "Ninguém dominou a bola.",
     "loose_ball_phase": "Todos os jogadores se movimentam para disputar a bola.",
+    "loose_ball_phase_skip": "Todos os jogadores se movimentam para disputar a bola.",
     "loose_ball_recovered": "Quem chegou primeiro na bola solta ficou com a posse.",
     "ball_inertia": "Ninguém alcançou a bola. Ela continua na mesma direção por inércia.",
     "receive_success": "Jogador dominou a bola com {{chance}} de chance.",

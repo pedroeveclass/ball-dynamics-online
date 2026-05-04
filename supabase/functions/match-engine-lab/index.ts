@@ -20,13 +20,17 @@ const LOG_VERBOSE = (() => {
   catch { return false; }
 })();
 
-const PHASE_DURATION_MS = 10000;
+const PHASE_DURATION_MS = 10000;          // ball_holder
+const OPEN_PLAY_DURATION_MS = 12000;      // open_play (Movimentação Geral) — merged attacking_support + defending_response
 const POSITIONING_PHASE_DURATION_MS = 10000;
 const RESOLUTION_PHASE_DURATION_MS = 2000; // 2s for client animation
 const HALFTIME_PAUSE_MS = 5 * 60 * 1000; // 5 minutes halftime
 const MAX_TURNS = 144;
 const TURNS_PER_HALF = 72;
-const PHASES = ['ball_holder', 'attacking_support', 'defending_response', 'resolution'] as const;
+// 2026-05-03: merged attacking_support + defending_response → 'open_play' (single
+// simultaneous phase). Both teams act in the same tick with `isAttacker` deriving
+// the side. Positioning kept split (positioning_attack + positioning_defense).
+const PHASES = ['ball_holder', 'open_play', 'resolution'] as const;
 
 // ─── Real-time clock constants ──────────────────────────────
 const HALF_DURATION_MS = 25 * 60 * 1000;       // 25 real minutes per half
@@ -2362,6 +2366,14 @@ async function generateBotActions(
   setPieceType?: string | null,
   looseBallPosition?: { x: number; y: number } | null,
   tackleMovementPenalty?: Map<string, number>,
+  // Loose-ball chase aids:
+  // velocity → predict where ball will be at end of this turn so the chaser
+  //            aims at the intercept, not the stale start position.
+  // failedReceiverIds → bots whose receive roll failed in the previous tick
+  //            cannot claim the loose ball (server invariant). Excluding them
+  //            from "closest on team" lets the next valid bot take over.
+  looseBallVelocity?: { dirX: number; dirY: number; decay: number } | null,
+  failedReceiverIds?: Set<string>,
 ) {
   const botsToAct: any[] = [];
 
@@ -2376,8 +2388,10 @@ async function generateBotActions(
     const isBH = p.id === ballHolderId;
 
     if (phase === 'ball_holder' && isBH) botsToAct.push(p);
-    else if (phase === 'attacking_support' && isAttacker) botsToAct.push(p);
-    else if (phase === 'defending_response' && !isAttacker) botsToAct.push(p);
+    // Merged 'open_play': BOTH teams act simultaneously (attackers ex-BH + defenders).
+    // BH is excluded — they kept their action from ball_holder phase. The
+    // submittedParticipantIds filter above already drops them.
+    else if (phase === 'open_play' && !isBH) botsToAct.push(p);
     else if (phase === 'positioning_attack' && isAttacker && !isBH) botsToAct.push(p);
     else if (phase === 'positioning_defense' && !isAttacker) botsToAct.push(p);
   }
@@ -2468,7 +2482,7 @@ async function generateBotActions(
   let bhTargetX: number | null = null;
   let bhTargetY: number | null = null;
   let bhTargetParticipantId: string | null = null;
-  if ((phase === 'defending_response' || phase === 'attacking_support') && ballHolderId) {
+  if (phase === 'open_play' && ballHolderId) {
     const { data: bhActions } = await supabase
       .from('match_actions')
       .select('action_type, target_x, target_y, target_participant_id')
@@ -2597,6 +2611,7 @@ async function generateBotActions(
     const posX = Number(bot.pos_x ?? 50);
     const posY = Number(bot.pos_y ?? 50);
     const isBH = bot.id === ballHolderId;
+    const isAttacker = bot.club_id === possClubId;
     // In 2nd half, sides are flipped (home plays on right, away on left)
     const isHomeRaw = bot.club_id === homeClubId;
     const isHome = isSecondHalfBot ? !isHomeRaw : isHomeRaw;
@@ -2827,31 +2842,74 @@ async function generateBotActions(
 
     // ── Loose Ball Handling ──
     if (isLooseBall) {
-      const distToBall = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
+      // Predicted ball position by end of this turn. The ball travels
+      // dirX*decay / dirY*decay units (this matches the inertia step the
+      // resolution will apply). Falls back to the static ballPos when the
+      // engine couldn't recover velocity — same as old behaviour, no regression.
+      const predictedBallX = looseBallVelocity
+        ? ballPos.x + looseBallVelocity.dirX * looseBallVelocity.decay
+        : ballPos.x;
+      const predictedBallY = looseBallVelocity
+        ? ballPos.y + looseBallVelocity.dirY * looseBallVelocity.decay
+        : ballPos.y;
+      // Distance is measured against the predicted intercept point — that's
+      // where the bot needs to BE when the ball arrives.
+      const distToBall = Math.sqrt((posX - predictedBallX) ** 2 + (posY - predictedBallY) ** 2);
       const clubChasers = looseBallChasersByClub.get(bot.club_id) ?? 0;
+      const isFailedReceiver = !!failedReceiverIds?.has(bot.id);
 
-      // Find if this bot is the closest player on their team to the ball
-      const teamPlayers = (playersByClub.get(bot.club_id) || []).filter((p: any) => p.role_type === 'player' && !p.is_sent_off);
-      const isClosestOnTeam = !teamPlayers.some((t: any) => {
+      // Find if this bot is the closest valid player on their team to the
+      // intercept point. Failed receivers and sent-off players are excluded —
+      // they CAN'T claim the ball, so counting them shadows the real closest.
+      const teamPlayers = (playersByClub.get(bot.club_id) || []).filter((p: any) =>
+        p.role_type === 'player'
+        && !p.is_sent_off
+        && !(failedReceiverIds?.has(p.id))
+      );
+      const isClosestOnTeam = !isFailedReceiver && !teamPlayers.some((t: any) => {
         if (t.id === bot.id) return false;
-        const tDist = Math.sqrt((Number(t.pos_x ?? 50) - ballPos.x) ** 2 + (Number(t.pos_y ?? 50) - ballPos.y) ** 2);
+        const tDist = Math.sqrt((Number(t.pos_x ?? 50) - predictedBallX) ** 2 + (Number(t.pos_y ?? 50) - predictedBallY) ** 2);
         return tDist < distToBall;
       });
 
-      // Closest player on each team ALWAYS chases the ball, regardless of distance
-      // Second closest also chases if within reasonable range
+      // Failed receiver: still move toward the ball (formation-aware) so they're
+      // not stuck rooted to the failed-receive spot, but never submit `receive`
+      // (claim is forbidden). Lets them be useful next turn once invariant lifts.
+      if (isFailedReceiver) {
+        const target = computeTacticalTarget(bot, role, { x: predictedBallX, y: predictedBallY }, isHome, false, false, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
+        actions.push({
+          match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
+          controlled_by_type: 'bot', action_type: 'move',
+          target_x: target.x, target_y: target.y, status: 'pending',
+        });
+        continue;
+      }
+
+      // Closest valid player on each team ALWAYS chases. Second closest also
+      // chases if within reasonable range — but aims further along the inertia
+      // trajectory (predicted + 1 more decay step) so they intercept the
+      // ball if the closest fails to reach this turn.
       if (isClosestOnTeam || (distToBall < 15 && clubChasers < 2)) {
+        const isPrimaryChaser = isClosestOnTeam;
         looseBallChasersByClub.set(bot.club_id, clubChasers + 1);
-        if (distToBall <= maxMoveRange) {
-          // Can reach the ball this turn — try to receive
+        if (isPrimaryChaser && distToBall <= maxMoveRange) {
+          // Closest can reach the intercept this turn — submit receive AT the
+          // predicted point so the resolution's segment-claim catches the ball
+          // mid-flight (was failing before because target was the stale start
+          // pos and the ball had already drifted past it by tick end).
           actions.push({
             match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
             controlled_by_type: 'bot', action_type: 'receive',
-            target_x: ballPos.x, target_y: ballPos.y, status: 'pending',
+            target_x: predictedBallX, target_y: predictedBallY, status: 'pending',
           });
         } else {
-          // Move as close as possible toward ball
-          const angle = Math.atan2(ballPos.y - posY, ballPos.x - posX);
+          // Out of range OR second chaser → move toward predicted intercept.
+          // Second chaser aims one more decay step ahead to catch up if the
+          // primary fails — keeps the team committed to the ball instead of
+          // both bots crowding the same stale point.
+          const aimX = isPrimaryChaser ? predictedBallX : predictedBallX + (looseBallVelocity?.dirX ?? 0) * (looseBallVelocity?.decay ?? 0);
+          const aimY = isPrimaryChaser ? predictedBallY : predictedBallY + (looseBallVelocity?.dirY ?? 0) * (looseBallVelocity?.decay ?? 0);
+          const angle = Math.atan2(aimY - posY, aimX - posX);
           const targetX = posX + Math.cos(angle) * maxMoveRange;
           const targetY = posY + Math.sin(angle) * maxMoveRange;
           actions.push({
@@ -2862,8 +2920,11 @@ async function generateBotActions(
           });
         }
       } else {
-        // Not closest — move toward ball but maintain some formation
-        const target = computeTacticalTarget(bot, role, ballPos, isHome, false, false, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
+        // Not in chasing pool — formation-aware support move toward predicted
+        // ball position. Same as before but using the intercept point instead
+        // of stale ballPos so the tactical target is consistent with where
+        // play is heading.
+        const target = computeTacticalTarget(bot, role, { x: predictedBallX, y: predictedBallY }, isHome, false, false, formation, slotIndex, maxMoveRange, undefined, tickCache, currentHalfBot);
         actions.push({
           match_id: matchId, match_turn_id: turnId, participant_id: bot.id,
           controlled_by_type: 'bot', action_type: 'move',
@@ -2873,8 +2934,8 @@ async function generateBotActions(
       continue;
     }
 
-    // ── Defending Response ──
-    if (phase === 'defending_response') {
+    // ── Defending Response (legacy) OR open_play for defenders (merged) ──
+    if (phase === 'open_play' && !isAttacker) {
       if (ballHolderId) {
         const bhDist = Math.sqrt((posX - ballPos.x) ** 2 + (posY - ballPos.y) ** 2);
 
@@ -3172,8 +3233,8 @@ async function generateBotActions(
           target_x: target.x, target_y: target.y, status: 'pending',
         });
       }
-    } else if (phase === 'attacking_support') {
-      // ── Attacking Support ──
+    } else if (phase === 'open_play' && isAttacker) {
+      // ── Attacking Support (open_play for attackers) ──
       // Skip the ball holder — they already have their action from ball_holder phase
       if (isBH) continue;
       if (isGK) {
@@ -3343,7 +3404,7 @@ async function generateBotActions(
   }
 
   // ── Post-processing: validate receive/block targets are near ball/trajectory ──
-  if (phase === 'defending_response' && ballHolderId) {
+  if (phase === 'open_play' && ballHolderId) {
     for (const action of actions) {
       if (action.action_type !== 'receive' && action.action_type !== 'block') continue;
       const botPart = participants.find((p: any) => p.id === action.participant_id);
@@ -3412,11 +3473,11 @@ async function generateBotActions(
       if (!(a as any).created_at) (a as any).created_at = now;
     }
     // .select() so the returned rows carry the DB-assigned `id`. The
-    // ball_holder → attacking_support early-deviation step UPDATEs the BH's
+    // ball_holder → open_play early-deviation step UPDATEs the BH's
     // pass/shoot by `eq('id', bhAction.id)`; without ids it would silently
     // match no rows and the deviation would only land at resolution-time
     // fallback — so opponents would see the bot's intended arrow during
-    // attacking_support and `dominate` math would use non-deviated coords.
+    // open_play and `dominate` math would use non-deviated coords.
     const { data: inserted } = await supabase.from('match_actions').insert(actions).select();
     if (LOG_VERBOSE) console.log(`[ENGINE] Bot tactical AI generated ${actions.length} actions for phase ${phase}`);
     if (Array.isArray(inserted) && inserted.length === actions.length) {
@@ -6225,6 +6286,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
   // ── Compute loose ball position if ball is loose (parallel with next phase queries) ──
   let looseBallPos: { x: number; y: number } | null = null;
+  // Inertia direction + decay for the loose ball, so bot AI can predict where the
+  // ball will be at end of this turn and chase the intercept point (instead of
+  // targeting the current/start position, which is a stale chase that lets the
+  // ball drift away tick after tick).
+  let looseBallVelocity: { dirX: number; dirY: number; decay: number } | null = null;
+  // Failed receivers from the most recent pass_failed event. They're forbidden from
+  // claiming the loose ball (server invariant) — counting them as "closest on team"
+  // makes other bots fall back to formation tactical instead of chasing.
+  const failedReceiverIds: Set<string> = new Set();
   const isLooseBallTurn = !activeTurn.ball_holder_participant_id;
 
   // Fast path: every match_turns INSERT now persists ball_x/ball_y. If the
@@ -6239,31 +6309,53 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
   // is fired. Includes only event types that CARRY the ball position;
   // including coord-less types (loose_ball_phase, loose_ball_recovered,
   // possession_change) made the engine pick a stale original pass target.
-  const looseBallEventsPromise = (isLooseBallTurn && !looseBallPos)
+  // Always pull the recent loose-ball events when ball is loose: even on the fast
+  // path (looseBallPos already set from activeTurn.ball_x/y), we still want
+  // dir_x/dir_y/next_decay (for predictive chase) and the most recent failed
+  // receiver (so closest-on-team excludes them).
+  const looseBallEventsPromise = isLooseBallTurn
     ? supabase.from('match_event_logs')
         .select('event_type, payload, body')
         .eq('match_id', match_id)
-        .in('event_type', ['loose_ball', 'ball_inertia', 'block', 'blocked', 'shot_missed'])
+        .in('event_type', ['loose_ball', 'ball_inertia', 'block', 'blocked', 'shot_missed', 'pass_failed', 'receive_failed'])
         .order('created_at', { ascending: false })
-        .limit(1)
+        .limit(8)
     : null;
 
   // Helper to resolve loose ball position (called when needed)
   const resolveLooseBallPos = async () => {
-    if (!isLooseBallTurn || looseBallPos) return; // fast-path already covered it
     if (!looseBallEventsPromise) return;
     const { data: lastEvents } = await looseBallEventsPromise;
+    // Walk the events: first usable position-bearing event wins for looseBallPos
+    // (when fast path didn't supply it); first usable velocity-bearing event wins
+    // for looseBallVelocity; collect ALL recent failed receiver ids.
     if (lastEvents && lastEvents.length > 0) {
-      const evt = lastEvents[0];
-      const payload = evt.payload as any;
-      if (payload?.x != null && payload?.y != null) {
-        looseBallPos = { x: Number(payload.x), y: Number(payload.y) };
-      } else if (payload?.ball_x != null && payload?.ball_y != null) {
-        looseBallPos = { x: Number(payload.ball_x), y: Number(payload.ball_y) };
-      } else if (evt.body) {
-        const coordMatch = evt.body.match(/\((\d+),\s*(\d+)\)/);
-        if (coordMatch) {
-          looseBallPos = { x: Number(coordMatch[1]), y: Number(coordMatch[2]) };
+      for (const evt of lastEvents) {
+        const payload = evt.payload as any;
+        const et = evt.event_type;
+        if (et === 'pass_failed' || et === 'receive_failed') {
+          const failedId = payload?.intended_receiver_participant_id ?? payload?.participant_id;
+          if (failedId) failedReceiverIds.add(String(failedId));
+          continue;
+        }
+        if (!looseBallPos) {
+          if (payload?.x != null && payload?.y != null) {
+            looseBallPos = { x: Number(payload.x), y: Number(payload.y) };
+          } else if (payload?.ball_x != null && payload?.ball_y != null) {
+            looseBallPos = { x: Number(payload.ball_x), y: Number(payload.ball_y) };
+          } else if (evt.body) {
+            const coordMatch = evt.body.match(/\((\d+),\s*(\d+)\)/);
+            if (coordMatch) {
+              looseBallPos = { x: Number(coordMatch[1]), y: Number(coordMatch[2]) };
+            }
+          }
+        }
+        if (!looseBallVelocity && payload?.dir_x != null && payload?.dir_y != null) {
+          looseBallVelocity = {
+            dirX: Number(payload.dir_x),
+            dirY: Number(payload.dir_y),
+            decay: typeof payload.next_decay === 'number' ? Number(payload.next_decay) : 0.08,
+          };
         }
       }
     }
@@ -6351,6 +6443,11 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // Determine if this is a kickoff (ball holder at center)
     const bhId = activeTurn.ball_holder_participant_id;
     const submittedParticipantIds = new Set<string>((rawActions || []).map((a: any) => a.participant_id));
+    if (!bhId) {
+      // Positioning under loose-ball flow needs the velocity + failed-receiver
+      // info too — same chase/exclusion logic as the non-resolution path.
+      await resolveLooseBallPos();
+    }
     await generateBotActions(
       supabase,
       match_id,
@@ -6365,6 +6462,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       tickCache,
       activeTurn.set_piece_type,
       looseBallPos,
+      undefined,
+      looseBallVelocity,
+      failedReceiverIds,
     );
     mark('pos_bots');
 
@@ -6808,6 +6908,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const { data: nrActions } = await supabase.from('match_actions').select('*').eq('match_turn_id', activeTurn.id).eq('status', 'pending');
     nonResolutionActions = nrActions || [];
     const submittedParticipantIds = new Set<string>((nonResolutionActions || []).map((a: any) => a.participant_id));
+    if (isLooseBall) {
+      // Open-play / ball_holder under loose ball needs velocity + failed-receiver
+      // info for predictive chase. resolveLooseBallPos is idempotent and a no-op
+      // when no events promise was queued.
+      await resolveLooseBallPos();
+    }
     const newBotActions = await generateBotActions(
       supabase,
       match_id,
@@ -6822,6 +6928,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       tickCache,
       activeTurn.set_piece_type,
       looseBallPos,
+      undefined,
+      looseBallVelocity,
+      failedReceiverIds,
     );
     // Append newly-generated bot actions in-memory instead of doing a second
     // SELECT (which used to dominate ball_holder ticks). Skipped on every
@@ -6905,6 +7014,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             submittedIds, activeTurn.ball_holder_participant_id,
             possClubId, isLooseBall, turnRow.phase, match,
             tickCache, activeTurn.set_piece_type, looseBallPos,
+            undefined, looseBallVelocity, failedReceiverIds,
           );
         }
       }
@@ -8930,8 +9040,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (inHomeGoal || inAwayGoal) {
         // Prefer the BH's ball action (shoot/pass) over their move when checking
         // over_goal. allActions is sorted by created_at DESC, so the move from
-        // attacking_support comes BEFORE the shoot from ball_holder; a plain
-        // find that accepts either would return the move (no over_goal flag)
+        // open_play comes BEFORE the shoot from ball_holder; a plain find
+        // that accepts either would return the move (no over_goal flag)
         // and incorrectly count an over-the-bar shot as a goal.
         const ballAction = ballHolder
           ? (allActions.find(a => a.participant_id === ballHolder.id && isBallActionType(a.action_type))
@@ -9115,7 +9225,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           if (p.id === takerId) continue; // taker stays at set-piece spot
           // GK never follows situational/Bola Parada layouts — its positioning is
           // governed entirely by the best-angle + reference-point logic in
-          // computeTacticalTarget / defending_response (computeGkBestAnglePosition).
+          // computeTacticalTarget / open_play defender branch (computeGkBestAnglePosition).
           const pSlotPos = (p._editor_slot_position || p._slot_position || p.slot_position || '').toUpperCase();
           if (isGKPosition(pSlotPos)) continue;
           const isHomeRaw = p.club_id === match.home_club_id;
@@ -9294,7 +9404,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       initial_ball_pos: initialBallPos,
       next_turn: {
         phase: (nextBallHolderParticipantId === null
-          ? 'attacking_support'
+          ? 'open_play'
           : (nextSetPieceType ? 'positioning_attack' : 'ball_holder')),
         possession_club_id: newPossessionClubId,
         ball_holder_participant_id: nextBallHolderParticipantId,
@@ -9909,8 +10019,12 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       const isPenalty = nextSetPieceType === 'penalty';
       const hasDeadBallRestart = !isNextLooseBall && Boolean(nextSetPieceType);
       const usePositioning = hasDeadBallRestart;
-      const nextPhase = isNextLooseBall ? 'attacking_support' : (usePositioning ? 'positioning_attack' : 'ball_holder');
-      const nextPhaseDuration = usePositioning ? POSITIONING_PHASE_DURATION_MS : PHASE_DURATION_MS;
+      const nextPhase = isNextLooseBall ? 'open_play' : (usePositioning ? 'positioning_attack' : 'ball_holder');
+      const nextPhaseDuration = usePositioning
+        ? POSITIONING_PHASE_DURATION_MS
+        : isNextLooseBall
+          ? OPEN_PLAY_DURATION_MS
+          : PHASE_DURATION_MS;
       // started_at + ends_at are RECOMPUTED right before the INSERT below to
       // eliminate drift from any work between this point and the INSERT.
 
@@ -10011,10 +10125,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
 
       if (isNextLooseBall) {
+        // payload.message_key lets the i18n MatchFlow render the localized line.
+        // Without it, payload was null and the body was a hardcoded PT string —
+        // EN clients showed the raw key / nothing.
         await supabase.from('match_event_logs').insert({
           match_id, event_type: 'loose_ball_phase',
           title: '⚽ Bola solta — Fase 1 pulada',
           body: 'Todos os jogadores se movimentam para disputar a bola.',
+          payload: { message_key: 'match_events:bodies.loose_ball_phase_skip' },
         });
       } else if (usePositioning) {
         await supabase.from('match_event_logs').insert({
@@ -10051,15 +10169,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     }
 
     const nextPhaseStart = new Date().toISOString();
-    const nextPhaseEnd = new Date(Date.now() + PHASE_DURATION_MS).toISOString();
+    const nextPhaseEnd = new Date(Date.now() + OPEN_PLAY_DURATION_MS).toISOString();
 
     // Atomic phase advance (single round-trip): UPDATE matches + INSERT match_turns.
     // Carry ball_x/ball_y forward — this branch fires when the ball stays
-    // loose into attacking_support, so the next tick must read the same
+    // loose into open_play, so the next tick must read the same
     // coords without an event-log scan.
     await supabase.rpc('advance_match_phase', {
       p_match_id: match_id,
-      p_next_phase: 'attacking_support',
+      p_next_phase: 'open_play',
       p_turn_number: activeTurn.turn_number,
       p_possession_club_id: possClubId,
       p_ball_holder_participant_id: null,
@@ -10070,7 +10188,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       p_ball_y: (activeTurn as any).ball_y ?? looseBallPos?.y ?? null,
     });
   } else {
-    // ── Early deviation at ball_holder → attacking_support transition ──
+    // ── Early deviation at ball_holder → open_play transition ──
     if (activeTurn.phase === 'ball_holder' && ballHolder) {
       const profileIds = (participants || []).filter(p => p.player_profile_id).map(p => p.player_profile_id);
       const { data: devAttrRows } = profileIds.length > 0
@@ -10149,7 +10267,7 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
     const nextPhaseStart = new Date().toISOString();
     // Resolution phase used to chain synchronously in the same HTTP request,
-    // doubling defending_response tick time (p95 18s, max 89s on the hot
+    // doubling open_play tick time (p95 18s, max 89s on the hot
     // sample). Now we INSERT the resolution turn with a SHORT ends_at
     // (RESOLUTION_KICKOFF_DELAY_MS) so the next tick — driven by the client
     // setTimeout right after MatchRoomPage receives the new match_turn row,
@@ -10159,7 +10277,9 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     const RESOLUTION_KICKOFF_DELAY_MS = 200;
     const phaseDuration = nextPhase === 'resolution'
       ? RESOLUTION_KICKOFF_DELAY_MS
-      : PHASE_DURATION_MS;
+      : nextPhase === 'open_play'
+        ? OPEN_PLAY_DURATION_MS
+        : PHASE_DURATION_MS;
     const nextPhaseEnd = new Date(Date.now() + phaseDuration).toISOString();
 
     // Token-guarded resolve: only proceed if we still own the claim.
@@ -10199,13 +10319,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
     // ends_at = NOW + RESOLUTION_KICKOFF_DELAY_MS, so:
     //   • MatchRoomPage's setTimeout (msUntilExpiry + 300ms buffer) fires
     //     `process_due_matches` with this match_id and the resolution tick
-    //     runs in a fresh HTTP request, isolated from the defending tick.
+    //     runs in a fresh HTTP request, isolated from the open_play tick.
     //   • If the tab is closed, the next 10s cron picks it up.
-    // The defending_response → resolution split previously paid for both
+    // The open_play → resolution split previously paid for both
     // ticks in a single HTTP round-trip, doubling its latency (p95 ~18s).
-    // After this change, defending_response returns as soon as it persists
+    // After this change, open_play returns as soon as it persists
     // the next turn, and resolution runs on its own clock.
-    if (nextPhase === 'resolution' && activeTurn.phase === 'defending_response') {
+    if (nextPhase === 'resolution' && activeTurn.phase === 'open_play') {
       mark('advance_persist');
       tickExitStatus = `advanced:${activeTurn.phase}+resolution_queued`;
       return { status: 'advanced' };
@@ -10586,12 +10706,13 @@ Deno.serve(async (req) => {
         if (phase === 'ball_holder') {
           // Only the ball holder
           expectedHumans = humanParts.filter((p: any) => p.id === bhPartId);
-        } else if (phase === 'attacking_support' || phase === 'positioning_attack') {
-          // Attacking team (same club as possession), excluding BH for attacking_support
-          expectedHumans = humanParts.filter((p: any) =>
-            p.club_id === possClubId && (phase === 'positioning_attack' || p.id !== bhPartId)
-          );
-        } else if (phase === 'defending_response' || phase === 'positioning_defense') {
+        } else if (phase === 'open_play') {
+          // Both teams except BH (BH already submitted in ball_holder phase)
+          expectedHumans = humanParts.filter((p: any) => p.id !== bhPartId);
+        } else if (phase === 'positioning_attack') {
+          // Attacking team (same club as possession)
+          expectedHumans = humanParts.filter((p: any) => p.club_id === possClubId);
+        } else if (phase === 'positioning_defense') {
           // Defending team (opposite club)
           expectedHumans = humanParts.filter((p: any) => p.club_id !== possClubId);
         }

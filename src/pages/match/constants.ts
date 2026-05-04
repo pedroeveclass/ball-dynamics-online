@@ -7,7 +7,7 @@ const PHASE_FALLBACK_PT: Record<string, string> = {
   defending_response: 'Defesa', resolution: 'Motion', pre_match: 'Pré-jogo',
   processing: 'Pausa',
   positioning_attack: 'Posicionar ⚽', positioning_defense: 'Posicionar 🛡️',
-  positioning: 'Posicionar', open_play: 'Jogada',
+  positioning: 'Posicionar', open_play: 'Movimentação Geral',
 };
 
 // PHASE_LABELS resolves through i18next at access time so PT/EN follow the
@@ -74,7 +74,8 @@ export const ACTION_LABELS: Record<string, string> = new Proxy({} as Record<stri
   },
 });
 
-export const PHASE_DURATION = 10;
+export const PHASE_DURATION = 10;          // ball_holder
+export const OPEN_PLAY_DURATION = 12;       // open_play (Movimentação Geral) — must match engine OPEN_PLAY_DURATION_MS / 1000
 export const POSITIONING_PHASE_DURATION = 10;
 export const RESOLUTION_PHASE_DURATION = 2; // must match engine RESOLUTION_PHASE_DURATION_MS / 1000
 export const PRE_MATCH_COUNTDOWN_SECONDS = 10;
