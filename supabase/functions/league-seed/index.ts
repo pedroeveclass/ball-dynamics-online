@@ -54,6 +54,71 @@ const TEAM_NAMES_SERIE_B = [
   { name: 'Bandeirantes SC', short: 'BAN', city: 'São José do Rio Preto' },
 ];
 
+// Lower-tier pool for divisions 3+. 60 entries — supports 3 more
+// divisions without reuse. The seed picks the first 20 not already
+// taken by any existing club.
+const TEAM_NAMES_LOWER_TIERS = [
+  { name: 'Sertão SC', short: 'SER', city: 'Petrolina' },
+  { name: 'Pampas FC', short: 'PAM', city: 'Bagé' },
+  { name: 'Carcará EC', short: 'CAR', city: 'Crato' },
+  { name: 'Mandacaru AC', short: 'MND', city: 'Juazeiro' },
+  { name: 'Caatinga FC', short: 'CTG', city: 'Mossoró' },
+  { name: 'Litoral SC', short: 'LIT', city: 'Praia Grande' },
+  { name: 'Cerrado EC', short: 'CER', city: 'Anápolis' },
+  { name: 'Mata Atlântica FC', short: 'MAT', city: 'Linhares' },
+  { name: 'Pantanal SC', short: 'PNT', city: 'Corumbá' },
+  { name: 'Amazônia FC', short: 'AMZ', city: 'Santarém' },
+  { name: 'Boiadeiro EC', short: 'BOI', city: 'Barretos' },
+  { name: 'Tropeiros AC', short: 'TRP', city: 'Lages' },
+  { name: 'Bandeirante FC', short: 'BND', city: 'Sorocaba' },
+  { name: 'Sambaqui SC', short: 'SAM', city: 'Itanhaém' },
+  { name: 'Coqueiral FC', short: 'COQ', city: 'Maragogi' },
+  { name: 'Ipanema EC', short: 'IPA', city: 'Niterói' },
+  { name: 'Capivara AC', short: 'CAP', city: 'Pelotas' },
+  { name: 'Serrano FC', short: 'SRR', city: 'Petrópolis' },
+  { name: 'Vale do Sol SC', short: 'VDS', city: 'Caldas Novas' },
+  { name: 'Estrela Polar FC', short: 'EPO', city: 'Macapá' },
+  { name: 'Bordeira EC', short: 'BRD', city: 'São José dos Campos' },
+  { name: 'Caçador AC', short: 'CAÇ', city: 'Caçador' },
+  { name: 'Iguaçu FC', short: 'IGU', city: 'Foz do Iguaçu' },
+  { name: 'Capão Redondo SC', short: 'CRD', city: 'Capão Redondo' },
+  { name: 'Lampião EC', short: 'LMP', city: 'Sergipe' },
+  { name: 'Pororoca FC', short: 'PRR', city: 'Macapá' },
+  { name: 'Riacho AC', short: 'RIA', city: 'Brasília' },
+  { name: 'Castanheira SC', short: 'CTN', city: 'Castanhal' },
+  { name: 'Buritizal FC', short: 'BUR', city: 'Buritizal' },
+  { name: 'Caboclo EC', short: 'CBC', city: 'Manacapuru' },
+  { name: 'Maracá AC', short: 'MRC', city: 'Boa Vista' },
+  { name: 'Garra Brasileira', short: 'GRR', city: 'Várzea Grande' },
+  { name: 'Sol Nascente FC', short: 'SNS', city: 'Águas Claras' },
+  { name: 'Praia Mole SC', short: 'PML', city: 'Florianópolis' },
+  { name: 'Rio Verde EC', short: 'RVE', city: 'Rio Verde' },
+  { name: 'Cachoeira AC', short: 'CCH', city: 'Cachoeira do Sul' },
+  { name: 'Farol FC', short: 'FRL', city: 'Aracati' },
+  { name: 'Itacaré SC', short: 'ITA', city: 'Itacaré' },
+  { name: 'Pão de Açúcar EC', short: 'PDA', city: 'Pão de Açúcar' },
+  { name: 'Mariri FC', short: 'MAR', city: 'Mariri' },
+  { name: 'Tapajós AC', short: 'TPJ', city: 'Itaituba' },
+  { name: 'Solimões SC', short: 'SOL', city: 'Tabatinga' },
+  { name: 'Catu FC', short: 'CAT', city: 'Catu' },
+  { name: 'Brejo EC', short: 'BRJ', city: 'Brejo da Madre de Deus' },
+  { name: 'Alto Paraíso AC', short: 'APR', city: 'Alto Paraíso' },
+  { name: 'Tocantins FC', short: 'TOC', city: 'Palmas' },
+  { name: 'Aroeira SC', short: 'ARO', city: 'Cuiabá' },
+  { name: 'Capim Dourado EC', short: 'CDO', city: 'Palmas' },
+  { name: 'Riobaldo FC', short: 'RBD', city: 'Itamarandiba' },
+  { name: 'Manga Rosa AC', short: 'MGR', city: 'Manga' },
+  { name: 'Recife do Norte SC', short: 'RDN', city: 'Recife' },
+  { name: 'Boitatá FC', short: 'BTT', city: 'Iguape' },
+  { name: 'Curupira EC', short: 'CRP', city: 'Tefé' },
+  { name: 'Saci AC', short: 'SAC', city: 'Lapa' },
+  { name: 'Iara SC', short: 'IAR', city: 'Iguatu' },
+  { name: 'Gralha Azul FC', short: 'GAZ', city: 'Curitiba' },
+  { name: 'Buriti AC', short: 'BTI', city: 'Boa Vista' },
+  { name: 'Aroeira do Vale SC', short: 'AVL', city: 'Vale do Aroeira' },
+  { name: 'Caiçara FC', short: 'CIC', city: 'Cananéia' },
+];
+
 const STADIUM_NAMES = [
   'Arena do Povo', 'Estádio Municipal', 'Arena Central', 'Estádio da Vitória',
   'Arena do Norte', 'Estádio Gigante', 'Arena Sol', 'Estádio da Paz',
@@ -528,6 +593,279 @@ Deno.serve(async (req) => {
         existing_clubs: existingClubIds.length,
         bot_clubs_created: botClubIds.length,
         total_rounds: roundFixtures.size,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // seed_division — generic division creation. Caller passes:
+    //   - country (BR, EN, ES, ...)
+    //   - league_name (display name)
+    //   - division (integer; 1=Série A, 2=B, 3=C, ...)
+    //   - clubs (default 20)
+    //   - overall (default by tier: 50/45/40/35/30)
+    //   - balance (default by tier: 200k/150k/100k/75k/50k)
+    // Carrega todos os pools de bot-clubs (Série A + B + tier inferior),
+    // filtra os já tomados, escolhe `clubs` distintos.
+    // ────────────────────────────────────────────────────────────
+    if (action === 'seed_division') {
+      const country = (body.country ?? 'BR').toUpperCase();
+      const leagueName = (body.league_name ?? '').trim();
+      const division = parseInt(body.division ?? '0');
+      const clubsCount = parseInt(body.clubs ?? '20');
+
+      if (!leagueName || !Number.isInteger(division) || division < 1) {
+        return new Response(JSON.stringify({ error: 'league_name + division (>=1) required' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (!Number.isInteger(clubsCount) || clubsCount < 4 || clubsCount > 30) {
+        return new Response(JSON.stringify({ error: 'clubs must be between 4 and 30' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Idempotency: same name OR same country+division can't repeat.
+      const { data: existingByName } = await supabase
+        .from('leagues').select('id').eq('name', leagueName).maybeSingle();
+      if (existingByName) {
+        return new Response(JSON.stringify({
+          status: 'skipped', reason: 'name_taken', league_id: existingByName.id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const { data: existingByDiv } = await supabase
+        .from('leagues').select('id, name').eq('country', country).eq('division', division).maybeSingle();
+      if (existingByDiv) {
+        return new Response(JSON.stringify({
+          status: 'skipped', reason: 'division_taken', existing_name: existingByDiv.name,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // Tier-based defaults — division 1 is strongest (rating 50, R$200k)
+      // and each step down weakens. Caller can override with explicit
+      // body.overall / body.balance.
+      const tier = Math.min(5, division);
+      const defaultOverall = [50, 45, 40, 35, 30][tier - 1];
+      const defaultBalance = [200000, 150000, 100000, 75000, 50000][tier - 1];
+      const defaultRep = [20, 15, 10, 8, 5][tier - 1];
+      const defaultSalary = [250, 200, 150, 120, 100][tier - 1];
+      const playerOverall = parseInt(body.overall ?? defaultOverall.toString());
+      const startBalance = parseInt(body.balance ?? defaultBalance.toString());
+
+      const { data: league, error: leagueError } = await supabase.from('leagues').insert({
+        name: leagueName, country, division, max_teams: clubsCount, status: 'active',
+      }).select('id').single();
+      if (leagueError || !league) {
+        return new Response(JSON.stringify({ error: `Failed to create league: ${leagueError?.message}` }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const leagueId = league.id;
+
+      // Pull every existing club name to avoid collisions.
+      const { data: allClubs } = await supabase.from('clubs').select('name');
+      const usedNames = new Set((allClubs ?? []).map((c: any) => c.name));
+      // Pool order: tier-appropriate first, then fall back to other pools.
+      const pool = division === 1
+        ? [...TEAM_NAMES, ...TEAM_NAMES_SERIE_B, ...TEAM_NAMES_LOWER_TIERS]
+        : division === 2
+          ? [...TEAM_NAMES_SERIE_B, ...TEAM_NAMES_LOWER_TIERS, ...TEAM_NAMES]
+          : [...TEAM_NAMES_LOWER_TIERS, ...TEAM_NAMES_SERIE_B, ...TEAM_NAMES];
+      const availableTeams = pool.filter(t => !usedNames.has(t.name)).slice(0, clubsCount);
+      if (availableTeams.length < clubsCount) {
+        return new Response(JSON.stringify({
+          error: `Pool exhausted: needed ${clubsCount}, found ${availableTeams.length} unused names. Add more entries to TEAM_NAMES_LOWER_TIERS.`,
+        }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const botClubIds: string[] = [];
+      for (let i = 0; i < availableTeams.length; i++) {
+        const team = availableTeams[i];
+        const colors = COLORS[i % COLORS.length];
+        const stadiumName = STADIUM_NAMES[i % STADIUM_NAMES.length];
+
+        const { data: botManager } = await supabase.from('manager_profiles').insert({
+          user_id: null, full_name: `Bot Manager ${team.short}`,
+          reputation: defaultRep, money: 0, coach_type: 'all_around',
+        }).select('id').single();
+        if (!botManager) continue;
+
+        const { data: club } = await supabase.from('clubs').insert({
+          manager_profile_id: botManager.id, name: team.name, short_name: team.short,
+          primary_color: colors.primary, secondary_color: colors.secondary,
+          city: team.city, reputation: defaultRep, status: 'active',
+          league_id: leagueId, is_bot_managed: true,
+        }).select('id').single();
+        if (!club) continue;
+        botClubIds.push(club.id);
+
+        await supabase.from('club_finances').insert({
+          club_id: club.id, balance: startBalance,
+          weekly_wage_bill: defaultSalary * 22,
+          projected_income: Math.round(startBalance * 0.06),
+          projected_expense: Math.round(startBalance * 0.025),
+        });
+
+        await supabase.from('club_facilities').insert([
+          { club_id: club.id, facility_type: 'souvenir_shop', level: 1 },
+          { club_id: club.id, facility_type: 'sponsorship', level: 1 },
+          { club_id: club.id, facility_type: 'training_center', level: 1 },
+          { club_id: club.id, facility_type: 'stadium', level: 1 },
+        ]);
+
+        await supabase.from('stadiums').insert({
+          club_id: club.id, name: stadiumName,
+          capacity: Math.max(2000, 5000 - (division - 1) * 1000),
+          quality: Math.max(15, 30 - (division - 1) * 5),
+          prestige: Math.max(5, 15 - (division - 1) * 3),
+          maintenance_cost: Math.max(800, 2000 - (division - 1) * 400),
+        });
+
+        await supabase.from('club_settings').insert({
+          club_id: club.id, default_formation: '4-4-2', play_style: 'balanced',
+        });
+
+        const playerInserts: any[] = [];
+        for (let j = 0; j < BOT_POSITIONS.length; j++) {
+          playerInserts.push({
+            club_id: club.id, full_name: generateBotName(),
+            age: generateAge(BOT_POSITIONS[j]),
+            height: 170 + Math.floor(Math.random() * 20),
+            dominant_foot: Math.random() > 0.3 ? 'right' : 'left',
+            primary_position: BOT_POSITIONS[j], secondary_position: null,
+            archetype: 'balanced', overall: playerOverall, reputation: defaultRep,
+            money: 0, weekly_salary: defaultSalary,
+            energy_current: 100, energy_max: 100,
+          });
+        }
+        const { data: players } = await supabase.from('player_profiles').insert(playerInserts).select('id, primary_position');
+        if (!players) continue;
+
+        const attrInserts = players.map((p: any) => ({
+          player_profile_id: p.id,
+          aceleracao: playerOverall, acuracia_chute: playerOverall, agilidade: playerOverall, antecipacao: playerOverall,
+          cabeceio: playerOverall, comando_area: playerOverall, controle_bola: playerOverall, coragem: playerOverall,
+          curva: playerOverall, defesa_aerea: playerOverall, desarme: playerOverall, distribuicao_curta: playerOverall,
+          distribuicao_longa: playerOverall, drible: playerOverall, equilibrio: playerOverall, forca: playerOverall,
+          forca_chute: playerOverall, marcacao: playerOverall, passe_alto: playerOverall, passe_baixo: playerOverall,
+          pegada: playerOverall, posicionamento_defensivo: playerOverall, posicionamento_gol: playerOverall,
+          posicionamento_ofensivo: playerOverall, pulo: playerOverall, reflexo: playerOverall, resistencia: playerOverall,
+          saida_gol: playerOverall, stamina: playerOverall, tempo_reacao: playerOverall, tomada_decisao: playerOverall,
+          trabalho_equipe: playerOverall, um_contra_um: playerOverall, um_toque: playerOverall, velocidade: playerOverall,
+        }));
+        await supabase.from('player_attributes').insert(attrInserts);
+
+        await supabase.from('contracts').insert(players.map((p: any) => ({
+          player_profile_id: p.id, club_id: club.id,
+          weekly_salary: defaultSalary, release_clause: defaultSalary * 6,
+          start_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'active',
+        })));
+
+        const { data: lineup } = await supabase.from('lineups').insert({
+          club_id: club.id, name: 'Titular', formation: '4-4-2', is_active: true,
+        }).select('id').single();
+        if (lineup) {
+          const usedIds = new Set<string>();
+          const dedupedSlots: any[] = [];
+          for (let idx = 0; idx < STARTER_POSITIONS_HOME.length; idx++) {
+            const sp = STARTER_POSITIONS_HOME[idx];
+            const matching = players.filter((pl: any) => pl.primary_position === sp.pos && !usedIds.has(pl.id));
+            const fallback = players.find((pl: any) => !usedIds.has(pl.id));
+            const selected = matching[0] ?? fallback;
+            if (!selected) continue;
+            usedIds.add(selected.id);
+            dedupedSlots.push({
+              lineup_id: lineup.id, player_profile_id: selected.id,
+              slot_position: sp.pos, role_type: 'starter', sort_order: idx + 1,
+            });
+          }
+          await supabase.from('lineup_slots').insert(dedupedSlots);
+        }
+      }
+
+      // Game year = max season_number across all existing leagues, or 1.
+      const { data: maxSeasonRow } = await supabase
+        .from('league_seasons').select('season_number')
+        .order('season_number', { ascending: false }).limit(1).maybeSingle();
+      const gameYear = (maxSeasonRow?.season_number as number | undefined) ?? 1;
+
+      const { data: season } = await supabase.from('league_seasons').insert({
+        league_id: leagueId, season_number: gameYear, status: 'scheduled',
+      }).select('id').single();
+      if (!season) {
+        return new Response(JSON.stringify({ error: 'Failed to create season' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      await supabase.from('league_standings').insert(
+        botClubIds.map(clubId => ({ season_id: season.id, club_id: clubId })),
+      );
+
+      const fixtures = generateRoundRobin(botClubIds);
+      const roundFixtures = new Map<number, { home: string; away: string }[]>();
+      for (const f of fixtures) {
+        if (!roundFixtures.has(f.round)) roundFixtures.set(f.round, []);
+        roundFixtures.get(f.round)!.push({ home: f.home, away: f.away });
+      }
+
+      // Mirror dates from sibling at same game year if any exists.
+      const { data: siblingRounds } = await supabase
+        .from('league_rounds')
+        .select('round_number, scheduled_at, season_id, league_seasons!inner(season_number, league_id)')
+        .eq('league_seasons.season_number', gameYear)
+        .neq('league_seasons.league_id', leagueId)
+        .order('round_number', { ascending: true });
+      const siblingDateByRound = new Map<number, string>();
+      for (const sr of (siblingRounds ?? [])) {
+        if (!siblingDateByRound.has((sr as any).round_number)) {
+          siblingDateByRound.set((sr as any).round_number, (sr as any).scheduled_at);
+        }
+      }
+
+      const startDate = new Date(body.start_date || Date.now());
+      const dow = startDate.getUTCDay();
+      const daysUntilWed = (3 - dow + 7) % 7 || 7;
+      const firstWednesday = new Date(startDate);
+      firstWednesday.setUTCDate(firstWednesday.getUTCDate() + daysUntilWed);
+      firstWednesday.setUTCHours(24, 0, 0, 0);
+
+      let currentWed = new Date(firstWednesday);
+      for (let roundNum = 1; roundNum <= roundFixtures.size; roundNum++) {
+        let roundDateIso: string;
+        const sibling = siblingDateByRound.get(roundNum);
+        if (sibling) {
+          roundDateIso = sibling;
+        } else {
+          const isOdd = roundNum % 2 === 1;
+          const fallbackDate = new Date(currentWed);
+          if (!isOdd) fallbackDate.setUTCDate(fallbackDate.getUTCDate() + 4);
+          if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7);
+          roundDateIso = fallbackDate.toISOString();
+        }
+
+        const { data: round } = await supabase.from('league_rounds').insert({
+          season_id: season.id, round_number: roundNum,
+          scheduled_at: roundDateIso, status: 'scheduled',
+        }).select('id').single();
+        if (!round) continue;
+
+        for (const fx of roundFixtures.get(roundNum) ?? []) {
+          await supabase.from('league_matches').insert({
+            round_id: round.id, match_id: null,
+            home_club_id: fx.home, away_club_id: fx.away,
+          });
+        }
+      }
+
+      console.log(`[SEED] Created ${leagueName} (div ${division}) with ${botClubIds.length} bot clubs at game year ${gameYear}`);
+
+      return new Response(JSON.stringify({
+        status: 'created',
+        league_id: leagueId, league_name: leagueName, division,
+        season_id: season.id, game_year: gameYear,
+        clubs: botClubIds.length, rounds: roundFixtures.size,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

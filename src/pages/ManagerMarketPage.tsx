@@ -58,14 +58,27 @@ export default function ManagerMarketPage() {
   const fetchFreeAgents = async () => {
     setLoading(true);
 
-    // Get players with no active contract and no club_id (exclude retired)
-    const { data, error } = await supabase
+    // Pull admin user_ids first so their own player profile doesn't leak
+    // into the market roster — admins still see themselves on /player and
+    // /admin, just not in this public listing.
+    const { data: adminProfiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('is_admin', true);
+    const adminIds = (adminProfiles ?? []).map((p: any) => p.id);
+
+    let query = supabase
       .from('player_profiles')
       .select('id, full_name, age, primary_position, secondary_position, archetype, overall, reputation')
       .is('club_id', null)
       .eq('retirement_status', 'active')
       .order('overall', { ascending: false });
 
+    if (adminIds.length > 0) {
+      query = query.not('user_id', 'in', `(${adminIds.join(',')})`);
+    }
+
+    const { data, error } = await query;
     if (!error && data) setPlayers(data);
     setLoading(false);
   };

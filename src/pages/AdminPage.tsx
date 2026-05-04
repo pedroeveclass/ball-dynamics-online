@@ -1410,44 +1410,7 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
       </Card>
 
       {/* Liga CRUD */}
-      <Card>
-        <CardHeader><CardTitle>Ligas</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-2">
-            {leagues.map(lg => {
-              const lgClubs = clubs.filter(c => c.league_id === lg.id).length;
-              const lgSeasons = seasons.filter(s => s.league_id === lg.id).length;
-              const empty = lgClubs === 0 && lgSeasons === 0;
-              return (
-                <div key={lg.id} className="flex items-center justify-between text-sm p-2 bg-card rounded border">
-                  <div>
-                    <span className="font-medium">{lg.name}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">{lgClubs} clubes · {lgSeasons} seasons</span>
-                  </div>
-                  {empty && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="h-7 text-xs"
-                      disabled={busy === `del-${lg.id}`}
-                      onClick={() => fire(
-                        'Apagar liga vazia',
-                        async () => await supabase.rpc('admin_delete_empty_league', { p_league_id: lg.id }),
-                        `Apagar a liga "${lg.name}"? (ela está vazia)`,
-                      )}
-                    >
-                      Apagar
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-[11px] text-muted-foreground pt-2">
-            Pra criar uma nova divisão (Série C, etc.), chame a edge function <code>league-seed</code> com action <code>seed_serie_b</code> ou crie uma variante. Vou expor um botão aqui depois de generalizar a função.
-          </p>
-        </CardContent>
-      </Card>
+      <LeaguesCard leagues={leagues} clubs={clubs} seasons={seasons} fire={fire} busy={busy} onReload={onReload} />
 
       {/* Mover clube entre ligas */}
       <Card>
@@ -1521,6 +1484,164 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ─── LeaguesCard — list + create new division ───
+function LeaguesCard({ leagues, clubs, seasons, fire, busy, onReload }: {
+  leagues: League[]; clubs: Club[]; seasons: LeagueSeason[];
+  fire: (label: string, fn: () => Promise<any>, confirmMsg?: string) => Promise<void>;
+  busy: string | null;
+  onReload: () => void;
+}) {
+  const [createDialog, setCreateDialog] = useState(false);
+  const [country, setCountry] = useState('BR');
+  const [leagueName, setLeagueName] = useState('');
+  const [division, setDivision] = useState('');
+  const [clubsCount, setClubsCount] = useState('20');
+  const [creating, setCreating] = useState(false);
+
+  // Sort leagues by country then division for the listing.
+  const sorted = [...leagues].sort((a, b) => {
+    const ca = (a as any).country || '';
+    const cb = (b as any).country || '';
+    if (ca !== cb) return ca.localeCompare(cb);
+    return ((a as any).division ?? 0) - ((b as any).division ?? 0);
+  });
+
+  // Suggest the next available division for the chosen country.
+  const suggestedDivision = (() => {
+    const used = new Set(
+      leagues.filter((l: any) => (l.country ?? '').toUpperCase() === country.toUpperCase())
+             .map((l: any) => l.division)
+    );
+    for (let i = 1; i <= 10; i++) if (!used.has(i)) return i;
+    return null;
+  })();
+
+  async function handleCreate() {
+    setCreating(true);
+    try {
+      const res = await supabase.functions.invoke('league-seed', {
+        body: {
+          action: 'seed_division',
+          country: country.toUpperCase(),
+          league_name: leagueName.trim(),
+          division: parseInt(division),
+          clubs: parseInt(clubsCount),
+        },
+      });
+      if (res.error) { toast.error(res.error.message || String(res.error)); return; }
+      const data = res.data as any;
+      if (data?.error) { toast.error(data.error); return; }
+      if (data?.status === 'skipped') { toast.error(`${data.reason} ${data.existing_name ? `(${data.existing_name})` : ''}`); return; }
+      toast.success(`Liga criada: ${data.league_name} · div ${data.division} · ${data.clubs} clubes`);
+      setCreateDialog(false);
+      setLeagueName('');
+      setDivision('');
+      onReload();
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Ligas</span>
+          <Button size="sm" onClick={() => {
+            setLeagueName('');
+            setDivision(suggestedDivision?.toString() ?? '');
+            setClubsCount('20');
+            setCreateDialog(true);
+          }}>+ Criar divisão</Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {sorted.map((lg: any) => {
+          const lgClubs = clubs.filter(c => c.league_id === lg.id).length;
+          const lgSeasons = seasons.filter(s => s.league_id === lg.id).length;
+          const empty = lgClubs === 0 && lgSeasons === 0;
+          return (
+            <div key={lg.id} className="flex items-center justify-between text-sm p-2 bg-card rounded border">
+              <div>
+                <Badge variant="outline" className="text-[10px] mr-2">{lg.country || '?'} · D{lg.division ?? '?'}</Badge>
+                <span className="font-medium">{lg.name}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{lgClubs} clubes · {lgSeasons} seasons</span>
+              </div>
+              {empty && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs"
+                  disabled={busy === `del-${lg.id}`}
+                  onClick={() => fire(
+                    'Apagar liga vazia',
+                    async () => await supabase.rpc('admin_delete_empty_league', { p_league_id: lg.id }),
+                    `Apagar a liga "${lg.name}"? (ela está vazia)`,
+                  )}
+                >
+                  Apagar
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+
+      <Dialog open={createDialog} onOpenChange={open => { if (!creating) setCreateDialog(open); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Criar nova divisão</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">País</Label>
+              <Input value={country} onChange={e => setCountry(e.target.value.toUpperCase().slice(0, 2))} placeholder="BR" maxLength={2} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Código ISO de 2 letras (BR, EN, ES…)</p>
+            </div>
+            <div>
+              <Label className="text-xs">Nome da divisão</Label>
+              <Input value={leagueName} onChange={e => setLeagueName(e.target.value)} placeholder="Liga Brasileira - Série C" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Divisão #</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={division}
+                  onChange={e => setDivision(e.target.value)}
+                  placeholder={suggestedDivision?.toString() ?? '3'}
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  1 = Série A · 2 = B · 3 = C…  Atual sugerido: {suggestedDivision ?? '—'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs">Número de clubes</Label>
+                <Input type="number" min={4} max={30} value={clubsCount} onChange={e => setClubsCount(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Bots novos com overall {division ? [50, 45, 40, 35, 30][Math.min(4, parseInt(division) - 1)] ?? 30 : '?'} e saldo
+              R$ {division ? ([200000, 150000, 100000, 75000, 50000][Math.min(4, parseInt(division) - 1)] ?? 50000).toLocaleString() : '?'}.
+              Datas das rodadas espelham as da divisão irmã no mesmo game year.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialog(false)} disabled={creating}>Cancelar</Button>
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !leagueName.trim() || !division || !clubsCount}
+            >
+              {creating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+              Criar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
 
