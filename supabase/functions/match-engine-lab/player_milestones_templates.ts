@@ -630,16 +630,10 @@ export async function detectAndPersistSeasonMilestones(
     const profileById = new Map<string, any>();
     for (const p of profiles ?? []) profileById.set(p.id, p);
 
-    // Top scorer milestone
-    if (topScorerId && topScorerGoals > 0) {
-      const profile = profileById.get(topScorerId);
-      if (profile) {
-        await persistMilestone(supabase, topScorerId, {
-          type: 'season_top_scorer',
-          vars: { player_name: profile.full_name, goals_count: topScorerGoals },
-        });
-      }
-    }
+    // Top scorer milestone — handled by the player_awards INSERT
+    // trigger (see migration 20260504020000_award_milestones_trigger).
+    // Persisting it here would race with persist_season_auto_awards
+    // and produce two near-identical timeline rows.
 
     // Title / runner-up / relegation milestones — apply to every player
     // who appeared for those clubs this season.
