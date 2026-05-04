@@ -18,6 +18,7 @@ interface AuthContextType {
   refreshManagerProfile: () => Promise<void>;
   refreshAssistantClub: () => Promise<void>;
   switchPlayerProfile: (playerProfileId: string) => Promise<void>;
+  markTutorialSeen: (key: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -35,6 +36,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshManagerProfile: async () => {},
   refreshAssistantClub: async () => {},
   switchPlayerProfile: async () => {},
+  markTutorialSeen: async () => {},
 });
 
 // Deep compare to avoid new object references when data hasn't changed
@@ -55,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const currentUserIdRef = useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await (supabase.from('profiles').select('id, username, role_selected, created_at, updated_at, avatar_url, avatar_char_ref, active_player_profile_id, is_admin').eq('id', userId).single() as any);
+    const { data } = await (supabase.from('profiles').select('id, username, role_selected, created_at, updated_at, avatar_url, avatar_char_ref, active_player_profile_id, is_admin, tutorials_seen').eq('id', userId).single() as any);
     stableSet(setProfile, data as any);
     return data;
   };
@@ -114,6 +116,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await fetchAssistantClub(user.id);
   };
 
+  // One-shot migration: any tour keys the user already completed in
+  // localStorage (pre-migration to server-backed tutorials_seen) get pushed
+  // up to the profile so they don't replay on a fresh device.
+  const syncLocalTutorialsToServer = async (prof: any) => {
+    try {
+      const raw = localStorage.getItem('bdo_tutorials_seen');
+      if (!raw) return;
+      const local = JSON.parse(raw) as Record<string, string>;
+      const server = (prof?.tutorials_seen as Record<string, string> | null) ?? {};
+      const delta: Record<string, string> = {};
+      for (const k of Object.keys(local)) {
+        if (!(k in server)) delta[k] = local[k];
+      }
+      if (Object.keys(delta).length === 0) return;
+      await (supabase as any).rpc('bulk_mark_tutorials_seen', { p_seen: delta });
+      stableSet(setProfile, { ...prof, tutorials_seen: { ...server, ...delta } } as any);
+    } catch {
+      /* private mode / quota / parse error */
+    }
+  };
+
+  const markTutorialSeen = async (key: string) => {
+    if (!key) return;
+    setProfile(prev => {
+      if (!prev) return prev;
+      const seen = ((prev as any).tutorials_seen as Record<string, string> | null) ?? {};
+      if (seen[key]) return prev;
+      return { ...prev, tutorials_seen: { ...seen, [key]: new Date().toISOString() } } as any;
+    });
+    try {
+      await (supabase as any).rpc('mark_tutorial_seen', { p_key: key });
+    } catch {
+      /* offline / transient — localStorage in useLocalTour still gates this session */
+    }
+  };
+
   const loadUserData = async (userId: string) => {
     const prof = await fetchProfile(userId);
     if (prof?.role_selected === 'manager') {
@@ -123,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Every user can be assistant to a club, regardless of role.
     await fetchAssistantClub(userId);
+    void syncLocalTutorialsToServer(prof);
     dataLoadedRef.current = true;
     currentUserIdRef.current = userId;
     setLoading(false);
@@ -220,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, assistantClub, isAdmin: !!(profile as any)?.is_admin, loading, signOut, refreshPlayerProfile, refreshManagerProfile, refreshAssistantClub, switchPlayerProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, playerProfile, managerProfile, club, assistantClub, isAdmin: !!(profile as any)?.is_admin, loading, signOut, refreshPlayerProfile, refreshManagerProfile, refreshAssistantClub, switchPlayerProfile, markTutorialSeen }}>
       {children}
     </AuthContext.Provider>
   );

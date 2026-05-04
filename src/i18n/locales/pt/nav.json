@@ -10,6 +10,7 @@
     "league": "Liga",
     "contract": "Contrato",
     "offers": "Propostas",
+    "inbox": "Caixa de Entrada",
     "bank": "Banco",
     "store": "Loja",
     "forum": "Fórum"
@@ -25,6 +26,7 @@
     "facilities": "Facilities",
     "training": "Treinamento",
     "reports": "Relatórios",
+    "inbox": "Caixa de Entrada",
     "league": "Liga",
     "vote": "Votação Liga",
     "matches": "Jogos",

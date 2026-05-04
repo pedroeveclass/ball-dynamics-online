@@ -10,6 +10,7 @@
     "league": "League",
     "contract": "Contract",
     "offers": "Offers",
+    "inbox": "Inbox",
     "bank": "Bank",
     "store": "Store",
     "forum": "Forum"
@@ -25,6 +26,7 @@
     "facilities": "Facilities",
     "training": "Training",
     "reports": "Reports",
+    "inbox": "Inbox",
     "league": "League",
     "vote": "League Vote",
     "matches": "Matches",

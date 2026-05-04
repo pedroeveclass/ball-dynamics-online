@@ -1,5 +1,5 @@
 import {
-  Home, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2, UserCircle2,
+  Home, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2, UserCircle2, Newspaper,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation, Link } from 'react-router-dom';
@@ -31,6 +31,7 @@ export function AppSidebar() {
     { title: t('nav:player.league'), url: '/league', icon: Trophy },
     { title: t('nav:player.contract'), url: '/player/contract', icon: FileText },
     { title: t('nav:player.offers'), url: '/player/offers', icon: Inbox },
+    { title: t('nav:player.inbox'), url: '/inbox', icon: Newspaper },
     { title: t('nav:player.bank'), url: '/bank', icon: Landmark },
     { title: t('nav:player.store'), url: '/store', icon: Store },
     { title: t('nav:player.forum'), url: '/forum', icon: MessageSquare },

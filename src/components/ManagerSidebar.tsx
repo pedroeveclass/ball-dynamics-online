@@ -1,5 +1,5 @@
 import {
-  Home, Shield, DollarSign, Building2, ShoppingCart, Users, ClipboardList, CalendarDays, Bell, Settings, Wrench, Trophy, Vote, Landmark, Store, Brain, MessageSquare, BarChart3,
+  Home, Shield, DollarSign, Building2, ShoppingCart, Users, ClipboardList, CalendarDays, Bell, Settings, Wrench, Trophy, Vote, Landmark, Store, Brain, MessageSquare, BarChart3, Newspaper,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -27,6 +27,7 @@ export function ManagerSidebar() {
     { title: t('manager.facilities'), url: '/manager/facilities', icon: Wrench },
     { title: t('manager.training'), url: '/manager/coach', icon: Brain },
     { title: t('manager.reports'), url: '/manager/relatorios', icon: BarChart3 },
+    { title: t('manager.inbox'), url: '/inbox', icon: Newspaper },
     { title: t('manager.league'), url: '/league', icon: Trophy },
     { title: t('manager.vote'), url: '/league/vote', icon: Vote },
     { title: t('manager.matches'), url: '/manager/challenges', icon: CalendarDays },
