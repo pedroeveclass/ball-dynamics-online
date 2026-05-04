@@ -843,7 +843,7 @@ export default function ManagerChallengesPage() {
                     <Select value={selected3v3[i]} onValueChange={val => { const next = [...selected3v3]; next[i] = val; setSelected3v3(next); }}>
                       <SelectTrigger className="text-xs"><SelectValue placeholder={`Escolha o ${label}`} /></SelectTrigger>
                       <SelectContent>
-                        {squad3v3.filter(p => i === 0 ? true : true).map(p => (
+                        {squad3v3.map(p => (
                           <SelectItem key={p.id} value={p.id} disabled={selected3v3.includes(p.id) && selected3v3[i] !== p.id}>
                             {p.full_name} — {p.primary_position} (OVR {p.overall})
                           </SelectItem>

@@ -287,7 +287,7 @@ export default function ManagerFacilitiesPage() {
                   </div>
 
                   {/* Upgrade button */}
-                  {!isMaxLevel && upgradeCost && (
+                  {!isMaxLevel && upgradeCost != null && (
                     <Button
                       className="w-full"
                       variant={canAfford ? 'default' : 'secondary'}

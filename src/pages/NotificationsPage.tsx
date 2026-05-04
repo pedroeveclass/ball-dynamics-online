@@ -101,12 +101,21 @@ export default function NotificationsPage() {
               return (
               <div
                 key={n.id}
+                role="button"
+                tabIndex={0}
                 className={`stat-card flex items-start gap-3 cursor-pointer transition-colors overflow-hidden ${
                   !n.read ? 'border-tactical/30 bg-tactical/5' : ''
                 }`}
                 onClick={() => {
                   if (!n.read) markAsRead(n.id);
                   navigate(getNotificationLink(n));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (!n.read) markAsRead(n.id);
+                    navigate(getNotificationLink(n));
+                  }
                 }}
               >
                 <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${!n.read ? 'bg-tactical' : 'bg-transparent'}`} />

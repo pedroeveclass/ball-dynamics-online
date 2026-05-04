@@ -26,6 +26,7 @@ dist-ssr
 supabase/.temp/*
 .vercel
 .claude/worktrees/
+.claude/settings.local.json
 
 # Playwright MCP test artifacts (browser snapshots, console logs, screenshots
 # captured during Claude Code debugging sessions). Not part of the app.

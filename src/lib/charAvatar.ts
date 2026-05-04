@@ -54,7 +54,7 @@ export function resolveCharAvatar(ref: string | null | undefined): Promise<Resol
   if (!parsed) return Promise.resolve(null);
   const key = `${parsed.kind}:${parsed.id}`;
   const hit = cache.get(key);
-  if (hit) return hit;
+  if (hit !== undefined) return hit;
   const loader = doResolve(parsed);
   cache.set(key, loader);
   // If the fetch fails, drop the cache entry so a later render can retry.

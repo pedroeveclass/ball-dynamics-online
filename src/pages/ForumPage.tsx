@@ -326,7 +326,7 @@ export default function ForumPage() {
                           </div>
                           <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
                             {isAdmin && topic.is_pinned && (
-                              <div className="flex flex-col -my-1" onClick={e => e.preventDefault()}>
+                              <div className="flex flex-col -my-1">
                                 <button className="p-0.5 hover:text-foreground transition-colors" onClick={e => { e.preventDefault(); e.stopPropagation(); handleReorderPin(topic.id, 'up'); }} title={t('reorder.up')}>
                                   <ChevronUp className="h-3.5 w-3.5" />
                                 </button>

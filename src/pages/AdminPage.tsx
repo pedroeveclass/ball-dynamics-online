@@ -713,8 +713,11 @@ function FinancasTab({ clubs, finances, onReload }: { clubs: Club[]; finances: C
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {playerResults.map(p => (
                 <div key={p.id}
+                  role="button"
+                  tabIndex={0}
                   className={`text-sm p-2 rounded cursor-pointer border ${selectedPlayer?.id === p.id ? 'border-primary bg-primary/10' : 'hover:bg-muted'}`}
-                  onClick={() => setSelectedPlayer(p)}>
+                  onClick={() => setSelectedPlayer(p)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPlayer(p); } }}>
                   {p.full_name || p.name || t('finances.no_name')} | {p.primary_position} | R$ {(p.money || 0).toLocaleString()} | {clubs.find(c => c.id === p.club_id)?.name || t('finances.free_agent')}
                 </div>
               ))}

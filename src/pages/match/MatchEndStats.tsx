@@ -106,12 +106,7 @@ interface StatRowProps {
 
 function StatRow({ label, home, away, homeColor, awayColor, asPercent }: StatRowProps) {
   const total = home + away;
-  let homeRatio = 0.5;
-  if (asPercent) {
-    homeRatio = total > 0 ? home / total : 0.5;
-  } else {
-    homeRatio = total > 0 ? home / total : 0.5;
-  }
+  const homeRatio = total > 0 ? home / total : 0.5;
   const awayRatio = 1 - homeRatio;
 
   const homeDisplay = asPercent ? `${Math.round(homeRatio * 100)}%` : String(home);

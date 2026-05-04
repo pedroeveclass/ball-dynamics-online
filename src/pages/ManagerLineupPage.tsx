@@ -862,11 +862,19 @@ export default function ManagerLineupPage() {
                       : undefined}
                   >
                     <div
+                      role="button"
+                      tabIndex={0}
                       className={`relative w-10 h-10 rounded-full flex items-center justify-center text-xs font-display font-bold transition-colors cursor-pointer ${
                         player
                           ? (penalty > 0 ? 'bg-destructive/80 text-destructive-foreground' : 'bg-tactical text-tactical-foreground')
                           : 'bg-muted/60 text-muted-foreground border-2 border-dashed border-muted-foreground/40 group-hover:border-tactical'
                       }`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          (e.currentTarget as HTMLDivElement).click();
+                        }
+                      }}
                       onClick={() => {
                         if (assigned) {
                           removeFromSlot(slot.position);

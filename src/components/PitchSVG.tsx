@@ -389,7 +389,7 @@ export function PitchSVG({
     >
       {/* Defs */}
       <defs>
-        {grassPatternEl && (isGradient ? grassPatternEl : grassPatternEl)}
+        {grassPatternEl}
         {renderNetPattern(s.net_pattern)}
         <filter id="glow">
           <feGaussianBlur stdDeviation="2" result="b" />
