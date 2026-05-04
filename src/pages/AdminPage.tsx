@@ -714,6 +714,7 @@ interface HumanPlayer {
   primary_position: string;
   secondary_position: string | null;
   overall: number;
+  age: number;
   club_id: string | null;
   club_name: string | null;
   email: string | null;
@@ -782,7 +783,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
     setLoading(true);
     const { data: players } = await supabase
       .from('player_profiles')
-      .select('id, user_id, full_name, primary_position, secondary_position, overall, club_id')
+      .select('id, user_id, full_name, primary_position, secondary_position, overall, age, club_id')
       .not('user_id', 'is', null)
       .order('full_name');
 
@@ -803,6 +804,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
       primary_position: p.primary_position || '?',
       secondary_position: p.secondary_position ?? null,
       overall: p.overall ?? 0,
+      age: p.age ?? 0,
       club_id: p.club_id,
       club_name: p.club_id ? (clubMap.get(p.club_id) || p.club_id?.slice(0, 8)) : null,
       email: emailMap.get(p.user_id) || null,
@@ -864,6 +866,7 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
                           {p.primary_position}{p.secondary_position ? ` / ${p.secondary_position}` : ''}
                         </Badge>
                         <span className="text-xs text-muted-foreground">{t('players.ovr_label', { value: Math.round(p.overall) })}</span>
+                        <Badge variant="secondary" className="text-[10px]">{p.age} anos</Badge>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                         {p.email && <span>{p.email}</span>}
@@ -905,10 +908,14 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
                       {t('players.give_item')}
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
-                      const { data, error } = await supabase.rpc('admin_apply_decay', { p_player_profile_id: p.id });
-                      if (error) toast.error(error.message);
-                      else toast.success(`Decay aplicado · ${(data as any)?.applied ? 'OK' : 'sem efeito'}`);
-                    }}>Decay</Button>
+                      if (!confirm(`Envelhecer ${p.full_name} em +1 ano? (idade ${p.age} → ${p.age + 1})`)) return;
+                      const { data, error } = await supabase.rpc('admin_age_player_one_year', { p_player_profile_id: p.id });
+                      if (error) { toast.error(error.message); return; }
+                      const r = data as any;
+                      if (r?.ok === false) { toast.error(r.reason); return; }
+                      toast.success(`${r.player}: ${r.old_age} → ${r.new_age}${r.decay_applied ? ' (decay aplicado)' : ''}`);
+                      loadHumanPlayers();
+                    }}>+1 ano</Button>
                     <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={async () => {
                       if (!confirm(`Aposentar ${p.full_name}? Vai liberar como agente livre + encerrar contrato.`)) return;
                       const { error } = await supabase.rpc('admin_retire_player', { p_player_profile_id: p.id });
