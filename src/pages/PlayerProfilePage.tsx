@@ -497,14 +497,14 @@ export default function PlayerProfilePage() {
   const isRetired = (p as any).retirement_status === 'retired';
   const canRetire = !isRetired && p.age >= 38 && p.user_id != null;
 
-  // GKs always wear uniform 3 (no away GK kit). Outfield players toggle
-  // between uniform 1 (home) and uniform 2 (away). Falls back to home if the
-  // chosen variant isn't seeded for the club.
+  // Variant 1 = home, variant 2 = away. Outfield maps to uniforms 1/2,
+  // GK maps to 3/4 (home/away GK). Falls back to uniform 1 if the
+  // requested variant isn't seeded for the club.
   const isGK = (p.primary_position || '').toUpperCase() === 'GK';
   const activeKit = isGK
-    ? (clubKits[3] || clubKits[1] || null)
+    ? ((kitVariant === 2 ? clubKits[4] : null) || clubKits[3] || clubKits[1] || null)
     : (clubKits[kitVariant] || clubKits[1] || null);
-  const hasAwayKit = !isGK && !!clubKits[2];
+  const hasAwayKit = isGK ? !!clubKits[4] : !!clubKits[2];
   const isBackView = bodyVariant === 'full-back';
 
   return (

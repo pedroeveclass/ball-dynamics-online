@@ -8,9 +8,9 @@ export interface ClubUniform {
   stripe_color: string;
 }
 
-// Fetch the home (1) + away (2) + goalkeeper (3) kits for a club. Returns a
-// map keyed by uniform_number so callers pick the right one based on context
-// (typically uniform 1 for outfield + 3 for the goalkeeper).
+// Fetch the home (1) + away (2) + goalkeeper home (3) + goalkeeper
+// away (4) kits for a club. Returns a map keyed by uniform_number so
+// callers pick the right one based on context.
 export async function fetchClubUniforms(clubId: string): Promise<Record<number, ClubUniform>> {
   if (!clubId) return {};
   const { data } = await supabase
@@ -22,12 +22,20 @@ export async function fetchClubUniforms(clubId: string): Promise<Record<number, 
   return map;
 }
 
-// Pick the right kit for a player based on their primary position.
-// GK → uniform 3 (goalkeeper kit). Everyone else → uniform 1 (home kit).
+// Pick the right kit for a player based on their primary position
+// AND the requested kit variant (1 = home, 2 = away). For GKs the
+// variant maps to uniform 3 (home GK) or 4 (away GK). For outfield
+// players the variant maps to uniforms 1/2 directly. Falls back to
+// uniform 1 if the requested kit isn't seeded.
 export function pickUniformForPlayer(
   uniforms: Record<number, ClubUniform>,
   primaryPosition: string | null | undefined,
+  kitVariant: 1 | 2 = 1,
 ): ClubUniform | null {
   const isGK = (primaryPosition || '').toUpperCase() === 'GK';
-  return uniforms[isGK ? 3 : 1] || uniforms[1] || null;
+  if (isGK) {
+    const gkNumber = kitVariant === 2 ? 4 : 3;
+    return uniforms[gkNumber] || uniforms[3] || uniforms[1] || null;
+  }
+  return uniforms[kitVariant] || uniforms[1] || null;
 }

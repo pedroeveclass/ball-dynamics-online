@@ -326,13 +326,13 @@ export default function PublicPlayerPage() {
   const canMakeOffer = !!managerProfile && !!club && player.club_id !== club.id
     && (player as any).retirement_status !== 'retired';
 
-  // Active kit: GK always wears uniform 3, outfielders flip between 1 and 2
-  // based on the toggle. Falls back to home when the chosen variant isn't
-  // seeded for this club.
+  // Active kit: GK maps to uniform 3 (home) / 4 (away), outfielders to
+  // 1 / 2 based on the toggle. Falls back to home when the chosen
+  // variant isn't seeded for this club.
   const activeKit = isGK
-    ? (clubKits[3] || clubKits[1] || null)
+    ? ((kitVariant === 2 ? clubKits[4] : null) || clubKits[3] || clubKits[1] || null)
     : (clubKits[kitVariant] || clubKits[1] || null);
-  const hasAwayKit = !isGK && !!clubKits[2];
+  const hasAwayKit = isGK ? !!clubKits[4] : !!clubKits[2];
   const isBackView = bodyVariant === 'full-back';
 
   return (

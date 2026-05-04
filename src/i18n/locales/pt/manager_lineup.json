@@ -72,6 +72,8 @@
   "uniforms": {
     "title": "Uniformes",
     "goalkeeper": "Goleiro",
+    "goalkeeper_home": "Goleiro 1 (Casa)",
+    "goalkeeper_away": "Goleiro 2 (Fora)",
     "uniform_n": "Uniforme {{n}} ({{type}})",
     "home": "Casa",
     "away": "Fora",

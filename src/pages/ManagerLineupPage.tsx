@@ -1189,8 +1189,8 @@ export default function ManagerLineupPage() {
         {uniforms.length > 0 && (
           <div data-tour="manager-lineup-uniforms" className="space-y-4">
             <h2 className="font-display text-xl font-bold">{t('uniforms.title')}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3].map(num => {
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(num => {
                 const uniform = uniforms.find(u => u.uniform_number === num);
                 const edit = uniformEdits[num];
                 if (!uniform || !edit) return null;
@@ -1202,7 +1202,9 @@ export default function ManagerLineupPage() {
                     <CardHeader className="pb-3">
                       <CardTitle className="font-display text-base">
                         {num === 3
-                          ? t('uniforms.goalkeeper')
+                          ? t('uniforms.goalkeeper_home')
+                          : num === 4
+                          ? t('uniforms.goalkeeper_away')
                           : t('uniforms.uniform_n', { n: num, type: num === 1 ? t('uniforms.home') : t('uniforms.away') })}
                       </CardTitle>
                     </CardHeader>

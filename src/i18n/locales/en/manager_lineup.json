@@ -72,6 +72,8 @@
   "uniforms": {
     "title": "Kits",
     "goalkeeper": "Goalkeeper",
+    "goalkeeper_home": "Goalkeeper 1 (Home)",
+    "goalkeeper_away": "Goalkeeper 2 (Away)",
     "uniform_n": "Kit {{n}} ({{type}})",
     "home": "Home",
     "away": "Away",
