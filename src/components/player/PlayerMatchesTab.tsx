@@ -332,7 +332,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           <PitchHeatmap
             samples={row.position_samples ?? []}
             attackingDirection={attackingDirection}
-            className="rounded-md overflow-hidden"
+            className="rounded-md overflow-hidden max-w-[50%] mx-auto"
           />
           <p className="text-[10px] text-muted-foreground">
             {t('stats.match.samples_summary', { count: row.position_samples?.length ?? 0 })}
@@ -358,7 +358,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerPassMap passes={filteredPasses} attackingDirection={attackingDirection} filter="all" className="rounded-md overflow-hidden" />
+            <PlayerPassMap passes={filteredPasses} attackingDirection={attackingDirection} filter="all" className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
           )}
           <p className="text-[10px] text-muted-foreground">
             {t('stats.match.pass_legend')}
@@ -372,7 +372,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerShotMap shots={shotsToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+            <PlayerShotMap shots={shotsToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
           )}
           <ShotMapLegend />
           {isSynthetic.shots && (
@@ -386,7 +386,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerDefensiveMap events={defensiveToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+            <PlayerDefensiveMap events={defensiveToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
           )}
           <DefensiveMapLegend />
           {isSynthetic.defensive && (
@@ -400,7 +400,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
           {actionsLoading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : (
-            <PlayerDribbleMap dribbles={dribblesToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+            <PlayerDribbleMap dribbles={dribblesToRender} attackingDirection={attackingDirection} className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
           )}
           {isSynthetic.dribble && (
             <p className="text-[10px] text-muted-foreground">{t('stats.match.synthetic_note_match')}</p>
@@ -410,7 +410,7 @@ function MatchDetailPanel({ row, opponentClub, playerIsHome, participantId }: Ma
 
       {mode === 'running' && (
         <>
-          <PlayerRunMap samples={row.position_samples ?? []} attackingDirection={attackingDirection} className="rounded-md overflow-hidden" />
+          <PlayerRunMap samples={row.position_samples ?? []} attackingDirection={attackingDirection} className="rounded-md overflow-hidden max-w-[50%] mx-auto" />
           <p className="text-[10px] text-muted-foreground">
             {t('stats.match.running_summary', { distance: distanceKm.toFixed(2) })}
           </p>
