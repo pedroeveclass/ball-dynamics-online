@@ -78,20 +78,57 @@ function useMatchActionEvents(matchId: string, participantId: string) {
     (async () => {
       const { data } = await supabase
         .from('match_event_logs')
-        .select('event_type, payload')
+        .select('event_type, payload, created_at')
         .eq('match_id', matchId)
-        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'gk_save', 'dispute', 'possession_change', 'bh_dribble']);
+        .in('event_type', ['pass_complete', 'pass_failed', 'goal', 'shot_missed', 'shot_post', 'gk_save', 'dispute', 'possession_change', 'bh_dribble'])
+        .order('created_at', { ascending: true });
       if (cancelled) return;
+      const events = (data || []);
+
+      // A high pass that crosses the goal line scores a goal but the engine
+      // also emits `pass_failed` (no teammate received). Without linking, the
+      // pass map shows the goal-creating pass as a red failed pass and the
+      // shot map drops the goal entirely (older `goal` payloads lacked
+      // from_x). Link goal → preceding pass_failed by same player to fix
+      // both views, including matches stored before the engine started
+      // tagging the relationship explicitly.
+      const skippedPassFailedIdx = new Set<number>();
+      const goalFromOverride = new Map<number, { x: number; y: number }>();
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        if (ev.event_type !== 'goal') continue;
+        const p = (ev.payload || {}) as Record<string, any>;
+        // A normal shot-goal already carries shooter_participant_id and from_x.
+        // We only need to repair goals scored via a pass — those have
+        // scorer_participant_id but no shooter_participant_id.
+        if (p.shooter_participant_id) continue;
+        const scorerId = p.scorer_participant_id;
+        if (!scorerId) continue;
+        for (let j = i - 1; j >= 0 && j >= i - 6; j--) {
+          const prev = events[j];
+          if (prev.event_type !== 'pass_failed' && prev.event_type !== 'pass_complete') continue;
+          const pp = (prev.payload || {}) as Record<string, any>;
+          if (pp.passer_participant_id !== scorerId) continue;
+          if (prev.event_type === 'pass_failed') skippedPassFailedIdx.add(j);
+          if (typeof pp.from_x === 'number' && typeof pp.from_y === 'number') {
+            goalFromOverride.set(i, { x: pp.from_x, y: pp.from_y });
+          }
+          break;
+        }
+      }
+
       const passesList: PassDatum[] = [];
       const shotsList: ShotDatum[] = [];
       const defList: DefensiveDatum[] = [];
       const dribbleList: DribbleDatum[] = [];
       let dribbleTotal = 0;
-      for (const ev of (data || [])) {
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
         const p = (ev.payload || {}) as Record<string, any>;
         if (ev.event_type === 'pass_complete' || ev.event_type === 'pass_failed') {
           if (p.passer_participant_id !== participantId) continue;
           if (typeof p.from_x !== 'number' || typeof p.to_x !== 'number') continue;
+          if (ev.event_type === 'pass_failed' && (p.resulted_in_goal === true || skippedPassFailedIdx.has(i))) continue;
           passesList.push({
             from: { x: p.from_x, y: p.from_y },
             to: { x: p.to_x, y: p.to_y },
@@ -116,13 +153,19 @@ function useMatchActionEvents(matchId: string, participantId: string) {
           // Shot family — includes gk_save now that the engine tags the shooter.
           const shooterId = p.shooter_participant_id ?? p.scorer_participant_id;
           if (shooterId !== participantId) continue;
-          if (typeof p.from_x !== 'number') continue;
+          let fromX = p.from_x;
+          let fromY = p.from_y;
+          if (ev.event_type === 'goal' && (typeof fromX !== 'number' || typeof fromY !== 'number')) {
+            const override = goalFromOverride.get(i);
+            if (override) { fromX = override.x; fromY = override.y; }
+          }
+          if (typeof fromX !== 'number' || typeof fromY !== 'number') continue;
           let outcome: ShotDatum['outcome'];
           if (ev.event_type === 'goal') outcome = 'goal';
           else if (ev.event_type === 'shot_post') outcome = 'post';
           else if (ev.event_type === 'gk_save') outcome = 'saved';
           else outcome = p.outcome === 'over' ? 'over' : 'wide';
-          shotsList.push({ from: { x: p.from_x, y: p.from_y }, outcome });
+          shotsList.push({ from: { x: fromX, y: fromY }, outcome });
         }
       }
       setPasses(passesList);

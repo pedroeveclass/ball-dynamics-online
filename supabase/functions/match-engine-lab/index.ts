@@ -9092,6 +9092,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           // logged with scorer_name: null and scorer_participant_id: null.
           let resolvedScorerId: string | null = ballHolder?.id ?? null;
           let resolvedScorerName: string | null = ballHolder?._player_name ?? null;
+          // Origin coords for the shot map. Default to the BH's start pos (the
+          // passer/shooter this turn). If ballHolder is null we'll pull from
+          // the bh_pass / bh_shot lookup below.
+          let goalFromX: number | null = ballHolder
+            ? canonForLtr(Number((ballHolder as any).pos_x ?? 50), possClubId, match.home_club_id, match.current_half)
+            : null;
+          let goalFromY: number | null = ballHolder ? Number((ballHolder as any).pos_y ?? 50) : null;
           if (!resolvedScorerId && !isBallGoalOwnGoal) {
             const { data: lastBallAction } = await supabase
               .from('match_event_logs')
@@ -9107,6 +9114,22 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               if (lastShooter && lastShooter.club_id === possClubId) {
                 resolvedScorerId = lastShooterId;
                 resolvedScorerName = lastPayload?.ball_holder_name ?? lastShooter._player_name ?? null;
+                if (typeof lastPayload?.from_x === 'number' && typeof lastPayload?.from_y === 'number') {
+                  goalFromX = lastPayload.from_x;
+                  goalFromY = lastPayload.from_y;
+                }
+              }
+            }
+          }
+
+          // A pass-into-goal still emits pass_failed (no teammate received).
+          // Mark the pending pass_failed so the public profile pass map doesn't
+          // render the goal-creating pass as a wasted attempt.
+          if (resolvedScorerId && !isBallGoalOwnGoal) {
+            for (const pendingEv of eventsToLog) {
+              if (pendingEv.event_type === 'pass_failed'
+                && (pendingEv.payload as any)?.passer_participant_id === resolvedScorerId) {
+                (pendingEv.payload as any).resulted_in_goal = true;
               }
             }
           }
@@ -9122,6 +9145,8 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
               assister_participant_id: ballGoalAssisterId,
               assister_name: ballGoalAssisterName,
               goal_type: isBallGoalOwnGoal ? 'own_goal' : ballGoalType,
+              from_x: goalFromX,
+              from_y: goalFromY,
             },
           });
           // Team that conceded gets the kickoff
