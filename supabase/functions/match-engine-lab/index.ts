@@ -7106,50 +7106,23 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       }
     }
 
-    // ── BH-lock at resolution time ──
-    // The submit-time BH-lock (see jsonResponse(bh_locked) below) only fires when the
-    // bot's ball action is ALREADY in the DB at the moment the human submits. Under
-    // race conditions (bot decision emitted mid-ball_holder phase, user submits
-    // attack-phase move before bot persists) the guard misses and the bot's pass
-    // lands after the user's move. Without this extra guard, Step 2 would then
-    // discard the bot action entirely (human "controls" the BH) and the turn would
-    // resolve as a plain dribble — silently overwriting the committed pass/shoot.
+    // ── Step 2: Filter out ALL bot actions for participants that have human actions ──
+    // Pedro 2026-05-04: removed the previous BH-lock exception. The old rule said
+    // "if BH has bot ball-action AND only-move human actions, keep the bot's pass/shoot".
+    // That made sense when ball_holder and attack phases were separate (the move
+    // came AFTER the BH commitment), but with merged 'open_play' the human move is
+    // in the SAME phase — it's a deliberate dribble choice, not a late override.
+    // The human's intent always wins now: any submitted action (including move)
+    // overrides whatever the bot pre-generated for that participant.
     //
-    // Rule: if the BH has BOTH a bot ball-action AND ONLY-move human actions for this
-    // turn, KEEP the bot ball-action and DROP the human move(s). The move was submitted
-    // in the attack phase after the BH already committed to passing/shooting; it's not
-    // a valid override.
-    const bhParticipantId = activeTurn.ball_holder_participant_id;
-    const bhLockedBotActionIds = new Set<string>();
-    const bhLockedDropHumanMoveIds = new Set<string>();
-    if (bhParticipantId) {
-      const bhBotBallActions = (rawActions || []).filter((a: any) =>
-        a.participant_id === bhParticipantId
-        && a.controlled_by_type === 'bot'
-        && isBallActionType(a.action_type)
-      );
-      const bhHumanActions = (rawActions || []).filter((a: any) =>
-        a.participant_id === bhParticipantId
-        && (a.controlled_by_type === 'player' || a.controlled_by_type === 'manager')
-      );
-      const bhHumanHasBallAction = bhHumanActions.some((a: any) => isBallActionType(a.action_type));
-      // If the human didn't submit a ball-action on the BH, whatever else they sent
-      // (move / receive / block / no_action / tackle attempt) is not a valid override
-      // of the bot's pre-committed pass/shoot. Drop ALL human actions on the BH.
-      if (bhBotBallActions.length > 0 && !bhHumanHasBallAction && bhHumanActions.length > 0) {
-        for (const a of bhBotBallActions) bhLockedBotActionIds.add(a.id);
-        for (const a of bhHumanActions) bhLockedDropHumanMoveIds.add(a.id);
-        console.warn(`[ENGINE] BH-lock (resolution): kept bot ball-action for BH ${bhParticipantId} (${bhBotBallActions.length} action(s)), dropped ${bhHumanActions.length} human action(s): [${bhHumanActions.map((a: any) => a.action_type).join(',')}]`);
-      }
-    }
-
-    // Step 2: Filter out ALL bot actions for participants that have human actions
-    //         EXCEPT when BH-lock applies (bot ball-action wins over human move).
+    // Pre-generation flow (see submit_action below): bot AI fills every player's
+    // action at phase start. submit_action removes all bot pre-gens for that
+    // participant when a human submits — so by resolution-time, only the human
+    // action exists for human-controlled participants. This Step 2 filter is the
+    // safety net for the race window where both rows briefly coexist.
     const filteredRaw = (rawActions || []).filter((a: any) => {
-      if (bhLockedDropHumanMoveIds.has(a.id)) return false; // Drop the overridden human move
-      if (bhLockedBotActionIds.has(a.id)) return true;      // Keep the bot ball-action
       if (a.controlled_by_type === 'bot' && humanControlledParticipants.has(a.participant_id)) {
-        return false; // Human controls this participant — discard bot action entirely
+        return false;
       }
       return true;
     });
@@ -7592,7 +7565,17 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
 
         if (LOG_VERBOSE) console.log(`[ENGINE] Player ${a.participant_id.slice(0,8)} ${a.action_type}: (${startX.toFixed(1)},${startY.toFixed(1)}) → (${finalX.toFixed(1)},${finalY.toFixed(1)}) dist=${dist.toFixed(1)} maxRange=${maxRange.toFixed(1)} dirMult=${dirMultiplier.toFixed(2)} | vel=${attrs.velocidade} accel=${attrs.aceleracao} agil=${attrs.agilidade} stam=${attrs.stamina} forca=${attrs.forca}`);
 
-        resolutionMoveBatch.push({ id: a.participant_id, x: finalX, y: finalY });
+        // Skip the position UPDATE when the move resolved to ≤ 0.05u of the
+        // start position — pushing a no-op into the batch still locks the row
+        // and writes a WAL entry, and `res_pos_batch` p95 was 3.2s (max 44s)
+        // under multi-match contention. With ~22 players per match and several
+        // staying near-stationary in any given resolution (defenders holding
+        // shape, GK pinned, off-ball positioning), this typically halves the
+        // batch size at no semantic cost (engine reads from the same row;
+        // skipping a no-op write is idempotent).
+        if (Math.abs(finalX - startX) >= 0.05 || Math.abs(finalY - startY) >= 0.05) {
+          resolutionMoveBatch.push({ id: a.participant_id, x: finalX, y: finalY });
+        }
 
         // Persist move_ratio AND move direction in the action payload.
         // move_ratio: used for deviation penalty on next turn's pass/shoot
@@ -10740,29 +10723,22 @@ Deno.serve(async (req) => {
         'header_low','header_high','header_controlled','header_power'].includes(action_type);
       const isMoveLike = action_type === 'move' || action_type === 'receive' || action_type === 'block';
 
-      // ── BH-LOCK: once the ball holder has a committed ball action (pass/shoot/cross/header)
-      // from the ball_holder phase (manual OR bot), attack-phase moves on that same BH must NOT
-      // overwrite it. Resolution drops the bot action when a human action exists for the same
-      // participant (see dedup at "Filter out ALL bot actions for participants that have human
-      // actions") — so without this guard the user's move silently erases the bot's pass/shoot.
-      // Guard is scoped to move-like submissions on the current BH during attack-phase windows.
-      if (isMoveLike && participant_id === activeTurn.ball_holder_participant_id) {
-        const ballActionTypes = ['pass_low','pass_high','pass_launch','shoot_controlled','shoot_power',
-          'header_low','header_high','header_controlled','header_power'];
-        const { data: existingBallActions } = await supabase
-          .from('match_actions')
-          .select('id, action_type, controlled_by_type')
-          .eq('match_turn_id', activeTurn.id)
-          .eq('participant_id', participant_id)
-          .in('action_type', ballActionTypes)
-          .eq('status', 'pending')
-          .limit(1);
-        if (existingBallActions && existingBallActions.length > 0) {
-          const locked = existingBallActions[0];
-          console.warn(`[ENGINE] BH-lock: move submission rejected for match=${match_id} turn=${activeTurn.id} participant=${participant_id} — ball action already committed (type=${locked.action_type} by=${locked.controlled_by_type})`);
-          return jsonResponse({ ok: true, bh_locked: true, locked_action_type: locked.action_type });
-        }
-      }
+      // Bot pre-generation model: bots run at phase start and persist actions for
+      // EVERY participant (including human-controlled). When a human submits, ALL
+      // bot pre-gens for that participant are wiped. Then the previous-same-type
+      // cleanup lets the same human change their mind. Combined, this guarantees:
+      // whatever's in match_actions for a human-controlled participant at
+      // resolution time is exactly what the human chose — no bot leakage, no
+      // race window, no BH-lock weirdness.
+      //
+      // Removes the old BH-lock guard that returned `{ok:true, bh_locked:true}`
+      // without persisting the user's click — confusing UX (player saw nothing,
+      // then a bot-driven shoot lit up the goal).
+      await supabase.from('match_actions').delete()
+        .eq('match_turn_id', activeTurn.id)
+        .eq('participant_id', participant_id)
+        .eq('controlled_by_type', 'bot')
+        .eq('status', 'pending');
 
       if (isMoveLike) {
         await supabase.from('match_actions').delete()
