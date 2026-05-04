@@ -36,19 +36,44 @@ BEGIN
   SELECT id, home_club_id, away_club_id INTO v_match FROM public.matches WHERE id = p_match_id;
   IF v_match IS NULL THEN RETURN; END IF;
 
-  -- Snapshot each club's active lineup as participants.
+  -- Snapshot each club's active lineup as participants. If a club has no
+  -- lineup_slots populated (a known seed_serie_b miss), fall back to
+  -- picking the first 11 players in the squad ordered by position.
   FOR v_pp IN
-    SELECT 'home'::TEXT AS side, ls.player_profile_id, ls.slot_position
-      FROM public.lineups l
-      JOIN public.lineup_slots ls ON ls.lineup_id = l.id
-     WHERE l.club_id = v_match.home_club_id AND l.is_active = TRUE
-       AND ls.role_type = 'starter'
-    UNION ALL
-    SELECT 'away'::TEXT AS side, ls.player_profile_id, ls.slot_position
-      FROM public.lineups l
-      JOIN public.lineup_slots ls ON ls.lineup_id = l.id
-     WHERE l.club_id = v_match.away_club_id AND l.is_active = TRUE
-       AND ls.role_type = 'starter'
+    WITH home_slots AS (
+      SELECT ls.player_profile_id FROM public.lineups l
+        JOIN public.lineup_slots ls ON ls.lineup_id = l.id
+       WHERE l.club_id = v_match.home_club_id AND l.is_active = TRUE AND ls.role_type = 'starter'
+    ), home_fallback AS (
+      SELECT id AS player_profile_id FROM public.player_profiles
+       WHERE club_id::text = v_match.home_club_id::text
+       ORDER BY CASE primary_position
+         WHEN 'GK' THEN 1 WHEN 'CB' THEN 2 WHEN 'LB' THEN 3 WHEN 'RB' THEN 4
+         WHEN 'CDM' THEN 5 WHEN 'CM' THEN 6 WHEN 'CAM' THEN 7
+         WHEN 'LM' THEN 8 WHEN 'RM' THEN 9 WHEN 'LW' THEN 10 WHEN 'RW' THEN 11
+         WHEN 'ST' THEN 12 WHEN 'CF' THEN 13 ELSE 99 END
+       LIMIT 11
+    ),
+    away_slots AS (
+      SELECT ls.player_profile_id FROM public.lineups l
+        JOIN public.lineup_slots ls ON ls.lineup_id = l.id
+       WHERE l.club_id = v_match.away_club_id AND l.is_active = TRUE AND ls.role_type = 'starter'
+    ), away_fallback AS (
+      SELECT id AS player_profile_id FROM public.player_profiles
+       WHERE club_id::text = v_match.away_club_id::text
+       ORDER BY CASE primary_position
+         WHEN 'GK' THEN 1 WHEN 'CB' THEN 2 WHEN 'LB' THEN 3 WHEN 'RB' THEN 4
+         WHEN 'CDM' THEN 5 WHEN 'CM' THEN 6 WHEN 'CAM' THEN 7
+         WHEN 'LM' THEN 8 WHEN 'RM' THEN 9 WHEN 'LW' THEN 10 WHEN 'RW' THEN 11
+         WHEN 'ST' THEN 12 WHEN 'CF' THEN 13 ELSE 99 END
+       LIMIT 11
+    )
+    SELECT 'home'::TEXT AS side, player_profile_id FROM home_slots
+    UNION ALL SELECT 'home', player_profile_id FROM home_fallback
+       WHERE NOT EXISTS (SELECT 1 FROM home_slots)
+    UNION ALL SELECT 'away', player_profile_id FROM away_slots
+    UNION ALL SELECT 'away', player_profile_id FROM away_fallback
+       WHERE NOT EXISTS (SELECT 1 FROM away_slots)
   LOOP
     INSERT INTO public.match_participants (
       match_id, player_profile_id, club_id, role_type, is_bot, is_ready
