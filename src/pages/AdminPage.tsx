@@ -1435,6 +1435,18 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
                   await supabase.rpc('admin_run_aging', { p_season_id: finishedSeasonIds[0] });
                 }
 
+                // Step 3.5: promotion/relegation — swap top/bottom of adjacent
+                // divisions BEFORE Season N+1 standings get generated.
+                let prSwaps = 0;
+                try {
+                  const { data: prRes } = await supabase.rpc('admin_apply_promotion_relegation', {
+                    p_finished_year: finishedYear, p_count: 4,
+                  });
+                  prSwaps = (prRes as any)?.clubs_swapped ?? 0;
+                } catch (e) {
+                  console.error('promotion/relegation failed:', e);
+                }
+
                 // Step 4: recap for every finished season
                 // backfill-season-recaps takes its inputs as query params,
                 // so go through fetch directly instead of supabase.functions.invoke.
@@ -1463,7 +1475,7 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
                   if (!seedRes.error && (seedRes.data as any)?.status === 'created') nextSeasonsOk++;
                 }
 
-                toast.success(`Game Year ${finishedYear} encerrado · ${finishedSeasonIds.length} seasons · ${recapsOk} recap(s) · ${nextSeasonsOk} season(s) N+1`);
+                toast.success(`Game Year ${finishedYear} encerrado · ${finishedSeasonIds.length} seasons · ${prSwaps} promo/rebaixamento · ${recapsOk} recap(s) · ${nextSeasonsOk} season(s) N+1`);
                 onReload();
               } catch (e: any) {
                 toast.error(e?.message || String(e));

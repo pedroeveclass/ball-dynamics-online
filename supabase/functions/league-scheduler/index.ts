@@ -536,6 +536,30 @@ Deno.serve(async (req) => {
             console.error(`[SCHEDULER] generateAndPersistSeasonRecap threw for season ${round.season_id}:`, recapEx);
           }
 
+          // PROMOTION / RELEGATION — swap top of N+1 with bottom of N
+          // for every adjacent (division, division+1) pair PER COUNTRY,
+          // BEFORE start_next_season generates standings for the new year.
+          try {
+            const { data: finishedSeason } = await supabase
+              .from('league_seasons')
+              .select('season_number')
+              .eq('id', round.season_id)
+              .maybeSingle();
+            const finishedYear = (finishedSeason as any)?.season_number;
+            if (finishedYear) {
+              const { data: prRes, error: prErr } = await supabase.rpc('apply_promotion_relegation', {
+                p_finished_year: finishedYear, p_count: 4, p_country: null,
+              });
+              if (prErr) {
+                console.error(`[SCHEDULER] apply_promotion_relegation failed:`, prErr);
+              } else {
+                console.log(`[SCHEDULER] promotion/relegation:`, prRes);
+              }
+            }
+          } catch (prEx) {
+            console.error(`[SCHEDULER] promotion/relegation threw:`, prEx);
+          }
+
           // PÉTREA RULE — temporadas avançam JUNTAS em todas as ligas. The
           // _cascade_finish_sibling_seasons trigger already flipped every
           // sibling season to 'finished'; here we fire start_next_season
