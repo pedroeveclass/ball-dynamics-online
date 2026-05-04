@@ -585,6 +585,18 @@ export function composePlayerSvg(opts: ComposeOptions): string {
        }</g>`
     : '';
 
+  // Outfielder winter glove: paint just the hand region of the bracos
+  // asset (below the second-skin cutoff) with gloveColor. Goalkeepers
+  // keep the dedicated luvas asset overlay further down. Mirror clip
+  // of secondSkinSleeves so the glove starts exactly where the second
+  // skin stops.
+  const outfielderWinterGlove = !isGK && opts.hasWinterGlove && opts.gloveColor
+    ? `<defs><clipPath id="v2gloveClip"><rect x="0" y="${sleeveClipBottomY}" width="1024" height="${1536 - sleeveClipBottomY}"/></clipPath></defs>
+       <g clip-path="url(#v2gloveClip)">${
+         tintAllFills(innerBracos, opts.gloveColor)
+       }</g>`
+    : '';
+
   const appearance = opts.appearance ?? DEFAULT_APPEARANCE;
   const seed = opts.seed ?? 'avatarV2';
 
@@ -598,6 +610,7 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     secondSkinLeggings,
     tintSkin(innerBracos, opts.skinTone),
     secondSkinSleeves,
+    outfielderWinterGlove,
     caneleira,
     tintSocks(sockSrc, opts.primaryColor, opts.secondaryColor),
     tintCleats(innerChuteira, opts.cleatColor ?? null),
@@ -606,10 +619,10 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     crestAndNumberSvg(opts),
   ];
 
-  // Gloves: GK always wears them; outfielders only when hasWinterGlove.
-  // Both render through the same asset/transform path; only the tint
-  // color differs.
-  const showGloves = isGK || !!opts.hasWinterGlove;
+  // GK glove asset: only goalkeepers wear the full luvas overlay.
+  // Outfielder "winter glove" is handled earlier as a tinted hand
+  // region of the bracos asset (see outfielderWinterGlove above).
+  const showGloves = isGK;
   if (showGloves) {
     // Shared (pair) transform — moves BOTH gloves together.
     const gloveScale   = 1;
