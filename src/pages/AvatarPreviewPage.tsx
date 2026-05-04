@@ -4,7 +4,18 @@
 
 import { useMemo, useState } from 'react';
 import { PlayerAvatarV2 } from '@/components/PlayerAvatarV2';
-import { DEFAULT_APPEARANCE, SKIN_TONES, type PlayerAppearance } from '@/lib/avatar';
+import {
+  DEFAULT_APPEARANCE,
+  SKIN_TONES,
+  HAIR_STYLES,
+  HAIR_COLORS,
+  EYEBROWS,
+  EYES,
+  MOUTHS,
+  FACIAL_HAIR,
+  ACCESSORIES,
+  type PlayerAppearance,
+} from '@/lib/avatar';
 
 const KITS: Array<{ name: string; primary: string; secondary: string }> = [
   { name: 'Cinza (referência)', primary: '#D5D5D5', secondary: '#ADADAE' },
@@ -38,11 +49,33 @@ export default function AvatarPreviewPage() {
   const [hasSecondSkinPants, setHasSecondSkinPants] = useState(false);
   const [secondSkinPantsColor, setSecondSkinPantsColor] = useState<string>('#1A1A1A');
   const [secondSkinPantsSide, setSecondSkinPantsSide] = useState<'left' | 'right' | 'both'>('both');
+  const [hideShirt, setHideShirt] = useState(false);
 
-  const appearance = useMemo<PlayerAppearance>(
-    () => ({ ...DEFAULT_APPEARANCE, skinTone: SKIN_TONES[skinIdx].id }),
-    [skinIdx],
-  );
+  // Face state — drives every selectable slot of the DiceBear-style head.
+  const [hair, setHair] = useState<string>(DEFAULT_APPEARANCE.hair);
+  // Hex with leading '#'. Stripped to bare hex when piped into appearance.
+  const [hairColorHex, setHairColorHex] = useState<string>(`#${DEFAULT_APPEARANCE.hairColor}`);
+  const [eyebrows, setEyebrows] = useState<string>(DEFAULT_APPEARANCE.eyebrows);
+  const [eyes, setEyes] = useState<string>(DEFAULT_APPEARANCE.eyes);
+  const [mouth, setMouth] = useState<string>(DEFAULT_APPEARANCE.mouth);
+  const [facialHair, setFacialHair] = useState<string>('none');
+  const [accessories, setAccessories] = useState<string>('none');
+
+  const appearance = useMemo<PlayerAppearance>(() => {
+    const hairColorBare = hairColorHex.replace('#', '').toUpperCase();
+    return {
+      ...DEFAULT_APPEARANCE,
+      skinTone: SKIN_TONES[skinIdx].id,
+      hair,
+      hairColor: hairColorBare,
+      eyebrows,
+      eyes,
+      mouth,
+      facialHair: facialHair === 'none' ? null : facialHair,
+      facialHairColor: hairColorBare,
+      accessories: accessories === 'none' ? null : accessories,
+    };
+  }, [skinIdx, hair, hairColorHex, eyebrows, eyes, mouth, facialHair, accessories]);
 
   const kit = KITS[kitIdx];
 
@@ -173,6 +206,80 @@ export default function AvatarPreviewPage() {
             <label style={{ display: 'block' }}>
               <input type="checkbox" checked={isCaptain} onChange={(e) => setIsCaptain(e.target.checked)} /> Capitão (faixa)
             </label>
+            <label style={{ display: 'block' }}>
+              <input type="checkbox" checked={hideShirt} onChange={(e) => setHideShirt(e.target.checked)} /> Esconder camiseta (ver tronco)
+            </label>
+          </Field>
+
+          <hr style={{ margin: '14px 0', border: 'none', borderTop: '1px solid #ddd' }} />
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Rosto</div>
+
+          <Field label="Cabelo (estilo)">
+            <select value={hair} onChange={(e) => setHair(e.target.value)} style={{ width: '100%' }}>
+              {HAIR_STYLES.map((h) => (
+                <option key={h.id} value={h.id}>{h.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Cor do cabelo">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                type="color"
+                value={hairColorHex}
+                onChange={(e) => setHairColorHex(e.target.value)}
+                style={{ width: 50, height: 26 }}
+              />
+              <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{hairColorHex.toUpperCase()}</span>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {HAIR_COLORS.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setHairColorHex(`#${c.id}`)}
+                    title={c.label}
+                    style={{
+                      width: 18, height: 18, padding: 0,
+                      border: hairColorHex.toUpperCase() === `#${c.id.toUpperCase()}` ? '2px solid #333' : '1px solid #aaa',
+                      background: `#${c.id}`, cursor: 'pointer', borderRadius: 3,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </Field>
+          <Field label="Sobrancelha">
+            <select value={eyebrows} onChange={(e) => setEyebrows(e.target.value)} style={{ width: '100%' }}>
+              {EYEBROWS.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Olhos">
+            <select value={eyes} onChange={(e) => setEyes(e.target.value)} style={{ width: '100%' }}>
+              {EYES.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Boca">
+            <select value={mouth} onChange={(e) => setMouth(e.target.value)} style={{ width: '100%' }}>
+              {MOUTHS.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Barba/bigode">
+            <select value={facialHair} onChange={(e) => setFacialHair(e.target.value)} style={{ width: '100%' }}>
+              {FACIAL_HAIR.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Acessório">
+            <select value={accessories} onChange={(e) => setAccessories(e.target.value)} style={{ width: '100%' }}>
+              {ACCESSORIES.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
           </Field>
 
           <div style={{ marginTop: 16, padding: 12, background: '#f0f0f0', borderRadius: 4, fontSize: 12 }}>
@@ -207,6 +314,7 @@ export default function AvatarPreviewPage() {
               secondSkinShirtSide={secondSkinShirtSide}
               secondSkinPantsColor={hasSecondSkinPants ? secondSkinPantsColor : null}
               secondSkinPantsSide={secondSkinPantsSide}
+              hideShirt={hideShirt}
               className="w-full h-full"
             />
           </div>

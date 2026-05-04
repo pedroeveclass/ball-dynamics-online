@@ -11,9 +11,8 @@
 // face customization is Phase 4.
 // ════════════════════════════════════════════════════════════
 
-import { createAvatar } from '@dicebear/core';
-import { avataaars } from '@dicebear/collection';
 import { DEFAULT_APPEARANCE, type PlayerAppearance } from '@/lib/avatar';
+import { composeFaceBack, composeFaceFront } from '@/lib/faceComposer';
 
 // ── Raw SVG imports (Vite ?raw, all share viewBox 1024×1536) ──
 // Note: `perna.svg` (singular) is the *full* leg from upper thigh
@@ -33,6 +32,7 @@ import meiaoBaixoSvg   from '../../avatar-redesign/meiao_baixo.svg?raw';
 import camisaGoleiroSvg from '../../avatar-redesign/camisagk.svg?raw';
 import luvasSvg        from '../../avatar-redesign/luvas.svg?raw';
 import caneleiraSvg    from '../../avatar-redesign/caneleira.svg?raw';
+import troncoSvg       from '../../avatar-redesign/tronco.svg?raw';
 
 // Strip the outer <svg ...> wrapper so we can compose layers
 // into a single root SVG. Keeps internal <defs>/<clipPath> etc.
@@ -52,6 +52,7 @@ const innerMeiaoBaixo    = stripSvgWrapper(meiaoBaixoSvg);
 const innerCamisaGoleiro = stripSvgWrapper(camisaGoleiroSvg);
 const innerLuvas         = stripSvgWrapper(luvasSvg);
 const innerCaneleira     = stripSvgWrapper(caneleiraSvg);
+const innerTronco        = stripSvgWrapper(troncoSvg);
 
 // ── Color math (HSL helpers for shadow/highlight derivation) ──
 
@@ -326,76 +327,42 @@ export interface ComposeOptions {
   jerseyNumber?: number | null;
   crestUrl?: string | null;
   numberColor?: string;        // override; defaults to readable foreground
+  // When true, the camiseta / camisa_goleiro layer is omitted from the
+  // compose. Used in the preview sandbox to inspect the body underneath
+  // without the shirt covering it. The crest + number layer is also
+  // suppressed because they belong on the shirt.
+  hideShirt?: boolean;
 }
 
-// DiceBear avataaars options builder — same logic as V1's PlayerAvatar
-// so a player's face stays consistent across the two avatar systems.
-function buildAvataaarsOptions(a: PlayerAppearance, primaryHex: string, seed: string) {
-  const shirtHex = primaryHex.replace('#', '');
-  const isBald = a.hair === 'noHair';
-  const hasFacialHair = a.facialHair && a.facialHair !== 'none';
-  const hasAccessory = a.accessories && a.accessories !== 'none';
+// ─── Head position knobs ─────────────────────────────────────────
+// The face SVG (head/headv2.svg) lives in its own 280×280 viewBox.
+// We scale it up and translate it into the chest-up region of the
+// outer 1024×1536 viewBox. Affects BOTH the back layer (head + face
+// features + hair) AND the front layer (beard) — they share the same
+// transform so the beard stays aligned with the chin.
+//
+//   HEAD_SCALE       — 1.0 = native 280px. Higher = bigger head.
+//                      ↑ aumenta = cabeça maior; ↓ diminui = menor.
+//   HEAD_TRANSLATE_X — desloc horizontal. ↑ = direita, ↓ = esquerda.
+//   HEAD_TRANSLATE_Y — desloc vertical.   ↑ = desce, ↓ = sobe.
+const HEAD_SCALE       = 1.7;
+const HEAD_TRANSLATE_X = 285;
+const HEAD_TRANSLATE_Y = 38;
 
-  const options: Record<string, unknown> = {
-    seed,
-    skinColor: [a.skinTone],
-    hairColor: [a.hairColor],
-    eyebrows: [a.eyebrows],
-    eyes: [a.eyes],
-    mouth: [a.mouth],
-    nose: [a.nose || 'default'],
-    clothing: ['shirtCrewNeck'],
-    clothesColor: [shirtHex],
-    backgroundColor: ['transparent'],
-  };
-
-  if (isBald) {
-    options.topProbability = 0;
-  } else {
-    options.top = [a.hair];
-    options.topProbability = 100;
-  }
-  if (hasFacialHair) {
-    options.facialHair = [a.facialHair];
-    options.facialHairColor = [a.facialHairColor ?? a.hairColor];
-    options.facialHairProbability = 100;
-  } else {
-    options.facialHairProbability = 0;
-  }
-  if (hasAccessory) {
-    options.accessories = [a.accessories];
-    options.accessoriesProbability = 100;
-  } else {
-    options.accessoriesProbability = 0;
-  }
-  return options as Record<string, unknown>;
+// Wrap any face-layer inner content in the head's outer transform so
+// it lands at the right position over the body. Used twice per avatar
+// (back layer → composeFaceBack, front layer → composeFaceFront).
+function wrapHeadLayer(inner: string): string {
+  if (!inner) return '';
+  return `<g transform="translate(${HEAD_TRANSLATE_X} ${HEAD_TRANSLATE_Y}) scale(${HEAD_SCALE})">${inner}</g>`;
 }
 
-// DiceBear head positioned + clipped inside our 1024×1536 viewBox.
-// DiceBear avataaars renders a 256×256 viewBox with the head roughly
-// at y=15-160 and a bust below. We scale it up so the head fills the
-// target chest-up region (x≈260-760, y≈40-410) and clip below the
-// chin so the bust doesn't bleed onto the camiseta.
-function buildHeadSvg(appearance: PlayerAppearance, primaryHex: string, seed: string): string {
-  const avatar = createAvatar(avataaars, buildAvataaarsOptions(appearance, primaryHex, seed));
-  const raw = avatar.toString();
-  const inner = raw.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
-  // Position knobs — adjust if the head doesn't sit right on the neck.
-  const headScale       = 1.8;
-  const headTranslateX  = 260;
-  const headTranslateY  = 20;
-  const headClipBottomY = 405; // hides DiceBear's bust below this line
-  const clipId = `v2head-${Math.abs(hashStr(seed))}`;
-  return `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="1024" height="${headClipBottomY}"/></clipPath></defs>
-<g clip-path="url(#${clipId})" transform="translate(${headTranslateX} ${headTranslateY}) scale(${headScale})">
-${inner}
-</g>`;
+function buildHeadBackSvg(appearance: PlayerAppearance): string {
+  return wrapHeadLayer(composeFaceBack(appearance));
 }
 
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  return h;
+function buildHeadFrontSvg(appearance: PlayerAppearance): string {
+  return wrapHeadLayer(composeFaceFront(appearance));
 }
 
 // Per-leg nudge on caneleira. The asset has two <g rotate(...)> groups,
@@ -601,22 +568,31 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   const seed = opts.seed ?? 'avatarV2';
 
   const layers: string[] = [
-    // Head goes FIRST (back) so the body/jersey renders on top.
-    // Only the parts of the DiceBear above the camiseta collar
-    // (the actual face/hair) end up visible — the bust below is
-    // hidden behind the shirt instead of clipped.
-    buildHeadSvg(appearance, opts.primaryColor, seed),
+    // Head BACK layer goes FIRST (behind body): silhouette + eyes,
+    // eyebrows, nose, mouth, accessories, hair top. The neck shadow
+    // sits behind the camiseta so the collar covers it cleanly.
+    buildHeadBackSvg(appearance),
     tintSkin(innerPerna, opts.skinTone),
     secondSkinLeggings,
-    tintSkin(innerBracos, opts.skinTone),
-    secondSkinSleeves,
-    outfielderWinterGlove,
+    // When hiding the shirt we also hide the bracos (arms) and any
+    // sleeve overlays — tronco.svg already includes the chest+arm
+    // shape Pedro authored for the shirtless view.
+    opts.hideShirt ? '' : tintSkin(innerBracos, opts.skinTone),
+    opts.hideShirt ? '' : secondSkinSleeves,
+    opts.hideShirt ? '' : outfielderWinterGlove,
     caneleira,
     tintSocks(sockSrc, opts.primaryColor, opts.secondaryColor),
     tintCleats(innerChuteira, opts.cleatColor ?? null),
     tintShorts(innerBermuda, opts.primaryColor),
-    torso,
-    crestAndNumberSvg(opts),
+    // Bare torso swap: replaces both the camiseta and the bracos
+    // when hideShirt is on. Skin-tinted from the same skinTone so
+    // it matches the head + legs.
+    opts.hideShirt ? tintSkin(innerTronco, opts.skinTone) : torso,
+    opts.hideShirt ? '' : crestAndNumberSvg(opts),
+    // Head FRONT layer (just facialHair) renders AFTER the camiseta
+    // so big beards drape naturally over the collar. Empty when the
+    // player has no beard selected.
+    buildHeadFrontSvg(appearance),
   ];
 
   // GK glove asset: only goalkeepers wear the full luvas overlay.

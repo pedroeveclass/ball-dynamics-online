@@ -1,6 +1,5 @@
-import { useId, useMemo } from 'react';
-import { createAvatar } from '@dicebear/core';
-import { avataaars } from '@dicebear/collection';
+import { useId } from 'react';
+import { PlayerAvatarV2 } from './PlayerAvatarV2';
 import { PlayerAppearance, DEFAULT_APPEARANCE, heightScale, readableForeground, firstName, isLongHair, isBigBeard } from '@/lib/avatar';
 
 export type AvatarVariant = 'face' | 'full-front' | 'full-back';
@@ -86,57 +85,9 @@ const COACH_SHIRT_DETAIL = '#2a2a2a';
 const COACH_PANTS = '#0d0d0d';
 const COACH_SHOE = '#050505';
 
-// Build avataaars options from PlayerAppearance. IDs must match DiceBear
-// avataaars v9 schema exactly; probabilities must be forced to 100 when the
-// player picked a specific option (schema defaults are 10 for accessories
-// and facialHair, which is why those were invisible before).
-function buildAvataaarsOptions(a: PlayerAppearance, clubPrimaryHex: string, seed: string, outfit: AvatarOutfit) {
-  // Coach: black dress shirt (DiceBear blazerAndShirt gives a formal collar
-  // hint at the neck, which is the only slice of DiceBear clothing our clip
-  // leaves visible). Player: regular crew-neck sport jersey in club color.
-  const isCoach = outfit === 'coach';
-  const shirtHex = isCoach ? '111111' : clubPrimaryHex.replace('#', '');
-  const isBald = a.hair === 'noHair';
-  const hasFacialHair = a.facialHair && a.facialHair !== 'none';
-  const hasAccessory = a.accessories && a.accessories !== 'none';
-
-  const options: Record<string, unknown> = {
-    seed,
-    skinColor: [a.skinTone],
-    hairColor: [a.hairColor],
-    eyebrows: [a.eyebrows],
-    eyes: [a.eyes],
-    mouth: [a.mouth],
-    nose: [a.nose || 'default'],
-    clothing: [isCoach ? 'blazerAndShirt' : 'shirtCrewNeck'],
-    clothesColor: [shirtHex],
-    backgroundColor: ['transparent'],
-  };
-
-  if (isBald) {
-    options.topProbability = 0;
-  } else {
-    options.top = [a.hair];
-    options.topProbability = 100;
-  }
-
-  if (hasFacialHair) {
-    options.facialHair = [a.facialHair];
-    options.facialHairColor = [a.facialHairColor ?? a.hairColor];
-    options.facialHairProbability = 100;
-  } else {
-    options.facialHairProbability = 0;
-  }
-
-  if (hasAccessory) {
-    options.accessories = [a.accessories];
-    options.accessoriesProbability = 100;
-  } else {
-    options.accessoriesProbability = 0;
-  }
-
-  return options as any;
-}
+// (DiceBear avataaars options builder removed in Phase 4 cleanup —
+// face + full-front variants now delegate to PlayerAvatarV2 which
+// uses the internal faceComposer reading from avatar-redesign/face/.)
 
 export function PlayerAvatar({
   appearance,
@@ -206,22 +157,52 @@ export function PlayerAvatar({
   const seed = fallbackSeed ?? 'player';
   const clipId = useId().replace(/:/g, '_');
 
-  const faceDataUri = useMemo(() => {
-    const avatar = createAvatar(avataaars, buildAvataaarsOptions(effective, primary, seed, outfit));
-    return avatar.toDataUri();
-  }, [effective, primary, seed, outfit]);
-
-  if (variant === 'face') {
+  // Phase 4 cleanup: face + full-front variants delegate to V2 so the
+  // DiceBear runtime never executes. V1 keeps only the full-back path
+  // (custom-drawn body silhouette + back-of-head + jersey number on
+  // the back) until V2 grows a back-view asset.
+  if (variant === 'face' || variant === 'full-front') {
+    const sideOrNull = (s: 'left' | 'right' | 'both' | null) =>
+      (s === 'left' || s === 'right') ? s : undefined;
+    const sideOrBoth = (s: 'left' | 'right' | 'both' | null) =>
+      (s === 'left' || s === 'right' || s === 'both') ? s : 'both';
     return (
-      <div className={`relative overflow-hidden rounded-full ${className ?? ''}`}>
-        <img src={faceDataUri} alt={playerName ?? 'Jogador'} className="w-full h-full object-cover" draggable={false} />
-      </div>
+      <PlayerAvatarV2
+        appearance={effective}
+        variant={variant}
+        clubPrimaryColor={clubPrimaryColor}
+        clubSecondaryColor={clubSecondaryColor}
+        clubCrestUrl={clubCrestUrl}
+        jerseyNumber={jerseyNumber}
+        position={isGK ? 'GOL' : null}
+        sockHeight={hasLongSocks ? 'alto' : 'baixo'}
+        hasShinGuard={!!shinGuardColor}
+        shinGuardColor={shinGuardColor ?? undefined}
+        cleatColor={bootsColor}
+        gloveColor={gloveColor}
+        hasWinterGlove={!!hasWinterGlove}
+        bicepsBandColor={bicepsBandColor}
+        bicepsBandSide={sideOrNull(bicepsBandSide)}
+        wristbandColor={wristbandColor}
+        wristbandSide={sideOrNull(wristbandSide)}
+        secondSkinShirtColor={secondSkinShirtColor}
+        secondSkinShirtSide={sideOrBoth(secondSkinShirtSide)}
+        secondSkinPantsColor={secondSkinPantsColor}
+        secondSkinPantsSide={sideOrBoth(secondSkinPantsSide)}
+        fallbackSeed={seed}
+        className={className}
+      />
     );
   }
 
   const scale = heightScale(height);
   const isBack = variant === 'full-back';
   const shirtOnly = isBack && backShirtOnly;
+  // After the V2 delegation above, `variant` is always 'full-back' here.
+  // The FrontBody branch below remains as dead code paths (in case the
+  // delegation is removed) but never renders. faceDataUri is stubbed
+  // so we don't drag the DiceBear runtime into the bundle.
+  const faceDataUri = '';
 
   // Back view crops out head + neck. Viewbox starts at y=114 so the shirt
   // fills the container, AND a clipPath at y>=114 is applied AFTER the
