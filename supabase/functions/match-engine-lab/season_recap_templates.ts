@@ -29,7 +29,9 @@ export interface TopMoment {
 export interface TeamOfSeasonSlot {
   position: string;
   playerName: string;
+  playerProfileId: string;
   clubName: string;
+  clubId: string;
   rating: number;
   matches: number;
 }
@@ -412,10 +414,11 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
   const totalMatches = (matches ?? []).length;
   const averageGoals = totalMatches > 0 ? totalGoals / totalMatches : 0;
 
-  // Awards table
+  // Awards table — note: player_awards has no club_id column; we resolve the
+  // player's club from player_profiles.club_id below.
   const { data: awards } = await supabase
     .from('player_awards')
-    .select('award_type, player_profile_id, club_id, vote_count, metric_value')
+    .select('award_type, player_profile_id, vote_count, metric_value')
     .eq('scope_entity_id', seasonId);
 
   const awardByType = new Map<string, any>();
@@ -423,17 +426,22 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
 
   const awardPlayerIds = (awards ?? []).map((a: any) => a.player_profile_id).filter(Boolean);
   const { data: awardProfiles } = awardPlayerIds.length > 0
-    ? await supabase.from('player_profiles').select('id, full_name').in('id', awardPlayerIds)
+    ? await supabase.from('player_profiles').select('id, full_name, club_id').in('id', awardPlayerIds)
     : { data: [] as any[] };
   const profileName = new Map<string, string>();
-  for (const p of awardProfiles ?? []) profileName.set(p.id, p.full_name);
+  const profileClubId = new Map<string, string | null>();
+  for (const p of awardProfiles ?? []) {
+    profileName.set(p.id, p.full_name);
+    profileClubId.set(p.id, p.club_id ?? null);
+  }
 
   const getAward = (type: string) => {
     const a = awardByType.get(type);
     if (!a) return { name: null, club: null, value: 0 };
+    const clubId = profileClubId.get(a.player_profile_id) ?? null;
     return {
       name: profileName.get(a.player_profile_id) ?? null,
-      club: clubName.get(a.club_id) ?? null,
+      club: clubId ? (clubName.get(clubId) ?? null) : null,
       value: Number(a.metric_value ?? a.vote_count ?? 0),
     };
   };
@@ -503,32 +511,46 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
         .in('entity_id', matchIds)
     : { data: [] as any[] };
 
-  // Pick one representative per dramatic bucket (priority order)
+  // Pick representatives by dramatic bucket (priority order). First pass picks
+  // one per bucket so each type is represented; second pass fills any remaining
+  // slots up to 5 from whatever recaps are left, in the same priority order.
   const moments: TopMoment[] = [];
   const wantedBuckets: TopMoment['type'][] = ['rout', 'comeback', 'late_winner', 'jogao', 'red_card_decided', 'penalty_decided'];
   const usedMatches = new Set<string>();
+  const pushMoment = (candidate: any, bucket: TopMoment['type']) => {
+    const fj = candidate.facts_json as any;
+    const lm = (leagueMatches ?? []).find((x: any) => x.match_id === candidate.entity_id);
+    moments.push({
+      roundNumber: lm ? (roundNumberById.get(lm.round_id) ?? 0) : 0,
+      type: bucket,
+      homeName: fj.homeName ?? '',
+      awayName: fj.awayName ?? '',
+      homeGoals: fj.homeGoals ?? 0,
+      awayGoals: fj.awayGoals ?? 0,
+      matchId: candidate.entity_id,
+      body_pt: candidate.body_pt,
+      body_en: candidate.body_en,
+    });
+    usedMatches.add(candidate.entity_id);
+  };
   for (const bucket of wantedBuckets) {
     if (moments.length >= 5) break;
     const candidate = (matchRecaps ?? []).find((r: any) => {
       if (usedMatches.has(r.entity_id)) return false;
-      const fj = r.facts_json as any;
-      return fj?.bucket === bucket;
+      return (r.facts_json as any)?.bucket === bucket;
     });
-    if (candidate) {
-      const fj = candidate.facts_json as any;
-      const lm = (leagueMatches ?? []).find((x: any) => x.match_id === candidate.entity_id);
-      moments.push({
-        roundNumber: lm ? (roundNumberById.get(lm.round_id) ?? 0) : 0,
-        type: bucket,
-        homeName: fj.homeName ?? '',
-        awayName: fj.awayName ?? '',
-        homeGoals: fj.homeGoals ?? 0,
-        awayGoals: fj.awayGoals ?? 0,
-        matchId: candidate.entity_id,
-        body_pt: candidate.body_pt,
-        body_en: candidate.body_en,
-      });
-      usedMatches.add(candidate.entity_id);
+    if (candidate) pushMoment(candidate, bucket);
+  }
+  // Fill remaining slots with any extra recaps (more than one per bucket OK).
+  if (moments.length < 5) {
+    for (const bucket of wantedBuckets) {
+      if (moments.length >= 5) break;
+      for (const r of matchRecaps ?? []) {
+        if (moments.length >= 5) break;
+        if (usedMatches.has(r.entity_id)) continue;
+        if ((r.facts_json as any)?.bucket !== bucket) continue;
+        pushMoment(r, bucket);
+      }
     }
   }
 
@@ -587,7 +609,9 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
     xi.push({
       position: profilePos,
       playerName: tosNameById.get(p.id) ?? '',
+      playerProfileId: p.id,
       clubName: clubName.get(p.clubId) ?? '',
+      clubId: p.clubId,
       rating: Number(p.avg.toFixed(2)),
       matches: p.matches,
     });

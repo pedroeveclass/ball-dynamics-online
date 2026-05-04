@@ -5,6 +5,7 @@ import { Trophy, Medal, Award, Calendar, BarChart3, Newspaper, Loader2, Sparkles
 import { supabase } from '@/integrations/supabase/client';
 import { useAppLanguage } from '@/hooks/useAppLanguage';
 import { SeasonAwardsCard } from '@/components/league/SeasonAwardsCard';
+import { TeamOfSeasonPitch } from '@/components/league/TeamOfSeasonPitch';
 
 interface SeasonRecapRow {
   body_pt: string;
@@ -133,19 +134,8 @@ export function SeasonRecapView({ seasonId, seasonNumber }: { seasonId: string; 
           <h3 className="font-display font-semibold text-sm flex items-center gap-2">
             <Award className="h-4 w-4 text-tactical" /> {t('seasonRecap.section.team_of_season')}
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-            {f.teamOfTheSeason.map((slot: any, i: number) => (
-              <div key={i} className="flex items-center justify-between bg-muted/30 rounded px-2 py-1.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-mono bg-tactical/20 text-tactical px-1.5 py-0.5 rounded">{slot.position}</span>
-                  <div className="min-w-0">
-                    <p className="font-display font-semibold text-sm truncate">{slot.playerName}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{slot.clubName}</p>
-                  </div>
-                </div>
-                <span className="font-mono text-sm font-bold text-pitch shrink-0">{slot.rating?.toFixed?.(1) ?? slot.rating}</span>
-              </div>
-            ))}
+          <div className="max-w-md mx-auto">
+            <TeamOfSeasonPitch slots={f.teamOfTheSeason} />
           </div>
         </div>
       )}
@@ -199,7 +189,7 @@ export function SeasonRecapView({ seasonId, seasonNumber }: { seasonId: string; 
 
       {/* ── Hall of Fame link ── */}
       <div className="text-center">
-        <Link to="/hallOfFame" className="text-sm font-display font-semibold text-tactical hover:underline">
+        <Link to="/league/hall-of-fame" className="text-sm font-display font-semibold text-tactical hover:underline">
           {t('seasonRecap.section.view_hall_of_fame')} →
         </Link>
       </div>
