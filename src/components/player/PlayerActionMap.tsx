@@ -307,8 +307,8 @@ export function PlayerDribbleMap({ dribbles, attackingDirection = 'ltr', classNa
 }
 
 // ── Run map ──────────────────────────────────────────────────────────────
-// Renders the position-sample trail as a low-opacity line, plus arrows on
-// the longest consecutive movements (sprint zones).
+// Renders the position-sample trail as a single low-opacity line connecting
+// every turn-end position in chronological order.
 interface RunMapProps {
   samples: Array<{ x: number; y: number }>;
   attackingDirection?: 'ltr' | 'rtl';
@@ -318,23 +318,6 @@ interface RunMapProps {
 export function PlayerRunMap({ samples, attackingDirection = 'ltr', className }: RunMapProps) {
   const { t } = useTranslation('public_player');
   const mirror = attackingDirection === 'rtl';
-  // Find top-K largest deltas as "sprints".
-  type Seg = { a: { sx: number; sy: number }; b: { sx: number; sy: number }; len: number };
-  const segs: Seg[] = [];
-  const Y_SCALE = 60 / 100;
-  for (let i = 1; i < samples.length; i++) {
-    const dx = samples[i].x - samples[i - 1].x;
-    const dy = (samples[i].y - samples[i - 1].y) * Y_SCALE;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 4) continue;
-    segs.push({
-      a: pctToSvg(samples[i - 1].x, samples[i - 1].y, mirror),
-      b: pctToSvg(samples[i].x, samples[i].y, mirror),
-      len,
-    });
-  }
-  segs.sort((x, y) => y.len - x.len);
-  const sprints = segs.slice(0, Math.min(10, segs.length));
 
   return (
     <div className={`relative ${className ?? ''}`} style={{ aspectRatio: `${FIELD_W} / ${FIELD_H}` }}>
@@ -343,26 +326,14 @@ export function PlayerRunMap({ samples, attackingDirection = 'ltr', className }:
         viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
         className="absolute inset-0 w-full h-full pointer-events-none"
       >
-        <defs>
-          <marker id="runArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-            <path d="M0,0 L10,5 L0,10 z" fill="#fbbf24" />
-          </marker>
-        </defs>
-        {/* Faint trail of all moves */}
-        <g stroke="rgba(251,191,36,0.25)" strokeWidth={1.5} fill="none">
+        {/* Trail of all moves */}
+        <g stroke="rgba(251,191,36,0.45)" strokeWidth={1.5} fill="none">
           {samples.length > 1 && (() => {
             const points = samples.map(s => pctToSvg(s.x, s.y, mirror));
             const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.sx} ${p.sy}`).join(' ');
             return <path d={path} />;
           })()}
         </g>
-        {/* Top sprint segments emphasized */}
-        {sprints.map((s, idx) => (
-          <line key={idx}
-            x1={s.a.sx} y1={s.a.sy} x2={s.b.sx} y2={s.b.sy}
-            stroke="#fbbf24" strokeWidth={3} strokeOpacity={0.85}
-            markerEnd="url(#runArrow)" />
-        ))}
       </svg>
       {samples.length < 2 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
