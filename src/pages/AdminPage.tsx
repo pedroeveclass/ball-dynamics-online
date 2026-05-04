@@ -206,6 +206,43 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
     return (data as string) || null;
   }
 
+  // Bulk-simulate every still-pending match in a round. Walks sequentially
+  // so we don't slam admin_simulate_match in parallel (each call ends up
+  // touching standings + stats, races make it ugly).
+  const [busyRoundId, setBusyRoundId] = useState<string | null>(null);
+  async function simulateWholeRound(roundId: string) {
+    const list = roundMatches[roundId] || [];
+    const targets = list.filter(m => !m.status || m.status === 'scheduled' || m.status === 'live');
+    if (targets.length === 0) {
+      toast.info(t('league.simulate_round_empty', { defaultValue: 'Nenhum jogo pendente nessa rodada.' }));
+      return;
+    }
+    if (!confirm(t('league.simulate_round_confirm', {
+      defaultValue: `Simular ${targets.length} jogo(s) dessa rodada?`,
+      count: targets.length,
+    }))) return;
+
+    setBusyRoundId(roundId);
+    let ok = 0, fail = 0;
+    try {
+      for (const m of targets) {
+        const matchId = await ensureMaterialized(m);
+        if (!matchId) { fail++; continue; }
+        const { error } = await supabase.rpc('admin_simulate_match', {
+          p_match_id: matchId, p_home_score: null, p_away_score: null,
+        });
+        if (error) { fail++; console.error('simulate failed:', error.message); }
+        else { ok++; }
+      }
+    } finally {
+      setBusyRoundId(null);
+      await loadRoundMatches();
+      onReload();
+    }
+    if (fail === 0) toast.success(`${ok} jogo(s) simulados`);
+    else toast.error(`${ok} ok · ${fail} falhou`);
+  }
+
   async function runMatchAction(m: RoundMatch, kind: 'start' | 'simulate' | 'finalize' | 'restart') {
     const tag = m.match_id || m.id;
     setBusyMatchId(tag);
@@ -367,6 +404,18 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                       defaultValue={new Date(r.scheduled_at).toISOString().slice(0, 16)}
                       onBlur={e => e.target.value && updateRoundDate(r.id, e.target.value)}
                     />
+                    {(r.status === 'scheduled' || r.status === 'in_progress') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 text-xs"
+                        disabled={busyRoundId === r.id}
+                        onClick={() => simulateWholeRound(r.id)}
+                      >
+                        {busyRoundId === r.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                        {t('league.simulate_round', { defaultValue: 'Simular rodada' })}
+                      </Button>
+                    )}
                     {r.status === 'scheduled' && (
                       <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => cancelRound(r.id)}>
                         {t('league.cancel_round')}
