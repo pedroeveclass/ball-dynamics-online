@@ -595,7 +595,7 @@ async function persistMatchPlayerStats(
         club_id: p.club_id,
         season_id: seasonId,
         position,
-        minutes_played: 0,
+        minutes_played: p.is_sent_off ? 45 : 90,
         goals,
         assists,
         shots,

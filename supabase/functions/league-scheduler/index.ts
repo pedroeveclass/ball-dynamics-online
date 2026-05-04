@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { generateAndPersistSeasonRecap } from '../match-engine-lab/season_recap_templates.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -523,6 +524,16 @@ Deno.serve(async (req) => {
             }
           } catch (agingEx) {
             console.error(`[SCHEDULER] advance_all_player_ages threw for season ${round.season_id}:`, agingEx);
+          }
+
+          // Season recap narrative — generated after awards + MVP poll exist
+          // (those are inserted by the league_season_finished_awards trigger
+          // synchronously with the UPDATE above).
+          try {
+            await generateAndPersistSeasonRecap(supabase, round.season_id);
+            console.log(`[SCHEDULER] Season recap generated for ${round.season_id}`);
+          } catch (recapEx) {
+            console.error(`[SCHEDULER] generateAndPersistSeasonRecap threw for season ${round.season_id}:`, recapEx);
           }
         }
       }
