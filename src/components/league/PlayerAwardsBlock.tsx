@@ -100,6 +100,12 @@ export function PlayerAwardsBlock({ playerProfileId, variant = 'full', className
           const color = AWARD_ICON_COLOR[type] ?? 'text-tactical';
           const isRound = type === 'round_mvp';
 
+          // Round MVPs can pile up (one per round). Group them by
+          // season so the chip strip stays readable: "T1 · R3, R5, R7".
+          const roundsBySeason = isRound ? groupRoundsBySeason(list) : null;
+          const roundChipsToShow = roundsBySeason?.slice(0, 3) ?? [];
+          const extraRoundSeasons = (roundsBySeason?.length ?? 0) - roundChipsToShow.length;
+
           return (
             <div key={type} className="rounded-lg border bg-card p-2 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
@@ -114,21 +120,45 @@ export function PlayerAwardsBlock({ playerProfileId, variant = 'full', className
                 )}
               </div>
               <div className="flex flex-wrap gap-1">
-                {list.slice(0, 6).map((a) => (
-                  <span
-                    key={a.id}
-                    className="text-[9px] uppercase tracking-wide font-display font-bold text-muted-foreground bg-muted rounded px-1.5 py-0.5"
-                  >
-                    {isRound
-                      ? t('trophyRoom.round_label', { round: a.round_number, season: a.season_number })
-                      : t('trophyRoom.season_label', { season: a.season_number })}
-                  </span>
-                ))}
-                {list.length > 6 && (
-                  <span className="text-[9px] font-display font-bold text-muted-foreground">
-                    +{list.length - 6}
-                  </span>
-                )}
+                {isRound && roundsBySeason
+                  ? (
+                    <>
+                      {roundChipsToShow.map((g) => (
+                        <span
+                          key={`s${g.season}`}
+                          className="text-[9px] uppercase tracking-wide font-display font-bold text-muted-foreground bg-muted rounded px-1.5 py-0.5"
+                        >
+                          {t('trophyRoom.round_group', {
+                            count: g.rounds.length,
+                            season: g.season,
+                            rounds: g.rounds.join(', '),
+                          })}
+                        </span>
+                      ))}
+                      {extraRoundSeasons > 0 && (
+                        <span className="text-[9px] font-display font-bold text-muted-foreground">
+                          +{extraRoundSeasons}
+                        </span>
+                      )}
+                    </>
+                  )
+                  : (
+                    <>
+                      {list.slice(0, 6).map((a) => (
+                        <span
+                          key={a.id}
+                          className="text-[9px] uppercase tracking-wide font-display font-bold text-muted-foreground bg-muted rounded px-1.5 py-0.5"
+                        >
+                          {t('trophyRoom.season_label', { season: a.season_number })}
+                        </span>
+                      ))}
+                      {list.length > 6 && (
+                        <span className="text-[9px] font-display font-bold text-muted-foreground">
+                          +{list.length - 6}
+                        </span>
+                      )}
+                    </>
+                  )}
               </div>
             </div>
           );
@@ -136,4 +166,18 @@ export function PlayerAwardsBlock({ playerProfileId, variant = 'full', className
       </div>
     </div>
   );
+}
+
+function groupRoundsBySeason(list: AwardRow[]): Array<{ season: number; rounds: number[] }> {
+  const bySeason = new Map<number, number[]>();
+  for (const a of list) {
+    const s = a.season_number ?? 0;
+    const r = a.round_number ?? 0;
+    const arr = bySeason.get(s) ?? [];
+    arr.push(r);
+    bySeason.set(s, arr);
+  }
+  return Array.from(bySeason.entries())
+    .sort(([a], [b]) => b - a)
+    .map(([season, rounds]) => ({ season, rounds: rounds.sort((a, b) => a - b) }));
 }
