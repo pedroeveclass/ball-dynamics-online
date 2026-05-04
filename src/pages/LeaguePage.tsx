@@ -169,6 +169,8 @@ export default function LeaguePage() {
     | { kind: 'view_recap'; previousSeasonId: string; previousSeasonNumber: number; daysToFirstMatch: number }
     | null
   >(null);
+  // All seasons for the current league — powers the season switcher dropdown.
+  const [allSeasons, setAllSeasons] = useState<Array<{ id: string; season_number: number; status: string | null }>>([]);
   const [scorersExpanded, setScorersExpanded] = useState(false);
   const [assistsExpanded, setAssistsExpanded] = useState(false);
   const SCORERS_PREVIEW_COUNT = 5;
@@ -178,7 +180,7 @@ export default function LeaguePage() {
   const isPlayerFreeAgent = !!playerProfile && !playerProfile.club_id;
   // Lets /player/club send free agents straight to the join tab via
   // ?tab=join. Falls back to the Standings tab for everyone else.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tabFromQuery = searchParams.get('tab');
   const initialTab = tabFromQuery === 'join' && isPlayerFreeAgent
     ? 'join'
@@ -201,7 +203,9 @@ export default function LeaguePage() {
     fetchLeagueData();
     if (isManagerWithoutClub) fetchAvailableClubs();
     if (isPlayerFreeAgent) fetchJoinableClubs();
-  }, [managerProfile, club, playerProfile?.id, playerProfile?.club_id]);
+    // Re-fetch when the user picks a different season in the switcher
+    // (or lands here via ?season=<id> from a notification / banner link).
+  }, [managerProfile, club, playerProfile?.id, playerProfile?.club_id, searchParams.get('season')]);
 
   // Look up the viewer's next league match so we can highlight it
   // inside the rounds list and optionally auto-select that round.
@@ -233,14 +237,23 @@ export default function LeaguePage() {
       // old season + a countdown banner; afterwards we flip to the new
       // one + a "view previous recap" pointer.
       const seasonOverride = searchParams.get('season');
-      const { data: recentSeasons } = await supabase
+      // Fetch ALL seasons for the league (small payload) so the picker can
+      // list them. The two most recent drive the gap-window logic below.
+      const { data: allSeasonsData } = await supabase
         .from('league_seasons')
         .select('id, season_number, status, finished_at, next_season_at')
         .eq('league_id', league.id)
-        .order('season_number', { ascending: false })
-        .limit(2);
+        .order('season_number', { ascending: false });
 
-      if (!recentSeasons || recentSeasons.length === 0) { setLoading(false); return; }
+      const recentSeasons = (allSeasonsData ?? []).slice(0, 2);
+      if (recentSeasons.length === 0) { setLoading(false); return; }
+      setAllSeasons(
+        (allSeasonsData ?? []).map((s: any) => ({
+          id: s.id,
+          season_number: s.season_number,
+          status: s.status ?? null,
+        })),
+      );
       const latestSeason: any = recentSeasons[0];
       const previousSeason: any = recentSeasons[1] ?? null;
 
@@ -252,7 +265,7 @@ export default function LeaguePage() {
       // link from the gap-window banner). Banner stays null in that case so
       // the user isn't pointed back at themselves.
       const overrideMatch = seasonOverride
-        ? recentSeasons.find((s: any) => s.id === seasonOverride)
+        ? (allSeasonsData ?? []).find((s: any) => s.id === seasonOverride)
         : null;
 
       if (overrideMatch) {
@@ -773,7 +786,34 @@ export default function LeaguePage() {
               <Trophy className="h-3.5 w-3.5" />
               {t('hallOfFame.title')}
             </Link>
-            <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
+            {allSeasons.length > 1 ? (
+              <select
+                value={seasonId ?? ''}
+                onChange={(e) => {
+                  const next = new URLSearchParams(searchParams);
+                  if (e.target.value) {
+                    next.set('season', e.target.value);
+                  } else {
+                    next.delete('season');
+                  }
+                  // Clear tab so the season change re-applies the default
+                  // (recap if finished, standings otherwise).
+                  next.delete('tab');
+                  setSearchParams(next, { replace: false });
+                }}
+                className="text-sm bg-muted/40 border border-border rounded px-2 py-1 font-display font-semibold cursor-pointer hover:bg-muted/60 transition-colors"
+                title={t('season_picker_label', { defaultValue: 'Trocar de temporada' })}
+              >
+                {allSeasons.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {t('season', { n: s.season_number })}
+                    {s.status === 'finished' ? ' ✓' : s.status === 'scheduled' ? ' ⏳' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
+            )}
           </div>
         </div>
         {seasonBanner?.kind === 'countdown' && (
