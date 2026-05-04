@@ -68,8 +68,10 @@ export default function AdminPage() {
       <h1 className="text-3xl font-bold font-display mb-6">{t('title')}</h1>
 
       <Tabs defaultValue="liga" className="space-y-4">
-        <TabsList className="grid grid-cols-6 w-full max-w-3xl">
+        <TabsList className="grid grid-cols-8 w-full max-w-5xl">
           <TabsTrigger value="liga">{t('tabs.league')}</TabsTrigger>
+          <TabsTrigger value="ops">{t('tabs.ops', { defaultValue: 'Operações' })}</TabsTrigger>
+          <TabsTrigger value="awards">{t('tabs.awards', { defaultValue: 'Prêmios' })}</TabsTrigger>
           <TabsTrigger value="times">{t('tabs.clubs')}</TabsTrigger>
           <TabsTrigger value="financas">{t('tabs.finances')}</TabsTrigger>
           <TabsTrigger value="partidas">{t('tabs.matches')}</TabsTrigger>
@@ -80,6 +82,16 @@ export default function AdminPage() {
         {/* ═══ LIGA TAB ═══ */}
         <TabsContent value="liga">
           <LigaTab leagues={leagues} seasons={seasons} rounds={rounds} clubs={clubs} onReload={loadAll} />
+        </TabsContent>
+
+        {/* ═══ OPERAÇÕES TAB ═══ */}
+        <TabsContent value="ops">
+          <OperationsTab leagues={leagues} seasons={seasons} clubs={clubs} onReload={loadAll} />
+        </TabsContent>
+
+        {/* ═══ PRÊMIOS TAB ═══ */}
+        <TabsContent value="awards">
+          <AwardsTab seasons={seasons} rounds={rounds} onReload={loadAll} />
         </TabsContent>
 
         {/* ═══ TIMES TAB ═══ */}
@@ -873,6 +885,22 @@ function JogadoresTab({ clubs }: { clubs: Club[] }) {
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setItemsDialog(p); loadStoreItems(); }}>
                       {t('players.give_item')}
                     </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
+                      const { data, error } = await supabase.rpc('admin_apply_decay', { p_player_profile_id: p.id });
+                      if (error) toast.error(error.message);
+                      else toast.success(`Decay aplicado · ${(data as any)?.applied ? 'OK' : 'sem efeito'}`);
+                    }}>Decay</Button>
+                    <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={async () => {
+                      if (!confirm(`Aposentar ${p.full_name}? Vai liberar como agente livre + encerrar contrato.`)) return;
+                      const { error } = await supabase.rpc('admin_retire_player', { p_player_profile_id: p.id });
+                      if (error) toast.error(error.message);
+                      else { toast.success(`${p.full_name} aposentado`); loadHumanPlayers(); }
+                    }}>Aposentar</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
+                      const { data, error } = await supabase.rpc('admin_mark_user_notifications_read', { p_user_id: p.user_id });
+                      if (error) toast.error(error.message);
+                      else toast.success(`${(data as any)?.marked_read ?? 0} notificações marcadas`);
+                    }}>Ler notifs</Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => resetAvatar(p.user_id, p.full_name)}>
                       {t('players.reset_avatar')}
                     </Button>
@@ -1202,5 +1230,436 @@ function ReportsTab() {
         </DialogContent>
       </Dialog>
     </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// OPERAÇÕES TAB — season-end controls + league CRUD
+// ═══════════════════════════════════════════════════
+function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[]; seasons: LeagueSeason[]; clubs: Club[]; onReload: () => void }) {
+  const { t } = useTranslation('admin');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [bumpDays, setBumpDays] = useState('');
+  const [selectedSeason, setSelectedSeason] = useState('');
+  const [moveClubId, setMoveClubId] = useState('');
+  const [moveLeagueId, setMoveLeagueId] = useState('');
+
+  const currentYear = Math.max(0, ...seasons.map(s => s.season_number));
+  const openSeasons = seasons.filter(s => s.season_number === currentYear && s.status !== 'finished');
+
+  async function fire(label: string, fn: () => Promise<{ data: any; error: any } | { error: any }>, confirmMsg?: string) {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    setBusy(label);
+    try {
+      const res = await fn();
+      const err = (res as any).error;
+      const data = (res as any).data;
+      if (err) {
+        toast.error(err.message || String(err));
+      } else if (data?.ok === false) {
+        toast.error(`${label}: ${data.reason || 'falhou'}`);
+      } else {
+        const summary = data ? Object.entries(data).filter(([k]) => k !== 'ok').map(([k, v]) => `${k}: ${v}`).join(' · ') : '';
+        toast.success(summary ? `${label} ✓ — ${summary}` : `${label} ✓`);
+        onReload();
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* PÉTREO controls */}
+      <Card>
+        <CardHeader><CardTitle>Encerrar temporada (regra pétrea)</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Game year atual: <strong>Temp {currentYear || '—'}</strong>. Encerrar dispara o trigger pétreo:
+            todas as ligas em aberto no mesmo ano viram <code>finished</code>, awards + MVP poll abrem por liga,
+            recap é gerado, aging roda, Season N+1 é criada pra todo mundo com datas espelhadas.
+          </p>
+          <Button
+            variant="destructive"
+            disabled={openSeasons.length === 0 || busy === 'finish'}
+            onClick={() => fire(
+              'Forçar fim de temporada',
+              async () => await supabase.rpc('admin_force_finish_current_season'),
+              `Vai encerrar ${openSeasons.length} season(s) abertas. Confirma?`,
+            )}
+          >
+            {busy === 'finish' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+            Forçar fim do Game Year {currentYear}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Bump round dates */}
+      <Card>
+        <CardHeader><CardTitle>Mudar datas das rodadas</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Select value={selectedSeason} onValueChange={setSelectedSeason}>
+            <SelectTrigger><SelectValue placeholder="Escolha a temporada" /></SelectTrigger>
+            <SelectContent>
+              {seasons.map(s => {
+                const lg = leagues.find(l => l.id === s.league_id);
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    {lg?.name || 'Liga'} · Temp {s.season_number} · {s.status}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <div className="flex gap-2 items-center">
+            <Input type="number" placeholder="Dias (+/-)" value={bumpDays} onChange={e => setBumpDays(e.target.value)} className="max-w-32" />
+            <Button
+              disabled={!selectedSeason || !bumpDays || busy === 'bump'}
+              onClick={() => fire(
+                'Mudar datas',
+                async () => await supabase.rpc('admin_bump_round_dates', { p_season_id: selectedSeason, p_delta_days: parseInt(bumpDays) }),
+              )}
+            >
+              {busy === 'bump' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+              Aplicar shift
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Ex: <strong>+14</strong> empurra todas as rodadas 2 semanas pra frente. <strong>-7</strong> antecipa em 1 semana.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Cascade rounds → finished */}
+      <Card>
+        <CardHeader><CardTitle>Cascade rodadas → finished</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-[11px] text-muted-foreground">
+            Defensivo — quando uma intervenção manual deixa rodadas com <code>status='scheduled'</code> mas a season está finished.
+            Hoje o trigger <code>league_season_finish_cascade</code> faz isso automático em transições normais.
+          </p>
+          <div className="flex gap-2 items-center">
+            <Select value={selectedSeason} onValueChange={setSelectedSeason}>
+              <SelectTrigger className="max-w-md"><SelectValue placeholder="Escolha a temporada" /></SelectTrigger>
+              <SelectContent>
+                {seasons.map(s => {
+                  const lg = leagues.find(l => l.id === s.league_id);
+                  return (
+                    <SelectItem key={s.id} value={s.id}>
+                      {lg?.name || 'Liga'} · Temp {s.season_number} · {s.status}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              disabled={!selectedSeason || busy === 'cascade'}
+              onClick={() => fire(
+                'Cascade rodadas',
+                async () => await supabase.rpc('admin_cascade_finish_rounds', { p_season_id: selectedSeason }),
+              )}
+            >
+              {busy === 'cascade' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+              Marcar rodadas como finished
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Liga CRUD */}
+      <Card>
+        <CardHeader><CardTitle>Ligas</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            {leagues.map(lg => {
+              const lgClubs = clubs.filter(c => c.league_id === lg.id).length;
+              const lgSeasons = seasons.filter(s => s.league_id === lg.id).length;
+              const empty = lgClubs === 0 && lgSeasons === 0;
+              return (
+                <div key={lg.id} className="flex items-center justify-between text-sm p-2 bg-card rounded border">
+                  <div>
+                    <span className="font-medium">{lg.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{lgClubs} clubes · {lgSeasons} seasons</span>
+                  </div>
+                  {empty && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      disabled={busy === `del-${lg.id}`}
+                      onClick={() => fire(
+                        'Apagar liga vazia',
+                        async () => await supabase.rpc('admin_delete_empty_league', { p_league_id: lg.id }),
+                        `Apagar a liga "${lg.name}"? (ela está vazia)`,
+                      )}
+                    >
+                      Apagar
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground pt-2">
+            Pra criar uma nova divisão (Série C, etc.), chame a edge function <code>league-seed</code> com action <code>seed_serie_b</code> ou crie uma variante. Vou expor um botão aqui depois de generalizar a função.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Mover clube entre ligas */}
+      <Card>
+        <CardHeader><CardTitle>Mover clube entre ligas</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Select value={moveClubId} onValueChange={setMoveClubId}>
+            <SelectTrigger><SelectValue placeholder="Clube" /></SelectTrigger>
+            <SelectContent>
+              {clubs.map(c => {
+                const lg = leagues.find(l => l.id === c.league_id);
+                return (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} {lg ? `(${lg.name})` : '(sem liga)'}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <Select value={moveLeagueId} onValueChange={setMoveLeagueId}>
+            <SelectTrigger><SelectValue placeholder="Liga destino" /></SelectTrigger>
+            <SelectContent>
+              {leagues.map(lg => (
+                <SelectItem key={lg.id} value={lg.id}>{lg.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            disabled={!moveClubId || !moveLeagueId || busy === 'move'}
+            onClick={() => fire(
+              'Mover clube',
+              async () => await supabase.rpc('admin_move_club_to_league', { p_club_id: moveClubId, p_target_league_id: moveLeagueId }),
+            )}
+          >
+            {busy === 'move' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+            Mover
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Aging + decay */}
+      <Card>
+        <CardHeader><CardTitle>Aging + Decay</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-[11px] text-muted-foreground">
+            Aging é idempotente por season — rodar de novo retorna <code>skipped</code>. Decay aplica a um jogador específico (já dispara automático no aging).
+          </p>
+          <Select value={selectedSeason} onValueChange={setSelectedSeason}>
+            <SelectTrigger><SelectValue placeholder="Season pra rodar aging" /></SelectTrigger>
+            <SelectContent>
+              {seasons.map(s => {
+                const lg = leagues.find(l => l.id === s.league_id);
+                return (
+                  <SelectItem key={s.id} value={s.id}>
+                    {lg?.name || 'Liga'} · Temp {s.season_number} · {s.status}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <Button
+            disabled={!selectedSeason || busy === 'aging'}
+            onClick={() => fire(
+              'Rodar aging',
+              async () => await supabase.rpc('admin_run_aging', { p_season_id: selectedSeason }),
+              'Aging vai +1 idade em todos os ativos. Confirmar?',
+            )}
+          >
+            {busy === 'aging' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+            Rodar aging desta season
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// PRÊMIOS TAB — Round/Season MVP polls + auto-awards
+// ═══════════════════════════════════════════════════
+interface AwardPoll {
+  id: string;
+  scope: string;
+  scope_entity_id: string;
+  status: string;
+  closes_at: string;
+  candidates_n: number;
+}
+
+function AwardsTab({ seasons, rounds, onReload }: { seasons: LeagueSeason[]; rounds: LeagueRound[]; onReload: () => void }) {
+  const { t } = useTranslation('admin');
+  const [polls, setPolls] = useState<AwardPoll[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [selRound, setSelRound] = useState('');
+  const [selSeason, setSelSeason] = useState('');
+
+  async function loadPolls() {
+    const { data } = await (supabase as any)
+      .from('player_award_polls')
+      .select('id, scope, scope_entity_id, status, closes_at, candidates')
+      .order('opens_at', { ascending: false })
+      .limit(50);
+    setPolls((data || []).map((p: any) => ({
+      id: p.id,
+      scope: p.scope,
+      scope_entity_id: p.scope_entity_id,
+      status: p.status,
+      closes_at: p.closes_at,
+      candidates_n: Array.isArray(p.candidates) ? p.candidates.length : 0,
+    })));
+  }
+
+  useEffect(() => { loadPolls(); }, []);
+
+  async function fire(label: string, fn: () => Promise<{ data: any; error: any }>, confirmMsg?: string) {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    setBusy(label);
+    try {
+      const { data, error } = await fn();
+      if (error) toast.error(error.message);
+      else if (data?.ok === false) toast.error(`${label}: ${data.reason || 'falhou'}`);
+      else {
+        const summary = data ? Object.entries(data).filter(([k]) => k !== 'ok').map(([k, v]) => `${k}: ${v}`).join(' · ') : '';
+        toast.success(summary ? `${label} ✓ — ${summary}` : `${label} ✓`);
+        await loadPolls();
+        onReload();
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle>Polls de MVP</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <Button size="sm" variant="outline" onClick={loadPolls}>Recarregar</Button>
+          <div className="space-y-1 max-h-96 overflow-y-auto">
+            {polls.length === 0 && <p className="text-xs text-muted-foreground">Nenhum poll.</p>}
+            {polls.map(p => (
+              <div key={p.id} className="flex items-center justify-between text-xs p-2 bg-card rounded border">
+                <div className="flex-1 min-w-0">
+                  <Badge variant={p.status === 'open' ? 'default' : 'outline'} className="text-[10px] mr-2">
+                    {p.scope} · {p.status}
+                  </Badge>
+                  <span className="font-mono text-[10px]">{p.scope_entity_id.slice(0, 8)}</span>
+                  <span className="ml-2 text-muted-foreground">{p.candidates_n} candidatos · fecha {new Date(p.closes_at).toLocaleString()}</span>
+                </div>
+                {p.status === 'open' && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-6 text-[10px] px-2"
+                    disabled={busy === `close-${p.id}`}
+                    onClick={() => fire(
+                      'Fechar poll',
+                      async () => await supabase.rpc('admin_close_award_poll', { p_poll_id: p.id }),
+                      'Apurar vencedor com os votos atuais e fechar?',
+                    )}
+                  >
+                    Fechar agora
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Abrir Round MVP poll</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Select value={selRound} onValueChange={setSelRound}>
+            <SelectTrigger><SelectValue placeholder="Escolha a rodada" /></SelectTrigger>
+            <SelectContent>
+              {rounds
+                .filter(r => r.status === 'finished')
+                .sort((a, b) => b.round_number - a.round_number)
+                .slice(0, 50)
+                .map(r => (
+                  <SelectItem key={r.id} value={r.id}>
+                    Rodada {r.round_number} · {r.status}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <Button
+            disabled={!selRound || busy === 'open-round'}
+            onClick={() => fire(
+              'Abrir Round MVP',
+              async () => await supabase.rpc('admin_open_round_mvp_poll', { p_round_id: selRound }),
+            )}
+          >
+            {busy === 'open-round' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+            Abrir poll
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Abrir Season MVP poll</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Select value={selSeason} onValueChange={setSelSeason}>
+            <SelectTrigger><SelectValue placeholder="Escolha a season" /></SelectTrigger>
+            <SelectContent>
+              {seasons.map(s => (
+                <SelectItem key={s.id} value={s.id}>
+                  Temp {s.season_number} · {s.status}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            disabled={!selSeason || busy === 'open-season'}
+            onClick={() => fire(
+              'Abrir Season MVP',
+              async () => await supabase.rpc('admin_open_season_mvp_poll', { p_season_id: selSeason }),
+            )}
+          >
+            {busy === 'open-season' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+            Abrir poll
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Regenerar auto-awards</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-[11px] text-muted-foreground">
+            Recalcula artilheiro / assistências / desarmes / luva de ouro / fair play da season escolhida. Idempotente
+            (UNIQUE no <code>player_awards</code>) — fica seguro chamar de novo se você mudou stats e quer atualizar.
+          </p>
+          <Select value={selSeason} onValueChange={setSelSeason}>
+            <SelectTrigger><SelectValue placeholder="Escolha a season" /></SelectTrigger>
+            <SelectContent>
+              {seasons.map(s => (
+                <SelectItem key={s.id} value={s.id}>
+                  Temp {s.season_number} · {s.status}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            disabled={!selSeason || busy === 'awards'}
+            onClick={() => fire(
+              'Regenerar auto-awards',
+              async () => await supabase.rpc('admin_persist_season_auto_awards', { p_season_id: selSeason }),
+            )}
+          >
+            {busy === 'awards' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+            Regenerar
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -3,6 +3,8 @@
   "title": "Painel Admin",
   "tabs": {
     "league": "Liga",
+    "ops": "Operações",
+    "awards": "Prêmios",
     "clubs": "Times",
     "finances": "Finanças",
     "matches": "Partidas",

@@ -3,6 +3,8 @@
   "title": "Admin Panel",
   "tabs": {
     "league": "League",
+    "ops": "Operations",
+    "awards": "Awards",
     "clubs": "Clubs",
     "finances": "Finances",
     "matches": "Matches",

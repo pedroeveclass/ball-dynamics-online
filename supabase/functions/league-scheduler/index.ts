@@ -536,29 +536,34 @@ Deno.serve(async (req) => {
             console.error(`[SCHEDULER] generateAndPersistSeasonRecap threw for season ${round.season_id}:`, recapEx);
           }
 
-          // Auto-create Season N+1 immediately so the Hall da Fama widget +
-          // LeaguePage have something to point at during the 14-day gap.
-          // First round of N+1 is scheduled at next_season_at (= now + 14d).
+          // PÉTREA RULE — temporadas avançam JUNTAS em todas as ligas. The
+          // _cascade_finish_sibling_seasons trigger already flipped every
+          // sibling season to 'finished'; here we fire start_next_season
+          // for EVERY active league so each gets its N+1 bootstrapped on
+          // the same day.
           try {
-            const { data: leagueRow } = await supabase
-              .from('league_seasons')
-              .select('league_id')
-              .eq('id', round.season_id)
-              .maybeSingle();
-            if (leagueRow?.league_id) {
-              const seedRes = await fetch(`${supabaseUrl}/functions/v1/league-seed`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${serviceKey}`,
-                },
-                body: JSON.stringify({ action: 'start_next_season', league_id: leagueRow.league_id }),
-              });
-              const seedJson = await seedRes.json();
-              console.log(`[SCHEDULER] start_next_season for league ${leagueRow.league_id}:`, seedJson);
+            const { data: activeLeagues } = await supabase
+              .from('leagues')
+              .select('id')
+              .eq('status', 'active');
+            for (const lg of (activeLeagues ?? [])) {
+              try {
+                const seedRes = await fetch(`${supabaseUrl}/functions/v1/league-seed`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${serviceKey}`,
+                  },
+                  body: JSON.stringify({ action: 'start_next_season', league_id: (lg as any).id }),
+                });
+                const seedJson = await seedRes.json();
+                console.log(`[SCHEDULER] start_next_season for league ${(lg as any).id}:`, seedJson);
+              } catch (innerEx) {
+                console.error(`[SCHEDULER] start_next_season call failed for league ${(lg as any).id}:`, innerEx);
+              }
             }
           } catch (seedEx) {
-            console.error(`[SCHEDULER] start_next_season call failed for season ${round.season_id}:`, seedEx);
+            console.error(`[SCHEDULER] cross-league start_next_season block failed:`, seedEx);
           }
         }
       }
