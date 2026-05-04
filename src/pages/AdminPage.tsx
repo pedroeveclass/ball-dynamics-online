@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [players, setPlayers] = useState<PlayerProfile[]>([]);
   const [finances, setFinances] = useState<ClubFinance[]>([]);
+  const [pendingReports, setPendingReports] = useState(0);
 
   // ─── Load data ───
   useEffect(() => {
@@ -44,13 +45,14 @@ export default function AdminPage() {
   }, [isAdmin]);
 
   async function loadAll() {
-    const [clubsRes, leaguesRes, seasonsRes, roundsRes, matchesRes, financesRes] = await Promise.all([
+    const [clubsRes, leaguesRes, seasonsRes, roundsRes, matchesRes, financesRes, reportCountRes] = await Promise.all([
       supabase.from('clubs').select('*').order('name'),
       supabase.from('leagues').select('*'),
       supabase.from('league_seasons').select('*').order('season_number', { ascending: false }),
       supabase.from('league_rounds').select('*').order('round_number'),
       supabase.from('matches').select('*').order('scheduled_at', { ascending: false }).limit(50),
       supabase.from('club_finances').select('*'),
+      (supabase as any).from('image_reports').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     ]);
     setClubs((clubsRes.data || []) as any);
     setLeagues((leaguesRes.data || []) as any);
@@ -58,6 +60,15 @@ export default function AdminPage() {
     setRounds((roundsRes.data || []) as any);
     setMatches((matchesRes.data || []) as any);
     setFinances((financesRes.data || []) as any);
+    setPendingReports((reportCountRes as any).count ?? 0);
+  }
+
+  async function refreshReportCount() {
+    const { count } = await (supabase as any)
+      .from('image_reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    setPendingReports(count ?? 0);
   }
 
   const clubName = (id: string) => clubs.find(c => c.id === id)?.name || id.slice(0, 8);
@@ -77,7 +88,14 @@ export default function AdminPage() {
           <TabsTrigger value="financas">{t('tabs.finances')}</TabsTrigger>
           <TabsTrigger value="partidas">{t('tabs.matches')}</TabsTrigger>
           <TabsTrigger value="jogadores">{t('tabs.players')}</TabsTrigger>
-          <TabsTrigger value="reportes">{t('tabs.reports', { defaultValue: 'Reportes' })}</TabsTrigger>
+          <TabsTrigger value="reportes" className="relative">
+            {t('tabs.reports', { defaultValue: 'Reportes' })}
+            {pendingReports > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold">
+                {pendingReports}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ═══ LIGA TAB ═══ */}
@@ -117,7 +135,7 @@ export default function AdminPage() {
 
         {/* ═══ REPORTES TAB ═══ */}
         <TabsContent value="reportes">
-          <ReportsTab />
+          <ReportsTab onActionComplete={refreshReportCount} />
         </TabsContent>
       </Tabs>
     </div>
@@ -995,7 +1013,7 @@ interface ReportRow {
   bg_variant: string | null;
 }
 
-function ReportsTab() {
+function ReportsTab({ onActionComplete }: { onActionComplete?: () => void }) {
   const { t } = useTranslation('admin');
   const { current: lang } = useAppLanguage();
   const [reports, setReports] = useState<ReportRow[]>([]);
@@ -1092,6 +1110,7 @@ function ReportsTab() {
       toast.success(result?.message || 'OK');
       setActionTarget(null);
       loadReports();
+      onActionComplete?.();
     } catch (e: any) {
       toast.error(e?.message || 'Erro');
     } finally {

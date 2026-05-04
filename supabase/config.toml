@@ -1,8 +1,5 @@
 project_id = "wfkmojrwgerfzjcrpqnl"
 
-[functions.match-engine]
-verify_jwt = false
-
 [functions.match-engine-lab]
 verify_jwt = false
 
