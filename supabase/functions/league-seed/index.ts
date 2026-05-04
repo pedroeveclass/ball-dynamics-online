@@ -29,6 +29,31 @@ const TEAM_NAMES = [
   { name: 'Tsunami EC', short: 'TSU', city: 'João Pessoa' },
 ];
 
+// Second-tier team names — distinct from TEAM_NAMES so a Série B seed
+// doesn't collide with Série A clubs in the same DB.
+const TEAM_NAMES_SERIE_B = [
+  { name: 'Estrela do Sul', short: 'EDS', city: 'Pelotas' },
+  { name: 'Real Esporte', short: 'REA', city: 'Rio Grande' },
+  { name: 'Aliança SC', short: 'ALI', city: 'Londrina' },
+  { name: 'Trovão Negro', short: 'TVN', city: 'Manaus' },
+  { name: 'Galo Carijó', short: 'GAC', city: 'Anápolis' },
+  { name: 'Cruzeiro do Vale', short: 'CDV', city: 'Caxias do Sul' },
+  { name: 'União Atlético', short: 'UAT', city: 'São Luís' },
+  { name: 'Furacão Brasil', short: 'FBR', city: 'Joinville' },
+  { name: 'Brasa FC', short: 'BRA', city: 'Aracaju' },
+  { name: 'Centauro EC', short: 'CEN', city: 'Teresina' },
+  { name: 'Sereia FC', short: 'SER', city: 'Olinda' },
+  { name: 'Apolo Esporte', short: 'APO', city: 'Boa Vista' },
+  { name: 'Olimpo SC', short: 'OLI', city: 'Palmas' },
+  { name: 'Atlas FC', short: 'ATL', city: 'Porto Velho' },
+  { name: 'Verdão de Aço', short: 'VDA', city: 'Volta Redonda' },
+  { name: 'Independente AC', short: 'IND', city: 'Feira de Santana' },
+  { name: 'Marquês AC', short: 'MAQ', city: 'Cuiabá' },
+  { name: 'Império EC', short: 'IMP', city: 'Campo Grande' },
+  { name: 'Comercial FC', short: 'COE', city: 'Ribeirão Preto' },
+  { name: 'Bandeirantes SC', short: 'BAN', city: 'São José do Rio Preto' },
+];
+
 const STADIUM_NAMES = [
   'Arena do Povo', 'Estádio Municipal', 'Arena Central', 'Estádio da Vitória',
   'Arena do Norte', 'Estádio Gigante', 'Arena Sol', 'Estádio da Paz',
@@ -503,6 +528,255 @@ Deno.serve(async (req) => {
         existing_clubs: existingClubIds.length,
         bot_clubs_created: botClubIds.length,
         total_rounds: roundFixtures.size,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ────────────────────────────────────────────────────────────
+    // seed_serie_b — create Liga Brasileira - Série B from scratch with
+    // 20 fresh bot clubs (no carry-over from Série A) + Season 1.
+    // Idempotent on the league name.
+    // ────────────────────────────────────────────────────────────
+    if (action === 'seed_serie_b') {
+      const desiredName = 'Liga Brasileira - Série B';
+      const { data: existingLeague } = await supabase
+        .from('leagues')
+        .select('id')
+        .eq('name', desiredName)
+        .maybeSingle();
+      if (existingLeague) {
+        return new Response(JSON.stringify({
+          status: 'skipped',
+          reason: 'Liga Brasileira - Série B already exists',
+          league_id: existingLeague.id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const { data: league, error: leagueError } = await supabase.from('leagues').insert({
+        name: desiredName,
+        country: 'BR',
+        division: 2,
+        max_teams: 20,
+        status: 'active',
+      }).select('id').single();
+      if (leagueError || !league) {
+        return new Response(JSON.stringify({ error: `Failed to create league: ${leagueError?.message}` }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const leagueId = league.id;
+
+      // Pull every existing club name in the DB to avoid collisions with
+      // Série A or with anything the user may have created manually.
+      const { data: allClubs } = await supabase.from('clubs').select('name');
+      const usedNames = new Set((allClubs ?? []).map((c: any) => c.name));
+      const availableTeams = TEAM_NAMES_SERIE_B.filter(t => !usedNames.has(t.name));
+      const botClubIds: string[] = [];
+
+      for (let i = 0; i < availableTeams.length && botClubIds.length < 20; i++) {
+        const team = availableTeams[i];
+        const colors = COLORS[i % COLORS.length];
+        const stadiumName = STADIUM_NAMES[i % STADIUM_NAMES.length];
+
+        const { data: botManager } = await supabase.from('manager_profiles').insert({
+          user_id: null,
+          full_name: `Bot Manager ${team.short}`,
+          reputation: 15,
+          money: 0,
+          coach_type: 'all_around',
+        }).select('id').single();
+        if (!botManager) continue;
+
+        const { data: club } = await supabase.from('clubs').insert({
+          manager_profile_id: botManager.id,
+          name: team.name,
+          short_name: team.short,
+          primary_color: colors.primary,
+          secondary_color: colors.secondary,
+          city: team.city,
+          reputation: 15,
+          status: 'active',
+          league_id: leagueId,
+          is_bot_managed: true,
+        }).select('id').single();
+        if (!club) continue;
+        botClubIds.push(club.id);
+
+        await supabase.from('club_finances').insert({
+          club_id: club.id,
+          balance: 150000, // Série B starts smaller than Série A's R$200k
+          weekly_wage_bill: 4400, // 22 * 200
+          projected_income: 9000,
+          projected_expense: 3500,
+        });
+
+        await supabase.from('club_facilities').insert([
+          { club_id: club.id, facility_type: 'souvenir_shop', level: 1 },
+          { club_id: club.id, facility_type: 'sponsorship', level: 1 },
+          { club_id: club.id, facility_type: 'training_center', level: 1 },
+          { club_id: club.id, facility_type: 'stadium', level: 1 },
+        ]);
+
+        await supabase.from('stadiums').insert({
+          club_id: club.id,
+          name: stadiumName,
+          capacity: 4000,
+          quality: 25,
+          prestige: 10,
+          maintenance_cost: 1500,
+        });
+
+        await supabase.from('club_settings').insert({
+          club_id: club.id,
+          default_formation: '4-4-2',
+          play_style: 'balanced',
+        });
+
+        // Same 22 bot players as Série A but with rating 45 (vs 50)
+        const playerInserts: any[] = [];
+        for (let j = 0; j < BOT_POSITIONS.length; j++) {
+          const pos = BOT_POSITIONS[j];
+          playerInserts.push({
+            club_id: club.id,
+            full_name: generateBotName(),
+            age: generateAge(pos),
+            height: 170 + Math.floor(Math.random() * 20),
+            dominant_foot: Math.random() > 0.3 ? 'right' : 'left',
+            primary_position: pos,
+            secondary_position: null,
+            archetype: 'balanced',
+            overall: 45,
+            reputation: 15,
+            money: 0,
+            weekly_salary: 200,
+            energy_current: 100,
+            energy_max: 100,
+          });
+        }
+
+        const { data: players } = await supabase
+          .from('player_profiles')
+          .insert(playerInserts)
+          .select('id, primary_position');
+        if (!players) continue;
+
+        const attrInserts = players.map((p: any) => ({
+          player_profile_id: p.id,
+          aceleracao: 45, acuracia_chute: 45, agilidade: 45, antecipacao: 45,
+          cabeceio: 45, comando_area: 45, controle_bola: 45, coragem: 45,
+          curva: 45, defesa_aerea: 45, desarme: 45, distribuicao_curta: 45,
+          distribuicao_longa: 45, drible: 45, equilibrio: 45, forca: 45,
+          forca_chute: 45, marcacao: 45, passe_alto: 45, passe_baixo: 45,
+          pegada: 45, posicionamento_defensivo: 45, posicionamento_gol: 45,
+          posicionamento_ofensivo: 45, pulo: 45, reflexo: 45, resistencia: 45,
+          saida_gol: 45, stamina: 45, tempo_reacao: 45, tomada_decisao: 45,
+          trabalho_equipe: 45, um_contra_um: 45, um_toque: 45, velocidade: 45,
+        }));
+        await supabase.from('player_attributes').insert(attrInserts);
+
+        const contractInserts = players.map((p: any) => ({
+          player_profile_id: p.id,
+          club_id: club.id,
+          weekly_salary: 200,
+          release_clause: 1500,
+          start_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'active',
+        }));
+        await supabase.from('contracts').insert(contractInserts);
+
+        const { data: lineup } = await supabase.from('lineups').insert({
+          club_id: club.id,
+          name: 'Titular',
+          formation: '4-4-2',
+          is_active: true,
+        }).select('id').single();
+        if (lineup) {
+          const usedIds = new Set<string>();
+          const dedupedSlots: any[] = [];
+          for (let idx = 0; idx < STARTER_POSITIONS_HOME.length; idx++) {
+            const sp = STARTER_POSITIONS_HOME[idx];
+            const matching = players.filter((p: any) => p.primary_position === sp.pos && !usedIds.has(p.id));
+            const fallback = players.find((p: any) => !usedIds.has(p.id));
+            const selected = matching[0] ?? fallback;
+            if (!selected) continue;
+            usedIds.add(selected.id);
+            dedupedSlots.push({
+              lineup_id: lineup.id,
+              player_profile_id: selected.id,
+              slot_position: sp.pos,
+              role_type: 'starter',
+              sort_order: idx + 1,
+            });
+          }
+          await supabase.from('lineup_slots').insert(dedupedSlots);
+        }
+      }
+
+      // Season 1 + standings + round-robin
+      const { data: season } = await supabase.from('league_seasons').insert({
+        league_id: leagueId,
+        season_number: 1,
+        status: 'scheduled',
+      }).select('id').single();
+      if (!season) {
+        return new Response(JSON.stringify({ error: 'Failed to create Série B season' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      await supabase.from('league_standings').insert(
+        botClubIds.map(clubId => ({ season_id: season.id, club_id: clubId })),
+      );
+
+      const fixtures = generateRoundRobin(botClubIds);
+      const roundFixtures = new Map<number, { home: string; away: string }[]>();
+      for (const f of fixtures) {
+        if (!roundFixtures.has(f.round)) roundFixtures.set(f.round, []);
+        roundFixtures.get(f.round)!.push({ home: f.home, away: f.away });
+      }
+
+      const startDate = new Date(body.start_date || Date.now());
+      const dow = startDate.getUTCDay();
+      const daysUntilWed = (3 - dow + 7) % 7 || 7;
+      const firstWednesday = new Date(startDate);
+      firstWednesday.setUTCDate(firstWednesday.getUTCDate() + daysUntilWed);
+      firstWednesday.setUTCHours(24, 0, 0, 0);
+
+      let currentWed = new Date(firstWednesday);
+      for (let roundNum = 1; roundNum <= roundFixtures.size; roundNum++) {
+        const isOdd = roundNum % 2 === 1;
+        const roundDate = new Date(currentWed);
+        if (!isOdd) roundDate.setUTCDate(roundDate.getUTCDate() + 4);
+        if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7);
+
+        const { data: round } = await supabase.from('league_rounds').insert({
+          season_id: season.id,
+          round_number: roundNum,
+          scheduled_at: roundDate.toISOString(),
+          status: 'scheduled',
+        }).select('id').single();
+        if (!round) continue;
+
+        for (const fx of roundFixtures.get(roundNum) ?? []) {
+          await supabase.from('league_matches').insert({
+            round_id: round.id,
+            match_id: null,
+            home_club_id: fx.home,
+            away_club_id: fx.away,
+          });
+        }
+      }
+
+      console.log(`[SEED] Created Liga Brasileira - Série B with ${botClubIds.length} bot clubs`);
+
+      return new Response(JSON.stringify({
+        status: 'created',
+        league_id: leagueId,
+        season_id: season.id,
+        clubs: botClubIds.length,
+        rounds: roundFixtures.size,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

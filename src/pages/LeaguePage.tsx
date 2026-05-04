@@ -171,6 +171,9 @@ export default function LeaguePage() {
   >(null);
   // All seasons for the current league — powers the season switcher dropdown.
   const [allSeasons, setAllSeasons] = useState<Array<{ id: string; season_number: number; status: string | null }>>([]);
+  // All active leagues — powers the league switcher in the header (Série A/B).
+  const [allLeagues, setAllLeagues] = useState<Array<{ id: string; name: string; division: number | null }>>([]);
+  const [leagueId, setLeagueId] = useState<string | null>(null);
   const [scorersExpanded, setScorersExpanded] = useState(false);
   const [assistsExpanded, setAssistsExpanded] = useState(false);
   const SCORERS_PREVIEW_COUNT = 5;
@@ -204,8 +207,9 @@ export default function LeaguePage() {
     if (isManagerWithoutClub) fetchAvailableClubs();
     if (isPlayerFreeAgent) fetchJoinableClubs();
     // Re-fetch when the user picks a different season in the switcher
-    // (or lands here via ?season=<id> from a notification / banner link).
-  }, [managerProfile, club, playerProfile?.id, playerProfile?.club_id, searchParams.get('season')]);
+    // (or lands here via ?season=<id> from a notification / banner link),
+    // or switches between Série A / Série B via ?league=<id>.
+  }, [managerProfile, club, playerProfile?.id, playerProfile?.club_id, searchParams.get('season'), searchParams.get('league')]);
 
   // Look up the viewer's next league match so we can highlight it
   // inside the rounds list and optionally auto-select that round.
@@ -220,16 +224,23 @@ export default function LeaguePage() {
 
   async function fetchLeagueData() {
     try {
-      // 1. Get active league
-      const { data: league } = await supabase
+      // 1. Get all active leagues + pick the displayed one (?league override
+      // wins, else lowest division — usually Série A — for the default view).
+      const { data: leaguesData } = await supabase
         .from('leagues')
-        .select('*')
+        .select('id, name, division')
         .eq('status', 'active')
-        .limit(1)
-        .single();
+        .order('division', { ascending: true });
 
-      if (!league) { setLoading(false); return; }
+      const leaguesList = (leaguesData ?? []) as Array<{ id: string; name: string; division: number | null }>;
+      if (leaguesList.length === 0) { setLoading(false); return; }
+      setAllLeagues(leaguesList);
+
+      const leagueOverride = searchParams.get('league');
+      const league = (leagueOverride && leaguesList.find(l => l.id === leagueOverride))
+        ?? leaguesList[0];
       setLeagueName(league.name);
+      setLeagueId(league.id);
 
       // 2. Get the two most recent seasons so we can run the inter-season
       // gap logic: when the latest is 'scheduled' (auto-created) and the
@@ -779,7 +790,31 @@ export default function LeaguePage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-tactical" />
-            <h1 className="font-display text-2xl font-bold">{leagueName ? formatLeagueName(leagueName) : t('title_fallback')}</h1>
+            {allLeagues.length > 1 ? (
+              <select
+                value={leagueId ?? ''}
+                onChange={(e) => {
+                  const next = new URLSearchParams(searchParams);
+                  if (e.target.value) next.set('league', e.target.value);
+                  else next.delete('league');
+                  // Reset season + tab when switching league — they belong to the previous one.
+                  next.delete('season');
+                  next.delete('tab');
+                  next.delete('round');
+                  setSearchParams(next, { replace: false });
+                }}
+                className="font-display text-2xl font-bold bg-transparent border-none cursor-pointer hover:text-tactical transition-colors focus:outline-none"
+                title={t('league_picker_label', { defaultValue: 'Trocar de liga' })}
+              >
+                {allLeagues.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {formatLeagueName(l.name)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <h1 className="font-display text-2xl font-bold">{leagueName ? formatLeagueName(leagueName) : t('title_fallback')}</h1>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Link to="/league/hall-of-fame" className="text-xs text-muted-foreground hover:text-amber-500 transition-colors flex items-center gap-1 font-display font-bold">
@@ -860,7 +895,7 @@ export default function LeaguePage() {
             </div>
           </div>
         )}
-        <Tabs defaultValue={initialTab} className="space-y-4">
+        <Tabs key={seasonId ?? 'no-season'} defaultValue={initialTab} className="space-y-4">
           <LeagueIntroTour enabled={isPlayerFreeAgent && tabFromQuery === 'join' && joinableClubs.length > 0} />
           <ManagerLeagueIntroTour enabled={!!managerProfile} isManagerWithoutClub={isManagerWithoutClub} />
           <TabsList data-tour="league-tabs" className={`grid w-full ${

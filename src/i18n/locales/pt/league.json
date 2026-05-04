@@ -2,6 +2,7 @@
   "title_fallback": "Liga",
   "season": "Temporada {{n}}",
   "season_picker_label": "Trocar de temporada",
+  "league_picker_label": "Trocar de liga",
   "names": {
     "Liga Brasileira": "Liga Brasileira",
     "Liga Espanhola": "Liga Espanhola",
