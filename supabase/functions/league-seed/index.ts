@@ -713,10 +713,20 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Season 1 + standings + round-robin
+      // Season number = current "game year" (max across ALL leagues), so a
+      // new division created mid-game lines up with the rest of the world
+      // instead of resetting back to season 1.
+      const { data: maxSeasonRow } = await supabase
+        .from('league_seasons')
+        .select('season_number')
+        .order('season_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const gameYear = (maxSeasonRow?.season_number as number | undefined) ?? 1;
+
       const { data: season } = await supabase.from('league_seasons').insert({
         league_id: leagueId,
-        season_number: 1,
+        season_number: gameYear,
         status: 'scheduled',
       }).select('id').single();
       if (!season) {
