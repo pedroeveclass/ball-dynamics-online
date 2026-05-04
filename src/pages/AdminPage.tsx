@@ -167,6 +167,8 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
   const [newRoundDate, setNewRoundDate] = useState('');
   const [roundMatches, setRoundMatches] = useState<Record<string, RoundMatch[]>>({});
   const [busyMatchId, setBusyMatchId] = useState<string | null>(null);
+  const [hideFinishedRounds, setHideFinishedRounds] = useState(true);
+  const [leagueFilter, setLeagueFilter] = useState<string>('all');
 
   const league = leagues[0];
   const season = seasons[0];
@@ -392,8 +394,42 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
             <Input type="datetime-local" value={newRoundDate} onChange={e => setNewRoundDate(e.target.value)} className="max-w-xs" />
             <Button onClick={createRound}>{t('league.create_round')}</Button>
           </div>
-          <div className="max-h-[600px] overflow-y-auto space-y-3">
-            {rounds.map(r => (
+          {(() => {
+            const filteredRounds = rounds.filter(r => {
+              if (hideFinishedRounds && r.status === 'finished') return false;
+              if (leagueFilter !== 'all') {
+                const season = seasons.find(s => s.id === r.season_id);
+                if (!season || season.league_id !== leagueFilter) return false;
+              }
+              return true;
+            });
+            return (
+              <>
+                <div className="flex gap-3 items-center flex-wrap text-xs bg-muted/30 rounded p-2">
+                  <Select value={leagueFilter} onValueChange={setLeagueFilter}>
+                    <SelectTrigger className="h-7 w-56 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as ligas</SelectItem>
+                      {leagues.map(lg => (
+                        <SelectItem key={lg.id} value={lg.id}>{lg.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hideFinishedRounds}
+                      onChange={e => setHideFinishedRounds(e.target.checked)}
+                      className="cursor-pointer"
+                    />
+                    Ocultar rodadas finalizadas
+                  </label>
+                  <span className="text-muted-foreground ml-auto">
+                    {filteredRounds.length} de {rounds.length} rodadas
+                  </span>
+                </div>
+                <div className="max-h-[600px] overflow-y-auto space-y-3">
+                  {filteredRounds.map(r => (
               <div key={r.id} className="bg-card rounded border">
                 <div className="flex items-center justify-between text-sm p-2 border-b">
                   <span className="font-medium">{t('league.round_label', { n: r.round_number, when: formatDate(r.scheduled_at, lang, 'datetime_short'), status: r.status })}</span>
@@ -477,7 +513,10 @@ function LigaTab({ leagues, seasons, rounds, clubs, onReload }: { leagues: Leagu
                 </div>
               </div>
             ))}
-          </div>
+                </div>
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>
