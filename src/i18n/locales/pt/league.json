@@ -171,6 +171,12 @@
     "round_group": "T{{season}} · R{{rounds}}",
     "empty": "Nenhum troféu ainda."
   },
+  "seasonGap": {
+    "countdown_title": "Temporada {{n}} começa em {{days}} dia(s)",
+    "countdown_subtitle": "Você está vendo o resumo da temporada anterior. A nova classificação aparece automaticamente.",
+    "view_recap_title": "Nova temporada começa em {{days}} dia(s)",
+    "view_recap_link": "Ver resumo da Temporada {{n}} →"
+  },
   "hallOfFame": {
     "title": "Hall da Fama",
     "subtitle": "Os mais premiados de todas as temporadas",

@@ -506,7 +506,152 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    return new Response(JSON.stringify({ error: 'Unknown action. Use: seed_league' }), {
+    // ────────────────────────────────────────────────────────────
+    // start_next_season — bootstrap Season N+1 for an existing league.
+    // Idempotent: if Season N+1 already exists for the league, returns
+    // its id without re-creating anything. Carries over all currently
+    // active clubs in the league (no promotion/relegation yet).
+    // First round scheduled at previous season's `next_season_at` (or
+    // 14 days from now as fallback), then alternating Wed/Sun.
+    // ────────────────────────────────────────────────────────────
+    if (action === 'start_next_season') {
+      const leagueId: string | undefined = body.league_id;
+      if (!leagueId) {
+        return new Response(JSON.stringify({ error: 'league_id required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Most recent season for this league (any status) — N+1 gets number+1.
+      const { data: latest } = await supabase
+        .from('league_seasons')
+        .select('id, season_number, status, finished_at, next_season_at')
+        .eq('league_id', leagueId)
+        .order('season_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!latest) {
+        return new Response(JSON.stringify({ error: 'no existing season for league' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Idempotency: only create if the latest is finished. If it's still
+      // active or scheduled, skip. If a higher-number season already exists
+      // (which can't happen given the ORDER BY but defensive), return it.
+      if (latest.status !== 'finished') {
+        return new Response(JSON.stringify({
+          status: 'skipped',
+          reason: `latest season status is ${latest.status}`,
+          existing_season_id: latest.id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const nextSeasonNumber = (latest.season_number ?? 0) + 1;
+      const nextStartAt = latest.next_season_at
+        ? new Date(latest.next_season_at)
+        : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+      // Active clubs in this league carry over to the next season.
+      const { data: leagueClubs } = await supabase
+        .from('clubs')
+        .select('id')
+        .eq('league_id', leagueId)
+        .eq('status', 'active');
+
+      const clubIds = (leagueClubs ?? []).map((c: any) => c.id);
+      if (clubIds.length < 2) {
+        return new Response(JSON.stringify({ error: `not enough clubs (${clubIds.length})` }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Create the season row
+      const { data: newSeason, error: seasonErr } = await supabase
+        .from('league_seasons')
+        .insert({
+          league_id: leagueId,
+          season_number: nextSeasonNumber,
+          status: 'scheduled',
+        })
+        .select('id')
+        .single();
+
+      if (seasonErr || !newSeason) {
+        return new Response(JSON.stringify({ error: `season insert failed: ${seasonErr?.message}` }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Standings rows for every club
+      await supabase.from('league_standings').insert(
+        clubIds.map((clubId) => ({ season_id: newSeason.id, club_id: clubId })),
+      );
+
+      // Round-robin fixtures (same algorithm as initial seed)
+      const fixtures = generateRoundRobin(clubIds);
+      const roundFixtures = new Map<number, { home: string; away: string }[]>();
+      for (const f of fixtures) {
+        if (!roundFixtures.has(f.round)) roundFixtures.set(f.round, []);
+        roundFixtures.get(f.round)!.push({ home: f.home, away: f.away });
+      }
+
+      // Schedule: round 1 at nextStartAt (snapped to next Wed at 21h BRT),
+      // alternating Wed/Sun (Sun = Wed + 4d).
+      const startWed = new Date(nextStartAt);
+      const dow = startWed.getUTCDay();
+      const daysUntilWed = (3 - dow + 7) % 7; // 0 if already Wed
+      if (daysUntilWed > 0) startWed.setUTCDate(startWed.getUTCDate() + daysUntilWed);
+      startWed.setUTCHours(0, 0, 0, 0); // 21h BRT = 00h UTC of the next day
+      startWed.setUTCDate(startWed.getUTCDate() + 1);
+
+      let currentWed = new Date(startWed);
+      for (let roundNum = 1; roundNum <= roundFixtures.size; roundNum++) {
+        const isOdd = roundNum % 2 === 1;
+        const roundDate = new Date(currentWed);
+        if (!isOdd) roundDate.setUTCDate(roundDate.getUTCDate() + 4); // Sun
+        if (!isOdd) currentWed.setUTCDate(currentWed.getUTCDate() + 7); // advance after Sun
+
+        const { data: round } = await supabase
+          .from('league_rounds')
+          .insert({
+            season_id: newSeason.id,
+            round_number: roundNum,
+            scheduled_at: roundDate.toISOString(),
+            status: 'scheduled',
+          })
+          .select('id')
+          .single();
+        if (!round) continue;
+
+        const matchFixtures = roundFixtures.get(roundNum) ?? [];
+        for (const fx of matchFixtures) {
+          await supabase.from('league_matches').insert({
+            round_id: round.id,
+            match_id: null,
+            home_club_id: fx.home,
+            away_club_id: fx.away,
+          });
+        }
+      }
+
+      console.log(`[SEED] Created Season ${nextSeasonNumber} for league ${leagueId} with ${clubIds.length} clubs`);
+
+      return new Response(JSON.stringify({
+        status: 'created',
+        season_id: newSeason.id,
+        season_number: nextSeasonNumber,
+        clubs: clubIds.length,
+        rounds: roundFixtures.size,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    return new Response(JSON.stringify({ error: 'Unknown action. Use: seed_league | start_next_season' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

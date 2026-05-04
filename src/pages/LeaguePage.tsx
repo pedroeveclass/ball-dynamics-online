@@ -160,6 +160,15 @@ export default function LeaguePage() {
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
+  // Inter-season banner info — populated when the latest finished season has
+  // a successor in 'scheduled' state. Days 0-6 since finish: display the
+  // finished one + countdown to next. Days 7+: display the scheduled one +
+  // "view previous recap" link.
+  const [seasonBanner, setSeasonBanner] = useState<
+    | { kind: 'countdown'; daysToSwap: number; daysToFirstMatch: number; nextSeasonNumber: number }
+    | { kind: 'view_recap'; previousSeasonId: string; previousSeasonNumber: number; daysToFirstMatch: number }
+    | null
+  >(null);
   const [scorersExpanded, setScorersExpanded] = useState(false);
   const [assistsExpanded, setAssistsExpanded] = useState(false);
   const SCORERS_PREVIEW_COUNT = 5;
@@ -179,7 +188,9 @@ export default function LeaguePage() {
         ? 'rounds'
         : tabFromQuery === 'recap'
           ? 'recap'
-          : 'standings';
+          : seasonStatus === 'finished'
+            ? 'recap' // a finished season defaults to its recap tab
+            : 'standings';
 
   // Player join flow state
   const [joinableClubs, setJoinableClubs] = useState<JoinableClub[]>([]);
@@ -216,19 +227,73 @@ export default function LeaguePage() {
       if (!league) { setLoading(false); return; }
       setLeagueName(league.name);
 
-      // 2. Get current season
-      const { data: season } = await supabase
+      // 2. Get the two most recent seasons so we can run the inter-season
+      // gap logic: when the latest is 'scheduled' (auto-created) and the
+      // previous is 'finished', the first 7 days continue to display the
+      // old season + a countdown banner; afterwards we flip to the new
+      // one + a "view previous recap" pointer.
+      const seasonOverride = searchParams.get('season');
+      const { data: recentSeasons } = await supabase
         .from('league_seasons')
-        .select('*')
+        .select('id, season_number, status, finished_at, next_season_at')
         .eq('league_id', league.id)
         .order('season_number', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(2);
 
-      if (!season) { setLoading(false); return; }
-      setSeasonNumber(season.season_number);
-      setSeasonId(season.id);
-      setSeasonStatus(season.status ?? null);
+      if (!recentSeasons || recentSeasons.length === 0) { setLoading(false); return; }
+      const latestSeason: any = recentSeasons[0];
+      const previousSeason: any = recentSeasons[1] ?? null;
+
+      let displayed: any = latestSeason;
+      let banner: typeof seasonBanner = null;
+      const ONE_DAY = 24 * 60 * 60 * 1000;
+
+      // Explicit ?season=<id> override always wins (used by the "view recap"
+      // link from the gap-window banner). Banner stays null in that case so
+      // the user isn't pointed back at themselves.
+      const overrideMatch = seasonOverride
+        ? recentSeasons.find((s: any) => s.id === seasonOverride)
+        : null;
+
+      if (overrideMatch) {
+        displayed = overrideMatch;
+      } else if (
+        latestSeason.status === 'scheduled' &&
+        previousSeason?.status === 'finished' &&
+        previousSeason.finished_at
+      ) {
+        const finishedAt = new Date(previousSeason.finished_at).getTime();
+        const nextStartAt = previousSeason.next_season_at
+          ? new Date(previousSeason.next_season_at).getTime()
+          : finishedAt + 14 * ONE_DAY;
+        const daysSinceFinish = (Date.now() - finishedAt) / ONE_DAY;
+        const daysToFirstMatch = Math.max(0, Math.ceil((nextStartAt - Date.now()) / ONE_DAY));
+
+        if (daysSinceFinish < 7) {
+          displayed = previousSeason;
+          banner = {
+            kind: 'countdown',
+            daysToSwap: Math.max(1, Math.ceil(7 - daysSinceFinish)),
+            daysToFirstMatch,
+            nextSeasonNumber: latestSeason.season_number,
+          };
+        } else {
+          displayed = latestSeason;
+          banner = {
+            kind: 'view_recap',
+            previousSeasonId: previousSeason.id,
+            previousSeasonNumber: previousSeason.season_number,
+            daysToFirstMatch,
+          };
+        }
+      }
+
+      setSeasonNumber(displayed.season_number);
+      setSeasonId(displayed.id);
+      setSeasonStatus(displayed.status ?? null);
+      setSeasonBanner(banner);
+
+      const season = displayed;
 
       // 3. Fetch standings and rounds in parallel
       const [standingsRes, roundsRes] = await Promise.all([
@@ -711,6 +776,50 @@ export default function LeaguePage() {
             <span className="text-sm text-muted-foreground">{t('season', { n: seasonNumber })}</span>
           </div>
         </div>
+        {seasonBanner?.kind === 'countdown' && (
+          <div className="rounded-md border border-tactical/40 bg-tactical/10 px-3 py-2 flex items-start gap-2 text-sm">
+            <Calendar className="h-4 w-4 text-tactical shrink-0 mt-0.5" />
+            <div>
+              <p className="font-display font-semibold">
+                {t('seasonGap.countdown_title', {
+                  n: seasonBanner.nextSeasonNumber,
+                  days: seasonBanner.daysToFirstMatch,
+                  defaultValue: 'Temporada {{n}} começa em {{days}} dias',
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t('seasonGap.countdown_subtitle', {
+                  defaultValue: 'Você está vendo o resumo da temporada anterior. A nova classificação aparece automaticamente.',
+                })}
+              </p>
+            </div>
+          </div>
+        )}
+        {seasonBanner?.kind === 'view_recap' && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 flex items-start gap-2 text-sm">
+            <Trophy className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-display font-semibold">
+                {t('seasonGap.view_recap_title', {
+                  n: seasonBanner.previousSeasonNumber,
+                  days: seasonBanner.daysToFirstMatch,
+                  defaultValue: 'Nova temporada começa em {{days}} dias',
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <Link
+                  to={`/league?season=${seasonBanner.previousSeasonId}&tab=recap`}
+                  className="text-amber-600 hover:underline font-display font-semibold"
+                >
+                  {t('seasonGap.view_recap_link', {
+                    n: seasonBanner.previousSeasonNumber,
+                    defaultValue: 'Ver resumo da Temporada {{n}} →',
+                  })}
+                </Link>
+              </p>
+            </div>
+          </div>
+        )}
         <Tabs defaultValue={initialTab} className="space-y-4">
           <LeagueIntroTour enabled={isPlayerFreeAgent && tabFromQuery === 'join' && joinableClubs.length > 0} />
           <ManagerLeagueIntroTour enabled={!!managerProfile} isManagerWithoutClub={isManagerWithoutClub} />

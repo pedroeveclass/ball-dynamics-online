@@ -535,6 +535,31 @@ Deno.serve(async (req) => {
           } catch (recapEx) {
             console.error(`[SCHEDULER] generateAndPersistSeasonRecap threw for season ${round.season_id}:`, recapEx);
           }
+
+          // Auto-create Season N+1 immediately so the Hall da Fama widget +
+          // LeaguePage have something to point at during the 14-day gap.
+          // First round of N+1 is scheduled at next_season_at (= now + 14d).
+          try {
+            const { data: leagueRow } = await supabase
+              .from('league_seasons')
+              .select('league_id')
+              .eq('id', round.season_id)
+              .maybeSingle();
+            if (leagueRow?.league_id) {
+              const seedRes = await fetch(`${supabaseUrl}/functions/v1/league-seed`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${serviceKey}`,
+                },
+                body: JSON.stringify({ action: 'start_next_season', league_id: leagueRow.league_id }),
+              });
+              const seedJson = await seedRes.json();
+              console.log(`[SCHEDULER] start_next_season for league ${leagueRow.league_id}:`, seedJson);
+            }
+          } catch (seedEx) {
+            console.error(`[SCHEDULER] start_next_season call failed for season ${round.season_id}:`, seedEx);
+          }
         }
       }
 

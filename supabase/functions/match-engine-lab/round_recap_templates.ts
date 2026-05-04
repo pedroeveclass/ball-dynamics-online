@@ -61,6 +61,7 @@ export interface RoundRecapFacts {
   } | null;
 
   // §3 table state (after round)
+  leaderClubId: string | null;
   leaderClubName: string | null;
   leaderPoints: number;
   secondClubName: string | null;
@@ -452,6 +453,7 @@ async function extractFacts(supabase: SupabaseClient, roundId: string): Promise<
   }
 
   // Standings (after this round)
+  let leaderClubId: string | null = null;
   let leaderClubName: string | null = null;
   let leaderPoints = 0;
   let secondClubName: string | null = null;
@@ -474,6 +476,7 @@ async function extractFacts(supabase: SupabaseClient, roundId: string): Promise<
     });
     numClubsInLeague = sorted.length;
     if (sorted[0]) {
+      leaderClubId = sorted[0].club_id;
       leaderClubName = clubName.get(sorted[0].club_id) ?? null;
       leaderPoints = sorted[0].points;
     }
@@ -484,8 +487,10 @@ async function extractFacts(supabase: SupabaseClient, roundId: string): Promise<
     pointGap = leaderPoints - secondPoints;
   }
 
-  // Detect leader change: was the previous-round leader different?
-  // Look at the previous round's recap facts_json if present.
+  // Detect leader change: compare by club_id, not name — a club rename
+  // (e.g. accent fix on "Criciuma" → "Criciúma") used to falsely fire
+  // new_leader because the strings differed. fall back to name match for
+  // older recaps that didn't persist leaderClubId.
   let newLeaderThisRound = false;
   let oldLeaderClubName: string | null = null;
   if (round.round_number > 1) {
@@ -503,10 +508,15 @@ async function extractFacts(supabase: SupabaseClient, roundId: string): Promise<
         .eq('entity_id', prevRound.id)
         .eq('scope', 'round_recap')
         .maybeSingle();
-      const prevLeader = (prevRecap?.facts_json as any)?.leaderClubName ?? null;
-      if (prevLeader && prevLeader !== leaderClubName) {
+      const prevFacts = (prevRecap?.facts_json as any) ?? null;
+      const prevLeaderId = prevFacts?.leaderClubId ?? null;
+      const prevLeaderName = prevFacts?.leaderClubName ?? null;
+      const sameLeader = prevLeaderId
+        ? prevLeaderId === leaderClubId
+        : prevLeaderName === leaderClubName;
+      if (prevLeaderName && !sameLeader) {
         newLeaderThisRound = true;
-        oldLeaderClubName = prevLeader;
+        oldLeaderClubName = prevLeaderName;
       }
     }
   }
@@ -565,6 +575,7 @@ async function extractFacts(supabase: SupabaseClient, roundId: string): Promise<
     gkHeroName,
     gkHeroSaves,
     bestComeback,
+    leaderClubId,
     leaderClubName,
     leaderPoints,
     secondClubName,

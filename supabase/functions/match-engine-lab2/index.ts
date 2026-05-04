@@ -9749,6 +9749,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             if (allFinished) {
               await supabase.from('league_rounds').update({ status: 'finished' }).eq('id', leagueMatch.round_id);
 
+              // Self-heal standings: rebuild from finished matches so any silent
+              // failure in the inline per-match updates is corrected at round end.
+              try {
+                const { error: recalcErr } = await supabase.rpc('recalculate_season_standings', { p_season_id: round.season_id });
+                if (recalcErr) console.error(`[ENGINE] recalculate_season_standings failed for season ${round.season_id}:`, recalcErr);
+              } catch (recalcEx) {
+                console.error(`[ENGINE] recalculate_season_standings threw for season ${round.season_id}:`, recalcEx);
+              }
+
               // Round recap (canonical narrative) — best-effort, never blocks
               await generateAndPersistRoundRecap(supabase, leagueMatch.round_id);
 

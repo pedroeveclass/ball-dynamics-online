@@ -171,6 +171,12 @@
     "round_group": "S{{season}} · R{{rounds}}",
     "empty": "No trophies yet."
   },
+  "seasonGap": {
+    "countdown_title": "Season {{n}} starts in {{days}} day(s)",
+    "countdown_subtitle": "You're viewing last season's recap. The new standings appear automatically.",
+    "view_recap_title": "New season starts in {{days}} day(s)",
+    "view_recap_link": "Open Season {{n}} recap →"
+  },
   "hallOfFame": {
     "title": "Hall of Fame",
     "subtitle": "The most decorated players across all seasons",

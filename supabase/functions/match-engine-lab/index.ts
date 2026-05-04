@@ -496,6 +496,61 @@ async function persistMatchPlayerStats(
       .maybeSingle();
     const halftimeTs = halftimeEv ? new Date((halftimeEv as any).created_at).getTime() : Number.POSITIVE_INFINITY;
 
+    // Match boundaries for minute interpolation. The engine doesn't emit a
+    // dedicated kickoff event, so we use the earliest event row as half-1
+    // start and the final_whistle as match end. Halftime separates halves.
+    const { data: finalWhistleEv } = await supabase
+      .from('match_event_logs')
+      .select('created_at')
+      .eq('match_id', matchId)
+      .eq('event_type', 'final_whistle')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const finalWhistleTs = finalWhistleEv && finalWhistleEv.length > 0
+      ? new Date((finalWhistleEv[0] as any).created_at).getTime()
+      : Date.now();
+    const { data: firstEv } = await supabase
+      .from('match_event_logs')
+      .select('created_at')
+      .eq('match_id', matchId)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const half1StartTs = firstEv && firstEv.length > 0
+      ? new Date((firstEv[0] as any).created_at).getTime()
+      : (Number.isFinite(halftimeTs) ? halftimeTs - 25 * 60 * 1000 : Date.now() - 50 * 60 * 1000);
+
+    // Map participantId → red_card minute via linear interpolation against
+    // the half boundaries. Players without a red_card get 90 (full match).
+    // We re-query event_logs here because the upstream `allEvents` SELECT
+    // didn't pull `created_at`.
+    const redCardMinByParticipant = new Map<string, number>();
+    if (allEvents.some(e => e.event_type === 'red_card')) {
+      const { data: redRows } = await supabase
+        .from('match_event_logs')
+        .select('payload, created_at')
+        .eq('match_id', matchId)
+        .eq('event_type', 'red_card');
+      for (const r of (redRows ?? [])) {
+        const evPid = (r as any)?.payload?.player_participant_id;
+        if (!evPid) continue;
+        const ts = new Date((r as any).created_at).getTime();
+        let minute: number;
+        if (Number.isFinite(halftimeTs) && ts <= halftimeTs) {
+          const halfDur = Math.max(1, halftimeTs - half1StartTs);
+          minute = Math.round(((ts - half1StartTs) / halfDur) * 45);
+        } else if (Number.isFinite(halftimeTs)) {
+          const halfDur = Math.max(1, finalWhistleTs - halftimeTs);
+          minute = 45 + Math.round(((ts - halftimeTs) / halfDur) * 45);
+        } else {
+          // Halftime missing — fallback to whole-match interpolation
+          const dur = Math.max(1, finalWhistleTs - half1StartTs);
+          minute = Math.round(((ts - half1StartTs) / dur) * 90);
+        }
+        minute = Math.max(1, Math.min(90, minute));
+        redCardMinByParticipant.set(evPid, minute);
+      }
+    }
+
     // Position samples for the heatmap — one sample per resolution turn end.
     // Stored canonical-LTR (each player's club always attacks → x=100), so
     // the client renders without any home/away knowledge.
@@ -595,7 +650,7 @@ async function persistMatchPlayerStats(
         club_id: p.club_id,
         season_id: seasonId,
         position,
-        minutes_played: p.is_sent_off ? 45 : 90,
+        minutes_played: p.is_sent_off ? (redCardMinByParticipant.get(pid) ?? 45) : 90,
         goals,
         assists,
         shots,
@@ -9884,6 +9939,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             if (allFinished) {
               await supabase.from('league_rounds').update({ status: 'finished' }).eq('id', leagueMatch.round_id);
 
+              // Self-heal standings: rebuild from finished matches so any silent
+              // failure in the inline per-match updates is corrected at round end.
+              try {
+                const { error: recalcErr } = await supabase.rpc('recalculate_season_standings', { p_season_id: round.season_id });
+                if (recalcErr) console.error(`[ENGINE] recalculate_season_standings failed for season ${round.season_id}:`, recalcErr);
+              } catch (recalcEx) {
+                console.error(`[ENGINE] recalculate_season_standings threw for season ${round.season_id}:`, recalcEx);
+              }
+
               // Round recap (canonical narrative) — best-effort, never blocks
               await generateAndPersistRoundRecap(supabase, leagueMatch.round_id);
 
@@ -10490,6 +10554,21 @@ Deno.serve(async (req) => {
       const functionUrl = `${supabaseUrl}/functions/v1/match-engine-lab`;
       const result = await processDueMatches(supabase, functionUrl, match_id);
       return jsonResponse({ ...result, server_now: Date.now() });
+    }
+
+    // Admin one-shot: rebuild the round_recap narrative for a given round.
+    // Body: { action: 'regenerate_round_recap', round_id: '<uuid>' }.
+    // Deletes the existing narrative row (so generateAndPersistRoundRecap
+    // re-inserts cleanly) and re-runs the generator.
+    if (action === 'regenerate_round_recap' && body.round_id) {
+      await supabase
+        .from('narratives')
+        .delete()
+        .eq('entity_type', 'league_round')
+        .eq('entity_id', body.round_id)
+        .eq('scope', 'round_recap');
+      await generateAndPersistRoundRecap(supabase, body.round_id);
+      return jsonResponse({ status: 'recap_regenerated', round_id: body.round_id, server_now: Date.now() });
     }
     if (action === 'tick' && match_id) {
       const result = await executeTickForMatch(supabase, match_id, forceTick);
