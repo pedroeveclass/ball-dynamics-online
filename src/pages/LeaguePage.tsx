@@ -943,6 +943,14 @@ export default function LeaguePage() {
                   </div>
                 </div>
 
+                {/* Round Recap (canonical narrative) — appears above matches when round is finished */}
+                {activeRound.status === 'finished' && (
+                  <>
+                    <RoundRecapCard roundId={activeRound.id} />
+                    <RoundMvpVoteCard roundId={activeRound.id} roundNumber={activeRound.round_number} />
+                  </>
+                )}
+
                 <div className="divide-y">
                   {activeRound.league_matches.map((lm: any) => {
                     const homeClub = lm.home_club;
@@ -1015,14 +1023,6 @@ export default function LeaguePage() {
                     </p>
                   )}
                 </div>
-
-                {/* Round Recap (canonical narrative) — appears below matches when round is finished */}
-                {activeRound.status === 'finished' && (
-                  <>
-                    <RoundRecapCard roundId={activeRound.id} />
-                    <RoundMvpVoteCard roundId={activeRound.id} roundNumber={activeRound.round_number} />
-                  </>
-                )}
               </div>
             )}
 
