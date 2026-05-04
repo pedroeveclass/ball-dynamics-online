@@ -419,7 +419,7 @@ export interface ComposeOptions {
   // beard / accessories). When null, DEFAULT_APPEARANCE is used.
   appearance?: PlayerAppearance | null;
   seed?: string;               // DiceBear deterministic seed
-  position?: string | null;    // 'GOL' triggers GK shirt + gloves
+  position?: string | null;    // 'GK' (canonical) or 'GOL' triggers the GK shirt + gloves
   isCaptain?: boolean;
   sockHeight?: 'alto' | 'baixo';
   hasShinGuard?: boolean;
@@ -617,7 +617,9 @@ function crestAndNumberSvg(opts: ComposeOptions): string {
 export function composePlayerSvg(opts: ComposeOptions): string {
   const isCoach = opts.outfit === 'coach';
   // GK shirt and captain band don't apply to coaches.
-  const isGK = !isCoach && opts.position === 'GOL';
+  // Accept both 'GK' (canonical, from POSITIONS catalog) and the
+  // legacy 'GOL' V1 used to pass through its delegation.
+  const isGK = !isCoach && (opts.position === 'GK' || opts.position === 'GOL');
   const sockSrc = opts.sockHeight === 'baixo' ? innerMeiaoBaixo : innerMeiaoAlto;
   // Coach overrides team colors. Pattern is forced solid because the
   // formal coach kit doesn't follow the player jersey rules.
