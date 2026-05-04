@@ -597,6 +597,74 @@ Deno.serve(async (req) => {
     }
 
     // ────────────────────────────────────────────────────────────
+    // regenerate_season_fixtures — rebuild league_matches for an existing
+    // season using its current standings (which is the authoritative
+    // club list). Keeps league_rounds intact (their dates are sticky).
+    // Used after admin_move_club_to_league wipes fixtures.
+    // ────────────────────────────────────────────────────────────
+    if (action === 'regenerate_season_fixtures') {
+      const seasonId: string | undefined = body.season_id;
+      if (!seasonId) {
+        return new Response(JSON.stringify({ error: 'season_id required' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const { data: standings } = await supabase
+        .from('league_standings')
+        .select('club_id')
+        .eq('season_id', seasonId);
+      const clubIds = (standings ?? []).map((s: any) => s.club_id);
+      if (clubIds.length < 2) {
+        return new Response(JSON.stringify({ error: `season has ${clubIds.length} clubs in standings` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const { data: rounds } = await supabase
+        .from('league_rounds')
+        .select('id, round_number')
+        .eq('season_id', seasonId)
+        .order('round_number', { ascending: true });
+      const roundsList = (rounds ?? []) as Array<{ id: string; round_number: number }>;
+      if (roundsList.length === 0) {
+        return new Response(JSON.stringify({ error: 'no rounds in season' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Wipe any leftover league_matches under those rounds and regenerate.
+      await supabase.from('league_matches').delete().in('round_id', roundsList.map(r => r.id));
+
+      const fixtures = generateRoundRobin(clubIds);
+      const byRound = new Map<number, { home: string; away: string }[]>();
+      for (const f of fixtures) {
+        if (!byRound.has(f.round)) byRound.set(f.round, []);
+        byRound.get(f.round)!.push({ home: f.home, away: f.away });
+      }
+
+      let inserted = 0;
+      for (const r of roundsList) {
+        const fxs = byRound.get(r.round_number) ?? [];
+        if (fxs.length === 0) continue;
+        const rows = fxs.map(fx => ({
+          round_id: r.id, match_id: null,
+          home_club_id: fx.home, away_club_id: fx.away,
+        }));
+        const { error } = await supabase.from('league_matches').insert(rows);
+        if (!error) inserted += rows.length;
+      }
+
+      return new Response(JSON.stringify({
+        status: 'rebuilt',
+        season_id: seasonId,
+        clubs: clubIds.length,
+        rounds: roundsList.length,
+        matches_inserted: inserted,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ────────────────────────────────────────────────────────────
     // seed_division — generic division creation. Caller passes:
     //   - country (BR, EN, ES, ...)
     //   - league_name (display name)

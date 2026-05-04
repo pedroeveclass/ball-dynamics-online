@@ -1584,10 +1584,38 @@ function OperationsTab({ leagues, seasons, clubs, onReload }: { leagues: League[
           </Select>
           <Button
             disabled={!moveClubId || !moveLeagueId || busy === 'move'}
-            onClick={() => fire(
-              'Mover clube',
-              async () => await supabase.rpc('admin_move_club_to_league', { p_club_id: moveClubId, p_target_league_id: moveLeagueId }),
-            )}
+            onClick={async () => {
+              if (!confirm('Vai mover o clube + apagar fixtures das próximas seasons + regerar tabela. Confirma?')) return;
+              setBusy('move');
+              try {
+                // 1) Source league_id BEFORE the move (RPC needs it for rebuild)
+                const { data: clubRow } = await supabase.from('clubs').select('league_id').eq('id', moveClubId).single();
+                const sourceLeagueId = clubRow?.league_id;
+                // 2) Move + wipe scheduled-season state
+                const { error: moveErr } = await supabase.rpc('admin_move_club_to_league', {
+                  p_club_id: moveClubId, p_target_league_id: moveLeagueId,
+                });
+                if (moveErr) { toast.error(moveErr.message); return; }
+                // 3) Find scheduled seasons of both leagues
+                const { data: seasonsToRebuild } = await supabase
+                  .from('league_seasons')
+                  .select('id, league_id')
+                  .in('league_id', [sourceLeagueId, moveLeagueId].filter(Boolean) as string[])
+                  .neq('status', 'finished');
+                // 4) Regenerate fixtures for each
+                let rebuilt = 0;
+                for (const s of (seasonsToRebuild ?? [])) {
+                  const r = await supabase.functions.invoke('league-seed', {
+                    body: { action: 'regenerate_season_fixtures', season_id: (s as any).id },
+                  });
+                  if (!r.error && (r.data as any)?.status === 'rebuilt') rebuilt++;
+                }
+                toast.success(`Clube movido · ${rebuilt} season(s) com fixtures regeradas`);
+                onReload();
+              } finally {
+                setBusy(null);
+              }
+            }}
           >
             {busy === 'move' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
             Mover
