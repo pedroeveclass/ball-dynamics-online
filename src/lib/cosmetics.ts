@@ -54,6 +54,32 @@ export interface PlayerCosmetics {
   backgroundColor: string | null;
   backgroundColor2: string | null;
   backgroundImageUrl: string | null;
+  // ── Phase-6 cosmetic prototypes (V2-only) ──
+  // Tatuagem no bíceps. design + side picked at purchase.
+  tattooDesign: string | null;
+  tattooSide: CosmeticSide | null;
+  tattooColor: string | null;
+  // Pintura facial. design + 1-2 colors.
+  facePaintDesign: string | null;
+  facePaintColor: string | null;
+  facePaintColor2: string | null;
+  // Brinco — color + side (or both).
+  earringColor: string | null;
+  earringSide: CosmeticLimbSide | null;
+  // Headband — single color.
+  headbandColor: string | null;
+  // Cordão (necklace) — silver or gold tier; color is hardcoded by tier.
+  necklaceColor: string | null;
+  // Pulseira (bracelet) — silver/gold tier + side (single arm only).
+  braceletColor: string | null;
+  braceletSide: CosmeticSide | null;
+  // Bandana — single color.
+  bandanaColor: string | null;
+  // Modo sem camisa — boolean toggle. The torso renders without the shirt
+  // (the V2 swap to tronco.svg).
+  hasShirtless: boolean;
+  // Óculos — variant id picked from the catalog (sunglasses, kurt, etc.).
+  accessoryVariant: string | null;
 }
 
 export type BackgroundVariant =
@@ -83,6 +109,21 @@ const EMPTY: PlayerCosmetics = {
   backgroundColor: null,
   backgroundColor2: null,
   backgroundImageUrl: null,
+  tattooDesign: null,
+  tattooSide: null,
+  tattooColor: null,
+  facePaintDesign: null,
+  facePaintColor: null,
+  facePaintColor2: null,
+  earringColor: null,
+  earringSide: null,
+  headbandColor: null,
+  necklaceColor: null,
+  braceletColor: null,
+  braceletSide: null,
+  bandanaColor: null,
+  hasShirtless: false,
+  accessoryVariant: null,
 };
 
 // Cosmetic items whose color we treat as a "winter glove": same visual
@@ -96,6 +137,22 @@ const LONG_SOCKS_NAMES = new Set(['Meião Comprido', 'Long Socks']);
 const SECOND_SKIN_SHIRT_NAMES = new Set(['Camiseta Segunda Pele', 'Compression Top']);
 const SECOND_SKIN_PANTS_NAMES = new Set(['Calça Segunda Pele', 'Compression Tights']);
 const VISUAL_BG_NAMES = new Set(['Fundo do Visual', 'Visual Background']);
+const TATTOO_NAMES = new Set(['Tatuagem', 'Tattoo']);
+const FACE_PAINT_NAMES = new Set(['Pintura Facial', 'Face Paint']);
+const EARRING_NAMES = new Set(['Brinco', 'Earring']);
+const HEADBAND_V2_NAMES = new Set(['Headband']);
+const NECKLACE_SILVER_NAMES = new Set(['Cordão de Prata', 'Silver Necklace']);
+const NECKLACE_GOLD_NAMES = new Set(['Cordão de Ouro', 'Gold Necklace']);
+const BRACELET_SILVER_NAMES = new Set(['Pulseira de Prata', 'Silver Bracelet']);
+const BRACELET_GOLD_NAMES = new Set(['Pulseira de Ouro', 'Gold Bracelet']);
+const BANDANA_NAMES = new Set(['Bandana']);
+const SHIRTLESS_NAMES = new Set(['Modo Sem Camisa', 'Shirtless Mode']);
+const GLASSES_NAMES = new Set(['Óculos', 'Glasses']);
+
+// Hardcoded colors per tier so silver/gold reads consistently regardless
+// of what (if anything) was stored on the purchase row.
+const SILVER_HEX = '#C9C9C9';
+const GOLD_HEX   = '#C9A227';
 
 const VALID_BG_VARIANTS = new Set<BackgroundVariant>([
   'solid', 'gradient_vertical', 'gradient_horizontal', 'gradient_diagonal',
@@ -176,6 +233,21 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let backgroundColor: string | null = null;
   let backgroundColor2: string | null = null;
   let backgroundImageUrl: string | null = null;
+  let tattooDesign: string | null = null;
+  let tattooSide: CosmeticSide | null = null;
+  let tattooColor: string | null = null;
+  let facePaintDesign: string | null = null;
+  let facePaintColor: string | null = null;
+  let facePaintColor2: string | null = null;
+  let earringColor: string | null = null;
+  let earringSide: CosmeticLimbSide | null = null;
+  let headbandColor: string | null = null;
+  let necklaceColor: string | null = null;
+  let braceletColor: string | null = null;
+  let braceletSide: CosmeticSide | null = null;
+  let bandanaColor: string | null = null;
+  let hasShirtless = false;
+  let accessoryVariant: string | null = null;
 
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
@@ -183,6 +255,73 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     // Long socks toggle has no color — short-circuit before the color guard.
     if (it.category === 'cosmetic' && matchesAny(it, LONG_SOCKS_NAMES)) {
       hasLongSocks = true;
+      continue;
+    }
+    // Modo Sem Camisa — toggle, no metadata.
+    if (it.category === 'cosmetic' && matchesAny(it, SHIRTLESS_NAMES)) {
+      hasShirtless = true;
+      continue;
+    }
+    // Cordão prata / ouro — fixed color by tier; no buy-time picker.
+    if (it.category === 'cosmetic' && matchesAny(it, NECKLACE_SILVER_NAMES) && !necklaceColor) {
+      necklaceColor = SILVER_HEX;
+      continue;
+    }
+    if (it.category === 'cosmetic' && matchesAny(it, NECKLACE_GOLD_NAMES)) {
+      necklaceColor = GOLD_HEX; // gold overrides silver if both owned
+      continue;
+    }
+    // Pulseira prata / ouro — fixed color + side from p.side.
+    if (it.category === 'cosmetic' && matchesAny(it, BRACELET_SILVER_NAMES) && !braceletColor) {
+      braceletColor = SILVER_HEX;
+      braceletSide = normalizeSide(p.side);
+      continue;
+    }
+    if (it.category === 'cosmetic' && matchesAny(it, BRACELET_GOLD_NAMES)) {
+      braceletColor = GOLD_HEX;
+      braceletSide = normalizeSide(p.side) ?? braceletSide;
+      continue;
+    }
+    // Tatuagem — design + side at purchase, color via picker.
+    if (it.category === 'cosmetic' && matchesAny(it, TATTOO_NAMES) && p.tattoo_design) {
+      // First-equipped wins; player can buy a second tattoo for the other arm.
+      if (!tattooDesign) {
+        tattooDesign = p.tattoo_design;
+        tattooSide = normalizeSide(p.side) ?? 'right';
+        tattooColor = p.color ?? '#1A1A1A';
+      }
+      continue;
+    }
+    // Pintura facial — design + 1-2 colors.
+    if (it.category === 'cosmetic' && matchesAny(it, FACE_PAINT_NAMES) && p.face_paint_design) {
+      if (!facePaintDesign) {
+        facePaintDesign = p.face_paint_design;
+        facePaintColor = p.color ?? '#FFD600';
+        facePaintColor2 = p.face_paint_color2 ?? null;
+      }
+      continue;
+    }
+    // Brinco — color + side (limbSide allows both).
+    if (it.category === 'cosmetic' && matchesAny(it, EARRING_NAMES) && p.color) {
+      if (!earringColor) {
+        earringColor = p.color;
+        earringSide = normalizeLimbSide(p.side) ?? 'both';
+      }
+      continue;
+    }
+    // Headband V2 — color only.
+    if (it.category === 'cosmetic' && matchesAny(it, HEADBAND_V2_NAMES) && p.color && !headbandColor) {
+      headbandColor = p.color;
+      continue;
+    }
+    // Bandana — color only.
+    if (it.category === 'cosmetic' && matchesAny(it, BANDANA_NAMES) && p.color && !bandanaColor) {
+      bandanaColor = p.color;
+      continue;
+    }
+    // Óculos — variant id only (color is baked into the asset).
+    if (it.category === 'cosmetic' && matchesAny(it, GLASSES_NAMES) && p.accessory_variant && !accessoryVariant) {
+      accessoryVariant = p.accessory_variant;
       continue;
     }
     // Visual background — image variant has no color of its own; the URL
@@ -250,6 +389,21 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     backgroundColor,
     backgroundColor2,
     backgroundImageUrl,
+    tattooDesign,
+    tattooSide,
+    tattooColor,
+    facePaintDesign,
+    facePaintColor,
+    facePaintColor2,
+    earringColor,
+    earringSide,
+    headbandColor,
+    necklaceColor,
+    braceletColor,
+    braceletSide,
+    bandanaColor,
+    hasShirtless,
+    accessoryVariant,
   };
 }
 

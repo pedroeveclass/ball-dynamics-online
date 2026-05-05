@@ -8,6 +8,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { PositionBadge } from '@/components/PositionBadge';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { PlayerAvatarV2 } from '@/components/PlayerAvatarV2';
+import { DEFAULT_APPEARANCE } from '@/lib/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -455,7 +456,6 @@ export default function PublicPlayerPage() {
                 <div className={isBackView ? 'h-52 w-40' : 'h-80 w-56'}>
                   {bodyVariant === 'full-front' ? (
                     <PlayerAvatarV2
-                      appearance={(player as any).appearance}
                       variant="full-front"
                       clubPrimaryColor={activeKit?.shirt_color ?? clubInfo?.primary}
                       clubSecondaryColor={activeKit?.stripe_color ?? clubInfo?.secondary}
@@ -478,6 +478,28 @@ export default function PublicPlayerPage() {
                       secondSkinPantsColor={cosmetics.secondSkinPantsColor}
                       secondSkinPantsSide={cosmetics.secondSkinPantsSide ?? 'both'}
                       jerseyPattern={activeKit?.pattern}
+                      hideShirt={cosmetics.hasShirtless}
+                      tattooDesign={cosmetics.tattooDesign}
+                      tattooSide={cosmetics.tattooSide ?? 'right'}
+                      tattooColor={cosmetics.tattooColor ?? undefined}
+                      facePaintDesign={cosmetics.facePaintDesign}
+                      facePaintColor={cosmetics.facePaintColor ?? undefined}
+                      facePaintColor2={cosmetics.facePaintColor2 ?? undefined}
+                      hasEarring={!!cosmetics.earringColor}
+                      earringColor={cosmetics.earringColor ?? undefined}
+                      earringSide={cosmetics.earringSide ?? 'both'}
+                      hasHeadband={!!cosmetics.headbandColor}
+                      headbandColor={cosmetics.headbandColor ?? undefined}
+                      hasNecklace={!!cosmetics.necklaceColor}
+                      necklaceColor={cosmetics.necklaceColor ?? undefined}
+                      hasBracelet={!!cosmetics.braceletColor}
+                      braceletColor={cosmetics.braceletColor ?? undefined}
+                      braceletSide={cosmetics.braceletSide ?? 'right'}
+                      hasBandana={!!cosmetics.bandanaColor}
+                      bandanaColor={cosmetics.bandanaColor ?? undefined}
+                      appearance={cosmetics.accessoryVariant
+                        ? { ...((player as any).appearance ?? DEFAULT_APPEARANCE), accessories: cosmetics.accessoryVariant }
+                        : (player as any).appearance}
                       fallbackSeed={player.id}
                       className="w-full h-full"
                     />

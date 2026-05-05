@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { PositionBadge } from '@/components/PositionBadge';
 import { PlayerAvatar } from '@/components/PlayerAvatar';
 import { PlayerAvatarV2 } from '@/components/PlayerAvatarV2';
+import { DEFAULT_APPEARANCE } from '@/lib/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -680,7 +681,6 @@ export default function PlayerProfilePage() {
               <div className={isBackView ? 'h-52 w-40' : 'h-80 w-56'}>
                 {bodyVariant === 'full-front' ? (
                   <PlayerAvatarV2
-                    appearance={(p as any).appearance}
                     variant="full-front"
                     clubPrimaryColor={activeKit?.shirt_color ?? clubColors?.primary}
                     clubSecondaryColor={activeKit?.stripe_color ?? clubColors?.secondary}
@@ -703,6 +703,28 @@ export default function PlayerProfilePage() {
                     secondSkinPantsColor={cosmetics.secondSkinPantsColor}
                     secondSkinPantsSide={cosmetics.secondSkinPantsSide ?? 'both'}
                     jerseyPattern={activeKit?.pattern}
+                    hideShirt={cosmetics.hasShirtless}
+                    tattooDesign={cosmetics.tattooDesign}
+                    tattooSide={cosmetics.tattooSide ?? 'right'}
+                    tattooColor={cosmetics.tattooColor ?? undefined}
+                    facePaintDesign={cosmetics.facePaintDesign}
+                    facePaintColor={cosmetics.facePaintColor ?? undefined}
+                    facePaintColor2={cosmetics.facePaintColor2 ?? undefined}
+                    hasEarring={!!cosmetics.earringColor}
+                    earringColor={cosmetics.earringColor ?? undefined}
+                    earringSide={cosmetics.earringSide ?? 'both'}
+                    hasHeadband={!!cosmetics.headbandColor}
+                    headbandColor={cosmetics.headbandColor ?? undefined}
+                    hasNecklace={!!cosmetics.necklaceColor}
+                    necklaceColor={cosmetics.necklaceColor ?? undefined}
+                    hasBracelet={!!cosmetics.braceletColor}
+                    braceletColor={cosmetics.braceletColor ?? undefined}
+                    braceletSide={cosmetics.braceletSide ?? 'right'}
+                    hasBandana={!!cosmetics.bandanaColor}
+                    bandanaColor={cosmetics.bandanaColor ?? undefined}
+                    appearance={cosmetics.accessoryVariant
+                      ? { ...((p as any).appearance ?? DEFAULT_APPEARANCE), accessories: cosmetics.accessoryVariant }
+                      : (p as any).appearance}
                     fallbackSeed={p.id}
                     className="w-full h-full"
                   />

@@ -26,6 +26,7 @@ import { StoreIntroTour } from '@/components/tour/StoreIntroTour';
 import { StoreManagerIntroTour } from '@/components/tour/StoreManagerIntroTour';
 import { ItemColorPickerDialog, ColorSlot, ColorValues } from '@/components/store/ItemColorPickerDialog';
 import { EquipSideDialog, EquipChoice, EquipChoiceKind } from '@/components/store/EquipSideDialog';
+import { CosmeticPurchaseDialog, CosmeticKind, PurchaseValues } from '@/components/store/CosmeticPurchaseDialog';
 import { BackgroundPickerDialog } from '@/components/store/BackgroundPickerDialog';
 import type { BackgroundVariant } from '@/lib/cosmetics';
 
@@ -151,6 +152,12 @@ export default function StorePage() {
   // Background-picker dialog (visual background cosmetic). Tabbed UI for
   // solid / gradient / pattern / image instead of the simpler color picker.
   const [bgPick, setBgPick] = useState<null | { item: StoreItem; buyerType: 'player' | 'club'; targetPlayerId?: string }>(null);
+  // V2 cosmetic purchases (tattoo/glasses/jewelry/etc) that need the
+  // configurator dialog with live avatar preview. The kind drives which
+  // controls render (see CosmeticPurchaseDialog).
+  const [cosmeticPick, setCosmeticPick] = useState<null | {
+    item: StoreItem; kind: CosmeticKind; buyerType: 'player' | 'club'; targetPlayerId?: string;
+  }>(null);
 
   const isManager = profile?.role_selected === 'manager';
   const Layout = isManager ? ManagerLayout : AppLayout;
@@ -262,6 +269,31 @@ export default function StorePage() {
     'Camiseta Segunda Pele', 'Compression Top',
     'Calça Segunda Pele', 'Compression Tights',
   ]);
+  // V2-only cosmetics — each one renders a CosmeticPurchaseDialog with a
+  // live avatar preview + the controls the item needs (variant, color, side).
+  // The cosmetic kind drives which inputs the dialog shows and which RPC
+  // params get filled. Map by canonical name (PT / EN both supported).
+  const COSMETIC_PURCHASE_KIND: Record<string, CosmeticKind> = {
+    'Tatuagem': 'tattoo', 'Tattoo': 'tattoo',
+    'Pintura Facial': 'face_paint', 'Face Paint': 'face_paint',
+    'Brinco': 'earring', 'Earring': 'earring',
+    'Headband': 'headband',
+    'Bandana': 'bandana',
+    'Cordão de Prata': 'cordao_prata', 'Silver Necklace': 'cordao_prata',
+    'Cordão de Ouro': 'cordao_ouro',  'Gold Necklace':   'cordao_ouro',
+    'Pulseira de Prata': 'pulseira_prata', 'Silver Bracelet': 'pulseira_prata',
+    'Pulseira de Ouro':  'pulseira_ouro',  'Gold Bracelet':   'pulseira_ouro',
+    'Modo Sem Camisa': 'shirtless', 'Shirtless Mode': 'shirtless',
+    'Óculos': 'glasses', 'Glasses': 'glasses',
+  };
+  function cosmeticKindFor(item: StoreItem): CosmeticKind | null {
+    if (item.category !== 'cosmetic') return null;
+    return COSMETIC_PURCHASE_KIND[item.name]
+      ?? (item.name_pt ? COSMETIC_PURCHASE_KIND[item.name_pt] : undefined)
+      ?? (item.name_en ? COSMETIC_PURCHASE_KIND[item.name_en] : undefined)
+      ?? null;
+  }
+
   // Cosmetics that route to the dedicated background picker instead of the
   // generic color picker (tabbed UI for solid / gradient / pattern / image).
   const BACKGROUND_COSMETICS = new Set(['Fundo do Visual', 'Visual Background']);
@@ -287,6 +319,7 @@ export default function StorePage() {
     confirmReplace = false,
     colors?: ColorValues,
     bg?: { variant: BackgroundVariant; imageUrl: string | null },
+    cosmetic?: PurchaseValues,
   ) {
     setBuying(true);
     try {
@@ -301,11 +334,16 @@ export default function StorePage() {
         p_store_item_id: item.id,
         p_buyer_type: buyerType,
         p_confirm_replace: confirmReplace,
-        p_color: colors?.color ?? null,
-        p_color2: colors?.color2 ?? null,
+        p_color: cosmetic?.color ?? colors?.color ?? null,
+        p_color2: cosmetic?.color2 ?? colors?.color2 ?? null,
         p_color3: colors?.color3 ?? null,
         p_bg_variant: bg?.variant ?? null,
         p_bg_image_url: bg?.imageUrl ?? null,
+        p_side: cosmetic?.side ?? null,
+        p_tattoo_design: cosmetic?.tattoo_design ?? null,
+        p_accessory_variant: cosmetic?.accessory_variant ?? null,
+        p_face_paint_design: cosmetic?.face_paint_design ?? null,
+        p_face_paint_color2: cosmetic?.color2 ?? null,
       });
 
       if (error) { toast.error(error.message); return; }
@@ -333,6 +371,7 @@ export default function StorePage() {
       setSwapConflict(null);
       setColorPick(null);
       setBgPick(null);
+      setCosmeticPick(null);
       await Promise.all([fetchData(), refreshPlayerProfile()]);
     } catch (e: any) {
       toast.error(e.message || t('errors.purchase_generic'));
@@ -348,6 +387,11 @@ export default function StorePage() {
   function startBuy(item: StoreItem, buyerType: 'player' | 'club', targetPlayerId?: string) {
     if (isBackgroundItem(item)) {
       setBgPick({ item, buyerType, targetPlayerId });
+      return;
+    }
+    const kind = cosmeticKindFor(item);
+    if (kind) {
+      setCosmeticPick({ item, kind, buyerType, targetPlayerId });
       return;
     }
     if (needsColorPick(item)) {
@@ -935,6 +979,26 @@ export default function StorePage() {
             bgPick.item, bgPick.buyerType, bgPick.targetPlayerId, false,
             { color: payload.color ?? '', color2: payload.color2 ?? '', color3: '' },
             { variant: payload.variant, imageUrl: payload.imageUrl },
+          )}
+        />
+      )}
+
+      {/* V2 cosmetic configurator with live avatar preview */}
+      {cosmeticPick && (
+        <CosmeticPurchaseDialog
+          open={!!cosmeticPick}
+          onOpenChange={(open) => { if (!open && !buying) setCosmeticPick(null); }}
+          kind={cosmeticPick.kind}
+          itemName={getStoreItemName(cosmeticPick.item, lang)}
+          appearance={(playerProfile as any)?.appearance ?? null}
+          clubPrimaryColor={null}
+          clubSecondaryColor={null}
+          position={(playerProfile as any)?.primary_position ?? null}
+          jerseyPattern={null}
+          busy={buying}
+          onConfirm={(payload) => handleBuy(
+            cosmeticPick.item, cosmeticPick.buyerType, cosmeticPick.targetPlayerId,
+            false, undefined, undefined, payload,
           )}
         />
       )}
