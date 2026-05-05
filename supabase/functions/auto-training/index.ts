@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
 
   // Cron auth — mirrors energy-regen: accept CRON_SECRET header OR service_role JWT.
   const cronSecret = Deno.env.get('CRON_SECRET');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization')?.replace('Bearer ', '');
   const hasCronSecret = cronSecret && req.headers.get('x-cron-secret') === cronSecret;
 
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      (Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
     );
 
     const now = new Date();

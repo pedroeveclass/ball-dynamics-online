@@ -5653,7 +5653,7 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 
 async function invokeTickForMatch(functionUrl: string, matchId: string) {
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+  const anonKey = Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY') ?? '';
   const response = await fetch(functionUrl, {
     method: 'POST',
     headers: {
@@ -5969,7 +5969,7 @@ async function autoStartDueMatches(supabase: any, matchId?: string | null) {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
             },
             body: JSON.stringify({ action: 'update_standings', match_id: m.id }),
           });
@@ -10829,7 +10829,7 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceKey = (Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
