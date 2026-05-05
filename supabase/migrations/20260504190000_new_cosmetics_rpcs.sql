@@ -14,6 +14,10 @@
 -- ============================================================
 
 -- ── 1. Public cosmetics RPC: expose the new columns ──
+-- DROP first because the return type changed (4 new TABLE columns) and
+-- Postgres won't allow CREATE OR REPLACE to alter the return shape.
+DROP FUNCTION IF EXISTS public.get_player_cosmetics_public(UUID);
+
 CREATE OR REPLACE FUNCTION public.get_player_cosmetics_public(p_player_profile_id UUID)
 RETURNS TABLE (
   store_item_id UUID,
