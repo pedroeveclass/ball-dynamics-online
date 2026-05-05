@@ -902,12 +902,27 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   const appearance = opts.appearance ?? DEFAULT_APPEARANCE;
   const seed = opts.seed ?? 'avatarV2';
 
+  // Tattoo bicep layer — rendered AFTER the bare arm but BEFORE
+  // the manguito / segunda pele so the sleeve cosmetics cover the
+  // tattoo (matches how a real sleeve would hide a tattoo on the
+  // bicep). Each side is its own slot.
+  const tattooLayer = [
+    opts.tattooDesignRight && opts.tattooDesignRight !== 'none'
+      ? tattooSvg(opts.tattooDesignRight, 'right', opts.tattooColorRight ?? '#1A1A1A')
+      : '',
+    opts.tattooDesignLeft && opts.tattooDesignLeft !== 'none'
+      ? tattooSvg(opts.tattooDesignLeft, 'left', opts.tattooColorLeft ?? '#1A1A1A')
+      : '',
+  ].filter(Boolean).join('');
+
   // Arm cosmetics that sit on top of the bracos but under the
   // camiseta. When hideShirt is on, the tronco.svg replaces both
   // the bracos AND the torso visually; rendering these BEFORE the
   // tronco would let the tronco paint over them. We move them
   // AFTER the tronco swap in that case so they stay visible.
-  const armCosmeticsBundle = [secondSkinSleeves, manguito, outfielderWinterGlove]
+  // Tattoo goes first inside the bundle so the manguito / second
+  // skin paint over it (covered by the sleeve like in real life).
+  const armCosmeticsBundle = [tattooLayer, secondSkinSleeves, manguito, outfielderWinterGlove]
     .filter(Boolean).join('');
 
   const layers: string[] = [
@@ -999,16 +1014,8 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   }
 
   // ── Cosmetic prototypes ──
-  // Tattoo on bicep — pushed AFTER bracos but mounted late so the
-  // tinted hand region of outfielderWinterGlove doesn't paint over
-  // it. Currently lives at the end of the stack which is fine because
-  // the bicep area is below the camiseta sleeve cuff.
-  if (opts.tattooDesignRight && opts.tattooDesignRight !== 'none') {
-    layers.push(tattooSvg(opts.tattooDesignRight, 'right', opts.tattooColorRight ?? '#1A1A1A'));
-  }
-  if (opts.tattooDesignLeft && opts.tattooDesignLeft !== 'none') {
-    layers.push(tattooSvg(opts.tattooDesignLeft, 'left', opts.tattooColorLeft ?? '#1A1A1A'));
-  }
+  // (Tattoo moved into armCosmeticsBundle above so the manguito /
+  // segunda pele de manga can render over it like a real sleeve.)
   if (opts.facePaintDesign && opts.facePaintDesign !== 'none') {
     layers.push(facePaintSvg(opts.facePaintDesign, opts.facePaintColor ?? '#FFD600', opts.facePaintColor2 ?? '#0066CC'));
   }
