@@ -7119,13 +7119,36 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         const goalX = attacksRight ? 99 : 1;
         const defClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
 
+        // Position-based GK fallback for matches where lineup_slot_id /
+        // player_profile_id are missing (test matches, /varzea pickups
+        // pre-population, etc). Without it, isGKPosition returns false for
+        // every defender and the actual goalkeeper gets pushed out of the
+        // PA together with the rest of the defending team — leaving an
+        // empty net for the kicker. Pick the defending player closest to
+        // their goal line as the GK. Pedro 2026-05-05 in match 92ff202e.
+        let detectedDefGkId: string | null = null;
+        const defGkGoalX = attacksRight ? 100 : 0;
+        let bestDefGkDist = Infinity;
+        for (const p of (allParts || [])) {
+          if (p.is_sent_off || p.club_id !== defClubId) continue;
+          const px = Number(p.pos_x ?? 50);
+          const dxToGoal = Math.abs(px - defGkGoalX);
+          if (dxToGoal < bestDefGkDist) {
+            bestDefGkDist = dxToGoal;
+            detectedDefGkId = p.id;
+          }
+        }
+
         for (const p of (allParts || [])) {
           if (p.is_sent_off) continue;
           const px = Number(p.pos_x ?? 50);
           const py = Number(p.pos_y ?? 50);
           const isInBox = px >= boxMinX && px <= boxMaxX && py >= 20 && py <= 80;
           const isKicker = p.id === bhId;
-          const isDefGK = p.club_id === defClubId && isGKPosition(p._slot_position || p.slot_position || '');
+          const isDefGK = p.club_id === defClubId && (
+            isGKPosition(p._slot_position || p.slot_position || '')
+            || p.id === detectedDefGkId
+          );
 
           if (isDefGK) {
             // GK goes to center of goal line
