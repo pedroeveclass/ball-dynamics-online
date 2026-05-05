@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { PlayerAvatarV2 } from './PlayerAvatarV2';
-import { PlayerAppearance, DEFAULT_APPEARANCE, heightScale, readableForeground, firstName, isLongHair, isBigBeard } from '@/lib/avatar';
+import { PlayerAppearance, DEFAULT_APPEARANCE, heightScale, readableForeground, lastName, isLongHair, isBigBeard } from '@/lib/avatar';
 
 export type AvatarVariant = 'face' | 'full-front' | 'full-back';
 export type AvatarOutfit = 'player' | 'coach';
@@ -999,7 +999,7 @@ function BackBody({
     || appearance.hair === 'bun'
     || appearance.hair === 'frida';
 
-  const shirtBackName = firstName(playerName).toUpperCase().slice(0, 12);
+  const shirtBackName = lastName(playerName).toUpperCase().slice(0, 12);
 
   return (
     <>

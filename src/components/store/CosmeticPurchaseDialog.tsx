@@ -60,10 +60,10 @@ const TATTOO_DESIGNS: Array<{ id: string; label: string }> = [
 ];
 
 const FACE_PAINT_DESIGNS: Array<{ id: string; label: string; needs2: boolean }> = [
-  { id: 'brasil',      label: 'Brasil (2 cores)', needs2: true  },
-  { id: 'horizontal',  label: 'Faixa horizontal', needs2: false },
-  { id: 'two_stripes', label: 'War paint',        needs2: false },
-  { id: 'wings',       label: 'Asas',             needs2: false },
+  { id: 'brasil',      label: 'Brasil (2 cores)',     needs2: true  },
+  { id: 'horizontal',  label: 'Faixa horizontal',     needs2: false },
+  { id: 'two_stripes', label: 'War paint (2 cores)',  needs2: true  },
+  { id: 'wings',       label: 'Asas',                 needs2: false },
 ];
 
 const GLASSES_VARIANTS: Array<{ id: string; label: string }> = [

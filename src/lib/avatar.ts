@@ -251,6 +251,16 @@ export function firstName(fullName: string | null | undefined): string {
   return space === -1 ? trimmed : trimmed.slice(0, space);
 }
 
+// Last word of the player's full name — the surname / "second name"
+// in football jersey convention ("RONALDO" rather than "CRISTIANO").
+// Falls back to the first word for single-name players.
+export function lastName(fullName: string | null | undefined): string {
+  if (!fullName) return '';
+  const trimmed = fullName.trim();
+  const lastSpace = trimmed.lastIndexOf(' ');
+  return lastSpace === -1 ? trimmed : trimmed.slice(lastSpace + 1);
+}
+
 // Returns the "readable" foreground color (black or white) for a given
 // background hex — used for jersey number/name text against team colors.
 export function readableForeground(bgHex: string | null | undefined): string {
