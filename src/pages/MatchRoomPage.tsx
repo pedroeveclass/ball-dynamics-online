@@ -2254,22 +2254,18 @@ export default function MatchRoomPage() {
               }
             };
 
-            // Queue the new turn whenever we're inside a resolution that hasn't
-            // committed yet — covers BOTH "animation is running" AND the harder
-            // race "resolution_script UPDATE realtime event hasn't arrived yet,
-            // so the resolution effect is still polling and animFrameRef is
-            // null." Without this branch, when the script UPDATE was slower
-            // than the next turn's INSERT, applyNewTurn fired immediately, the
-            // resolution useEffect cleaned up, and the animation NEVER played.
-            const activeNow = activeTurnRef.current;
-            const inResolutionPending = !!activeNow
-              && activeNow.phase === 'resolution'
-              && inertiaCommittedTurnIdRef.current !== activeNow.id;
-            const animationRunning = !!(animatedResolutionIdRef.current && animFrameRef.current);
-            if (inResolutionPending || animationRunning) {
-              // Resolution animation still pending or running — queue the new turn.
-              // The useEffect on `animating` flushes it the moment the animation ends;
-              // the safety timer below guarantees we never stall if something goes wrong.
+            if (animatedResolutionIdRef.current && animFrameRef.current) {
+              // Resolution animation still running — queue the new turn. The useEffect on
+              // `animating` flushes it the moment the animation ends; the safety timer below
+              // guarantees we never stall if something goes wrong with the animation loop.
+              // NOTE 2026-05-05: an earlier patch also queued during the polling phase
+              // (activeTurn.phase==='resolution' && !committed) so the inertia animation
+              // would always play even when the resolution_script UPDATE realtime arrived
+              // after the next-turn INSERT. That introduced up to 5s of perceived lag at
+              // the start of ball_holder when the script never landed (realtime drop) —
+              // user lost half their planning window. Reverted; the commitInertiaSnapshot
+              // path in the resolution effect cleanup already keeps the rearview arrow
+              // correct even when the animation is skipped.
               pendingTurnApplyRef.current = applyNewTurn;
               if (pendingTurnSafetyTimerRef.current) clearTimeout(pendingTurnSafetyTimerRef.current);
               pendingTurnSafetyTimerRef.current = setTimeout(() => {
