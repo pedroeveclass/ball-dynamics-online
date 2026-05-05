@@ -701,11 +701,18 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
             // to net, etc) get suppressed when a `goal` exists in the same batch
             // — the `goal` line already says everything the user needs to read.
             // Pedro 2026-05-05: "se foi gol, só fala que foi gol, sem 'passe não
-            // dominado / bola solta' antes."
+            // dominado / bola solta' antes." 2026-05-05 round 2: extended to also
+            // cover pass_failed / loose_ball / turn_interrupted, which the engine
+            // emits on a goal-from-shot (the ball ends "loose in the net" and the
+            // notional pass to a receiver "fails" — bookkeeping that leaks into
+            // the feed).
             const SUPPRESS_WHEN_GOAL = new Set([
               'pass_complete',
               'receive_success',
               'receive_failed',
+              'pass_failed',
+              'loose_ball',
+              'turn_interrupted',
               'possession_change',
               'bh_pass',
               'bh_dribble',
