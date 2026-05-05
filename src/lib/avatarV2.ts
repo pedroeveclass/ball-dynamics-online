@@ -878,7 +878,8 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   // braço). Renders alongside the second-skin sleeves so a player can
   // own both at once on different arms.
   const manguito = opts.manguitoColor && opts.manguitoSide
-    ? `<g clip-path="url(#v2sleeveClip)">${
+    ? `<defs><clipPath id="v2manguitoClip"><rect x="0" y="0" width="1024" height="${sleeveClipBottomY}"/></clipPath></defs>
+       <g clip-path="url(#v2manguitoClip)">${
          tintAllFills(
            filterPathsBySide(innerBracos, opts.manguitoSide),
            opts.manguitoColor,
