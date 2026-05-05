@@ -107,9 +107,12 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
 }) {
   const isPositioning = isPositioningPhase(currentPhase);
   const isMergedPositioning = currentPhase === 'positioning';
-  const isMergedOpenPlay = currentPhase === 'open_play';
   const isHalftime = isHalftimeProp ?? false;
 
+  // Engine ships a single merged open_play phase since 2026-05-03 \u2014 the legacy
+  // 4-segment view (ball_holder / attacking_support / defending_response /
+  // resolution) is dead code. Always render the 3-segment merged layout when
+  // not positioning. Splits the bar into Portador / Movimenta\u00E7\u00E3o / Motion.
   const phases = isPositioning
     ? (isMergedPositioning
         ? [{ key: 'positioning', label: phaseShortLabel('positioning'), icon: '\uD83D\uDEE1\uFE0F' }]
@@ -117,18 +120,11 @@ function TurnWheel({ currentPhase, timeLeft, turnNumber, possessionClub, phaseDu
             { key: 'positioning_attack', label: phaseShortLabel('positioning_attack'), icon: '\u26BD' },
             { key: 'positioning_defense', label: phaseShortLabel('positioning_defense'), icon: '\uD83D\uDEE1\uFE0F' },
           ])
-    : (isMergedOpenPlay
-        ? [
-            { key: 'ball_holder', label: phaseShortLabel('ball_holder'), icon: '\u26BD' },
-            { key: 'open_play', label: phaseShortLabel('open_play'), icon: '\u2694\uFE0F' },
-            { key: 'resolution', label: phaseShortLabel('resolution'), icon: '\u26A1' },
-          ]
-        : [
-            { key: 'ball_holder', label: phaseShortLabel('ball_holder'), icon: '\u26BD' },
-            { key: 'attacking_support', label: phaseShortLabel('attacking_support'), icon: '\u2694\uFE0F' },
-            { key: 'defending_response', label: phaseShortLabel('defending_response'), icon: '\uD83D\uDEE1\uFE0F' },
-            { key: 'resolution', label: phaseShortLabel('resolution'), icon: '\u26A1' },
-          ]);
+    : [
+        { key: 'ball_holder', label: phaseShortLabel('ball_holder'), icon: '\u26BD' },
+        { key: 'open_play', label: phaseShortLabel('open_play'), icon: '\u2694\uFE0F' },
+        { key: 'resolution', label: phaseShortLabel('resolution'), icon: '\u26A1' },
+      ];
   const currentIdx = phases.findIndex(p => p.key === currentPhase);
   const progress = phaseDuration > 0 ? (1 - timeLeft / phaseDuration) : 0;
 
@@ -684,7 +680,10 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
             // making the Match Flow look like "pass → nobody tried → loose ball"
             // when in reality multiple teammates attempted the domination and missed.
             const succeededByBatch = new Map<string, Set<string>>();
+            const goalBatches = new Set<string>();
             for (const e of events) {
+              if (!e.created_at) continue;
+              if (e.event_type === 'goal') goalBatches.add(e.created_at);
               let pid: string | undefined;
               if (e.event_type === 'receive_success') {
                 pid = (e.payload as any)?.participant_id;
@@ -692,16 +691,35 @@ export const MatchSidebar = React.memo(function MatchSidebar(props: MatchSidebar
                 pid = (e.payload as any)?.new_ball_holder_participant_id
                   ?? (e.payload as any)?.receiver_participant_id;
               }
-              if (!pid || !e.created_at) continue;
+              if (!pid) continue;
               const bucket = succeededByBatch.get(e.created_at) ?? new Set<string>();
               bucket.add(pid);
               succeededByBatch.set(e.created_at, bucket);
             }
+            // Events that are PART of the goal mechanics (the pass that led to it,
+            // the dominate of the ball before shooting, possession swap on the way
+            // to net, etc) get suppressed when a `goal` exists in the same batch
+            // — the `goal` line already says everything the user needs to read.
+            // Pedro 2026-05-05: "se foi gol, só fala que foi gol, sem 'passe não
+            // dominado / bola solta' antes."
+            const SUPPRESS_WHEN_GOAL = new Set([
+              'pass_complete',
+              'receive_success',
+              'receive_failed',
+              'possession_change',
+              'bh_pass',
+              'bh_dribble',
+              'one_touch',
+            ]);
             const filteredEvents = events.filter(e => {
-              if (e.event_type !== 'receive_failed') return true;
-              const pid = (e.payload as any)?.participant_id;
-              if (!pid || !e.created_at) return true;
-              return !succeededByBatch.get(e.created_at)?.has(pid);
+              if (e.event_type === 'receive_failed') {
+                const pid = (e.payload as any)?.participant_id;
+                if (pid && e.created_at && succeededByBatch.get(e.created_at)?.has(pid)) return false;
+              }
+              if (e.created_at && goalBatches.has(e.created_at) && SUPPRESS_WHEN_GOAL.has(e.event_type)) {
+                return false;
+              }
+              return true;
             });
 
             return filteredEvents.slice(-30).map(e => {

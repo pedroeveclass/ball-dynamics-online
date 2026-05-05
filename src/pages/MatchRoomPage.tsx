@@ -27,6 +27,36 @@ function getFieldMoveDist(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + (dy * FIELD_Y_MOVE_SCALE) * (dy * FIELD_Y_MOVE_SCALE));
 }
 
+// Y_SCALE'd point-to-segment distance — measures the SCREEN-pixel distance
+// (in scaled field-units) from a point to a segment. Used for "is the cursor
+// circle visually touching the ball preview line?" checks where raw Euclidean
+// gave wrong answers on the rectangular pitch (Y axis felt stricter than X
+// axis at the same threshold). Returns distance in scaled units so a constant
+// pixel threshold works in any direction.
+function pointToSegmentDistanceScaled(
+  px: number, py: number,
+  ax: number, ay: number,
+  bx: number, by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const dyS = dy * FIELD_Y_MOVE_SCALE;
+  const lenSq = dx * dx + dyS * dyS;
+  if (lenSq < 1e-9) {
+    const ddx = px - ax;
+    const ddy = (py - ay) * FIELD_Y_MOVE_SCALE;
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+  const ppdx = px - ax;
+  const ppdy = (py - ay) * FIELD_Y_MOVE_SCALE;
+  const t = Math.max(0, Math.min(1, (ppdx * dx + ppdy * dyS) / lenSq));
+  const cx = ax + dx * t;
+  const cy = ay + dy * t;
+  const fdx = px - cx;
+  const fdy = (py - cy) * FIELD_Y_MOVE_SCALE;
+  return Math.sqrt(fdx * fdx + fdy * fdy);
+}
+
 // Ball outcome resolver — engine events are the source of truth for what
 // actually happened in resolution. The client used to predict using submitted
 // actions (which produced visuals that disagreed with the engine's result:
@@ -2347,28 +2377,16 @@ export default function MatchRoomPage() {
   }, [applyIncomingTurnAction, applyParticipantRows, appendEventLog, loadLiveSnapshot, matchId, scheduleParticipantLayoutRebuild, scheduleTurnActionsReconcile, setTurnActionsState]);
 
   // ── Match Flow auto-scroll (sticky bottom) ──
-  // Only scroll the events feed to the bottom when the user is already *near*
-  // the bottom (within 50px). If they've scrolled up to read older events or
-  // inspect a lineup row, leave their scroll position alone — the new event
-  // still appears in the DOM, the user just won't be yanked back.
+  // Auto-scroll Match Flow to the latest event on every new event. Pedro's
+  // explicit ask 2026-05-05: "descer automático pra jogada mais atual". The
+  // older sticky-scroll variant (only follow when within 50px of bottom)
+  // failed when the feed was already taller than the container on load —
+  // user opens the match, sees the first events, and stays stuck there
+  // because they were never "near bottom" to begin with. Length-keyed so
+  // the same set rebuilt by a dedup pass doesn't re-fire.
   useEffect(() => {
-    const endEl = eventsEndRef.current;
-    if (!endEl) return;
-    // The events feed lives inside an `overflow-y-auto` ancestor. Walk up to
-    // find that scrollable container so we can decide whether to follow.
-    let scroller: HTMLElement | null = endEl.parentElement;
-    while (scroller) {
-      const overflowY = window.getComputedStyle(scroller).overflowY;
-      if (overflowY === 'auto' || overflowY === 'scroll') break;
-      scroller = scroller.parentElement;
-    }
-    if (!scroller) return;
-    const distanceFromBottom = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
-    const STICK_THRESHOLD_PX = 50;
-    if (distanceFromBottom <= STICK_THRESHOLD_PX) {
-      endEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
-  }, [events]);
+    eventsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [events.length]);
 
   // ── Match presence channel ──
   // Tracks which authenticated users are *on this page right now*. The sidebar
@@ -3145,20 +3163,16 @@ export default function MatchRoomPage() {
           const decideX = mouseFieldPct?.x ?? pctX;
           const decideY = mouseFieldPct?.y ?? pctY;
           const baseRange = computeMaxMoveRange(drawingAction.fromParticipantId);
-          const circleRadiusField = 9 / INNER_W * 100;
+          // Pixel-true touch threshold: cursor visual radius (9px) + ball graphic
+          // radius (~5.5px) + tiny stroke buffer. Keeps the click acceptance and
+          // the purple-ring render in lockstep on the rectangular pitch (raw
+          // Euclidean was tighter on Y than on X at the same numeric threshold).
+          const looseTouchThreshold = (9 + 5.5) / INNER_W * 100 + 0.3;
 
           // Path A — cursor on the inertia arrow (ball rolling). MUST mirror
-          // the purple-circle render's loose-ball branch AND the engine's
-          // `findLooseBallClaimer` — otherwise click rejects what the user
-          // saw in purple.
-          //   - proximity threshold 2.65 (NOT 1.0): matches engine's
-          //     `distToBall > 2.65 → reject` plus the render's
-          //     `circleRadiusField + INTERCEPT_RADIUS + 1`.
-          //   - reach formula: `distPlayerToTarget ≤ range + 0.5` AND temporal
-          //     `tPlayer ≤ tBallAtTarget + 0.15`. NOT `canReachTrajectoryPoint`
-          //     (that's the live-pass curve `d ≤ t*range + 0.5` which is
-          //     stricter and gives false-rejects against the loose-ball curve
-          //     `d ≤ range*t + range*0.15`).
+          // the purple-circle render's loose-ball branch — otherwise click
+          // rejects what the user saw in purple, OR the menu opens with a
+          // dominate option the engine will reject.
           if (ballInertiaDir) {
             const INERTIA_DISPLAY = inertiaConsumedRef.current ? 0.08 : 0.15;
             const bfx = looseBallPos.x;
@@ -3172,14 +3186,14 @@ export default function MatchRoomPage() {
               const t = clamp(((decideX - bfx) * tdx + (decideY - bfy) * tdy) / tlen2, 0, 1);
               const projX = bfx + tdx * t;
               const projY = bfy + tdy * t;
-              const distToTraj = pointToSegmentDistance(decideX, decideY, bfx, bfy, btx, bty);
+              const distToTraj = pointToSegmentDistanceScaled(decideX, decideY, bfx, bfy, btx, bty);
               const pxToT = (projX - dp.field_x);
               const pyToT = (projY - dp.field_y) * FIELD_Y_SCALE;
               const distPlayerToTarget = Math.sqrt(pxToT * pxToT + pyToT * pyToT);
               const withinReach = distPlayerToTarget <= baseRange + 0.5;
               const tPlayer = baseRange > 0 ? distPlayerToTarget / baseRange : 1;
               const inTime = tPlayer <= t + 0.15;
-              const cursorOnPath = distToTraj <= circleRadiusField + INTERCEPT_RADIUS + 1;
+              const cursorOnPath = distToTraj <= looseTouchThreshold;
               if (cursorOnPath && withinReach && inTime) {
                 setPendingInterceptChoice({
                   participantId: drawingAction.fromParticipantId,
@@ -3204,7 +3218,7 @@ export default function MatchRoomPage() {
           const cyP = (decideY - looseBallPos.y) * FIELD_Y_SCALE;
           const distCursorToBall = Math.sqrt(cxP * cxP + cyP * cyP);
           if (distPlayerToBall <= baseRange + 0.5
-              && distCursorToBall <= circleRadiusField + INTERCEPT_RADIUS + 1) {
+              && distCursorToBall <= looseTouchThreshold) {
             setPendingInterceptChoice({ participantId: drawingAction.fromParticipantId, targetX: looseBallPos.x, targetY: looseBallPos.y });
             setShowActionMenu(drawingAction.fromParticipantId);
             setDrawingAction(null);
@@ -4545,9 +4559,15 @@ export default function MatchRoomPage() {
     header_high: 45,
   };
 
+  // Throw-in is a hand throw, physically shorter than a kick — Pedro 2026-05-05:
+  // halve the max pass range when the set piece is a throw_in. Mirrored in the
+  // engine so server-side range checks match the client's clamp.
+  const THROW_IN_RANGE_FACTOR = 0.5;
+
   const clampPassDistance = (fromX: number, fromY: number, toX: number, toY: number, actionType: string): { x: number; y: number } => {
-    const maxDist = MAX_PASS_DISTANCE[actionType];
+    let maxDist = MAX_PASS_DISTANCE[actionType];
     if (!maxDist) return { x: toX, y: toY };
+    if (activeTurn?.set_piece_type === 'throw_in') maxDist *= THROW_IN_RANGE_FACTOR;
     const dx = toX - fromX;
     const dy = toY - fromY;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -6009,13 +6029,18 @@ export default function MatchRoomPage() {
                   const px = drawingFrom.field_x!;
                   const py = drawingFrom.field_y!;
 
+                  // Pixel-true threshold so visual overlap == purple. Cursor visual
+                  // radius 9px + ball graphic radius ~5.5px = ~14.5px touch radius.
+                  // 14.5px in scaled-X-units = 14.5 * 100 / INNER_W ≈ 1.69. The +0.3
+                  // buffer covers the dashed line stroke width and small antialias.
+                  const looseTouchThreshold = (9 + 5.5) / INNER_W * 100 + 0.3;
                   if (segLenSq <= 1e-6) {
                     // Path B (stationary ball): cursor near the ball point + player
                     // can reach the ball. Mirrors handleSvgClick stationary branch.
                     const cxP = mouseFieldPct.x - looseBallPos.x;
                     const cyP = (mouseFieldPct.y - looseBallPos.y) * FIELD_Y_SCALE;
                     const distCursorToBall = Math.sqrt(cxP * cxP + cyP * cyP);
-                    const cursorOnBall = distCursorToBall <= lbCircleRadiusField + INTERCEPT_RADIUS + 1;
+                    const cursorOnBall = distCursorToBall <= looseTouchThreshold;
                     const dxBall = px - looseBallPos.x;
                     const dyBall = (py - looseBallPos.y) * FIELD_Y_SCALE;
                     const distPlayerToBall = Math.sqrt(dxBall * dxBall + dyBall * dyBall);
@@ -6028,8 +6053,8 @@ export default function MatchRoomPage() {
                     const tProj = Math.max(0, Math.min(1, ((mouseFieldPct.x - looseBallPos.x) * segDx + (mouseFieldPct.y - looseBallPos.y) * segDy) / segLenSq));
                     const projX = looseBallPos.x + segDx * tProj;
                     const projY = looseBallPos.y + segDy * tProj;
-                    const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, looseBallPos.x, looseBallPos.y, endX, endY);
-                    const cursorOnPath = distToTraj <= lbCircleRadiusField + INTERCEPT_RADIUS + 1;
+                    const distToTraj = pointToSegmentDistanceScaled(mouseFieldPct.x, mouseFieldPct.y, looseBallPos.x, looseBallPos.y, endX, endY);
+                    const cursorOnPath = distToTraj <= looseTouchThreshold;
                     const pxToT = projX - px;
                     const pyToT = (projY - py) * FIELD_Y_SCALE;
                     const distPlayerToTarget = Math.sqrt(pxToT * pxToT + pyToT * pyToT);

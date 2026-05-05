@@ -61,6 +61,23 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
   const isGK = menuPlayer?.field_pos === 'GK' || menuPlayer?.slot_position === 'GK' || menuPlayer?.pickup_slot_id === 'GK';
   const isBH = activeBallHolderId === showActionMenu;
   const isGKBH = isGK && isBH;
+  // Reposição (hand throw) labels apply ONLY when the GK is inside their own
+  // penalty area — outside the PA the GK is acting like a regular player and
+  // their passes are kicked, not thrown. Pedro 2026-05-05: "fora da área usa
+  // passe normal." Falls back to "in area" if we can't tell what side they
+  // defend so we don't accidentally show "PASSE" inside the PA.
+  const isGKBHInOwnArea = (() => {
+    if (!isGKBH || !menuPlayer) return false;
+    const gx = (menuPlayer.field_x ?? menuPlayer.pos_x ?? 50) as number;
+    const gy = (menuPlayer.field_y ?? menuPlayer.pos_y ?? 50) as number;
+    if (!match || !menuPlayer.club_id) return true;
+    const isHome = menuPlayer.club_id === (match as any).home_club_id;
+    const isSecondHalf = ((match as any).current_half ?? 1) >= 2;
+    const defendsLeft = isHome ? !isSecondHalf : isSecondHalf;
+    const paMinX = defendsLeft ? 0 : 82;
+    const paMaxX = defendsLeft ? 18 : 100;
+    return gx >= paMinX && gx <= paMaxX && gy >= 20 && gy <= 80;
+  })();
 
   // Determine intercept zone for label context
   const pic = pendingInterceptChoice;
@@ -82,9 +99,9 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
         else if (a === 'no_action') icon = '\u2298';
 
         // ── Pass actions ──
-        else if (a === 'pass_low') { icon = '\u27A1'; if (isGKBH) label = i18n.t('match_room:actions_special.gk_pass_short'); }
-        else if (a === 'pass_high') { icon = '\u2934'; if (isGKBH) label = i18n.t('match_room:actions_special.gk_pass_medium'); }
-        else if (a === 'pass_launch') { icon = '\uD83D\uDE80'; if (isGKBH) label = i18n.t('match_room:actions_special.gk_pass_long'); }
+        else if (a === 'pass_low') { icon = '\u27A1'; if (isGKBHInOwnArea) label = i18n.t('match_room:actions_special.gk_pass_short'); }
+        else if (a === 'pass_high') { icon = '\u2934'; if (isGKBHInOwnArea) label = i18n.t('match_room:actions_special.gk_pass_medium'); }
+        else if (a === 'pass_launch') { icon = '\uD83D\uDE80'; if (isGKBHInOwnArea) label = i18n.t('match_room:actions_special.gk_pass_long'); }
 
         // ── Shoot actions ──
         else if (a === 'shoot_controlled') icon = '\uD83C\uDFAF';

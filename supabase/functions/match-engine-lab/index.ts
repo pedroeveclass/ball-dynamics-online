@@ -10557,10 +10557,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       // Pin started_at/ends_at right before the INSERT so the duration the
       // client sees on the new turn matches PHASE_DURATION_MS exactly,
       // regardless of how long the work above (matches update, ball position
-      // resolution, post-goal reset) actually took.
+      // resolution, post-goal reset) actually took. ALSO add the resolution
+      // animation duration (scriptDurationMs) so the planning phase keeps
+      // its full configured length AFTER the animation finishes — without
+      // this offset the first ~1s of ball_holder is consumed by the client
+      // animator and the user is left with <9s to decide. Pedro 2026-05-05.
       const insertNow = Date.now();
       const nextPhaseStart = new Date(insertNow).toISOString();
-      const nextPhaseEnd = new Date(insertNow + nextPhaseDuration).toISOString();
+      const nextPhaseEnd = new Date(insertNow + nextPhaseDuration + scriptDurationMs).toISOString();
 
       const { data: insertedTurn } = await supabase.from('match_turns').insert({
         match_id, turn_number: newTurnNumber,
