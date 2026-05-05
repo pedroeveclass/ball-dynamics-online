@@ -338,7 +338,7 @@ export default function PublicPlayerPage() {
 
   return (
     <Layout>
-      <div className="space-y-4">
+      <div className="space-y-6 max-w-2xl">
         <div className="stat-card p-4">
           <div className="flex items-start gap-4">
             <PlayerAvatar
