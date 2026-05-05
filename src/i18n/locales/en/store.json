@@ -61,6 +61,15 @@
     "level": "Level {{value}}",
     "clear": "Clear"
   },
+  "my_filters": {
+    "status_label": "Status",
+    "status_all": "All",
+    "status_active": "Equipped",
+    "status_inventory": "In inventory",
+    "status_cancelling": "Cancelling",
+    "category_label": "Category",
+    "category_all": "All"
+  },
   "color_picker": {
     "title": "Pick the colors",
     "subtitle": "Customize the color of {{item}} before buying.",

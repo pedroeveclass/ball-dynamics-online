@@ -112,6 +112,10 @@ export default function StorePage() {
   const [filterLevel, setFilterLevel] = useState<number | null>(null);
   const [filterBonus, setFilterBonus] = useState<string | null>(null);
   const [playerPurchases, setPlayerPurchases] = useState<(Purchase & { item?: StoreItem })[]>([]);
+  // "Meus Itens" filters: 'all' | 'active' | 'inventory' | 'cancelling' for status,
+  // 'all' | display-category key for category. Combined with AND.
+  const [myStatusFilter, setMyStatusFilter] = useState<'all' | 'active' | 'inventory' | 'cancelling'>('all');
+  const [myCategoryFilter, setMyCategoryFilter] = useState<string>('all');
 
   // Gift dialog state (for managers)
   const [giftItem, setGiftItem] = useState<StoreItem | null>(null);
@@ -669,13 +673,121 @@ export default function StorePage() {
           </TabsList>
 
           {/* Meus Itens tab */}
-          {!isManager && (
+          {!isManager && (() => {
+            // Counters per chip — shown next to each filter so the user knows
+            // how many items will remain before clicking. Computed off the
+            // unfiltered list so the chip you're currently NOT on still shows
+            // its real total.
+            const statusCounts = {
+              all: playerPurchases.length,
+              active: playerPurchases.filter(p => p.status === 'active').length,
+              inventory: playerPurchases.filter(p => p.status === 'inventory').length,
+              cancelling: playerPurchases.filter(p => p.status === 'cancelling').length,
+            };
+            const categoryCounts: Record<string, number> = { all: playerPurchases.length };
+            for (const p of playerPurchases) {
+              const cat = p.item ? (DISPLAY_CATEGORIES[p.item.category] || 'outros') : 'outros';
+              categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+            }
+            const filtered = playerPurchases.filter(p => {
+              if (myStatusFilter !== 'all' && p.status !== myStatusFilter) return false;
+              if (myCategoryFilter !== 'all') {
+                const cat = p.item ? (DISPLAY_CATEGORIES[p.item.category] || 'outros') : 'outros';
+                if (cat !== myCategoryFilter) return false;
+              }
+              return true;
+            });
+            // Hide the filter UI when there's nothing to filter (≤3 items) —
+            // chip rows are noise on a small inventory.
+            const showFilters = playerPurchases.length > 3;
+            const statusChips: Array<{ id: typeof myStatusFilter; label: string; count: number }> = [
+              { id: 'all',        label: t('my_filters.status_all'),        count: statusCounts.all },
+              { id: 'active',     label: t('my_filters.status_active'),     count: statusCounts.active },
+              { id: 'inventory',  label: t('my_filters.status_inventory'),  count: statusCounts.inventory },
+              { id: 'cancelling', label: t('my_filters.status_cancelling'), count: statusCounts.cancelling },
+            ];
+            const categoryChips: Array<{ id: string; label: string; count: number }> = [
+              { id: 'all', label: t('my_filters.category_all'), count: categoryCounts.all ?? 0 },
+              ...['cosmeticos', 'chuteiras', 'luvas', 'consumiveis', 'servicos', 'outros']
+                .filter(cat => (categoryCounts[cat] ?? 0) > 0)
+                .map(cat => ({ id: cat, label: categoryTabLabel(cat), count: categoryCounts[cat] ?? 0 })),
+            ];
+            return (
             <TabsContent value="meus_itens" className="mt-4 space-y-4">
               {playerPurchases.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">{t('states.empty_inventory')}</p>
               ) : (
+                <>
+                  {showFilters && (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">
+                          {t('my_filters.status_label')}
+                        </span>
+                        {statusChips.map(chip => {
+                          const active = myStatusFilter === chip.id;
+                          const disabled = chip.count === 0 && chip.id !== 'all';
+                          return (
+                            <button
+                              key={chip.id}
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => setMyStatusFilter(chip.id)}
+                              className={`text-xs rounded-full px-2.5 py-1 border transition ${
+                                active
+                                  ? 'bg-tactical text-tactical-foreground border-tactical'
+                                  : 'bg-card border-border hover:border-tactical/40'
+                              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            >
+                              {chip.label}
+                              <span className={`ml-1 text-[10px] ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
+                                ({chip.count})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">
+                          {t('my_filters.category_label')}
+                        </span>
+                        {categoryChips.map(chip => {
+                          const active = myCategoryFilter === chip.id;
+                          return (
+                            <button
+                              key={chip.id}
+                              type="button"
+                              onClick={() => setMyCategoryFilter(chip.id)}
+                              className={`text-xs rounded-full px-2.5 py-1 border transition ${
+                                active
+                                  ? 'bg-tactical text-tactical-foreground border-tactical'
+                                  : 'bg-card border-border hover:border-tactical/40'
+                              }`}
+                            >
+                              {chip.label}
+                              <span className={`ml-1 text-[10px] ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
+                                ({chip.count})
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {(myStatusFilter !== 'all' || myCategoryFilter !== 'all') && (
+                          <button
+                            type="button"
+                            onClick={() => { setMyStatusFilter('all'); setMyCategoryFilter('all'); }}
+                            className="text-xs text-destructive hover:underline ml-1"
+                          >
+                            {t('filters.clear')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {filtered.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">{t('states.no_filter_match')}</p>
+                  ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {playerPurchases.map(p => {
+                  {filtered.map(p => {
                     const item = p.item;
                     if (!item) return null;
                     const isEquipment = item.category === 'boots' || item.category === 'gloves' || item.category === 'cosmetic';
@@ -788,9 +900,12 @@ export default function StorePage() {
                     );
                   })}
                 </div>
+                  )}
+                </>
               )}
             </TabsContent>
-          )}
+            );
+          })()}
 
           {categoryOrder.filter(c => c !== 'meus_itens').map(cat => {
             let catItems = grouped[cat];
