@@ -272,6 +272,7 @@ export default function StorePage() {
     'Caneleira Personalizada', 'Custom Shin Guards',
     'Camiseta Segunda Pele', 'Compression Top',
     'Calça Segunda Pele', 'Compression Tights',
+    'Manguito', 'Arm Sleeve',
   ]);
   // V2-only cosmetics — each one renders a CosmeticPurchaseDialog with a
   // live avatar preview + the controls the item needs (variant, color, side).
@@ -406,7 +407,7 @@ export default function StorePage() {
   }
 
   // Cosmetics that take a left/right arm choice when equipping.
-  const SIDE_AWARE_COSMETICS = new Set(['Munhequeira', 'Wristband', 'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
+  const SIDE_AWARE_COSMETICS = new Set(['Munhequeira', 'Wristband', 'Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps', 'Manguito', 'Arm Sleeve']);
   // Cosmetics that take a long/short sleeve choice instead (winter glove).
   const SLEEVE_AWARE_COSMETICS = new Set(['Luva de Inverno', 'Winter Gloves']);
   // Compression top / tights pick "both / right / left" at equip time.

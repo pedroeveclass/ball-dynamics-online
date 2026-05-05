@@ -36,6 +36,8 @@ interface PlayerAvatarV2Props {
   secondSkinShirtSide?: 'left' | 'right' | 'both';
   secondSkinPantsColor?: string | null;
   secondSkinPantsSide?: 'left' | 'right' | 'both';
+  manguitoColor?: string | null;
+  manguitoSide?: 'left' | 'right';
   fallbackSeed?: string;
   hideShirt?: boolean;
   outfit?: 'player' | 'coach';
@@ -89,6 +91,8 @@ export function PlayerAvatarV2({
   secondSkinShirtSide = 'both',
   secondSkinPantsColor,
   secondSkinPantsSide = 'both',
+  manguitoColor,
+  manguitoSide,
   fallbackSeed,
   hideShirt,
   outfit = 'player',
@@ -142,6 +146,8 @@ export function PlayerAvatarV2({
       secondSkinShirtSide,
       secondSkinPantsColor,
       secondSkinPantsSide,
+      manguitoColor,
+      manguitoSide,
       jerseyNumber,
       crestUrl: clubCrestUrl,
       numberColor,
@@ -175,6 +181,7 @@ export function PlayerAvatarV2({
     bicepsBandColor, bicepsBandSide, wristbandColor, wristbandSide,
     secondSkinShirtColor, secondSkinShirtSide,
     secondSkinPantsColor, secondSkinPantsSide,
+    manguitoColor, manguitoSide,
     jerseyNumber, clubCrestUrl, numberColor, hideShirt, outfit, jerseyPattern,
     tattooDesignRight, tattooColorRight, tattooDesignLeft, tattooColorLeft,
     facePaintDesign, facePaintColor, facePaintColor2,

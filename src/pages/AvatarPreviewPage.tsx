@@ -49,6 +49,9 @@ export default function AvatarPreviewPage() {
   const [hasSecondSkinPants, setHasSecondSkinPants] = useState(false);
   const [secondSkinPantsColor, setSecondSkinPantsColor] = useState<string>('#1A1A1A');
   const [secondSkinPantsSide, setSecondSkinPantsSide] = useState<'left' | 'right' | 'both'>('both');
+  const [hasManguito, setHasManguito] = useState(false);
+  const [manguitoColor, setManguitoColor] = useState<string>('#1A1A1A');
+  const [manguitoSide, setManguitoSide] = useState<'left' | 'right'>('right');
   const [hideShirt, setHideShirt] = useState(false);
   const [outfit, setOutfit] = useState<'player' | 'coach'>('player');
   const [jerseyPattern, setJerseyPattern] = useState<string>('solid');
@@ -259,6 +262,18 @@ export default function AvatarPreviewPage() {
               <>
                 <ColorPicker value={secondSkinPantsColor} onChange={setSecondSkinPantsColor} resetTo="#1A1A1A" />
                 <SideToggleBoth value={secondSkinPantsSide} onChange={setSecondSkinPantsSide} />
+              </>
+            )}
+          </Field>
+
+          <Field label="Manguito">
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <input type="checkbox" checked={hasManguito} onChange={(e) => setHasManguito(e.target.checked)} /> Usar
+            </label>
+            {hasManguito && (
+              <>
+                <ColorPicker value={manguitoColor} onChange={setManguitoColor} resetTo="#1A1A1A" />
+                <SideToggle value={manguitoSide} onChange={setManguitoSide} />
               </>
             )}
           </Field>
@@ -475,6 +490,8 @@ export default function AvatarPreviewPage() {
               secondSkinShirtSide={secondSkinShirtSide}
               secondSkinPantsColor={hasSecondSkinPants ? secondSkinPantsColor : null}
               secondSkinPantsSide={secondSkinPantsSide}
+              manguitoColor={hasManguito ? manguitoColor : null}
+              manguitoSide={manguitoSide}
               hideShirt={hideShirt}
               outfit={outfit}
               jerseyPattern={jerseyPattern}

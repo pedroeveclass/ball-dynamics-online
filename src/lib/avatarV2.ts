@@ -446,6 +446,9 @@ export interface ComposeOptions {
   secondSkinShirtSide?: 'left' | 'right' | 'both';
   secondSkinPantsColor?: string | null;
   secondSkinPantsSide?: 'left' | 'right' | 'both';
+  // Manguito — single-arm sleeve from shoulder to wrist. Sold per arm.
+  manguitoColor?: string | null;
+  manguitoSide?: 'left' | 'right';
   jerseyNumber?: number | null;
   crestUrl?: string | null;
   numberColor?: string;        // override; defaults to readable foreground
@@ -869,6 +872,20 @@ export function composePlayerSvg(opts: ComposeOptions): string {
        }</g>`
     : '';
 
+  // Manguito — single-arm sleeve, shoulder to wrist. Mechanically the
+  // same paint-the-bracos-arm trick as the segunda pele camiseta but
+  // sold as its own item with a forced single side (cada compra = um
+  // braço). Renders alongside the second-skin sleeves so a player can
+  // own both at once on different arms.
+  const manguito = opts.manguitoColor && opts.manguitoSide
+    ? `<g clip-path="url(#v2sleeveClip)">${
+         tintAllFills(
+           filterPathsBySide(innerBracos, opts.manguitoSide),
+           opts.manguitoColor,
+         )
+       }</g>`
+    : '';
+
   // Outfielder winter glove: paint just the hand region of the bracos
   // asset (below the second-skin cutoff) with gloveColor. Goalkeepers
   // keep the dedicated luvas asset overlay further down. Mirror clip
@@ -897,6 +914,7 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     // rendering so the player still sees everything they bought.
     opts.hideShirt ? '' : tintSkin(innerBracos, opts.skinTone),
     secondSkinSleeves,
+    manguito,
     outfielderWinterGlove,
     caneleira,
     tintSocks(sockSrc, opts.primaryColor, opts.secondaryColor),

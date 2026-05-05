@@ -47,6 +47,10 @@ export interface PlayerCosmetics {
   secondSkinShirtSide: CosmeticLimbSide | null;
   secondSkinPantsColor: string | null;
   secondSkinPantsSide: CosmeticLimbSide | null;
+  // Manguito — single-arm sleeve, side picked at purchase. Cada compra
+  // veste um braço só.
+  manguitoColor: string | null;
+  manguitoSide: CosmeticSide | null;
   // Visual background — paints the area behind the avatar in the profile /
   // public-page Visual section. Driven by the "Fundo do Visual" cosmetic.
   // backgroundVariant chooses how to compose color1 + color2 (or the
@@ -108,6 +112,8 @@ const EMPTY: PlayerCosmetics = {
   secondSkinShirtSide: null,
   secondSkinPantsColor: null,
   secondSkinPantsSide: null,
+  manguitoColor: null,
+  manguitoSide: null,
   backgroundVariant: null,
   backgroundColor: null,
   backgroundColor2: null,
@@ -143,6 +149,7 @@ const SHIN_GUARD_NAMES = new Set(['Caneleira Personalizada', 'Custom Shin Guards
 const SHORT_SOCKS_NAMES = new Set(['Meião Curto', 'Short Socks']);
 const SECOND_SKIN_SHIRT_NAMES = new Set(['Camiseta Segunda Pele', 'Compression Top']);
 const SECOND_SKIN_PANTS_NAMES = new Set(['Calça Segunda Pele', 'Compression Tights']);
+const MANGUITO_NAMES = new Set(['Manguito', 'Arm Sleeve']);
 const VISUAL_BG_NAMES = new Set(['Fundo do Visual', 'Visual Background']);
 const TATTOO_NAMES = new Set(['Tatuagem', 'Tattoo']);
 const FACE_PAINT_NAMES = new Set(['Pintura Facial', 'Face Paint']);
@@ -236,6 +243,8 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let secondSkinShirtSide: CosmeticLimbSide | null = null;
   let secondSkinPantsColor: string | null = null;
   let secondSkinPantsSide: CosmeticLimbSide | null = null;
+  let manguitoColor: string | null = null;
+  let manguitoSide: CosmeticSide | null = null;
   let backgroundVariant: BackgroundVariant | null = null;
   let backgroundColor: string | null = null;
   let backgroundColor2: string | null = null;
@@ -378,6 +387,9 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     } else if (matchesAny(it, SECOND_SKIN_PANTS_NAMES) && !secondSkinPantsColor) {
       secondSkinPantsColor = p.color;
       secondSkinPantsSide = normalizeLimbSide(p.side);
+    } else if (matchesAny(it, MANGUITO_NAMES) && !manguitoColor) {
+      manguitoColor = p.color;
+      manguitoSide = normalizeSide(p.side) ?? 'right';
     }
   }
 
@@ -398,6 +410,8 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     secondSkinShirtSide,
     secondSkinPantsColor,
     secondSkinPantsSide,
+    manguitoColor,
+    manguitoSide,
     backgroundVariant,
     backgroundColor,
     backgroundColor2,
