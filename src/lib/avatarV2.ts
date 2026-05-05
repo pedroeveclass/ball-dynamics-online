@@ -902,6 +902,14 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   const appearance = opts.appearance ?? DEFAULT_APPEARANCE;
   const seed = opts.seed ?? 'avatarV2';
 
+  // Arm cosmetics that sit on top of the bracos but under the
+  // camiseta. When hideShirt is on, the tronco.svg replaces both
+  // the bracos AND the torso visually; rendering these BEFORE the
+  // tronco would let the tronco paint over them. We move them
+  // AFTER the tronco swap in that case so they stay visible.
+  const armCosmeticsBundle = [secondSkinSleeves, manguito, outfielderWinterGlove]
+    .filter(Boolean).join('');
+
   const layers: string[] = [
     // Head BACK layer goes FIRST (behind body): silhouette + eyes,
     // eyebrows, nose, mouth, accessories, hair top. The neck shadow
@@ -909,14 +917,10 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     buildHeadBackSvg(appearance),
     tintSkin(innerPerna, opts.skinTone),
     secondSkinLeggings,
-    // When hiding the shirt we also hide the bracos (arms) — the
-    // tronco.svg already includes the chest+arm shape. Cosmetics that
-    // sit ON the arm (segunda pele de manga, luva de inverno) keep
-    // rendering so the player still sees everything they bought.
+    // When the shirt is on, the natural arm + arm cosmetics render
+    // here so the camiseta sleeve cap covers their shoulder portion.
     opts.hideShirt ? '' : tintSkin(innerBracos, opts.skinTone),
-    secondSkinSleeves,
-    manguito,
-    outfielderWinterGlove,
+    opts.hideShirt ? '' : armCosmeticsBundle,
     caneleira,
     tintSocks(sockSrc, opts.primaryColor, opts.secondaryColor),
     tintCleats(innerChuteira, opts.cleatColor ?? null),
@@ -925,6 +929,9 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     // when hideShirt is on. Skin-tinted from the same skinTone so
     // it matches the head + legs.
     opts.hideShirt ? tintSkin(innerTronco, opts.skinTone) : torso,
+    // When shirtless, the arm cosmetics render AFTER the tronco so
+    // the swap doesn't paint over them.
+    opts.hideShirt ? armCosmeticsBundle : '',
     (opts.hideShirt || isCoach) ? '' : crestAndNumberSvg(opts),
     // Head FRONT layer (just facialHair) renders AFTER the camiseta
     // so big beards drape naturally over the collar. Empty when the
