@@ -84,7 +84,7 @@ export interface SeasonRecapFacts {
   topAssistsClub: string | null;
 
   goldenGloveName: string | null;
-  goldenGloveCleanSheets: number;
+  goldenGloveSaves: number;
   goldenGloveClub: string | null;
 
   topTacklesName: string | null;
@@ -242,8 +242,8 @@ function buildVars(f: SeasonRecapFacts, lang: 'pt' | 'en'): Record<string, strin
     : '';
   const goldenGloveClause = f.goldenGloveName
     ? (lang === 'en'
-        ? `, Golden Glove to ${f.goldenGloveName} (${f.goldenGloveClub ?? ''}, ${f.goldenGloveCleanSheets} clean sheets)`
-        : `, Golden Glove pra ${f.goldenGloveName} (${f.goldenGloveClub ?? ''}, ${f.goldenGloveCleanSheets} clean sheets)`)
+        ? `, Golden Glove to ${f.goldenGloveName} (${f.goldenGloveClub ?? ''}, ${f.goldenGloveSaves} saves)`
+        : `, Luva de Ouro pra ${f.goldenGloveName} (${f.goldenGloveClub ?? ''}, ${f.goldenGloveSaves} defesas)`)
     : '';
   const topAssistsClause = f.topAssistsName
     ? (lang === 'en'
@@ -378,8 +378,12 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
   const third = standings[2] ?? null;
   const relegatedSlice = numClubs >= 8 ? standings.slice(numClubs - 4) : [];
 
-  // Match aggregates
-  let totalGoals = 0;
+  // Match aggregates.
+  // totalMatches counts only fixtures that actually played (league_matches
+  // with a non-null match_id); standings.goals_for sums the corresponding
+  // goals. Fixtures left dangling in league_matches by old force-finish
+  // flows (no `matches` row, no standings update) are excluded so the
+  // average is meaningful.
   let biggestWin: SeasonRecapFacts['biggestWin'] = null;
   let biggestWinDiff = -1;
   let highestScoring: SeasonRecapFacts['highestScoringMatch'] = null;
@@ -387,7 +391,6 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
   for (const m of matches ?? []) {
     const sum = (m.home_score ?? 0) + (m.away_score ?? 0);
     const diff = Math.abs((m.home_score ?? 0) - (m.away_score ?? 0));
-    totalGoals += sum;
     if (diff > biggestWinDiff) {
       biggestWinDiff = diff;
       const lm = (leagueMatches ?? []).find((x: any) => x.match_id === m.id);
@@ -411,7 +414,8 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
       };
     }
   }
-  const totalMatches = (matches ?? []).length;
+  const totalMatches = (leagueMatches ?? []).filter((lm: any) => lm.match_id).length;
+  const totalGoals = (standingsRaw ?? []).reduce((sum: number, s: any) => sum + (s.goals_for ?? 0), 0);
   const averageGoals = totalMatches > 0 ? totalGoals / totalMatches : 0;
 
   // Awards table — note: player_awards has no club_id column; we resolve the
@@ -648,7 +652,7 @@ async function extractFacts(supabase: SupabaseClient, seasonId: string): Promise
     topAssistsValue: ta.value,
     topAssistsClub: ta.club,
     goldenGloveName: gg.name,
-    goldenGloveCleanSheets: gg.value,
+    goldenGloveSaves: gg.value,
     goldenGloveClub: gg.club,
     topTacklesName: tt.name,
     topTacklesValue: tt.value,
