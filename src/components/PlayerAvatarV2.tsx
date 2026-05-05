@@ -40,6 +40,25 @@ interface PlayerAvatarV2Props {
   hideShirt?: boolean;
   outfit?: 'player' | 'coach';
   jerseyPattern?: string | null;
+  // Cosmetic prototypes (sandbox / future store items)
+  tattooDesign?: string | null;
+  tattooSide?: 'left' | 'right';
+  tattooColor?: string;
+  facePaintDesign?: string | null;
+  facePaintColor?: string;
+  facePaintColor2?: string;
+  hasEarring?: boolean;
+  earringSide?: 'left' | 'right' | 'both';
+  earringColor?: string;
+  hasHeadband?: boolean;
+  headbandColor?: string;
+  hasNecklace?: boolean;
+  necklaceColor?: string;
+  hasBracelet?: boolean;
+  braceletSide?: 'left' | 'right';
+  braceletColor?: string;
+  hasBandana?: boolean;
+  bandanaColor?: string;
   className?: string;
 }
 
@@ -73,6 +92,24 @@ export function PlayerAvatarV2({
   hideShirt,
   outfit = 'player',
   jerseyPattern,
+  tattooDesign,
+  tattooSide,
+  tattooColor,
+  facePaintDesign,
+  facePaintColor,
+  facePaintColor2,
+  hasEarring,
+  earringSide,
+  earringColor,
+  hasHeadband,
+  headbandColor,
+  hasNecklace,
+  necklaceColor,
+  hasBracelet,
+  braceletSide,
+  braceletColor,
+  hasBandana,
+  bandanaColor,
   className,
 }: PlayerAvatarV2Props) {
   const a = appearance ?? DEFAULT_APPEARANCE;
@@ -109,6 +146,24 @@ export function PlayerAvatarV2({
       hideShirt,
       outfit,
       jerseyPattern,
+      tattooDesign,
+      tattooSide,
+      tattooColor,
+      facePaintDesign,
+      facePaintColor,
+      facePaintColor2,
+      hasEarring,
+      earringSide,
+      earringColor,
+      hasHeadband,
+      headbandColor,
+      hasNecklace,
+      necklaceColor,
+      hasBracelet,
+      braceletSide,
+      braceletColor,
+      hasBandana,
+      bandanaColor,
     };
     return composePlayerSvg(opts);
   }, [
@@ -118,6 +173,12 @@ export function PlayerAvatarV2({
     secondSkinShirtColor, secondSkinShirtSide,
     secondSkinPantsColor, secondSkinPantsSide,
     jerseyNumber, clubCrestUrl, numberColor, hideShirt, outfit, jerseyPattern,
+    tattooDesign, tattooSide, tattooColor,
+    facePaintDesign, facePaintColor, facePaintColor2,
+    hasEarring, earringSide, earringColor,
+    hasHeadband, headbandColor, hasNecklace, necklaceColor,
+    hasBracelet, braceletSide, braceletColor,
+    hasBandana, bandanaColor,
   ]);
 
   // Face variant: clip the composed SVG to the head region only.

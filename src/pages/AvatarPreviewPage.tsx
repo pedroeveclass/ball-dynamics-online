@@ -53,6 +53,26 @@ export default function AvatarPreviewPage() {
   const [outfit, setOutfit] = useState<'player' | 'coach'>('player');
   const [jerseyPattern, setJerseyPattern] = useState<string>('solid');
 
+  // Cosmetic prototypes (sandbox)
+  const [tattooDesign, setTattooDesign] = useState<string>('none');
+  const [tattooSide, setTattooSide] = useState<'left' | 'right'>('right');
+  const [tattooColor, setTattooColor] = useState<string>('#1A1A1A');
+  const [facePaintDesign, setFacePaintDesign] = useState<string>('none');
+  const [facePaintColor, setFacePaintColor] = useState<string>('#FFD600');
+  const [facePaintColor2, setFacePaintColor2] = useState<string>('#0066CC');
+  const [hasEarring, setHasEarring] = useState(false);
+  const [earringSide, setEarringSide] = useState<'left' | 'right' | 'both'>('both');
+  const [earringColor, setEarringColor] = useState<string>('#FFD600');
+  const [hasHeadband, setHasHeadband] = useState(false);
+  const [headbandColor, setHeadbandColor] = useState<string>('#D32F2F');
+  const [hasNecklace, setHasNecklace] = useState(false);
+  const [necklaceColor, setNecklaceColor] = useState<string>('#FFD600');
+  const [hasBracelet, setHasBracelet] = useState(false);
+  const [braceletSide, setBraceletSide] = useState<'left' | 'right'>('right');
+  const [braceletColor, setBraceletColor] = useState<string>('#C9A227');
+  const [hasBandana, setHasBandana] = useState(false);
+  const [bandanaColor, setBandanaColor] = useState<string>('#D32F2F');
+
   // Face state — drives every selectable slot of the DiceBear-style head.
   const [hair, setHair] = useState<string>(DEFAULT_APPEARANCE.hair);
   // Hex with leading '#'. Stripped to bare hex when piped into appearance.
@@ -251,6 +271,91 @@ export default function AvatarPreviewPage() {
             </label>
           </Field>
 
+          <hr style={{ margin: '14px 0', border: 'none', borderTop: '2px dashed #c33' }} />
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: '#c33' }}>Protótipos novos (sandbox)</div>
+
+          <Field label="Tatuagem (bíceps)">
+            <select value={tattooDesign} onChange={(e) => setTattooDesign(e.target.value)} style={{ width: '100%' }}>
+              <option value="none">Nenhuma</option>
+              <option value="tribal">Tribal</option>
+              <option value="cross">Cruz</option>
+              <option value="heart">Coração</option>
+              <option value="anchor">Âncora</option>
+              <option value="star">Estrela</option>
+            </select>
+            {tattooDesign !== 'none' && (
+              <div style={{ marginTop: 4 }}>
+                <ColorPicker value={tattooColor} onChange={setTattooColor} resetTo="#1A1A1A" />
+                <SideToggle value={tattooSide} onChange={setTattooSide} />
+              </div>
+            )}
+          </Field>
+
+          <Field label="Pintura facial">
+            <select value={facePaintDesign} onChange={(e) => setFacePaintDesign(e.target.value)} style={{ width: '100%' }}>
+              <option value="none">Nenhuma</option>
+              <option value="brasil">Brasil (faixas amarela+azul)</option>
+              <option value="horizontal">Faixa horizontal</option>
+              <option value="two_stripes">Duas listras (war paint)</option>
+              <option value="wings">Asas laterais</option>
+            </select>
+            {facePaintDesign !== 'none' && (
+              <div style={{ marginTop: 4 }}>
+                <ColorPicker value={facePaintColor} onChange={setFacePaintColor} resetTo="#FFD600" />
+                {facePaintDesign === 'brasil' && (
+                  <div style={{ marginTop: 4 }}>
+                    <ColorPicker value={facePaintColor2} onChange={setFacePaintColor2} resetTo="#0066CC" />
+                  </div>
+                )}
+              </div>
+            )}
+          </Field>
+
+          <Field label="Brinco">
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <input type="checkbox" checked={hasEarring} onChange={(e) => setHasEarring(e.target.checked)} /> Usar
+            </label>
+            {hasEarring && (
+              <>
+                <ColorPicker value={earringColor} onChange={setEarringColor} resetTo="#FFD600" />
+                <SideToggleBoth value={earringSide} onChange={setEarringSide} />
+              </>
+            )}
+          </Field>
+
+          <Field label="Headband (faixa de cabelo)">
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <input type="checkbox" checked={hasHeadband} onChange={(e) => setHasHeadband(e.target.checked)} /> Usar
+            </label>
+            {hasHeadband && <ColorPicker value={headbandColor} onChange={setHeadbandColor} resetTo="#D32F2F" />}
+          </Field>
+
+          <Field label="Cordão (necklace)">
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <input type="checkbox" checked={hasNecklace} onChange={(e) => setHasNecklace(e.target.checked)} /> Usar
+            </label>
+            {hasNecklace && <ColorPicker value={necklaceColor} onChange={setNecklaceColor} resetTo="#FFD600" />}
+          </Field>
+
+          <Field label="Pulseira (fina)">
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <input type="checkbox" checked={hasBracelet} onChange={(e) => setHasBracelet(e.target.checked)} /> Usar
+            </label>
+            {hasBracelet && (
+              <>
+                <ColorPicker value={braceletColor} onChange={setBraceletColor} resetTo="#C9A227" />
+                <SideToggle value={braceletSide} onChange={setBraceletSide} />
+              </>
+            )}
+          </Field>
+
+          <Field label="Bandana">
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <input type="checkbox" checked={hasBandana} onChange={(e) => setHasBandana(e.target.checked)} /> Usar
+            </label>
+            {hasBandana && <ColorPicker value={bandanaColor} onChange={setBandanaColor} resetTo="#D32F2F" />}
+          </Field>
+
           <hr style={{ margin: '14px 0', border: 'none', borderTop: '1px solid #ddd' }} />
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Rosto</div>
 
@@ -357,6 +462,24 @@ export default function AvatarPreviewPage() {
               hideShirt={hideShirt}
               outfit={outfit}
               jerseyPattern={jerseyPattern}
+              tattooDesign={tattooDesign === 'none' ? null : tattooDesign}
+              tattooSide={tattooSide}
+              tattooColor={tattooColor}
+              facePaintDesign={facePaintDesign === 'none' ? null : facePaintDesign}
+              facePaintColor={facePaintColor}
+              facePaintColor2={facePaintColor2}
+              hasEarring={hasEarring}
+              earringSide={earringSide}
+              earringColor={earringColor}
+              hasHeadband={hasHeadband}
+              headbandColor={headbandColor}
+              hasNecklace={hasNecklace}
+              necklaceColor={necklaceColor}
+              hasBracelet={hasBracelet}
+              braceletSide={braceletSide}
+              braceletColor={braceletColor}
+              hasBandana={hasBandana}
+              bandanaColor={bandanaColor}
               className="w-full h-full"
             />
           </div>

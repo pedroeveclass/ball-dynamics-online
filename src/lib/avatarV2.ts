@@ -465,6 +465,35 @@ export interface ComposeOptions {
   // '_diagonal', 'stripe_vertical_single' | '_double' | '_triple',
   // 'stripe_horizontal_*', 'stripe_diagonal_*', 'stripe_*_unique'.
   jerseyPattern?: string | null;
+
+  // ── Cosmetic prototypes (sandbox / future store items) ──
+  // Tatuagem no bíceps — single arm only (cada compra = um braço).
+  // design = 'tribal' | 'cross' | 'heart' | 'anchor' | 'star'.
+  tattooDesign?: string | null;
+  tattooSide?: 'left' | 'right';
+  tattooColor?: string;
+  // Pintura facial. design = 'brasil' | 'horizontal' | 'two_stripes' | 'wings'.
+  facePaintDesign?: string | null;
+  facePaintColor?: string;
+  facePaintColor2?: string;
+  // Brinco — pequena bolinha na orelha.
+  hasEarring?: boolean;
+  earringSide?: 'left' | 'right' | 'both';
+  earringColor?: string;
+  // Faixa de cabelo (rambo style) na testa.
+  hasHeadband?: boolean;
+  headbandColor?: string;
+  // Cordão (necklace) — V no peito, em cima da camisa.
+  hasNecklace?: boolean;
+  necklaceColor?: string;
+  // Pulseira — anel fino no pulso (mais delicado que a munhequeira).
+  // Single wrist only — cada compra = um braço.
+  hasBracelet?: boolean;
+  braceletSide?: 'left' | 'right';
+  braceletColor?: string;
+  // Bandana — pano amarrado em volta da cabeça.
+  hasBandana?: boolean;
+  bandanaColor?: string;
 }
 
 // Coach kit (matches V1's COACH_SHIRT / COACH_SHIRT_DETAIL constants
@@ -616,6 +645,143 @@ function crestAndNumberSvg(opts: ComposeOptions): string {
     );
   }
   return parts.length ? `<g>${parts.join('')}</g>` : '';
+}
+
+// ─────────────────────────────────────────────────────────────
+// Cosmetic prototypes — inline SVG primitives so Pedro can see
+// where each item could sit on the avatar before authoring real
+// SVG assets. Coordinates are in the outer 1024×1536 viewBox.
+// ─────────────────────────────────────────────────────────────
+
+// Tatuagem no bíceps. The bare-arm zone visible below the jersey
+// sleeve cuff is roughly y=560-720, x=290-360 (right) / x=660-730
+// (left). Designs are simple inline path snippets.
+function tattooSvg(
+  design: string | null | undefined,
+  side: 'left' | 'right' = 'right',
+  color: string = '#1A1A1A',
+): string {
+  if (!design || design === 'none') return '';
+  const draw = (cx: number, cy: number) => {
+    if (design === 'tribal')
+      // Koru-inspired: 4 curved flames pointing outward from a central
+      // dot. Reads cleanly at any zoom and looks like classic tribal/
+      // Polynesian art.
+      return `<g fill="${color}">
+        <path d="M${cx},${cy-22} q-4,10 -9,14 q5,3 9,3 q4,0 9,-3 q-5,-4 -9,-14z"/>
+        <path d="M${cx},${cy+22} q-4,-10 -9,-14 q5,-3 9,-3 q4,0 9,3 q-5,4 -9,14z"/>
+        <path d="M${cx-22},${cy} q10,-4 14,-9 q3,5 3,9 q0,4 -3,9 q-4,-5 -14,-9z"/>
+        <path d="M${cx+22},${cy} q-10,-4 -14,-9 q-3,5 -3,9 q0,4 3,9 q4,-5 14,-9z"/>
+        <circle cx="${cx}" cy="${cy}" r="3"/>
+      </g>`;
+    if (design === 'cross')
+      return `<path d="M${cx-3},${cy-18} h6 v10 h10 v6 h-10 v18 h-6 v-18 h-10 v-6 h10z" fill="${color}"/>`;
+    if (design === 'heart')
+      return `<path d="M${cx-14},${cy-4} a8,8 0 0 1 14,-3 a8,8 0 0 1 14,3 q0,12 -14,22 q-14,-10 -14,-22z" fill="${color}"/>`;
+    if (design === 'anchor')
+      return `<g stroke="${color}" stroke-width="3" fill="none">
+        <circle cx="${cx}" cy="${cy-16}" r="3"/>
+        <line x1="${cx}" y1="${cy-13}" x2="${cx}" y2="${cy+10}"/>
+        <line x1="${cx-9}" y1="${cy-6}" x2="${cx+9}" y2="${cy-6}"/>
+        <path d="M${cx-12},${cy+8} q4,8 12,8 q8,0 12,-8" stroke-width="3"/>
+      </g>`;
+    if (design === 'star')
+      return `<path d="M${cx},${cy-14} l4,12 l13,0 l-10,8 l4,12 l-11,-8 l-11,8 l4,-12 l-10,-8 l13,0z" fill="${color}"/>`;
+    return '';
+  };
+  // Right = player's right (viewer's left, x≈325). Left = player's
+  // left (viewer's right, x≈699).
+  return side === 'right' ? draw(325, 600) : draw(699, 600);
+}
+
+// Pintura facial. Cheeks are around y=300-340, left cheek x=420-460,
+// right cheek x=565-605 in the outer viewBox after the head transform
+// places DiceBear at (260, 20) scale 1.8. Drawn as overlay paths
+// AFTER the head back layer so the eyes/nose don't get covered.
+function facePaintSvg(
+  design: string | null | undefined,
+  color1: string = '#FFD600',
+  color2: string = '#0066CC',
+): string {
+  if (!design || design === 'none') return '';
+  if (design === 'brasil') {
+    // Two horizontal bars per cheek: yellow on top, blue below.
+    return `
+      <rect x="425" y="270" width="40" height="6" fill="${color1}" rx="2"/>
+      <rect x="425" y="278" width="40" height="6" fill="${color2}" rx="2"/>
+      <rect x="555" y="270" width="40" height="6" fill="${color1}" rx="2"/>
+      <rect x="555" y="278" width="40" height="6" fill="${color2}" rx="2"/>`;
+  }
+  if (design === 'horizontal') {
+    // Single horizontal stripe across the nose.
+    return `<rect x="412" y="242" width="190" height="10" fill="${color1}" rx="3" opacity="0.85"/>`;
+  }
+  if (design === 'two_stripes') {
+    // Two vertical lines under each eye (war paint).
+    return `
+      <rect x="440" y="245" width="45" height="10" fill="${color1}" rx="2"/>
+      <rect x="440" y="257" width="45" height="10" fill="${color2}" rx="2"/>
+      <rect x="535" y="245" width="45" height="10" fill="${color1}" rx="2"/>
+      <rect x="535" y="257" width="45" height="10" fill="${color2}" rx="2"/>`;
+  }
+  if (design === 'wings') {
+    // Diagonal wing flicks coming off each cheekbone.
+    return `
+      <path d="M460,290 q-15,5 -28,16 q22,-3 32,-6z" fill="${color1}"/>
+      <path d="M560,290 q15,5 28,16 q-22,-3 -32,-6z" fill="${color1}"/>`;
+  }
+  return '';
+}
+
+// Brinco — bolinha (stud) na orelha. Right ear ≈ (382, 270),
+// left ear ≈ (642, 270) in the outer viewBox.
+function earringSvg(
+  side: 'left' | 'right' | 'both' = 'both',
+  color: string = '#FFD600',
+): string {
+  const stud = (cx: number, cy: number) =>
+    `<circle cx="${cx}" cy="${cy}" r="6" fill="${color}" stroke="#000" stroke-width="0.8"/>`;
+  let out = '';
+  if (side === 'right' || side === 'both') out += stud(408, 260);
+  if (side === 'left'  || side === 'both') out += stud(610, 260);
+  return out;
+}
+
+// Headband — faixa fina horizontal na testa, em cima do cabelo
+// (renderiza DEPOIS do head back). Cobre x=400-625 a y=160-185.
+function headbandSvg(color: string = '#D32F2F'): string {
+  return `<rect x="410" y="150" width="200" height="30" fill="${color}" rx="3"/>`;
+}
+
+// Cordão (necklace) — corrente em V vindo do pescoço descendo no peito,
+// rendered ON TOP of the camiseta so it stays visible regardless of the kit.
+function necklaceSvg(color: string = '#FFD600'): string {
+  return `<g fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round">
+    <path d="M455,395 q57,55 114,0"/>
+    <circle cx="512" cy="438" r="6" fill="${color}"/>
+  </g>`;
+}
+
+// Pulseira — anel fino no pulso (mais delicado que a munhequeira de
+// tecido). Single wrist only — cada compra = um braço.
+// Right wrist ≈ (310, 800), left wrist ≈ (715, 800).
+function braceletSvg(
+  side: 'left' | 'right' = 'right',
+  color: string = '#C9A227',
+): string {
+  const ring = (cx: number, cy: number) =>
+    `<rect x="${cx-22}" y="${cy}" width="44" height="6" fill="${color}" rx="3" opacity="0.9"/>`;
+  return side === 'right' ? ring(310, 800) : ring(715, 800);
+}
+
+// Bandana — pano amarrado em volta da cabeça (estilo Rambo). Renderiza
+// em cima do cabelo. Cobre x=388-636, y=148 com nó saindo pela direita.
+function bandanaSvg(color: string = '#D32F2F'): string {
+  return `<g>
+    <rect x="400" y="160" width="210" height="20" fill="${color}" rx="4"/>
+    <path d="M595,160 q24,-2 28,18 q-22,4 -32,-2 z" fill="${color}"/>
+    <path d="M620,175 q12,8 22,18" stroke="${color}" stroke-width="6" fill="none"/>
+  </g>`;
 }
 
 export function composePlayerSvg(opts: ComposeOptions): string {
@@ -801,6 +967,33 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   }
   if (opts.isCaptain && !isCoach) {
     layers.push(captainBandSvg());
+  }
+
+  // ── Cosmetic prototypes ──
+  // Tattoo on bicep — pushed AFTER bracos but mounted late so the
+  // tinted hand region of outfielderWinterGlove doesn't paint over
+  // it. Currently lives at the end of the stack which is fine because
+  // the bicep area is below the camiseta sleeve cuff.
+  if (opts.tattooDesign && opts.tattooDesign !== 'none') {
+    layers.push(tattooSvg(opts.tattooDesign, opts.tattooSide ?? 'right', opts.tattooColor ?? '#1A1A1A'));
+  }
+  if (opts.facePaintDesign && opts.facePaintDesign !== 'none') {
+    layers.push(facePaintSvg(opts.facePaintDesign, opts.facePaintColor ?? '#FFD600', opts.facePaintColor2 ?? '#0066CC'));
+  }
+  if (opts.hasEarring) {
+    layers.push(earringSvg(opts.earringSide ?? 'both', opts.earringColor ?? '#FFD600'));
+  }
+  if (opts.hasHeadband) {
+    layers.push(headbandSvg(opts.headbandColor ?? '#D32F2F'));
+  }
+  if (opts.hasNecklace) {
+    layers.push(necklaceSvg(opts.necklaceColor ?? '#FFD600'));
+  }
+  if (opts.hasBracelet) {
+    layers.push(braceletSvg(opts.braceletSide ?? 'right', opts.braceletColor ?? '#C9A227'));
+  }
+  if (opts.hasBandana) {
+    layers.push(bandanaSvg(opts.bandanaColor ?? '#D32F2F'));
   }
 
   return [
