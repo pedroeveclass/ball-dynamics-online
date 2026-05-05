@@ -48,6 +48,27 @@ const GOAL_HALF_WIDTH = 9;                     // half of 18 (25% smaller than o
 const GOAL_Y_MIN = GOAL_Y_CENTER - GOAL_HALF_WIDTH; // 41
 const GOAL_Y_MAX = GOAL_Y_CENTER + GOAL_HALF_WIDTH; // 59
 
+// ─── Field aspect Y_SCALE — matches PitchSVG INNER_H/INNER_W = 540/860 ──
+// Set-piece exclusion zones are drawn as PERFECT circles on screen
+// (PitchSVG center circle = `<circle r={INNER_H*0.15}>`; throw-in/corner =
+// `(R/100)*INNER_W`). On a rectangular pitch, a raw Euclidean check in
+// field-coords becomes an X-stretched ellipse — the player can stand
+// visibly INSIDE the painted/orange circle (top/bottom band) without
+// engine pushback. Use elliptic distance (dy scaled by Y_SCALE) so the
+// engine's forbidden zone matches what the user sees.
+const FIELD_Y_SCALE = 540 / 860;
+function ellipticDist(dx: number, dy: number): number {
+  const dyS = dy * FIELD_Y_SCALE;
+  return Math.sqrt(dx * dx + dyS * dyS);
+}
+// Painted FIFA center circle: <circle r={INNER_H*0.15}> ⇒ 81 pixels ⇒
+// X-radius = 9.42 (= 100 * 0.15 * 540/860) in field-coords.
+const KICKOFF_CIRCLE_R = (15 * 540) / 860;
+// Throw-in / corner: visual = (10/100)*INNER_W ⇒ X-radius 10.
+const SET_PIECE_R = 10;
+// Free-kick barrier: visual = (9.15/100)*INNER_W ⇒ X-radius 9.15 (FIFA standard).
+const FREE_KICK_BARRIER_R = 9.15;
+
 // ─── Positional penalty: attribute multiplier for out-of-position players ──
 // Mirror of src/lib/positions.ts (inline because edge functions can't import).
 const POSITION_GROUP: Record<string, number> = {
@@ -3750,13 +3771,14 @@ async function generateBotActions(
 
         // Center circle exclusion for non-possession team during positioning
         if (isDefending) {
-          const CENTER_CIRCLE_R = 10; // ~10% of field (matches client visual)
-          const distToCenter = Math.sqrt((target.x - 50) ** 2 + (target.y - 50) ** 2);
-          if (distToCenter < CENTER_CIRCLE_R) {
-            // Push outside the circle
-            const angle = Math.atan2(target.y - 50, target.x - 50);
-            target.x = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
-            target.y = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
+          const dx = target.x - 50;
+          const dy = target.y - 50;
+          const dist = ellipticDist(dx, dy);
+          if (dist < KICKOFF_CIRCLE_R) {
+            // Push outside the painted circle along the screen-radial direction.
+            const factor = (KICKOFF_CIRCLE_R + 0.5) / Math.max(dist, 0.001);
+            target.x = 50 + dx * factor;
+            target.y = 50 + dy * factor;
             // Re-enforce half constraint
             if (isHome) target.x = Math.min(target.x, 49);
             else target.x = Math.max(target.x, 51);
@@ -3766,12 +3788,14 @@ async function generateBotActions(
 
       // Free kick / set piece exclusion zone for defending team
       if (setPieceType && setPieceType !== 'kickoff' && isDefending) {
-        const FREE_KICK_R = 10;
-        const distToBall = Math.sqrt((target.x - ballPos.x) ** 2 + (target.y - ballPos.y) ** 2);
-        if (distToBall < FREE_KICK_R) {
-          const angle = Math.atan2(target.y - ballPos.y, target.x - ballPos.x);
-          target.x = ballPos.x + Math.cos(angle) * (FREE_KICK_R + 1);
-          target.y = ballPos.y + Math.sin(angle) * (FREE_KICK_R + 1);
+        const setR = setPieceType === 'free_kick' ? FREE_KICK_BARRIER_R : SET_PIECE_R;
+        const dx = target.x - ballPos.x;
+        const dy = target.y - ballPos.y;
+        const dist = ellipticDist(dx, dy);
+        if (dist < setR) {
+          const factor = (setR + 0.5) / Math.max(dist, 0.001);
+          target.x = ballPos.x + dx * factor;
+          target.y = ballPos.y + dy * factor;
         }
       }
 
@@ -4980,13 +5004,17 @@ function findInterceptorCandidates(allActions: any[], ballHolderAction: any, par
       continue;
     }
 
-    // Free kick exclusion zone: defending players within 10 units of ball origin cannot intercept
+    // Free kick exclusion zone: defending players inside the painted barrier
+    // ring around the ball cannot intercept. Elliptic dist so the gate matches
+    // the orange visual exactly — raw Euclidean made the top/bottom of the
+    // ring permissive for intercepts (player visibly inside, engine allowed).
     if (setPieceType && setPieceType !== 'kickoff' && actionParticipant && actionParticipant.club_id !== possClubId) {
       const posX = Number(actionParticipant.pos_x ?? 50);
       const posY = Number(actionParticipant.pos_y ?? 50);
-      const distToBallOrigin = Math.sqrt((posX - startX) ** 2 + (posY - startY) ** 2);
-      if (distToBallOrigin < 10) {
-        if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected (free kick exclusion): player ${a.participant_id.slice(0,8)} dist=${distToBallOrigin.toFixed(1)} < 10 from ball origin`);
+      const interceptR = setPieceType === 'free_kick' ? FREE_KICK_BARRIER_R : SET_PIECE_R;
+      const distToBallOrigin = ellipticDist(posX - startX, posY - startY);
+      if (distToBallOrigin < interceptR) {
+        if (LOG_VERBOSE) console.log(`[ENGINE] Intercept rejected (free kick exclusion): player ${a.participant_id.slice(0,8)} dist=${distToBallOrigin.toFixed(1)} < ${interceptR} from ball origin`);
         continue;
       }
     }
@@ -6937,30 +6965,32 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
         // Center circle exclusion for defending team
         const isDefending = part.club_id !== possClubId;
         if (isDefending) {
-          const CENTER_CIRCLE_R = 10;
-          const distToCenter = Math.sqrt((targetX - 50) ** 2 + (targetY - 50) ** 2);
-          if (distToCenter < CENTER_CIRCLE_R) {
-            const angle = Math.atan2(targetY - 50, targetX - 50);
-            targetX = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
-            targetY = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
+          const dx0 = targetX - 50;
+          const dy0 = targetY - 50;
+          const dist0 = ellipticDist(dx0, dy0);
+          if (dist0 < KICKOFF_CIRCLE_R) {
+            const factor = (KICKOFF_CIRCLE_R + 0.5) / Math.max(dist0, 0.001);
+            targetX = 50 + dx0 * factor;
+            targetY = 50 + dy0 * factor;
             if (isHome) targetX = Math.min(targetX, 49);
             else targetX = Math.max(targetX, 51);
-            // Re-check after half-field clamp: if we've been pulled back inside the
-            // 10u circle (e.g. push hit the half-field line at x=49/51), slide along
-            // that vertical line to the closest y satisfying (x−50)²+(y−50)²≥100.
-            // Keeps the sign of (targetY−50) so the player doesn't hop sides.
-            const distAfterClamp = Math.sqrt((targetX - 50) ** 2 + (targetY - 50) ** 2);
-            if (distAfterClamp < CENTER_CIRCLE_R) {
-              const dxFromCenter = targetX - 50; // = -1 or +1 after the half-field clamp
-              const ySign = (targetY - 50) >= 0 ? 1 : -1;
-              const ySpan = Math.sqrt(Math.max(0, CENTER_CIRCLE_R * CENTER_CIRCLE_R - dxFromCenter * dxFromCenter));
+            // Re-check after half-field clamp: if we've been pulled back inside
+            // the painted ellipse (push hit x=49/51), slide along the vertical
+            // line to the closest y outside it. Ellipse equation in field-coords:
+            // dx² + (dy*Y_SCALE)² = R² → |dy| = sqrt(R² − dx²) / Y_SCALE.
+            const dxA = targetX - 50;
+            const dyA = targetY - 50;
+            const distA = ellipticDist(dxA, dyA);
+            if (distA < KICKOFF_CIRCLE_R) {
+              const ySign = dyA >= 0 ? 1 : -1;
+              const ySpan = Math.sqrt(Math.max(0, KICKOFF_CIRCLE_R * KICKOFF_CIRCLE_R - dxA * dxA)) / FIELD_Y_SCALE;
               targetY = 50 + ySign * (ySpan + 1);
             }
           }
         }
       }
 
-      // Free kick / corner / throw-in: defending team must stay 10% away from ball
+      // Free kick / corner / throw-in: defending team must stay outside the painted ring around the ball
       const setPieceType = activeTurn.set_piece_type;
       if (setPieceType && setPieceType !== 'kickoff') {
         const isDefending = part.club_id !== possClubId;
@@ -6968,13 +6998,14 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const bhPart = (participants || []).find((p: any) => p.id === bhId);
           const ballX = bhPart ? Number(bhPart.pos_x ?? 50) : 50;
           const ballY = bhPart ? Number(bhPart.pos_y ?? 50) : 50;
-          const FREE_KICK_EXCLUSION_R = 10; // ~9.15m in real football
-          const distToBall = Math.sqrt((targetX - ballX) ** 2 + (targetY - ballY) ** 2);
-          if (distToBall < FREE_KICK_EXCLUSION_R) {
-            // Push away from ball
-            const angle = Math.atan2(targetY - ballY, targetX - ballX);
-            targetX = ballX + Math.cos(angle) * (FREE_KICK_EXCLUSION_R + 1);
-            targetY = ballY + Math.sin(angle) * (FREE_KICK_EXCLUSION_R + 1);
+          const setR = setPieceType === 'free_kick' ? FREE_KICK_BARRIER_R : SET_PIECE_R;
+          const dx = targetX - ballX;
+          const dy = targetY - ballY;
+          const dist = ellipticDist(dx, dy);
+          if (dist < setR) {
+            const factor = (setR + 0.5) / Math.max(dist, 0.001);
+            targetX = ballX + dx * factor;
+            targetY = ballY + dy * factor;
           }
         }
       }
@@ -7033,17 +7064,18 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
       if (LOG_VERBOSE) console.log(`[ENGINE] Exclusion zone check: setPiece=${setPiece} possClub=${possClubId} players=${(allParts || []).length}`);
 
       if (setPiece === 'kickoff') {
-        // Kickoff: opposing team must stay out of center circle (10 units from center)
-        const CENTER_CIRCLE_R = 10;
+        // Kickoff: opposing team must stay out of the painted center circle.
         for (const p of (allParts || [])) {
           if (p.club_id === possClubId || p.is_sent_off) continue;
           const px = Number(p.pos_x ?? 50);
           const py = Number(p.pos_y ?? 50);
-          const distToCenter = Math.sqrt((px - 50) ** 2 + (py - 50) ** 2);
-          if (distToCenter < CENTER_CIRCLE_R) {
-            const angle = Math.atan2(py - 50, px - 50);
-            const newX0 = 50 + Math.cos(angle) * (CENTER_CIRCLE_R + 1);
-            const newY0 = 50 + Math.sin(angle) * (CENTER_CIRCLE_R + 1);
+          const dx = px - 50;
+          const dy = py - 50;
+          const dist = ellipticDist(dx, dy);
+          if (dist < KICKOFF_CIRCLE_R) {
+            const factor = (KICKOFF_CIRCLE_R + 0.5) / Math.max(dist, 0.001);
+            const newX0 = 50 + dx * factor;
+            const newY0 = 50 + dy * factor;
             // Also enforce own half
             const isHomeP = p.club_id === match.home_club_id;
             const isSecondHalfNow = (match.current_half ?? 1) >= 2;
@@ -7051,13 +7083,15 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             let clampedX = ownHalfLeft ? Math.min(newX0, 49) : Math.max(newX0, 51);
             let newY = newY0;
             // Re-check exclusion after half-field clamp (clampedX may have re-entered
-            // the circle when pushed onto x=49/51). Slide along the clamped vertical
-            // line keeping the sign of (newY−50).
-            const distAfterClamp = Math.sqrt((clampedX - 50) ** 2 + (newY - 50) ** 2);
-            if (distAfterClamp < CENTER_CIRCLE_R) {
-              const dxFromCenter = clampedX - 50;
-              const ySign = (newY - 50) >= 0 ? 1 : -1;
-              const ySpan = Math.sqrt(Math.max(0, CENTER_CIRCLE_R * CENTER_CIRCLE_R - dxFromCenter * dxFromCenter));
+            // the painted ellipse when pushed onto x=49/51). Slide along the clamped
+            // vertical line keeping the sign of (newY−50). Ellipse y-span:
+            // |dy| = sqrt(R² − dx²) / Y_SCALE.
+            const dxA = clampedX - 50;
+            const dyA = newY - 50;
+            const distA = ellipticDist(dxA, dyA);
+            if (distA < KICKOFF_CIRCLE_R) {
+              const ySign = dyA >= 0 ? 1 : -1;
+              const ySpan = Math.sqrt(Math.max(0, KICKOFF_CIRCLE_R * KICKOFF_CIRCLE_R - dxA * dxA)) / FIELD_Y_SCALE;
               newY = 50 + ySign * (ySpan + 1);
             }
             exclusionUpdates.push({ id: p.id, pos_x: Math.max(1, Math.min(99, clampedX)), pos_y: Math.max(1, Math.min(99, newY)) });
@@ -7132,8 +7166,10 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           }
         }
       } else if (setPiece && setPiece !== 'kickoff') {
-        // Free kick / corner / throw-in: defending team must stay 10 units from ball
-        const EXCLUSION_R = 10;
+        // Free kick / corner / throw-in: push defenders out of the painted ring
+        // around the ball. Same elliptic-distance rule as the positioning batch
+        // — radius differs by set-piece type (free_kick = FIFA 9.15, others = 10).
+        const setR = setPiece === 'free_kick' ? FREE_KICK_BARRIER_R : SET_PIECE_R;
         const bhPart = (allParts || []).find((p: any) => p.id === bhId);
         const ballX = bhPart ? Number(bhPart.pos_x ?? 50) : 50;
         const ballY = bhPart ? Number(bhPart.pos_y ?? 50) : 50;
@@ -7142,11 +7178,13 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           if (p.club_id !== defClubId || p.is_sent_off) continue;
           const px = Number(p.pos_x ?? 50);
           const py = Number(p.pos_y ?? 50);
-          const distToBall = Math.sqrt((px - ballX) ** 2 + (py - ballY) ** 2);
-          if (distToBall < EXCLUSION_R) {
-            const angle = Math.atan2(py - ballY, px - ballX);
-            const newX = Math.max(1, Math.min(99, ballX + Math.cos(angle) * (EXCLUSION_R + 1)));
-            const newY = Math.max(1, Math.min(99, ballY + Math.sin(angle) * (EXCLUSION_R + 1)));
+          const dx = px - ballX;
+          const dy = py - ballY;
+          const dist = ellipticDist(dx, dy);
+          if (dist < setR) {
+            const factor = (setR + 0.5) / Math.max(dist, 0.001);
+            const newX = Math.max(1, Math.min(99, ballX + dx * factor));
+            const newY = Math.max(1, Math.min(99, ballY + dy * factor));
             exclusionUpdates.push({ id: p.id, pos_x: newX, pos_y: newY });
           }
         }
@@ -8572,19 +8610,21 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
             nextSetPieceType = 'free_kick';
             ballEndPos = { x: foulX, y: foulY };
 
-            // Push defending players out of the exclusion zone (10 units from ball)
-            const FREE_KICK_EXCLUSION = 10;
+            // Push defending players out of the painted free-kick barrier ring
+            // (visual = 9.15% of INNER_W around the ball — FIFA standard).
             const defClubId = possClubId === match.home_club_id ? match.away_club_id : match.home_club_id;
             for (const p of (participants || [])) {
               if (p.club_id !== defClubId || p.role_type !== 'player' || p.is_sent_off) continue;
               if (p.id === result.failedContestParticipantId) continue; // fouler handled separately
               const px = Number(p.pos_x ?? 50);
               const py = Number(p.pos_y ?? 50);
-              const distToFoul = Math.sqrt((px - foulX) ** 2 + (py - foulY) ** 2);
-              if (distToFoul < FREE_KICK_EXCLUSION) {
-                const angle = Math.atan2(py - foulY, px - foulX);
-                const newX = Math.max(1, Math.min(99, foulX + Math.cos(angle) * (FREE_KICK_EXCLUSION + 1)));
-                const newY = Math.max(1, Math.min(99, foulY + Math.sin(angle) * (FREE_KICK_EXCLUSION + 1)));
+              const dx = px - foulX;
+              const dy = py - foulY;
+              const dist = ellipticDist(dx, dy);
+              if (dist < FREE_KICK_BARRIER_R) {
+                const factor = (FREE_KICK_BARRIER_R + 0.5) / Math.max(dist, 0.001);
+                const newX = Math.max(1, Math.min(99, foulX + dx * factor));
+                const newY = Math.max(1, Math.min(99, foulY + dy * factor));
                 deferredPositionUpdates.push({ id: p.id, pos_x: newX, pos_y: newY });
               }
             }
@@ -9689,17 +9729,20 @@ async function executeTickForMatch(supabase: any, match_id: string, forceTick: b
           const setPieceTarget = resolveSetPieceTarget(p, snapBallPos, isHomeRaw, isDefending, setPieceTypeKey, tickCache.setPieceTactics, currentHalfSnap);
           const situ = setPieceTarget ?? resolveSituationalTarget(p, snapBallPos, isHomeRaw, isDefending, formation, tickCache, currentHalfSnap);
           if (!situ) continue;
-          // Push defenders outside the 10u exclusion zone around the ball (FIFA ~9.15m)
+          // Push defenders outside the painted barrier ring around the ball
+          // (FIFA 9.15m for free-kick, 10u for corner/throw-in/goal-kick).
+          // Elliptic dist matches the orange visual the player sees.
           let tx = situ.x;
           let ty = situ.y;
           if (isDefending) {
+            const snapR = setPieceTypeKey === 'free_kick' ? FREE_KICK_BARRIER_R : SET_PIECE_R;
             const dx = tx - snapBallPos.x;
             const dy = ty - snapBallPos.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < 10.5) {
-              const ang = Math.atan2(dy, dx) || 0;
-              tx = snapBallPos.x + Math.cos(ang) * 11;
-              ty = snapBallPos.y + Math.sin(ang) * 11;
+            const d = ellipticDist(dx, dy);
+            if (d < snapR + 0.5) {
+              const factor = (snapR + 1) / Math.max(d, 0.001);
+              tx = snapBallPos.x + dx * factor;
+              ty = snapBallPos.y + dy * factor;
             }
           }
           tx = Math.max(1, Math.min(99, tx));
