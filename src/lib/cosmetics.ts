@@ -34,10 +34,11 @@ export interface PlayerCosmetics {
   bicepsBandSide: CosmeticSide | null;
   // Caneleira (shin guards) — both legs, no side choice.
   shinGuardColor: string | null;
-  // Long-socks cosmetic. No color (kit secondary stays as fill); just a
-  // toggle that swaps the short ankle band for a tall sock that reaches up
-  // to where the shin guard ends.
-  hasLongSocks: boolean;
+  // Short-socks cosmetic. No color — just a toggle that swaps the
+  // default knee-high sock for a low ankle band. As of 2026-05-04 the
+  // default is "alto" (no purchase needed); buying "Meião Curto"
+  // flips this to true.
+  hasShortSocks: boolean;
   // Second-skin (compression) layers — paint the visible skin of the arms
   // / legs with the picked color so it reads as a tight underlayer. Hand
   // stays bare for the top, foot stays bare for the tights. Side picks
@@ -102,7 +103,7 @@ const EMPTY: PlayerCosmetics = {
   bicepsBandColor: null,
   bicepsBandSide: null,
   shinGuardColor: null,
-  hasLongSocks: false,
+  hasShortSocks: false,
   secondSkinShirtColor: null,
   secondSkinShirtSide: null,
   secondSkinPantsColor: null,
@@ -136,7 +137,10 @@ const WINTER_GLOVE_NAMES = new Set(['Luva de Inverno', 'Winter Gloves']);
 const WRISTBAND_NAMES = new Set(['Munhequeira', 'Wristband']);
 const BICEPS_BAND_NAMES = new Set(['Biceps Band', 'Bicep Band', 'Braçadeira de Bíceps']);
 const SHIN_GUARD_NAMES = new Set(['Caneleira Personalizada', 'Custom Shin Guards']);
-const LONG_SOCKS_NAMES = new Set(['Meião Comprido', 'Long Socks']);
+// Legacy name — left here so any old "Meião Comprido" purchase rows
+// don't blow up the aggregator, but it no longer flips a flag (alto is
+// the default now). Replaced by SHORT_SOCKS_NAMES below.
+const SHORT_SOCKS_NAMES = new Set(['Meião Curto', 'Short Socks']);
 const SECOND_SKIN_SHIRT_NAMES = new Set(['Camiseta Segunda Pele', 'Compression Top']);
 const SECOND_SKIN_PANTS_NAMES = new Set(['Calça Segunda Pele', 'Compression Tights']);
 const VISUAL_BG_NAMES = new Set(['Fundo do Visual', 'Visual Background']);
@@ -227,7 +231,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let bicepsBandColor: string | null = null;
   let bicepsBandSide: CosmeticSide | null = null;
   let shinGuardColor: string | null = null;
-  let hasLongSocks = false;
+  let hasShortSocks = false;
   let secondSkinShirtColor: string | null = null;
   let secondSkinShirtSide: CosmeticLimbSide | null = null;
   let secondSkinPantsColor: string | null = null;
@@ -256,9 +260,11 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   for (const p of purchases as any[]) {
     const it = itemById.get(p.store_item_id);
     if (!it) continue;
-    // Long socks toggle has no color — short-circuit before the color guard.
-    if (it.category === 'cosmetic' && matchesAny(it, LONG_SOCKS_NAMES)) {
-      hasLongSocks = true;
+    // Short socks toggle has no color — flips the sock from default
+    // alto to baixo. (Legacy "Meião Comprido" purchases reach here too
+    // but don't match SHORT_SOCKS_NAMES, so they no-op as expected.)
+    if (it.category === 'cosmetic' && matchesAny(it, SHORT_SOCKS_NAMES)) {
+      hasShortSocks = true;
       continue;
     }
     // Modo Sem Camisa — toggle, no metadata.
@@ -387,7 +393,7 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     bicepsBandColor,
     bicepsBandSide,
     shinGuardColor,
-    hasLongSocks,
+    hasShortSocks,
     secondSkinShirtColor,
     secondSkinShirtSide,
     secondSkinPantsColor,

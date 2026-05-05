@@ -165,7 +165,7 @@ export default function PlayerProfilePage() {
     bicepsBandColor: null,
     bicepsBandSide: null,
     shinGuardColor: null,
-    hasLongSocks: false,
+    hasShortSocks: false,
     secondSkinShirtColor: null,
     secondSkinShirtSide: null,
     secondSkinPantsColor: null,
@@ -258,7 +258,7 @@ export default function PlayerProfilePage() {
         wristbandColor: null, wristbandSide: null,
         bicepsBandColor: null, bicepsBandSide: null,
         shinGuardColor: null,
-        hasLongSocks: false,
+        hasShortSocks: false,
         secondSkinShirtColor: null,
         secondSkinShirtSide: null,
         secondSkinPantsColor: null,
@@ -688,7 +688,7 @@ export default function PlayerProfilePage() {
                     jerseyNumber={(p as any).jersey_number}
                     position={p.primary_position}
                     isCaptain={(p as any).is_captain}
-                    sockHeight={cosmetics.hasLongSocks ? 'alto' : 'baixo'}
+                    sockHeight={cosmetics.hasShortSocks ? 'baixo' : 'alto'}
                     hasShinGuard={!!cosmetics.shinGuardColor}
                     shinGuardColor={cosmetics.shinGuardColor ?? undefined}
                     cleatColor={cosmetics.bootsColor}
@@ -755,7 +755,7 @@ export default function PlayerProfilePage() {
                     bicepsBandColor={cosmetics.bicepsBandColor}
                     bicepsBandSide={cosmetics.bicepsBandSide}
                     shinGuardColor={cosmetics.shinGuardColor}
-                    hasLongSocks={cosmetics.hasLongSocks}
+                    hasLongSocks={!cosmetics.hasShortSocks}
                     secondSkinShirtColor={cosmetics.secondSkinShirtColor}
                     secondSkinShirtSide={cosmetics.secondSkinShirtSide}
                     secondSkinPantsColor={cosmetics.secondSkinPantsColor}
