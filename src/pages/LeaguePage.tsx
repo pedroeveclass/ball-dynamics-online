@@ -18,6 +18,7 @@ import { formatBRL } from '@/lib/formatting';
 import { Bot, User as UserIcon } from 'lucide-react';
 import { LeagueIntroTour } from '@/components/tour/LeagueIntroTour';
 import { ManagerLeagueIntroTour } from '@/components/tour/ManagerLeagueIntroTour';
+import { PageNavTabs } from '@/components/PageNavTabs';
 
 // Wrapper: uses ManagerLayout if logged in as manager, otherwise a simple public layout
 function LeagueLayout({ children }: { children: ReactNode }) {
@@ -128,6 +129,7 @@ export default function LeaguePage() {
   const navigate = useNavigate();
   const { t } = useTranslation('league');
   const { t: tNarratives } = useTranslation('narratives');
+  const { t: tNav } = useTranslation('nav');
   const [loading, setLoading] = useState(true);
   // The viewer's next league fixture — used both for the "Próximo Jogo"
   // highlight on the rounds list and to auto-scroll to that round.
@@ -787,6 +789,14 @@ export default function LeaguePage() {
   return (
     <LeagueLayout>
       <div className="space-y-6">
+        {managerProfile && (
+          <PageNavTabs
+            tabs={[
+              { to: '/league', label: tNav('tabs.league_overview') },
+              { to: '/league/vote', label: tNav('tabs.league_vote') },
+            ]}
+          />
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-tactical" />

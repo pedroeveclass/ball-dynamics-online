@@ -1,6 +1,6 @@
 {
   "player": {
-    "dashboard": "Dashboard",
+    "dashboard": "Painel",
     "profile": "Perfil",
     "attributes": "Atributos & Treino",
     "training_plan": "Treino Automático",
@@ -16,19 +16,19 @@
     "forum": "Fórum"
   },
   "manager": {
-    "dashboard": "Dashboard",
+    "dashboard": "Painel",
     "club": "Clube",
     "squad": "Elenco",
     "lineup": "Escalação",
     "market": "Mercado",
     "finance": "Finanças",
     "stadium": "Estádio",
-    "facilities": "Facilities",
+    "facilities": "Estrutura",
     "training": "Treinamento",
     "reports": "Relatórios",
     "inbox": "Caixa de Entrada",
     "league": "Liga",
-    "vote": "Votação Liga",
+    "vote": "Votação",
     "matches": "Jogos",
     "bank": "Banco",
     "store": "Loja",
@@ -37,11 +37,28 @@
   "account": {
     "label": "Conta",
     "notifications": "Notificações",
-    "profile": "Perfil da Conta"
+    "profile": "Configurações"
   },
   "groups": {
     "player": "Jogador",
-    "manager": "Manager"
+    "manager": "Manager",
+    "player_self": "Eu",
+    "player_career": "Carreira",
+    "player_compete": "Competir",
+    "player_social": "Social & Economia",
+    "manager_overview": "Visão Geral",
+    "manager_team": "Equipe",
+    "manager_operation": "Operação",
+    "manager_compete": "Competir",
+    "manager_social": "Social & Economia"
+  },
+  "tabs": {
+    "player_profile": "Perfil",
+    "player_attributes": "Atributos & Treino",
+    "manager_stadium": "Estádio",
+    "manager_facilities": "Estrutura",
+    "league_overview": "Liga",
+    "league_vote": "Votação"
   },
   "active_player": {
     "label": "Jogando como",

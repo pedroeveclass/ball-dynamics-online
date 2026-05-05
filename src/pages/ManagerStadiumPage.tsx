@@ -13,6 +13,7 @@ import { formatBRL } from '@/lib/formatting';
 import { PitchSVG, DEFAULT_STADIUM_STYLE, type StadiumStyle } from '@/components/PitchSVG';
 import type { TFunction } from 'i18next';
 import { ManagerStadiumIntroTour } from '@/components/tour/ManagerStadiumIntroTour';
+import { PageNavTabs } from '@/components/PageNavTabs';
 
 interface Sector {
   id: string;
@@ -265,6 +266,7 @@ function StadiumStyleEditor({
 
 export default function ManagerStadiumPage() {
   const { t } = useTranslation('manager_stadium');
+  const { t: tNav } = useTranslation('nav');
   const { club } = useAuth();
   const [stadium, setStadium] = useState<any>(null);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -406,6 +408,12 @@ export default function ManagerStadiumPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <PageNavTabs
+          tabs={[
+            { to: '/manager/stadium', label: tNav('tabs.manager_stadium') },
+            { to: '/manager/facilities', label: tNav('tabs.manager_facilities') },
+          ]}
+        />
         <ManagerStadiumIntroTour enabled={!!stadium} />
         <h1 className="font-display text-2xl font-bold">{stadium.name}</h1>
 

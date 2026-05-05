@@ -17,6 +17,7 @@ import { Dumbbell, TrendingUp, History, Shield, Swords, Wrench, Star, Building2,
 import { Link } from 'react-router-dom';
 import { getStoreItemName } from '@/lib/storeItemLabel';
 import { AttrsIntroTour } from '@/components/tour/AttrsIntroTour';
+import { PageNavTabs } from '@/components/PageNavTabs';
 
 const ENERGY_COST = 25;
 
@@ -32,6 +33,7 @@ interface TrainingRecord {
 export default function PlayerAttributesPage() {
   const { playerProfile, refreshPlayerProfile } = useAuth();
   const { t } = useTranslation('player_attributes');
+  const { t: tNav } = useTranslation('nav');
   const { current: lang } = useAppLanguage();
   const [attrs, setAttrs] = useState<Tables<'player_attributes'> | null>(null);
   const [training, setTraining] = useState<string | null>(null);
@@ -381,6 +383,12 @@ export default function PlayerAttributesPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
+        <PageNavTabs
+          tabs={[
+            { to: '/player/profile', label: tNav('tabs.player_profile') },
+            { to: '/player/attributes', label: tNav('tabs.player_attributes') },
+          ]}
+        />
         <AttrsIntroTour enabled={!!attrs} />
         <div data-tour="attrs-header" className="flex items-center justify-between">
           <div>

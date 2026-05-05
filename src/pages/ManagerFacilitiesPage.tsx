@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { ManagerFacilitiesIntroTour } from '@/components/tour/ManagerFacilitiesIntroTour';
+import { PageNavTabs } from '@/components/PageNavTabs';
 
 const MAX_LEVEL: Record<string, number> = {
   souvenir_shop: 5,
@@ -86,6 +87,7 @@ const formatCurrency = formatBRL;
 
 export default function ManagerFacilitiesPage() {
   const { t } = useTranslation('manager_facilities');
+  const { t: tNav } = useTranslation('nav');
   const { club } = useAuth();
   const [facilities, setFacilities] = useState<any[]>([]);
   const [balance, setBalance] = useState<number>(0);
@@ -187,6 +189,12 @@ export default function ManagerFacilitiesPage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <PageNavTabs
+          tabs={[
+            { to: '/manager/stadium', label: tNav('tabs.manager_stadium') },
+            { to: '/manager/facilities', label: tNav('tabs.manager_facilities') },
+          ]}
+        />
         <ManagerFacilitiesIntroTour enabled={true} />
         <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
 

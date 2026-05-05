@@ -36,6 +36,7 @@ import { RetirementBioCard } from '@/components/player/RetirementBioCard';
 import { PlayerAwardsBlock } from '@/components/league/PlayerAwardsBlock';
 import { SlotChoiceDialog } from '@/components/SlotChoiceDialog';
 import { ProfileIntroTour } from '@/components/tour/ProfileIntroTour';
+import { PageNavTabs } from '@/components/PageNavTabs';
 
 // ── Attribute category definitions (same keys as PublicClubPage) ──
 
@@ -136,6 +137,7 @@ export default function PlayerProfilePage() {
   const { user, playerProfile, refreshPlayerProfile, switchPlayerProfile } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation('player_profile');
+  const { t: tNav } = useTranslation('nav');
   const { current: lang } = useAppLanguage();
 
   const [clubName, setClubName] = useState<string | null>(null);
@@ -511,6 +513,13 @@ export default function PlayerProfilePage() {
   return (
     <AppLayout>
       <div className="space-y-6 max-w-2xl">
+
+        <PageNavTabs
+          tabs={[
+            { to: '/player/profile', label: tNav('tabs.player_profile') },
+            { to: '/player/attributes', label: tNav('tabs.player_attributes') },
+          ]}
+        />
 
         <ProfileIntroTour enabled={!!attrs} />
 

@@ -1,5 +1,6 @@
 import {
-  Home, User, TrendingUp, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2, UserCircle2, Newspaper,
+  Home, User, FileText, Inbox, Shield, Swords, Bell, Settings, Trophy, Landmark, Store, MessageSquare, CalendarClock, Users2, UserCircle2, Newspaper,
+  LayoutGrid, Briefcase, Sparkles,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation, Link } from 'react-router-dom';
@@ -11,36 +12,119 @@ import { useAuth } from '@/hooks/useAuth';
 import { positionLabel } from '@/lib/positions';
 import { useTranslation } from 'react-i18next';
 import { CountryFlag } from '@/components/CountryFlag';
+import type { LucideIcon } from 'lucide-react';
+
+interface NavItem {
+  title: string;
+  url: string;
+  icon: LucideIcon;
+  tour?: string;
+}
+
+interface SectionDef {
+  label: string;
+  groupIcon: LucideIcon;
+  accent: string;
+  items: NavItem[];
+}
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
-  const isActive = (path: string) => location.pathname === path;
+  // Profile page hosts the Atributos tab too — keep it active for both routes.
+  const isActive = (path: string) => {
+    if (path === '/player/profile') {
+      return location.pathname === '/player/profile' || location.pathname === '/player/attributes';
+    }
+    return location.pathname === path;
+  };
   const { playerProfile } = useAuth();
   const { t } = useTranslation(['nav', 'common']);
 
-  const playerNav = [
-    { title: t('nav:player.dashboard'), url: '/player', icon: Home },
-    { title: t('nav:player.profile'), url: '/player/profile', icon: User },
-    { title: t('nav:player.attributes'), url: '/player/attributes', icon: TrendingUp },
-    { title: t('nav:player.training_plan'), url: '/player/training-plan', icon: CalendarClock },
-    { title: t('nav:player.club'), url: '/player/club', icon: Shield },
-    { title: t('nav:player.matches'), url: '/player/matches', icon: Swords },
-    { title: t('nav:player.pickup'), url: '/varzea', icon: Users2 },
-    { title: t('nav:player.league'), url: '/league', icon: Trophy },
-    { title: t('nav:player.contract'), url: '/player/contract', icon: FileText },
-    { title: t('nav:player.offers'), url: '/player/offers', icon: Inbox },
-    { title: t('nav:player.inbox'), url: '/inbox', icon: Newspaper },
-    { title: t('nav:player.bank'), url: '/bank', icon: Landmark },
-    { title: t('nav:player.store'), url: '/store', icon: Store },
-    { title: t('nav:player.forum'), url: '/forum', icon: MessageSquare },
+  const sections: SectionDef[] = [
+    {
+      label: t('nav:groups.player_self'),
+      groupIcon: LayoutGrid,
+      accent: 'text-tactical',
+      items: [
+        { title: t('nav:player.dashboard'), url: '/player', icon: Home },
+        { title: t('nav:player.profile'), url: '/player/profile', icon: User },
+        { title: t('nav:player.training_plan'), url: '/player/training-plan', icon: CalendarClock, tour: 'nav-training-plan' },
+      ],
+    },
+    {
+      label: t('nav:groups.player_career'),
+      groupIcon: Briefcase,
+      accent: 'text-emerald-500',
+      items: [
+        { title: t('nav:player.club'), url: '/player/club', icon: Shield, tour: 'nav-club' },
+        { title: t('nav:player.contract'), url: '/player/contract', icon: FileText },
+        { title: t('nav:player.offers'), url: '/player/offers', icon: Inbox },
+      ],
+    },
+    {
+      label: t('nav:groups.player_compete'),
+      groupIcon: Swords,
+      accent: 'text-red-500',
+      items: [
+        { title: t('nav:player.matches'), url: '/player/matches', icon: Swords },
+        { title: t('nav:player.league'), url: '/league', icon: Trophy },
+        { title: t('nav:player.pickup'), url: '/varzea', icon: Users2 },
+      ],
+    },
+    {
+      label: t('nav:groups.player_social'),
+      groupIcon: Sparkles,
+      accent: 'text-violet-500',
+      items: [
+        { title: t('nav:player.inbox'), url: '/inbox', icon: Newspaper },
+        { title: t('nav:player.forum'), url: '/forum', icon: MessageSquare },
+        { title: t('nav:player.bank'), url: '/bank', icon: Landmark },
+        { title: t('nav:player.store'), url: '/store', icon: Store },
+      ],
+    },
   ];
 
-  const accountNav = [
+  const accountNav: NavItem[] = [
     { title: t('nav:account.notifications'), url: '/notifications', icon: Bell },
     { title: t('nav:account.profile'), url: '/account/profile', icon: Settings },
   ];
+
+  const renderGroup = (
+    label: string,
+    items: NavItem[],
+    GroupIcon?: LucideIcon,
+    accent?: string,
+  ) => (
+    <SidebarGroup>
+      <SidebarGroupLabel className="px-1">
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-sidebar-accent/40 px-2 py-0.5 text-[11px] font-display font-bold uppercase tracking-wide text-sidebar-foreground/85">
+          {GroupIcon && <GroupIcon className={`h-3 w-3 ${accent ?? 'text-tactical'}`} />}
+          {label}
+        </span>
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map(item => (
+            <SidebarMenuItem key={item.url} data-tour={item.tour}>
+              <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                <NavLink
+                  to={item.url}
+                  end
+                  className="hover:bg-sidebar-accent/50"
+                  activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
+                >
+                  <item.icon className="mr-2 h-4 w-4" />
+                  {!collapsed && <span>{item.title}</span>}
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -80,47 +164,14 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('nav:groups.player')}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {playerNav.map(item => (
-                <SidebarMenuItem
-                  key={item.title}
-                  data-tour={
-                    item.url === '/player/club' ? 'nav-club'
-                    : item.url === '/player/training-plan' ? 'nav-training-plan'
-                    : undefined
-                  }
-                >
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-primary font-medium">
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('nav:account.label')}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {accountNav.map(item => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-primary font-medium">
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
+        {sections.map(section => (
+          <div key={section.label}>
+            {renderGroup(section.label, section.items, section.groupIcon, section.accent)}
+          </div>
+        ))}
+
+        {renderGroup(t('nav:account.label'), accountNav, Settings, 'text-muted-foreground')}
       </SidebarContent>
     </Sidebar>
   );

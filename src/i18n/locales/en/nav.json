@@ -28,7 +28,7 @@
     "reports": "Reports",
     "inbox": "Inbox",
     "league": "League",
-    "vote": "League Vote",
+    "vote": "Vote",
     "matches": "Matches",
     "bank": "Bank",
     "store": "Store",
@@ -37,11 +37,28 @@
   "account": {
     "label": "Account",
     "notifications": "Notifications",
-    "profile": "Account Profile"
+    "profile": "Settings"
   },
   "groups": {
     "player": "Player",
-    "manager": "Manager"
+    "manager": "Manager",
+    "player_self": "Me",
+    "player_career": "Career",
+    "player_compete": "Compete",
+    "player_social": "Social & Economy",
+    "manager_overview": "Overview",
+    "manager_team": "Team",
+    "manager_operation": "Operations",
+    "manager_compete": "Compete",
+    "manager_social": "Social & Economy"
+  },
+  "tabs": {
+    "player_profile": "Profile",
+    "player_attributes": "Attributes & Training",
+    "manager_stadium": "Stadium",
+    "manager_facilities": "Facilities",
+    "league_overview": "League",
+    "league_vote": "Vote"
   },
   "active_player": {
     "label": "Playing as",

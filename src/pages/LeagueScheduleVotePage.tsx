@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { ManagerVoteIntroTour } from '@/components/tour/ManagerVoteIntroTour';
+import { PageNavTabs } from '@/components/PageNavTabs';
 
 const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
@@ -25,6 +26,7 @@ interface VoteSummary {
 export default function LeagueScheduleVotePage() {
   const { managerProfile } = useAuth();
   const { t } = useTranslation('league_vote');
+  const { t: tNav } = useTranslation('nav');
 
   function dayLabel(value: string) {
     return DAY_KEYS.includes(value as typeof DAY_KEYS[number]) ? t(`days.${value}`) : value;
@@ -155,6 +157,12 @@ export default function LeagueScheduleVotePage() {
   return (
     <ManagerLayout>
       <div className="space-y-6">
+        <PageNavTabs
+          tabs={[
+            { to: '/league', label: tNav('tabs.league_overview') },
+            { to: '/league/vote', label: tNav('tabs.league_vote') },
+          ]}
+        />
         <ManagerVoteIntroTour enabled={!loading} />
         <div>
           <h1 className="font-display text-2xl font-bold">{t('title')}</h1>
