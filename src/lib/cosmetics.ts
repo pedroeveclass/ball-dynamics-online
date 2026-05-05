@@ -55,10 +55,12 @@ export interface PlayerCosmetics {
   backgroundColor2: string | null;
   backgroundImageUrl: string | null;
   // ── Phase-6 cosmetic prototypes (V2-only) ──
-  // Tatuagem no bíceps. design + side picked at purchase.
-  tattooDesign: string | null;
-  tattooSide: CosmeticSide | null;
-  tattooColor: string | null;
+  // Tatuagem no bíceps — separate slot per arm so a player who bought
+  // two tattoos shows both. design + color persisted at buy time.
+  tattooDesignRight: string | null;
+  tattooColorRight: string | null;
+  tattooDesignLeft: string | null;
+  tattooColorLeft: string | null;
   // Pintura facial. design + 1-2 colors.
   facePaintDesign: string | null;
   facePaintColor: string | null;
@@ -109,9 +111,10 @@ const EMPTY: PlayerCosmetics = {
   backgroundColor: null,
   backgroundColor2: null,
   backgroundImageUrl: null,
-  tattooDesign: null,
-  tattooSide: null,
-  tattooColor: null,
+  tattooDesignRight: null,
+  tattooColorRight: null,
+  tattooDesignLeft: null,
+  tattooColorLeft: null,
   facePaintDesign: null,
   facePaintColor: null,
   facePaintColor2: null,
@@ -233,9 +236,10 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
   let backgroundColor: string | null = null;
   let backgroundColor2: string | null = null;
   let backgroundImageUrl: string | null = null;
-  let tattooDesign: string | null = null;
-  let tattooSide: CosmeticSide | null = null;
-  let tattooColor: string | null = null;
+  let tattooDesignRight: string | null = null;
+  let tattooColorRight: string | null = null;
+  let tattooDesignLeft: string | null = null;
+  let tattooColorLeft: string | null = null;
   let facePaintDesign: string | null = null;
   let facePaintColor: string | null = null;
   let facePaintColor2: string | null = null;
@@ -282,13 +286,16 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
       braceletSide = normalizeSide(p.side) ?? braceletSide;
       continue;
     }
-    // Tatuagem — design + side at purchase, color via picker.
+    // Tatuagem — design + color persisted per arm. Each purchase carries
+    // its own side, so a player who bought two pieces sees both.
     if (it.category === 'cosmetic' && matchesAny(it, TATTOO_NAMES) && p.tattoo_design) {
-      // First-equipped wins; player can buy a second tattoo for the other arm.
-      if (!tattooDesign) {
-        tattooDesign = p.tattoo_design;
-        tattooSide = normalizeSide(p.side) ?? 'right';
-        tattooColor = p.color ?? '#1A1A1A';
+      const side = normalizeSide(p.side) ?? 'right';
+      if (side === 'right' && !tattooDesignRight) {
+        tattooDesignRight = p.tattoo_design;
+        tattooColorRight = p.color ?? '#1A1A1A';
+      } else if (side === 'left' && !tattooDesignLeft) {
+        tattooDesignLeft = p.tattoo_design;
+        tattooColorLeft = p.color ?? '#1A1A1A';
       }
       continue;
     }
@@ -389,9 +396,10 @@ export async function fetchPlayerCosmetics(playerProfileId: string): Promise<Pla
     backgroundColor,
     backgroundColor2,
     backgroundImageUrl,
-    tattooDesign,
-    tattooSide,
-    tattooColor,
+    tattooDesignRight,
+    tattooColorRight,
+    tattooDesignLeft,
+    tattooColorLeft,
     facePaintDesign,
     facePaintColor,
     facePaintColor2,

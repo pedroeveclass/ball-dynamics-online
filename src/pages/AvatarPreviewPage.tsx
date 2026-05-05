@@ -54,9 +54,10 @@ export default function AvatarPreviewPage() {
   const [jerseyPattern, setJerseyPattern] = useState<string>('solid');
 
   // Cosmetic prototypes (sandbox)
-  const [tattooDesign, setTattooDesign] = useState<string>('none');
-  const [tattooSide, setTattooSide] = useState<'left' | 'right'>('right');
-  const [tattooColor, setTattooColor] = useState<string>('#1A1A1A');
+  const [tattooDesignRight, setTattooDesignRight] = useState<string>('none');
+  const [tattooColorRight, setTattooColorRight] = useState<string>('#1A1A1A');
+  const [tattooDesignLeft, setTattooDesignLeft] = useState<string>('none');
+  const [tattooColorLeft, setTattooColorLeft] = useState<string>('#1A1A1A');
   const [facePaintDesign, setFacePaintDesign] = useState<string>('none');
   const [facePaintColor, setFacePaintColor] = useState<string>('#FFD600');
   const [facePaintColor2, setFacePaintColor2] = useState<string>('#0066CC');
@@ -274,8 +275,8 @@ export default function AvatarPreviewPage() {
           <hr style={{ margin: '14px 0', border: 'none', borderTop: '2px dashed #c33' }} />
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: '#c33' }}>Protótipos novos (sandbox)</div>
 
-          <Field label="Tatuagem (bíceps)">
-            <select value={tattooDesign} onChange={(e) => setTattooDesign(e.target.value)} style={{ width: '100%' }}>
+          <Field label="Tatuagem braço direito (jogador)">
+            <select value={tattooDesignRight} onChange={(e) => setTattooDesignRight(e.target.value)} style={{ width: '100%' }}>
               <option value="none">Nenhuma</option>
               <option value="tribal">Tribal</option>
               <option value="cross">Cruz</option>
@@ -283,10 +284,25 @@ export default function AvatarPreviewPage() {
               <option value="anchor">Âncora</option>
               <option value="star">Estrela</option>
             </select>
-            {tattooDesign !== 'none' && (
+            {tattooDesignRight !== 'none' && (
               <div style={{ marginTop: 4 }}>
-                <ColorPicker value={tattooColor} onChange={setTattooColor} resetTo="#1A1A1A" />
-                <SideToggle value={tattooSide} onChange={setTattooSide} />
+                <ColorPicker value={tattooColorRight} onChange={setTattooColorRight} resetTo="#1A1A1A" />
+              </div>
+            )}
+          </Field>
+
+          <Field label="Tatuagem braço esquerdo (jogador)">
+            <select value={tattooDesignLeft} onChange={(e) => setTattooDesignLeft(e.target.value)} style={{ width: '100%' }}>
+              <option value="none">Nenhuma</option>
+              <option value="tribal">Tribal</option>
+              <option value="cross">Cruz</option>
+              <option value="heart">Coração</option>
+              <option value="anchor">Âncora</option>
+              <option value="star">Estrela</option>
+            </select>
+            {tattooDesignLeft !== 'none' && (
+              <div style={{ marginTop: 4 }}>
+                <ColorPicker value={tattooColorLeft} onChange={setTattooColorLeft} resetTo="#1A1A1A" />
               </div>
             )}
           </Field>
@@ -462,9 +478,10 @@ export default function AvatarPreviewPage() {
               hideShirt={hideShirt}
               outfit={outfit}
               jerseyPattern={jerseyPattern}
-              tattooDesign={tattooDesign === 'none' ? null : tattooDesign}
-              tattooSide={tattooSide}
-              tattooColor={tattooColor}
+              tattooDesignRight={tattooDesignRight === 'none' ? null : tattooDesignRight}
+              tattooColorRight={tattooColorRight}
+              tattooDesignLeft={tattooDesignLeft === 'none' ? null : tattooDesignLeft}
+              tattooColorLeft={tattooColorLeft}
               facePaintDesign={facePaintDesign === 'none' ? null : facePaintDesign}
               facePaintColor={facePaintColor}
               facePaintColor2={facePaintColor2}

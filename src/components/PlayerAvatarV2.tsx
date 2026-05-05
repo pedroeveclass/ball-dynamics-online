@@ -41,9 +41,10 @@ interface PlayerAvatarV2Props {
   outfit?: 'player' | 'coach';
   jerseyPattern?: string | null;
   // Cosmetic prototypes (sandbox / future store items)
-  tattooDesign?: string | null;
-  tattooSide?: 'left' | 'right';
-  tattooColor?: string;
+  tattooDesignRight?: string | null;
+  tattooColorRight?: string;
+  tattooDesignLeft?: string | null;
+  tattooColorLeft?: string;
   facePaintDesign?: string | null;
   facePaintColor?: string;
   facePaintColor2?: string;
@@ -92,9 +93,10 @@ export function PlayerAvatarV2({
   hideShirt,
   outfit = 'player',
   jerseyPattern,
-  tattooDesign,
-  tattooSide,
-  tattooColor,
+  tattooDesignRight,
+  tattooColorRight,
+  tattooDesignLeft,
+  tattooColorLeft,
   facePaintDesign,
   facePaintColor,
   facePaintColor2,
@@ -146,9 +148,10 @@ export function PlayerAvatarV2({
       hideShirt,
       outfit,
       jerseyPattern,
-      tattooDesign,
-      tattooSide,
-      tattooColor,
+      tattooDesignRight,
+      tattooColorRight,
+      tattooDesignLeft,
+      tattooColorLeft,
       facePaintDesign,
       facePaintColor,
       facePaintColor2,
@@ -173,7 +176,7 @@ export function PlayerAvatarV2({
     secondSkinShirtColor, secondSkinShirtSide,
     secondSkinPantsColor, secondSkinPantsSide,
     jerseyNumber, clubCrestUrl, numberColor, hideShirt, outfit, jerseyPattern,
-    tattooDesign, tattooSide, tattooColor,
+    tattooDesignRight, tattooColorRight, tattooDesignLeft, tattooColorLeft,
     facePaintDesign, facePaintColor, facePaintColor2,
     hasEarring, earringSide, earringColor,
     hasHeadband, headbandColor, hasNecklace, necklaceColor,

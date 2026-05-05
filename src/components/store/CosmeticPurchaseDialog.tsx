@@ -186,7 +186,13 @@ export function CosmeticPurchaseDialog({
 
   // ── Live preview props derived from local state. ──
   const previewProps: Partial<React.ComponentProps<typeof PlayerAvatarV2>> = {};
-  if (kind === 'tattoo')        { previewProps.tattooDesign = tattooDesign; previewProps.tattooSide = side === 'both' ? 'right' : side; previewProps.tattooColor = color; }
+  if (kind === 'tattoo') {
+    // Map the picked side onto the matching slot so the preview shows
+    // the tattoo on the arm the buyer just chose.
+    const arm = side === 'both' ? 'right' : side;
+    if (arm === 'right') { previewProps.tattooDesignRight = tattooDesign; previewProps.tattooColorRight = color; }
+    else                 { previewProps.tattooDesignLeft  = tattooDesign; previewProps.tattooColorLeft  = color; }
+  }
   if (kind === 'face_paint')    { previewProps.facePaintDesign = facePaintDesign; previewProps.facePaintColor = color; previewProps.facePaintColor2 = color2; }
   if (kind === 'glasses')       { /* override appearance.accessories below */ }
   if (kind === 'earring')       { previewProps.hasEarring = true; previewProps.earringColor = color; previewProps.earringSide = side; }

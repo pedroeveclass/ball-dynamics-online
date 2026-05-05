@@ -479,9 +479,10 @@ export default function PublicPlayerPage() {
                       secondSkinPantsSide={cosmetics.secondSkinPantsSide ?? 'both'}
                       jerseyPattern={activeKit?.pattern}
                       hideShirt={cosmetics.hasShirtless}
-                      tattooDesign={cosmetics.tattooDesign}
-                      tattooSide={cosmetics.tattooSide ?? 'right'}
-                      tattooColor={cosmetics.tattooColor ?? undefined}
+                      tattooDesignRight={cosmetics.tattooDesignRight}
+                      tattooColorRight={cosmetics.tattooColorRight ?? undefined}
+                      tattooDesignLeft={cosmetics.tattooDesignLeft}
+                      tattooColorLeft={cosmetics.tattooColorLeft ?? undefined}
                       facePaintDesign={cosmetics.facePaintDesign}
                       facePaintColor={cosmetics.facePaintColor ?? undefined}
                       facePaintColor2={cosmetics.facePaintColor2 ?? undefined}

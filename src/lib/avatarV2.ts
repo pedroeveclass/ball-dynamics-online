@@ -467,11 +467,13 @@ export interface ComposeOptions {
   jerseyPattern?: string | null;
 
   // ── Cosmetic prototypes (sandbox / future store items) ──
-  // Tatuagem no bíceps — single arm only (cada compra = um braço).
-  // design = 'tribal' | 'cross' | 'heart' | 'anchor' | 'star'.
-  tattooDesign?: string | null;
-  tattooSide?: 'left' | 'right';
-  tattooColor?: string;
+  // Tatuagem no bíceps — separate slots for each arm so a player who
+  // bought two tattoos shows both. design = 'tribal' | 'cross' |
+  // 'heart' | 'anchor' | 'star'.
+  tattooDesignRight?: string | null;
+  tattooColorRight?: string;
+  tattooDesignLeft?: string | null;
+  tattooColorLeft?: string;
   // Pintura facial. design = 'brasil' | 'horizontal' | 'two_stripes' | 'wings'.
   facePaintDesign?: string | null;
   facePaintColor?: string;
@@ -889,12 +891,13 @@ export function composePlayerSvg(opts: ComposeOptions): string {
     buildHeadBackSvg(appearance),
     tintSkin(innerPerna, opts.skinTone),
     secondSkinLeggings,
-    // When hiding the shirt we also hide the bracos (arms) and any
-    // sleeve overlays — tronco.svg already includes the chest+arm
-    // shape Pedro authored for the shirtless view.
+    // When hiding the shirt we also hide the bracos (arms) — the
+    // tronco.svg already includes the chest+arm shape. Cosmetics that
+    // sit ON the arm (segunda pele de manga, luva de inverno) keep
+    // rendering so the player still sees everything they bought.
     opts.hideShirt ? '' : tintSkin(innerBracos, opts.skinTone),
-    opts.hideShirt ? '' : secondSkinSleeves,
-    opts.hideShirt ? '' : outfielderWinterGlove,
+    secondSkinSleeves,
+    outfielderWinterGlove,
     caneleira,
     tintSocks(sockSrc, opts.primaryColor, opts.secondaryColor),
     tintCleats(innerChuteira, opts.cleatColor ?? null),
@@ -974,8 +977,11 @@ export function composePlayerSvg(opts: ComposeOptions): string {
   // tinted hand region of outfielderWinterGlove doesn't paint over
   // it. Currently lives at the end of the stack which is fine because
   // the bicep area is below the camiseta sleeve cuff.
-  if (opts.tattooDesign && opts.tattooDesign !== 'none') {
-    layers.push(tattooSvg(opts.tattooDesign, opts.tattooSide ?? 'right', opts.tattooColor ?? '#1A1A1A'));
+  if (opts.tattooDesignRight && opts.tattooDesignRight !== 'none') {
+    layers.push(tattooSvg(opts.tattooDesignRight, 'right', opts.tattooColorRight ?? '#1A1A1A'));
+  }
+  if (opts.tattooDesignLeft && opts.tattooDesignLeft !== 'none') {
+    layers.push(tattooSvg(opts.tattooDesignLeft, 'left', opts.tattooColorLeft ?? '#1A1A1A'));
   }
   if (opts.facePaintDesign && opts.facePaintDesign !== 'none') {
     layers.push(facePaintSvg(opts.facePaintDesign, opts.facePaintColor ?? '#FFD600', opts.facePaintColor2 ?? '#0066CC'));
