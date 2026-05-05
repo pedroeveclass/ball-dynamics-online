@@ -2228,6 +2228,27 @@ export default function MatchRoomPage() {
           if (resolutionScriptTurnIdRef.current !== nextTurn.id) {
             resolutionScriptRef.current = script;
             resolutionScriptTurnIdRef.current = nextTurn.id;
+            // Also stash the data the cleanup commit reads. Without this, when
+            // the resolution useEffect tears down before tryStart's first poll
+            // (next-turn INSERT realtime arrives milliseconds after this UPDATE),
+            // resolutionCommitDataRef stays null, the cleanup else-branch fires
+            // an empty commit, and prevDirectionsRef is wiped — the rearview
+            // arrow disappears every turn instead of holding the last direction.
+            resolutionCommitDataRef.current = {
+              resolutionTurnId: nextTurn.id,
+              script,
+              capturedActions: turnActionsRef.current.slice(),
+            };
+            // Also fire the commit immediately. If the resolution useEffect
+            // cleanup already ran (next-turn INSERT raced ahead of this UPDATE),
+            // the cleanup left prevDirectionsRef untouched and never marked
+            // this turn as committed — the idempotent guard inside the commit
+            // function lets this call go through and update the rearview arrow.
+            commitInertiaSnapshot({
+              resolutionTurnId: nextTurn.id,
+              script,
+              actions: turnActionsRef.current,
+            });
             // Seed the event buffer the existing animator reads from so
             // resolveBallOutcome and the RAF loop light up without needing
             // individual event-log inserts to arrive first.
@@ -3109,11 +3130,13 @@ export default function MatchRoomPage() {
           );
 
           // Cursor must be near the trajectory line itself (otherwise they clicked way off).
-          // Use the same mouseFieldPct the render evaluated against, so a one-frame jitter
-          // between mousemove and click can't disagree about purple-vs-green.
-          // Threshold 1.0 matches the engine's INTERCEPT_THRESHOLD on submitted-target distance.
-          const distToTraj = pointToSegmentDistance(decideX, decideY, bfx, bfy, btx, bty);
-          const cursorNearTraj = distToTraj <= 1.0;
+          // Use the same Y_SCALE'd pixel-true threshold the render evaluates so a
+          // one-frame jitter between mousemove and click can't disagree about
+          // purple-vs-green. Engine accepts because we always snap submitted target
+          // to the projection (distance 0 to trajectory) regardless of cursor offset.
+          const trajTouchThreshold = (9 + 5.5) / INNER_W * 100 + 0.3;
+          const distToTraj = pointToSegmentDistanceScaled(decideX, decideY, bfx, bfy, btx, bty);
+          const cursorNearTraj = distToTraj <= trajTouchThreshold;
 
           canReach = reachesTrajPoint && cursorNearTraj;
           if (typeof window !== 'undefined' && (window as any).__bdo_reach_log) {
@@ -3545,6 +3568,19 @@ export default function MatchRoomPage() {
             if (fetched && resolutionScriptTurnIdRef.current !== activeTurn.id) {
               resolutionScriptRef.current = fetched as ResolutionScript;
               resolutionScriptTurnIdRef.current = activeTurn.id;
+              // Mirror the realtime path: stash data + fire commit so the
+              // rearview arrow gets the latest direction even when realtime
+              // dropped the UPDATE event entirely.
+              resolutionCommitDataRef.current = {
+                resolutionTurnId: activeTurn.id,
+                script: fetched as ResolutionScript,
+                capturedActions: turnActionsRef.current.slice(),
+              };
+              commitInertiaSnapshot({
+                resolutionTurnId: activeTurn.id,
+                script: fetched as ResolutionScript,
+                actions: turnActionsRef.current,
+              });
               // Seed event buffer to mirror the Realtime path so the rest
               // of the animator sees the same data shape.
               const nowIso = new Date().toISOString();
@@ -4185,17 +4221,11 @@ export default function MatchRoomPage() {
           script: captured.script,
           actions: captured.capturedActions,
         });
-      } else if (activeTurn?.id) {
-        // Effect ended before resolution_script ever arrived (realtime drop or
-        // safety-timer flush). Mark this resolution as committed with no data
-        // so the next planning phase shows EMPTY arrows instead of arrows
-        // from whichever resolution last completed cleanly.
-        commitInertiaSnapshot({
-          resolutionTurnId: activeTurn.id,
-          script: null,
-          actions: [],
-        });
       }
+      // If no captured script reached us at all (realtime drop AND safety-timer
+      // flush AND no DB-fallback fetch), leave prevDirectionsRef as-is. Stale
+      // by ONE turn is less confusing than empty arrows on every turn — the
+      // realtime+fallback paths normally populate the snapshot before cleanup.
       resolutionCommitDataRef.current = null;
       // Drop any stale RAF transform so the next animation starts from a clean slate.
       const ballGElCleanup = ballGroupRef.current;
@@ -5983,9 +6013,14 @@ export default function MatchRoomPage() {
                     const cursorRelDy = mouseFieldPct.y - bfy;
                     const tProj = Math.max(0, Math.min(1, (cursorRelDx * trajDx + cursorRelDy * trajDy) / trajLen2));
 
-                    // Cursor must be near the line (matches click handler's 1.0 threshold).
-                    const distToTraj = pointToSegmentDistance(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
-                    const cursorNearTraj = distToTraj <= 1.0;
+                    // Pixel-true cursor-near-traj — same Y_SCALE'd metric used by
+                    // loose-ball so the visual cursor circle (9px) overlapping the
+                    // pass preview line / ball graphic counts as purple in any
+                    // direction. Raw 1.0 was 5.4px on Y axis, leaving the cursor
+                    // visibly on the line but engine-green on near-horizontal passes.
+                    const trajTouchThreshold = (9 + 5.5) / INNER_W * 100 + 0.3;
+                    const distToTraj = pointToSegmentDistanceScaled(mouseFieldPct.x, mouseFieldPct.y, bfx, bfy, btx, bty);
+                    const cursorNearTraj = distToTraj <= trajTouchThreshold;
 
                     canReachBall = cursorNearTraj
                       && !isRedZoneAt(tProj)
