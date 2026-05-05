@@ -357,6 +357,18 @@ export default function MatchRoomPage() {
   // Inertia power per participant (0-100, from previous turn's move payload).
   // Scales the directional inertia multiplier: 100 = full effect, 0 = no effect.
   const inertiaPowerRef = useRef<Record<string, number>>({});
+  // Tracks which resolution turn we've already committed to prevDirectionsRef.
+  // Prevents double-commit when both natural-end and cleanup paths fire for
+  // the same resolution; also lets the new-turn realtime handler know whether
+  // it can apply the new turn or must queue it (resolution still pending).
+  const inertiaCommittedTurnIdRef = useRef<string | null>(null);
+  // Captured at the start of the resolution effect — used by cleanup so the
+  // commit doesn't depend on turnActionsRef having shifted to the next turn.
+  const resolutionCommitDataRef = useRef<{
+    resolutionTurnId: string;
+    script: ResolutionScript;
+    capturedActions: MatchAction[];
+  } | null>(null);
   // Safety helpers for the deferred move (declared here so they're visible
   // to the unmount effect below). Defined as inline functions so they always
   // close over the latest state/refs.
@@ -1394,6 +1406,70 @@ export default function MatchRoomPage() {
     return baseRange * factor;
   }, []);
 
+  // Idempotent commit of last-turn inertia direction + power into the refs the
+  // rearview-arrow render reads from. Called on natural animation end AND on
+  // resolution-effect cleanup AND on watchdog recovery — any of those paths
+  // alone is fragile (cleanup fires when next turn arrives early, watchdog
+  // fires when RAF stalls), and running it everywhere via the turn-id guard
+  // is cheaper than letting prevDirectionsRef go stale.
+  const commitInertiaSnapshot = useCallback((args: {
+    resolutionTurnId: string;
+    script: ResolutionScript | null;
+    actions: MatchAction[];
+    finalsOverride?: Record<string, { x: number; y: number }>;
+  }) => {
+    if (!args.resolutionTurnId) return;
+    if (inertiaCommittedTurnIdRef.current === args.resolutionTurnId) return;
+    const script = args.script;
+    if (!script || !script.initial_positions) {
+      // No script → can't compute reliable directions. Mark committed (so we
+      // don't keep retrying with no data) and clear the ref — better to show
+      // no arrows than ones N turns out of date.
+      prevDirectionsRef.current = {};
+      inertiaCommittedTurnIdRef.current = args.resolutionTurnId;
+      return;
+    }
+    const initialPositions = script.initial_positions;
+    const fallbackFinals = script.final_positions ?? {};
+
+    const newDirections: Record<string, { x: number; y: number }> = { ...prevDirectionsRef.current };
+    for (const p of participantsRef.current) {
+      const sp = initialPositions[p.id];
+      const endPos = args.finalsOverride?.[p.id] ?? fallbackFinals[p.id];
+      if (!sp || !endPos) {
+        delete newDirections[p.id];
+        continue;
+      }
+      const moveAction = args.actions.find(a =>
+        a.participant_id === p.id
+        && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block')
+        && a.target_x != null && a.target_y != null
+        && !((a.payload as any)?.no_action === true)
+        && a.status !== 'overridden'
+      );
+      const ddx = moveAction ? Number(moveAction.target_x) - sp.x : endPos.x - sp.x;
+      const ddy = moveAction ? Number(moveAction.target_y) - sp.y : endPos.y - sp.y;
+      const actualDisp = Math.sqrt((endPos.x - sp.x) ** 2 + (endPos.y - sp.y) ** 2);
+      if (actualDisp > 0.5 && Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
+        newDirections[p.id] = { x: ddx, y: ddy };
+      } else {
+        delete newDirections[p.id];
+      }
+    }
+    prevDirectionsRef.current = newDirections;
+
+    const updatedPowers = { ...inertiaPowerRef.current };
+    for (const a of args.actions) {
+      if (a.action_type === 'move' && a.payload && typeof a.payload === 'object') {
+        const pw = (a.payload as any).inertia_power;
+        if (typeof pw === 'number') updatedPowers[a.participant_id] = pw;
+      }
+    }
+    inertiaPowerRef.current = updatedPowers;
+
+    inertiaCommittedTurnIdRef.current = args.resolutionTurnId;
+  }, []);
+
   // ── Pre-match countdown / auto-start ────────────────────────
   useEffect(() => {
     if (!match || match.status !== 'scheduled') return;
@@ -2178,10 +2254,22 @@ export default function MatchRoomPage() {
               }
             };
 
-            if (animatedResolutionIdRef.current && animFrameRef.current) {
-              // Resolution animation still running — queue the new turn. The useEffect on
-              // `animating` flushes it the moment the animation ends; the safety timer below
-              // guarantees we never stall if something goes wrong with the animation loop.
+            // Queue the new turn whenever we're inside a resolution that hasn't
+            // committed yet — covers BOTH "animation is running" AND the harder
+            // race "resolution_script UPDATE realtime event hasn't arrived yet,
+            // so the resolution effect is still polling and animFrameRef is
+            // null." Without this branch, when the script UPDATE was slower
+            // than the next turn's INSERT, applyNewTurn fired immediately, the
+            // resolution useEffect cleaned up, and the animation NEVER played.
+            const activeNow = activeTurnRef.current;
+            const inResolutionPending = !!activeNow
+              && activeNow.phase === 'resolution'
+              && inertiaCommittedTurnIdRef.current !== activeNow.id;
+            const animationRunning = !!(animatedResolutionIdRef.current && animFrameRef.current);
+            if (inResolutionPending || animationRunning) {
+              // Resolution animation still pending or running — queue the new turn.
+              // The useEffect on `animating` flushes it the moment the animation ends;
+              // the safety timer below guarantees we never stall if something goes wrong.
               pendingTurnApplyRef.current = applyNewTurn;
               if (pendingTurnSafetyTimerRef.current) clearTimeout(pendingTurnSafetyTimerRef.current);
               pendingTurnSafetyTimerRef.current = setTimeout(() => {
@@ -2415,6 +2503,18 @@ export default function MatchRoomPage() {
       const startedAt = animationStartedAtRef.current ?? expectedEndAt;
       const elapsedMs = Date.now() - startedAt;
       console.warn(`[ANIM-WATCHDOG] Animation stuck for ${elapsedMs}ms (expected ~${expectedEndAt - startedAt}ms). Forcing recovery.`);
+      // Commit inertia for the stuck resolution before the recovery path
+      // wipes animatedResolutionIdRef — otherwise the rearview arrow stays
+      // frozen on whatever the last cleanly-finished resolution wrote.
+      const captured = resolutionCommitDataRef.current;
+      if (captured) {
+        commitInertiaSnapshot({
+          resolutionTurnId: captured.resolutionTurnId,
+          script: captured.script,
+          actions: captured.capturedActions,
+        });
+        resolutionCommitDataRef.current = null;
+      }
       // Cancel any RAF in flight so it doesn't fight the recovery state.
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
@@ -2433,7 +2533,7 @@ export default function MatchRoomPage() {
       void loadLiveSnapshot();
     }, 1000);
     return () => clearInterval(watchdog);
-  }, [animating, match?.status, loadLiveSnapshot]);
+  }, [animating, match?.status, loadLiveSnapshot, commitInertiaSnapshot]);
 
   const submitAction = async (actionType: string, participantId?: string, targetX?: number, targetY?: number, targetParticipantId?: string, payload?: Record<string, unknown>) => {
     const pid = participantId || selectedParticipantId;
@@ -3487,6 +3587,18 @@ export default function MatchRoomPage() {
 
       setResolutionStartPositions(snapshot);
       animatedResolutionIdRef.current = activeTurn.id;
+      // Capture script + current actions for the cleanup commit path. Without
+      // this, if the effect tears down mid-animation (e.g. next turn's INSERT
+      // realtime event arrives before the resolution_script UPDATE finishes
+      // animating), the storage block at natural-end never runs and the ref
+      // is left holding directions from the previous successful resolution.
+      if (script) {
+        resolutionCommitDataRef.current = {
+          resolutionTurnId: activeTurn.id,
+          script,
+          capturedActions: turnActionsRef.current.slice(),
+        };
+      }
       // Lock the interceptor for the full duration of this resolution so late events
       // cannot change the ball's trajectory mid-flight (prevents visual teleport).
       animationInterceptorSnapshotRef.current = interceptorActionRef.current;
@@ -3828,72 +3940,19 @@ export default function MatchRoomPage() {
 
           setFinalPositions(finals);
 
-          // Store movement directions for inertia system.
-          // Use the player's INTENT (action target − snapshot) rather than
-          // `finals - snapshot`. The engine's bump-pass collision handler can
-          // shove a player perpendicular to their chosen direction; using the
-          // post-bump endpoint as inertia would store the bump direction, so a
-          // user who clicked "up" but got nudged left would see their next-turn
-          // inertia arrow pointing left, which is not what they chose. We only
-          // care about angle here (dirMult ignores magnitude), so it's safe to
-          // use the unclamped target.
-          // Falls back to (finals − snapshot) for participants without a move
-          // action this turn (e.g. positioning rows, or a teammate's idle).
-          const newDirections: Record<string, { x: number; y: number }> = { ...prevDirectionsRef.current };
-          for (const p of participantsRef.current) {
-            const sp = snapshot[p.id];
-            const endPos = finals[p.id];
-            if (!sp || !endPos) {
-              delete newDirections[p.id];
-              continue;
-            }
-            // no_action moves are submitted as `move` with payload.no_action=true
-            // (see feedback memory). They should NOT contribute to prev-direction
-            // tracking — otherwise the rearview arrow + next-turn directional
-            // multiplier picks up a "stayed still" move as if it were a real
-            // direction, locking the player out of their actual prior heading.
-            // Also prefer actions with status==='used' over 'overridden': the
-            // overridden no_action move and the actual ball action share the
-            // same turn, and find() should pick the action that actually
-            // happened.
-            const moveAction = latestActions.find(a =>
-              a.participant_id === p.id
-              && (a.action_type === 'move' || a.action_type === 'receive' || a.action_type === 'block')
-              && a.target_x != null && a.target_y != null
-              && !((a.payload as any)?.no_action === true)
-              && a.status !== 'overridden'
-            );
-            const ddx = moveAction
-              ? Number(moveAction.target_x) - sp.x
-              : endPos.x - sp.x;
-            const ddy = moveAction
-              ? Number(moveAction.target_y) - sp.y
-              : endPos.y - sp.y;
-            // Decide "stayed still" against the ACTUAL displacement so a click
-            // on the player's own spot still drops the entry.
-            const actualDisp = Math.sqrt((endPos.x - sp.x) ** 2 + (endPos.y - sp.y) ** 2);
-            if (actualDisp > 0.5 && Math.sqrt(ddx * ddx + ddy * ddy) > 0.5) {
-              newDirections[p.id] = { x: ddx, y: ddy };
-            } else {
-              delete newDirections[p.id]; // Stayed still — reset inertia
-            }
+          // Commit movement directions + inertia_power for the rearview arrow.
+          // Idempotent — also called from the cleanup path / watchdog so a cut
+          // animation doesn't leave the ref pointing at a turn N-resolutions ago.
+          if (activeTurn?.id) {
+            commitInertiaSnapshot({
+              resolutionTurnId: activeTurn.id,
+              script,
+              actions: latestActions,
+              finalsOverride: finals,
+            });
           }
-          prevDirectionsRef.current = newDirections;
-          // Store each participant's inertia_power from their move action payload
-          // so next turn's computeMaxMoveRange can scale the directional bonus/penalty.
-          // MERGE — don't replace the whole ref. If this resolution had no move for
-          // a player (e.g., positioning phase or they didn't act), keep the PREVIOUS
-          // value. Replacing the whole ref would reset to {} → default 100%.
-          const updatedPowers = { ...inertiaPowerRef.current };
-          for (const a of latestActions) {
-            if (a.action_type === 'move' && a.payload && typeof a.payload === 'object') {
-              const pw = (a.payload as any).inertia_power;
-              if (typeof pw === 'number') updatedPowers[a.participant_id] = pw;
-            }
-          }
-          inertiaPowerRef.current = updatedPowers;
           if (typeof window !== 'undefined' && (window as any).__bdo_inertia_log) {
-            console.log('[INERTIA STORE] turn', activeTurn?.turn_number, Object.entries(newDirections).map(
+            console.log('[INERTIA STORE] turn', activeTurn?.turn_number, Object.entries(prevDirectionsRef.current).map(
               ([id, d]) => `${id.slice(0, 8)}=(${d.x.toFixed(1)},${d.y.toFixed(1)})`
             ).join(' | '));
           }
@@ -4105,11 +4164,34 @@ export default function MatchRoomPage() {
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      // If the animation never reached its natural end, commit inertia for
+      // the cut-short resolution NOW so prevDirectionsRef reflects the latest
+      // turn — otherwise the next planning phase shows arrows from whichever
+      // resolution finished cleanly last (often N turns ago).
+      const captured = resolutionCommitDataRef.current;
+      if (captured) {
+        commitInertiaSnapshot({
+          resolutionTurnId: captured.resolutionTurnId,
+          script: captured.script,
+          actions: captured.capturedActions,
+        });
+      } else if (activeTurn?.id) {
+        // Effect ended before resolution_script ever arrived (realtime drop or
+        // safety-timer flush). Mark this resolution as committed with no data
+        // so the next planning phase shows EMPTY arrows instead of arrows
+        // from whichever resolution last completed cleanly.
+        commitInertiaSnapshot({
+          resolutionTurnId: activeTurn.id,
+          script: null,
+          actions: [],
+        });
+      }
+      resolutionCommitDataRef.current = null;
       // Drop any stale RAF transform so the next animation starts from a clean slate.
       const ballGElCleanup = ballGroupRef.current;
       if (ballGElCleanup) ballGElCleanup.removeAttribute('transform');
     };
-  }, [activeTurn?.phase, activeTurn?.id]);
+  }, [activeTurn?.phase, activeTurn?.id, commitInertiaSnapshot]);
 
   // ── Compute animated positions (physics-based easing) ───────
   const getAnimatedPos = useCallback((p: Participant): { x: number; y: number } => {
