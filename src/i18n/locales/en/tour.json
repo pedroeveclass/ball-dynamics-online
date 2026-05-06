@@ -129,7 +129,7 @@
     },
     "step3": {
       "title": "Want to test now? Run a Test 5v5",
-      "body": "Want to try a match right now? Click Test 5v5 up there.\n\nIt opens a quick 5×5 against bots in a new tab, no consequences — to show you in practice:\n\n• Hotkeys (QWERT / ASDF / ZXCVB)\n• Turn phases (positioning → action → resolution)\n• Inertia, domination, passes, shots...\n\nLearn by doing. Let's go! ⚽"
+      "body": "Want to try a match right now? Click Test 5v5 up there.\n\nIt opens a quick 5×5 against bots in a new tab, no consequences — to show you in practice:\n\n• FIFA-PC style hotkeys (ASDF + Shift for headers)\n• Turn phases (positioning → action → resolution)\n• Inertia, domination, passes, shots...\n\nLearn by doing. Let's go! ⚽"
     }
   },
   "pickup_intro": {

@@ -149,12 +149,15 @@ export const MatchActionMenu = React.memo(function MatchActionMenu(props: MatchA
         }
 
         // Keyboard shortcut hint — matches the hotkeys in MatchRoomPage.
+        // FIFA-PC layout: ASDF = passe/chute, Shift+ASDF = cabeceio.
         const SHORTCUT_MAP: Record<string, string> = {
-          pass_low: 'Q', pass_high: 'W', pass_launch: 'E',
-          shoot_controlled: 'R', shoot_power: 'T',
-          header_low: 'A', header_high: 'S',
-          header_controlled: 'D', header_power: 'F',
-          move: 'X', receive: 'C', receive_hard: 'V', block: 'B',
+          pass_high: 'A', pass_low: 'S',
+          shoot_controlled: 'D', shoot_power: 'F',
+          pass_launch: 'W',
+          header_high: 'Shift+A', header_low: 'Shift+S',
+          header_controlled: 'Shift+D', header_power: 'Shift+F',
+          move: 'E', block: 'Q',
+          receive: 'R', receive_hard: 'T',
           no_action: 'Z',
         };
         const shortcut = SHORTCUT_MAP[a];

@@ -181,29 +181,7 @@ export function HelpModal({ open, onOpenChange, defaultTab = 'geral' }: HelpModa
 
             <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
               <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
-                {t('shortcuts.row_top_title')}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ['Q', t('shortcuts.key_q')],
-                  ['W', t('shortcuts.key_w')],
-                  ['E', t('shortcuts.key_e')],
-                  ['R', t('shortcuts.key_r')],
-                  ['T', t('shortcuts.key_t')],
-                ].map(([key, desc]) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[32px] text-center">
-                      {key}
-                    </span>
-                    <span className="text-xs text-[hsl(45,20%,80%)]">{desc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
-                {t('shortcuts.row_mid_title')}
+                {t('shortcuts.row_ball_title')}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
@@ -211,6 +189,7 @@ export function HelpModal({ open, onOpenChange, defaultTab = 'geral' }: HelpModa
                   ['S', t('shortcuts.key_s')],
                   ['D', t('shortcuts.key_d')],
                   ['F', t('shortcuts.key_f')],
+                  ['W', t('shortcuts.key_w')],
                 ].map(([key, desc]) => (
                   <div key={key} className="flex items-center gap-2">
                     <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[32px] text-center">
@@ -224,15 +203,36 @@ export function HelpModal({ open, onOpenChange, defaultTab = 'geral' }: HelpModa
 
             <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
               <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
-                {t('shortcuts.row_bot_title')}
+                {t('shortcuts.row_header_title')}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {[
+                  ['Shift+A', t('shortcuts.key_shift_a')],
+                  ['Shift+S', t('shortcuts.key_shift_s')],
+                  ['Shift+D', t('shortcuts.key_shift_d')],
+                  ['Shift+F', t('shortcuts.key_shift_f')],
+                ].map(([key, desc]) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[60px] text-center">
+                      {key}
+                    </span>
+                    <span className="text-xs text-[hsl(45,20%,80%)]">{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[hsl(220,15%,16%)] rounded p-3 border border-[hsl(220,10%,25%)]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[hsl(45,30%,60%)] mb-2">
+                {t('shortcuts.row_other_title')}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['Q', t('shortcuts.key_q')],
+                  ['E', t('shortcuts.key_e')],
+                  ['R', t('shortcuts.key_r')],
+                  ['T', t('shortcuts.key_t')],
                   ['Z', t('shortcuts.key_z')],
-                  ['X', t('shortcuts.key_x')],
-                  ['C', t('shortcuts.key_c')],
-                  ['V', t('shortcuts.key_v')],
-                  ['B', t('shortcuts.key_b')],
                 ].map(([key, desc]) => (
                   <div key={key} className="flex items-center gap-2">
                     <span className="font-mono text-[11px] font-bold text-[hsl(45,30%,80%)] bg-[hsl(220,15%,20%)] rounded px-1.5 py-0.5 min-w-[32px] text-center">
@@ -243,6 +243,8 @@ export function HelpModal({ open, onOpenChange, defaultTab = 'geral' }: HelpModa
                 ))}
               </div>
             </div>
+
+            <p className="text-xs text-[hsl(45,20%,70%)] italic">{t('shortcuts.one_touch_note')}</p>
           </TabsContent>
         </Tabs>
       </DialogContent>

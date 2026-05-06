@@ -2125,13 +2125,13 @@ export default function MatchRoomPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeTurn?.id, activeTurn?.phase, activeTurn?.ball_holder_participant_id, match?.status, match?.home_club_id, match?.away_club_id, myRole, myParticipant?.id, myClubId, selectedParticipantId, isPhaseProcessing, isPositioningTurn]);
 
-  // ── Action letter hotkeys (mão esquerda, 3 linhas semânticas) ────────────────
-  // Fires when the action menu is open. Maps a letter to the action if it's
-  // currently available for the selected player.
-  //   Linha de cima (QWERT) → passes e chutes (pé)
-  //   Linha do meio (ASDF)  → cabeceios
-  //   Linha de baixo (XCVB) → movimento e defesa
-  // Z (global) continua como cancelar/no_action — tratado no handler acima.
+  // ── Action letter hotkeys (FIFA-PC style, mão esquerda) ─────────────────────
+  // ASDF      = passe alto / passe baixo / chute ctrl / chute forte
+  // W         = lançamento     ·  E = move  ·  Q = block
+  // R / T     = receive / receive hard (carrinho)
+  // Shift+ASDF= cabeceio alto / baixo / ctrl / forte
+  // Shift+W   = lançamento (mantém)  — Shift sem efeito nas outras
+  // Z (global) = no_action / cancel — tratado no handler acima.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -2141,23 +2141,28 @@ export default function MatchRoomPage() {
       if (isPhaseProcessing) return;
       if (!showActionMenu) return; // hotkeys only active when menu is open
       const key = e.key.toLowerCase();
+      const isShift = e.shiftKey;
 
-      const shortcutMap: Record<string, string> = {
-        q: 'pass_low',
-        w: 'pass_high',
-        e: 'pass_launch',
-        r: 'shoot_controlled',
-        t: 'shoot_power',
-        a: 'header_low',
-        s: 'header_high',
+      // Shift modifier: ASDF → cabeceio (mesma família, "de cabeça").
+      const shiftMap: Record<string, string> = {
+        a: 'header_high',
+        s: 'header_low',
         d: 'header_controlled',
         f: 'header_power',
-        x: 'move',
-        c: 'receive',
-        v: 'receive_hard',
-        b: 'block',
       };
-      const actionType = shortcutMap[key];
+      // Base map: A/S/D/F = passe/chute, W = lançamento, Q/E/R/T defesa+move.
+      const baseMap: Record<string, string> = {
+        a: 'pass_high',
+        s: 'pass_low',
+        d: 'shoot_controlled',
+        f: 'shoot_power',
+        w: 'pass_launch',
+        e: 'move',
+        q: 'block',
+        r: 'receive',
+        t: 'receive_hard',
+      };
+      const actionType = isShift ? shiftMap[key] : baseMap[key];
       if (!actionType) return;
 
       // Only fire if this action is currently available in the menu.
